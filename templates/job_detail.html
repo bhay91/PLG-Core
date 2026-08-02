@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+{% block title %}{{ job.job_number }} · PartsLink Global{% endblock %}
+{% block content %}
+<section class="page-heading row-between">
+  <div>
+    <p class="eyebrow">{{ job.job_number }}</p>
+    <h1>{{ job.customer }}</h1>
+    <p>{{ job.manufacturer }} {{ job.machine }}{% if job.pin_serial %} · {{ job.pin_serial }}{% endif %}</p>
+  </div>
+
+  <div class="header-actions">
+    {% if job.manufacturer and job.manufacturer|upper in ["CAT", "CATERPILLAR"] %}
+    <form method="post" action="/jobs/{{ job.id }}/start-sis-cart-import" target="_blank">
+      <button class="button" type="submit">Import Cart</button>
+    </form>
+    {% endif %}
+    <a class="button ghost" href="/jobs/{{ job.id }}/edit">Edit Job Information</a>
+    <form method="post" action="/jobs/{{ job.id }}/status" class="status-form">
+      <select name="status">
+        {% for value in ["REQUESTED", "RESEARCHING", "VERIFIED", "QUOTED", "CONFIRMED", "ORDERED", "RECEIVED", "DELIVERED", "VOID"] %}
+        <option value="{{ value }}" {% if job.status == value %}selected{% endif %}>{{ value }}</option>
+        {% endfor %}
+      </select>
+      <button class="button small" type="submit">Update</button>
+    </form>
+  </div>
+</section>
+
+
+<section class="panel source-import-panel">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">IMPORT SUPPLIER CART OR QUOTE</p>
+      <h2>Choose a source</h2>
+    </div>
+  </div>
+
+  <form method="post" action="/jobs/{{ job.id }}/start-source-import" target="_blank">
+    <div class="form-grid compact-grid">
+      <label>
+        Supplier / Source
+        <select name="source_key" required>
+          {% for connector in connectors %}
+          <option value="{{ connector.connector_key }}">{{ connector.display_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <div class="form-action">
+        <button class="button" type="submit">Open Source</button>
+      </div>
+    </div>
+  </form>
+
+  <p class="muted">
+    CAT SIS cart import is active. Worldpac, SSF, and RockAuto readers will be added after each cart is tested.
+  </p>
+</section>
+
+
+<section class="panel source-import-summary">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">SOURCE IMPORTS</p>
+      <h2>Imported cart costs</h2>
+    </div>
+  </div>
+
+  {% if source_imports %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th>Parts</th>
+          <th>Shipping</th>
+          <th>Supplier Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for source_import in source_imports %}
+        <tr>
+          <td>
+            <strong>{{ source_import.source_name }}</strong>
+            <div class="muted">{{ source_import.imported_at }}</div>
+          </td>
+          <td>${{ "%.2f"|format(source_import.parts_total or 0) }}</td>
+          <td>
+            {% if source_import.shipping_total is not none %}
+            ${{ "%.2f"|format(source_import.shipping_total) }}
+            {% else %}
+            —
+            {% endif %}
+          </td>
+          <td>
+            <strong>
+              ${{ "%.2f"|format((source_import.parts_total or 0) + (source_import.shipping_total or 0)) }}
+            </strong>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No supplier carts imported yet.</p>
+  {% endif %}
+</section>
+
+
+<section class="panel quote-actions-panel">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">QUOTE</p>
+      <h2>Generate customer quote</h2>
+    </div>
+  </div>
+
+  {% if ready_for_quote %}
+  <p>
+    All {{ selected_count }} part source{{ "" if selected_count == 1 else "s" }}
+    selected.
+  </p>
+
+  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+    <button
+      class="button"
+      type="submit"
+      onclick="return confirm('Generate the quote using the currently selected supplier for every part?');"
+    >
+      Generate Quote
+    </button>
+  </form>
+  {% else %}
+  <p class="muted">
+    Select one supplier source for every part before generating the quote.
+  </p>
+  {% endif %}
+</section>
+
+<section class="detail-grid">
+  <article class="panel">
+    <p class="eyebrow">JOB INFORMATION</p>
+    <dl class="details">
+      <div><dt>Customer</dt><dd>{{ job.customer }}</dd></div>
+      <div><dt>Company</dt><dd>{{ job.company or "—" }}</dd></div>
+      <div><dt>Phone</dt><dd>{{ job.phone or "—" }}</dd></div>
+      <div><dt>Email</dt><dd>{{ job.email or "—" }}</dd></div>
+      <div><dt>Machine</dt><dd>{{ job.manufacturer }} {{ job.machine }}</dd></div>
+      <div><dt>PIN / Serial</dt><dd>{{ job.pin_serial or "—" }}</dd></div>
+      <div><dt>Date</dt><dd>{{ job.created_date }}</dd></div>
+      <div><dt>Status</dt><dd><span class="status">{{ job.status }}</span></dd></div>
+    </dl>
+  </article>
+
+  <article class="panel">
+    <p class="eyebrow">ADD MORE PARTS</p>
+    <form method="post" action="/jobs/{{ job.id }}/parts">
+      <label>Requested description<input name="requested_description" required placeholder="Water pump"></label>
+      <label>Quantity<input name="quantity" type="number" value="1" min="1"></label>
+      <button class="button" type="submit">Add to Job</button>
+    </form>
+  </article>
+</section>
+
+<section class="panel quote-readiness">
+  <div>
+    <p class="eyebrow">QUOTE READINESS</p>
+    <h2>{{ selected_count }} of {{ parts|length }} sources selected</h2>
+  </div>
+  <span class="status {% if ready_for_quote %}ready{% endif %}">
+    {% if ready_for_quote %}READY FOR QUOTE{% else %}SELECT A SOURCE FOR EACH PART{% endif %}
+  </span>
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div><p class="eyebrow">REQUESTED PARTS</p><h2>{{ parts|length }} item{% if parts|length != 1 %}s{% endif %}</h2></div>
+  </div>
+
+  {% if parts %}
+  <div class="parts-list">
+    {% for part in parts %}
+    {% set sources = sources_by_part.get(part.id, []) %}
+    <article id="part-{{ part.id }}" class="part-workspace {% if active_part_id == part.id %}active-verification{% endif %}">
+      <header class="part-header">
+        <div class="part-title">
+          <span class="part-number">{{ loop.index }}</span>
+          <div>
+            <p class="part-label">REQUESTED</p>
+            <h3>{{ part.requested_description }}</h3>
+            <p>Qty {{ part.quantity }}</p>
+          </div>
+        </div>
+        <div class="part-header-actions">
+          {% if job.manufacturer and job.manufacturer|upper in ["CAT", "CATERPILLAR"] and part.verification_status != "VERIFIED" %}
+          <form method="post" action="/parts/{{ part.id }}/start-cat-verification" target="_blank">
+            <button class="button cat-button" type="submit">
+              {% if active_part_id == part.id %}Verification Active{% else %}Verify Parts{% endif %}
+            </button>
+          </form>
+          {% endif %}
+
+          <form
+            method="post"
+            action="/parts/{{ part.id }}/delete"
+            onsubmit="return confirm('Delete this part?\n\n{{ part.requested_description|e }}\n\nThis will also remove its saved supplier options. This cannot be undone.');"
+          >
+            <button class="button delete-part-button" type="submit">
+              Delete
+            </button>
+          </form>
+
+          <span class="status">{{ part.verification_status }}</span>
+        </div>
+      </header>
+
+      {% if part.verification_status != "VERIFIED" %}
+      <form method="post" action="/parts/{{ part.id }}/quick-capture" class="quick-capture-panel">
+        <div>
+          <p class="eyebrow">MANUAL OEM FALLBACK</p>
+          <p class="quick-help">Paste an OEM number and description only when a catalog import is unavailable.</p>
+        </div>
+        <div class="quick-capture-row">
+          <input name="raw_oem_text" required autocomplete="off" placeholder="221-3133: Cable Assembly">
+          <button class="button" type="submit">Verify Manually</button>
+        </div>
+      </form>
+      {% else %}
+      <section class="verified-summary">
+        <div class="verified-summary-heading">
+          <div>
+            <p class="eyebrow">MATCHED OEM</p>
+            <h4>{{ part.oem_part_number }}</h4>
+            <p>{{ part.oem_description or "OEM part" }}</p>
+          </div>
+          <form method="post" action="/parts/{{ part.id }}/start-cat-verification" target="_blank"
+                onsubmit="return confirm('Are you sure you want to re-verify this part? Current OEM: {{ part.oem_part_number }}. The existing verification remains saved until a new import succeeds.');">
+            <button class="button danger-outline" type="submit">Re-Verify Parts</button>
+          </form>
+        </div>
+
+        <div class="verified-meta">
+          <span><strong>Requested:</strong> {{ part.requested_description }}</span>
+          <span><strong>OEM number:</strong> {{ part.oem_part_number }}</span>
+          <span><strong>OEM description:</strong> {{ part.oem_description or "—" }}</span>
+          <span><strong>Source:</strong> {{ part.verification_source or "Manual" }}</span>
+          {% if part.oem_dealer_price is not none %}
+          <span><strong>OEM price:</strong> ${{ "%.2f"|format(part.oem_dealer_price) }} USD</span>
+          {% endif %}
+          {% if part.oem_dealer_availability %}
+          <span><strong>Availability:</strong> {{ part.oem_dealer_availability }}</span>
+          {% endif %}
+        </div>
+
+        {% if part.product_url or part.source_url %}
+        <div class="verified-links">
+          <a href="{{ part.product_url or part.source_url }}" target="_blank" rel="noopener">Open source page</a>
+        </div>
+        {% endif %}
+      </section>
+      {% endif %}
+
+      <section class="sources-section">
+        <div class="sources-heading">
+          <div>
+            <p class="eyebrow">AVAILABLE SOURCES</p>
+            <h4>Choose what you want to sell</h4>
+          </div>
+        </div>
+
+        {% if sources %}
+        <div class="source-options">
+          {% for source in sources %}
+          <article class="source-option {% if source.selected_for_quote %}selected{% endif %}">
+            <form method="post" action="/parts/{{ part.id }}/sources/{{ source.id }}/select" class="source-select-form">
+              <button class="source-radio" type="submit" aria-label="Select {{ source.supplier_name }}">
+                {% if source.selected_for_quote %}●{% else %}○{% endif %}
+              </button>
+              <div class="source-main">
+                <div class="source-title-row">
+                  <strong>{{ source.supplier_name }}</strong>
+                  <span class="source-type">{{ source.source_type }}</span>
+                  {% if source.selected_for_quote %}<span class="selected-label">SELECTED</span>{% endif %}
+                </div>
+                {% if source.brand %}<span>Brand: {{ source.brand }}</span>{% endif %}
+                {% if source.supplier_part_number %}<span>Part #: {{ source.supplier_part_number }}</span>{% endif %}
+                <span class="source-price">
+                  {% if source.supplier_cost is not none %}${{ "%.2f"|format(source.supplier_cost) }}{% else %}Price not entered{% endif %}
+                </span>
+                {% if source.availability %}<span>{{ source.availability }}</span>{% endif %}
+                {% if source.lead_time %}<span>Lead time: {{ source.lead_time }}</span>{% endif %}
+              </div>
+            </form>
+            {% if source.trust_level != "OEM_VERIFIED" %}
+            <form method="post" action="/parts/{{ part.id }}/sources/{{ source.id }}/delete"
+                  onsubmit="return confirm('Remove this supplier option?');">
+              <button class="text-button" type="submit">Remove</button>
+            </form>
+            {% endif %}
+          </article>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="muted-message">No supplier options added yet.</p>
+        {% endif %}
+
+        <details class="add-source-panel">
+          <summary>+ Add supplier option</summary>
+          <form method="post" action="/parts/{{ part.id }}/sources" class="source-form-grid">
+            <label>Supplier
+              <input name="supplier_name" list="supplier-list" required placeholder="Select or type supplier">
+            </label>
+            <label>Type
+              <select name="source_type">
+                <option value="AFTERMARKET">Aftermarket</option>
+                <option value="OEM">OEM</option>
+                <option value="REMAN">Reman</option>
+                <option value="USED">Used</option>
+              </select>
+            </label>
+            <label>Brand
+              <input name="brand" list="brand-list" placeholder="Select or type brand">
+            </label>
+            <label>Supplier part #
+              <input name="supplier_part_number" placeholder="Defaults to OEM #">
+            </label>
+            <label>Cost<input name="supplier_cost" type="number" step="0.01"></label>
+            <label>Availability
+              <select name="availability">
+                <option value="">Select</option>
+                <option value="In Stock">In Stock</option>
+                <option value="Out of Stock">Out of Stock</option>
+                <option value="Back Order">Back Order</option>
+              </select>
+            </label>
+            <label>Lead time
+              <select name="lead_time">
+                <option value="">Select</option>
+                <option value="1-3 Days">1-3 Days</option>
+                <option value="5 Days">5 Days</option>
+                <option value="2 Weeks">2 Weeks</option>
+                <option value="1 Month">1 Month</option>
+                <option value="Back Order">Back Order</option>
+              </select>
+            </label>
+            <label>Quote reference<input name="quote_reference" placeholder="Quote #, email, or phone"></label>
+            <button class="button" type="submit">Add Source</button>
+          </form>
+        </details>
+      </section>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty"><p>No parts have been added to this job.</p></div>
+  {% endif %}
+</section>
+
+<datalist id="supplier-list">
+  {% for supplier_name in supplier_names %}
+  <option value="{{ supplier_name }}"></option>
+  {% endfor %}
+</datalist>
+
+<datalist id="brand-list">
+  {% for brand_name in brand_names %}
+  <option value="{{ brand_name }}"></option>
+  {% endfor %}
+</datalist>
+{% endblock %}

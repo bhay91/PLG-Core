@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}New Job · PartsLink Global{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div><p class="eyebrow">NEW JOB</p><h1>Create a PartsLink job</h1><p>Enter the customer, machine, PIN, and requested parts. You can add more parts later.</p></div>
+</section>
+
+<form method="post" action="/jobs" class="panel form-grid">
+  <div class="form-section">
+    <h2>Customer</h2>
+    <label>Customer name *<input name="customer" required></label>
+    <label>Company<input name="company"></label>
+    <div class="two-column">
+      <label>Phone<input name="phone"></label>
+      <label>Email<input name="email" type="email"></label>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <h2>Machine</h2>
+    <div class="two-column">
+      <label>Manufacturer<input name="manufacturer" placeholder="CAT"></label>
+      <label>Model / machine<input name="machine" placeholder="420D Backhoe Loader"></label>
+    </div>
+    <label>VIN / PIN / Serial<input name="pin_serial" placeholder="FDP15598"></label>
+  </div>
+
+  <div class="form-section full">
+    <h2>Parts requested</h2>
+    <label>One part per line<textarea name="requested_parts" rows="7" placeholder="Accelerator cable&#10;Loader lift cylinder seal kit&#10;Swing cylinder seal kit"></textarea></label>
+    <label>Internal notes<textarea name="notes" rows="4"></textarea></label>
+  </div>
+
+  <div class="form-actions full">
+    <a class="button ghost" href="/">Cancel</a>
+    <button class="button" type="submit">Create Job</button>
+  </div>
+</form>
+{% endblock %}

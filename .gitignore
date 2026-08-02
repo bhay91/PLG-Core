@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Runtime / local files
+*.log
+.DS_Store
+.vscode/
+.pytest_cache/
+
+# Backups and release packages
+backup-*/
+backups/
+releases/
+*.zip
+
+# Uploaded working documents
+uploads/*
+!uploads/.gitkeep
+documents/*
+!documents/.gitkeep
+
+# Keep the live database local and out of GitHub
+data/*.db
+data/*.db-*
