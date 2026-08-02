@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+{% block title %}Job Workspace · {{ job.job_number }}{% endblock %}
+{% block content %}
+<section class="merged-workspace-heading">
+  <div>
+    <p class="eyebrow">{{ job.job_number }} · JOB WORKSPACE</p>
+    <h1>{{ job.customer }}</h1>
+    <p>{{ job.manufacturer }} {{ job.machine }}{% if job.pin_serial %} · {{ job.pin_serial }}{% endif %}</p>
+  </div>
+
+  <div class="merged-workspace-actions">
+    <a class="button ghost" href="/jobs/{{ job.id }}/edit">Edit Job Information</a>
+    <form method="post" action="/jobs/{{ job.id }}/status" class="status-form">
+      <select name="status">
+        {% for value in ["REQUESTED", "RESEARCHING", "VERIFIED", "QUOTED", "CONFIRMED", "ORDERED", "RECEIVED", "DELIVERED", "VOID"] %}
+        <option value="{{ value }}" {% if job.status == value %}selected{% endif %}>{{ value }}</option>
+        {% endfor %}
+      </select>
+      <button class="button small" type="submit">Update</button>
+    </form>
+  </div>
+</section>
+
+<section class="job-workspace-nav merged-job-nav">
+  <a class="active" href="/jobs/{{ job.id }}/basket">Parts Basket</a>
+  <span>Timeline</span>
+  <span>Documents</span>
+  <span>Notes</span>
+</section>
+
+<section class="job-summary-grid basket-context-grid">
+  <article class="context-card">
+    <span>Customer</span>
+    <strong>{{ job.customer }}</strong>
+    <small>{{ job.company or "Individual Customer" }}</small>
+  </article>
+  <article class="context-card">
+    <span>Machine / Vehicle</span>
+    <strong>{{ job.manufacturer }} {{ job.machine }}</strong>
+    <small>Equipment information</small>
+  </article>
+  <article class="context-card">
+    <span>VIN / PIN / Serial</span>
+    <strong>{{ job.pin_serial or "Not Provided" }}</strong>
+    <small>Identification reference</small>
+  </article>
+  <article class="context-card">
+    <span>Parts Basket</span>
+    <strong>{{ basket.totals.selected_items }} selected</strong>
+    <small>{{ basket.totals.all_items }} Vendor Quote line items</small>
+  </article>
+</section>
+
+<section class="vendor-stage-heading">
+  <div>
+    <p class="eyebrow">VENDOR QUOTES</p>
+    <h2>Build the Parts Basket</h2>
+    <p>Import Vendor carts or add manual line items, then choose the parts that belong in this job.</p>
+  </div>
+  <button class="button ghost" type="button" data-dialog-open="manual-vendor-line">＋ Manual Vendor Line</button>
+</section>
+
+<section class="vendor-import-card">
+  <form method="post" action="/jobs/{{ job.id }}/start-source-import" target="_blank">
+    <label>Import From Vendor
+      <select name="source_key" required>
+        {% for connector in connectors %}
+        <option value="{{ connector.connector_key }}">{{ connector.display_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="button" type="submit">Open Vendor</button>
+  </form>
+  <span>Complete the Vendor cart, then use the Firefox extension to import its line items.</span>
+</section>
+
+{% if vendor_carts %}
+<section class="vendor-cart-grid">
+  {% for vendor_cart in vendor_carts %}
+  <article class="vendor-cart-card"><details open><summary><header class="vendor-cart-header">
+      <div class="vendor-cart-summary-copy"><span class="vendor-cart-chevron">›</span><div>
+        <p class="eyebrow">VENDOR QUOTE</p>
+        <h3>{{ vendor_cart['source'].source_name }}</h3>
+        <span>{{ vendor_cart['items']|length }} line item{% if vendor_cart['items']|length != 1 %}s{% endif %}</span>
+      </div></div>
+      <div class="vendor-cart-meta">
+        {% if vendor_cart['source'].shipping_total %}
+        <span>Shipping ${{ "%.2f"|format(vendor_cart['source'].shipping_total) }}</span>
+        {% endif %}
+        <span>{{ vendor_cart['source'].trust_level }}</span>
+      </div>
+    </header></summary>
+    
+
+    {% if vendor_cart['items'] %}
+    <div class="vendor-lines">
+      <div class="vendor-line vendor-line-header">
+        <span>Part Number</span>
+        <span>Description</span>
+        <span>Type</span>
+        <span>Qty</span>
+        <span>Vendor Cost</span>
+        <span>Status</span>
+        <span></span>
+      </div>
+
+      {% for item in vendor_cart['items'] %}
+      <div class="vendor-line {% if item.selected %}added{% endif %}">
+        <div>
+          <strong>{{ item.supplier_part_number or item.manufacturer_part_number or "—" }}</strong>
+          {% if item.brand %}<small>{{ item.brand }}</small>{% endif %}
+        </div>
+        <div>
+          <strong>{{ item.requested_description }}</strong>
+          <small>{{ item.lead_time or "No lead time" }}</small>
+        </div>
+        <span class="source-type source-type-{{ item.source_type|lower }}">{{ item.source_type }}</span>
+        <strong>{{ item.quantity }}</strong>
+        <strong>{% if item.supplier_unit_cost is not none %}${{ "%.2f"|format(item.supplier_unit_cost) }}{% else %}—{% endif %}</strong>
+        <span class="availability-badge {% if not item.availability %}neutral{% endif %}">{{ item.availability or "Not Entered" }}</span>
+        <div class="vendor-line-action">
+          <form method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/toggle">
+            <input type="hidden" name="selected" value="{{ 0 if item.selected else 1 }}">
+            <button class="button {% if item.selected %}ghost{% endif %} small" type="submit">
+              {% if item.selected %}Remove From Basket{% else %}Add to Parts Basket{% endif %}
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="vendor-cart-empty">No line items imported for this Vendor.</div>
+    {% endif %}
+  </details></article>
+  {% endfor %}
+</section>
+{% else %}
+<section class="vendor-empty-state">
+  <h3>No Vendor Quotes Yet</h3>
+  <p>Import a Vendor cart or add a manual Vendor line to start sourcing.</p>
+</section>
+{% endif %}
+
+<section class="basket-stage-heading">
+  <div>
+    <p class="eyebrow">SELECTED PARTS</p>
+    <h2>Parts selected for checkout</h2>
+    <p>Selected line items receive PLG customer pricing and move forward to checkout.</p>
+  </div>
+</section>
+
+<section class="panel final-basket-panel">
+  {% if basket_items %}
+  <div class="basket-table-wrap">
+    <table class="basket-table">
+      <thead>
+        <tr>
+          <th>Vendor</th>
+          <th>Part Number</th>
+          <th>Description</th>
+          <th>Type</th>
+          <th class="numeric">Qty</th>
+          <th class="numeric">Vendor Cost</th>
+          <th class="numeric">Markup</th>
+          <th class="numeric">Customer Unit</th>
+          <th class="numeric">Customer Total</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in basket_items %}
+        {% set cost = item.supplier_unit_cost or 0 %}
+        {% if cost <= 50 %}
+          {% set markup = 40 %}
+          {% set customer_unit = (cost * 1.40)|round(0, 'ceil') %}
+        {% elif cost <= 200 %}
+          {% set markup = 30 %}
+          {% set customer_unit = (cost * 1.30)|round(0, 'ceil') %}
+        {% elif cost <= 500 %}
+          {% set markup = 25 %}
+          {% set customer_unit = (cost * 1.25)|round(0, 'ceil') %}
+        {% else %}
+          {% set markup = 20 %}
+          {% set customer_unit = (cost * 1.20)|round(0, 'ceil') %}
+        {% endif %}
+        <tr>
+          <td><strong>{{ item.supplier_name or "Manual Vendor" }}</strong></td>
+          <td><strong>{{ item.supplier_part_number or item.manufacturer_part_number or "—" }}</strong></td>
+          <td>{{ item.requested_description }}</td>
+          <td><span class="source-type source-type-{{ item.source_type|lower }}">{{ item.source_type }}</span></td>
+          <td class="numeric">
+            <form class="basket-qty-form" method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/quantity">
+              <input class="basket-qty-input" type="number" name="quantity" value="{{ item.quantity }}" min="1" required>
+              <button class="basket-qty-save" type="submit">Update</button>
+            </form>
+          </td>
+          <td class="numeric">{% if item.supplier_unit_cost is not none %}${{ "%.2f"|format(cost) }}{% else %}—{% endif %}</td>
+          <td class="numeric markup-value">{{ markup }}%</td>
+          <td class="numeric customer-price">${{ "%.2f"|format(customer_unit) }}</td>
+          <td class="numeric customer-price">${{ "%.2f"|format(customer_unit * item.quantity) }}</td>
+          <td>
+            <form method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/toggle">
+              <input type="hidden" name="selected" value="0">
+              <button class="basket-delete-button" type="submit" title="Remove from Parts Basket">×</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="basket-empty">
+    <div class="basket-empty-icon">▣</div>
+    <h3>The Parts Basket Is Empty</h3>
+    <p>Choose line items from one or more Vendor Quotes above.</p>
+  </div>
+  {% endif %}
+</section>
+
+{% if basket.status == "CHECKED_OUT" %}
+<section class="checkout-complete-banner">
+  <div>
+    <p class="eyebrow">CHECKOUT COMPLETE</p>
+    <h2>Parts Basket Ready for Quote</h2>
+    <p>The selected line items and customer pricing are ready for the quote.</p>
+  </div>
+  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+    <button class="button" type="submit">Create Quote →</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="basket-totals-bar">
+  <article>
+    <span>Vendor Parts</span>
+    <strong>${{ "%.2f"|format(basket.totals.supplier_parts_total) }}</strong>
+    <small>Selected Basket lines</small>
+  </article>
+  <article>
+    <span>Shipping</span>
+    <strong>${{ "%.2f"|format(basket.totals.shipping_total) }}</strong>
+    <small>Vendor Quote shipping</small>
+  </article>
+  <article>
+    <span>Vendor Total</span>
+    <strong>${{ "%.2f"|format(basket.totals.supplier_total) }}</strong>
+    <small>Internal cost</small>
+  </article>
+  <article class="customer-total">
+    <span>Customer Total</span>
+    <strong>${{ "%.2f"|format(basket.totals.customer_total) }}</strong>
+    <small>Calculated selling price</small>
+  </article>
+  <article class="profit-total">
+    <span>Estimated Profit</span>
+    <strong>${{ "%.2f"|format(basket.totals.estimated_profit) }}</strong>
+    <small>Before other charges</small>
+  </article>
+</section>
+
+<section class="basket-action-bar">
+  <div>
+    <span>{{ basket.totals.selected_items }} line item{% if basket.totals.selected_items != 1 %}s{% endif %} in the Parts Basket</span>
+    <small>Review the selected lines, then checkout the Parts Basket.</small>
+  </div>
+  <div class="basket-action-buttons">
+    {% if basket.status == "CHECKED_OUT" %}
+    <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+      <button class="button" type="submit">Create Quote →</button>
+    </form>
+    {% else %}
+    <form method="post" action="/jobs/{{ job.id }}/basket/checkout">
+      <button class="button" type="submit" {% if basket.totals.selected_items == 0 %}disabled{% endif %}>
+        Checkout Basket →
+      </button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+
+<dialog class="basket-dialog" id="manual-vendor-line">
+  <form method="post" action="/jobs/{{ job.id }}/vendor-carts/manual">
+    <div class="dialog-heading">
+      <div>
+        <p class="eyebrow">MANUAL VENDOR ENTRY</p>
+        <h2>Add Vendor Line Item</h2>
+        <p>Add a new, aftermarket, remanufactured, or used part to a Vendor Quote.</p>
+      </div>
+      <button type="button" class="dialog-close" data-dialog-close>×</button>
+    </div>
+
+    <div class="dialog-grid">
+      <label>Vendor Name<input name="vendor_name" required></label>
+      <label>Part Type
+        <select name="source_type">
+          <option value="AFTERMARKET">Aftermarket</option>
+          <option value="OEM">OEM</option>
+          <option value="REMAN">Remanufactured</option>
+          <option value="USED">Used</option>
+        </select>
+      </label>
+      <label class="dialog-full">Description<input name="requested_description" required></label>
+      <label>Vendor Part Number<input name="supplier_part_number"></label>
+      <label>Brand<input name="brand"></label>
+      <label>Quantity<input type="number" name="quantity" value="1" min="1"></label>
+      <label>Vendor Unit Cost<input type="number" name="supplier_unit_cost" step="0.01" min="0"></label>
+      <label>Availability<input name="availability"></label>
+      <label>Lead Time<input name="lead_time"></label>
+    </div>
+
+    <div class="dialog-actions">
+      <button class="button ghost" type="button" data-dialog-close>Cancel</button>
+      <button class="button" type="submit">Add to Vendor Quote</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  document.querySelectorAll("[data-dialog-open]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const dialog = document.getElementById(button.dataset.dialogOpen);
+      if (dialog) dialog.showModal();
+    });
+  });
+  document.querySelectorAll("[data-dialog-close]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const dialog = button.closest("dialog");
+      if (dialog) dialog.close();
+    });
+  });
+})();
+</script>
+{% endblock %}

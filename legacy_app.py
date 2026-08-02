@@ -500,7 +500,7 @@ def create_job(
 
         connection.commit()
 
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket", status_code=303)
 
 
 @app.get("/jobs", response_class=HTMLResponse)

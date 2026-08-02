@@ -8,13 +8,12 @@
     <p>{{ job.manufacturer }} {{ job.machine }}{% if job.pin_serial %} · {{ job.pin_serial }}{% endif %}</p>
   </div>
 
-  <div class="header-actions">
+  <div class="header-actions job-top-actions-clean">
     {% if job.manufacturer and job.manufacturer|upper in ["CAT", "CATERPILLAR"] %}
     <form method="post" action="/jobs/{{ job.id }}/start-sis-cart-import" target="_blank">
       <button class="button" type="submit">Import Cart</button>
     </form>
     {% endif %}
-    <a class="button ghost" href="/jobs/{{ job.id }}/edit">Edit Job Information</a>
     <form method="post" action="/jobs/{{ job.id }}/status" class="status-form">
       <select name="status">
         {% for value in ["REQUESTED", "RESEARCHING", "VERIFIED", "QUOTED", "CONFIRMED", "ORDERED", "RECEIVED", "DELIVERED", "VOID"] %}
@@ -25,6 +24,34 @@
     </form>
   </div>
 </section>
+
+<section class="job-workspace-nav">
+  <a class="active" href="/jobs/{{ job.id }}">Overview</a>
+  <a href="/jobs/{{ job.id }}/basket">Parts Basket</a>
+  <span>Timeline</span>
+  <span>Documents</span>
+  <span>Notes</span>
+</section>
+
+<section class="job-summary-grid">
+  <article class="context-card"><span>Customer</span><strong>{{ job.customer }}</strong><small>{{ job.company or "Individual Customer" }}</small></article>
+  <article class="context-card"><span>Machine / Vehicle</span><strong>{{ job.manufacturer }} {{ job.machine }}</strong><small>Equipment information</small></article>
+  <article class="context-card"><span>VIN / PIN / Serial</span><strong>{{ job.pin_serial or "Not Provided" }}</strong><small>Identification reference</small></article>
+  <article class="context-card"><span>Job Status</span><strong><span class="status status-{{ job.status|lower }}">{{ job.status }}</span></strong><small>Created {{ job.created_date }}</small></article>
+</section>
+
+<section class="job-primary-actions">
+  <div>
+    <p class="eyebrow">JOB WORKSPACE</p>
+    <h2>Manage sourcing and documents</h2>
+    <p>Use the Parts Basket to add new, aftermarket, remanufactured, or used parts.</p>
+  </div>
+  <div class="header-actions">
+    <a class="button" href="/jobs/{{ job.id }}/basket">Open Parts Basket</a>
+    <a class="button ghost" href="/jobs/{{ job.id }}/edit">Edit Job Information</a>
+  </div>
+</section>
+
 
 
 <section class="panel source-import-panel">
@@ -138,30 +165,7 @@
   {% endif %}
 </section>
 
-<section class="detail-grid">
-  <article class="panel">
-    <p class="eyebrow">JOB INFORMATION</p>
-    <dl class="details">
-      <div><dt>Customer</dt><dd>{{ job.customer }}</dd></div>
-      <div><dt>Company</dt><dd>{{ job.company or "—" }}</dd></div>
-      <div><dt>Phone</dt><dd>{{ job.phone or "—" }}</dd></div>
-      <div><dt>Email</dt><dd>{{ job.email or "—" }}</dd></div>
-      <div><dt>Machine</dt><dd>{{ job.manufacturer }} {{ job.machine }}</dd></div>
-      <div><dt>PIN / Serial</dt><dd>{{ job.pin_serial or "—" }}</dd></div>
-      <div><dt>Date</dt><dd>{{ job.created_date }}</dd></div>
-      <div><dt>Status</dt><dd><span class="status">{{ job.status }}</span></dd></div>
-    </dl>
-  </article>
 
-  <article class="panel">
-    <p class="eyebrow">ADD MORE PARTS</p>
-    <form method="post" action="/jobs/{{ job.id }}/parts">
-      <label>Requested description<input name="requested_description" required placeholder="Water pump"></label>
-      <label>Quantity<input name="quantity" type="number" value="1" min="1"></label>
-      <button class="button" type="submit">Add to Job</button>
-    </form>
-  </article>
-</section>
 
 <section class="panel quote-readiness">
   <div>
@@ -174,8 +178,12 @@
 </section>
 
 <section class="panel">
-  <div class="panel-heading">
-    <div><p class="eyebrow">REQUESTED PARTS</p><h2>{{ parts|length }} item{% if parts|length != 1 %}s{% endif %}</h2></div>
+  <div class="panel-heading parts-workspace-heading">
+    <div>
+      <p class="eyebrow">PARTS SOURCING WORKSPACE</p>
+      <h2>{{ parts|length }} item{% if parts|length != 1 %}s{% endif %}</h2>
+      <p>Review OEM identification, supplier options, pricing, and the selected source for each part.</p>
+    </div>
   </div>
 
   {% if parts %}

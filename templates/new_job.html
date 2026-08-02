@@ -1,14 +1,26 @@
 {% extends "base.html" %}
 {% block title %}New Job · PartsLink Global{% endblock %}
 {% block content %}
-<section class="page-heading">
-  <div><p class="eyebrow">NEW JOB</p><h1>Create a PartsLink job</h1><p>Enter the customer, machine, PIN, and requested parts. You can add more parts later.</p></div>
+<section class="workspace-heading">
+  <div>
+    <p class="eyebrow">NEW JOB</p>
+    <h1>Create a Job</h1>
+    <p>Enter the customer and equipment information. After creation, PLG opens the Parts Basket automatically.</p>
+  </div>
 </section>
 
-<form method="post" action="/jobs" class="panel form-grid">
+<section class="new-job-flow">
+  <span class="active">1. Job Information</span>
+  <span>2. Parts Basket</span>
+  <span>3. Checkout</span>
+  <span>4. Create Quote</span>
+</section>
+
+<form method="post" action="/jobs" class="panel form-grid streamlined-job-form">
   <div class="form-section">
-    <h2>Customer</h2>
-    <label>Customer name *<input name="customer" required></label>
+    <p class="eyebrow">CUSTOMER</p>
+    <h2>Customer Information</h2>
+    <label>Customer Name *<input name="customer" required autofocus></label>
     <label>Company<input name="company"></label>
     <div class="two-column">
       <label>Phone<input name="phone"></label>
@@ -17,23 +29,18 @@
   </div>
 
   <div class="form-section">
-    <h2>Machine</h2>
+    <p class="eyebrow">EQUIPMENT</p>
+    <h2>Machine or Vehicle</h2>
     <div class="two-column">
       <label>Manufacturer<input name="manufacturer" placeholder="CAT"></label>
-      <label>Model / machine<input name="machine" placeholder="420D Backhoe Loader"></label>
+      <label>Model / Machine<input name="machine" placeholder="420D Backhoe Loader"></label>
     </div>
     <label>VIN / PIN / Serial<input name="pin_serial" placeholder="FDP15598"></label>
   </div>
 
-  <div class="form-section full">
-    <h2>Parts requested</h2>
-    <label>One part per line<textarea name="requested_parts" rows="7" placeholder="Accelerator cable&#10;Loader lift cylinder seal kit&#10;Swing cylinder seal kit"></textarea></label>
-    <label>Internal notes<textarea name="notes" rows="4"></textarea></label>
-  </div>
-
-  <div class="form-actions full">
-    <a class="button ghost" href="/">Cancel</a>
-    <button class="button" type="submit">Create Job</button>
+  <div class="form-actions full streamlined-job-actions">
+    <a class="button ghost" href="/jobs">Cancel</a>
+    <button class="button" type="submit">Create Job &amp; Open Parts Basket →</button>
   </div>
 </form>
 {% endblock %}
