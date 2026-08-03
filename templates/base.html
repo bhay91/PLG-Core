@@ -27,7 +27,9 @@
       <span class="disabled"><span class="nav-icon">＄</span><span>Quotes</span></span>
       <span class="disabled"><span class="nav-icon">▤</span><span>Invoices</span></span>
       <span class="disabled"><span class="nav-icon">◇</span><span>Orders</span></span>
-      <span class="disabled"><span class="nav-icon">♙</span><span>Customers</span></span>
+      <a class="{% if active_page == 'customers' %}active{% endif %}" href="/customers">
+        <span class="nav-icon" aria-hidden="true">♙</span><span>Customers</span>
+      </a>
       <span class="disabled"><span class="nav-icon">▰</span><span>Suppliers</span></span>
       <a class="{% if active_page == 'connectors' %}active{% endif %}" href="/connectors">
         <span class="nav-icon" aria-hidden="true">↔</span><span>Connectors</span>

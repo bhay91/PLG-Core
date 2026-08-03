@@ -1,46 +1,14 @@
 {% extends "base.html" %}
 {% block title %}New Job · PartsLink Global{% endblock %}
 {% block content %}
-<section class="workspace-heading">
-  <div>
-    <p class="eyebrow">NEW JOB</p>
-    <h1>Create a Job</h1>
-    <p>Enter the customer and equipment information. After creation, PLG opens the Parts Basket automatically.</p>
-  </div>
-</section>
-
-<section class="new-job-flow">
-  <span class="active">1. Job Information</span>
-  <span>2. Parts Basket</span>
-  <span>3. Checkout</span>
-  <span>4. Create Quote</span>
-</section>
-
+<section class="workspace-heading"><div><p class="eyebrow">NEW JOB</p><h1>Create a Job</h1><p>Select an existing customer or create a new one.</p></div></section>
+<section class="new-job-flow"><span class="active">1. Job Information</span><span>2. Parts Basket</span><span>3. Checkout</span><span>4. Create Quote</span></section>
 <form method="post" action="/jobs" class="panel form-grid streamlined-job-form">
-  <div class="form-section">
-    <p class="eyebrow">CUSTOMER</p>
-    <h2>Customer Information</h2>
-    <label>Customer Name *<input name="customer" required autofocus></label>
-    <label>Company<input name="company"></label>
-    <div class="two-column">
-      <label>Phone<input name="phone"></label>
-      <label>Email<input name="email" type="email"></label>
-    </div>
-  </div>
-
-  <div class="form-section">
-    <p class="eyebrow">EQUIPMENT</p>
-    <h2>Machine or Vehicle</h2>
-    <div class="two-column">
-      <label>Manufacturer<input name="manufacturer" placeholder="CAT"></label>
-      <label>Model / Machine<input name="machine" placeholder="420D Backhoe Loader"></label>
-    </div>
-    <label>VIN / PIN / Serial<input name="pin_serial" placeholder="FDP15598"></label>
-  </div>
-
-  <div class="form-actions full streamlined-job-actions">
-    <a class="button ghost" href="/jobs">Cancel</a>
-    <button class="button" type="submit">Create Job &amp; Open Parts Basket →</button>
-  </div>
+<div class="form-section"><p class="eyebrow">CUSTOMER</p><h2>Customer Information</h2>
+<label>Existing Customer<select name="customer_id" id="customer-selector"><option value="">+ Create New Customer</option>{% for customer in customers %}<option value="{{ customer.id }}" data-name="{{ customer.name|e }}" data-company="{{ (customer.company or '')|e }}" data-phone="{{ (customer.phone or '')|e }}" data-email="{{ (customer.email or '')|e }}" data-address="{{ (customer.address or '')|e }}" {% if selected_customer_id == customer.id %}selected{% endif %}>{{ customer.name }}{% if customer.company %} · {{ customer.company }}{% endif %} ({{ customer.customer_number }})</option>{% endfor %}</select></label>
+<label>Customer Name *<input name="customer" id="customer-name" required autofocus></label><label>Company<input name="company" id="customer-company"></label><div class="two-column"><label>Phone<input name="phone" id="customer-phone"></label><label>Email<input name="email" type="email" id="customer-email"></label></div><label>Address<input name="address" id="customer-address"></label></div>
+<div class="form-section"><p class="eyebrow">EQUIPMENT</p><h2>Machine or Vehicle</h2><div class="two-column"><label>Manufacturer<input name="manufacturer" placeholder="CAT"></label><label>Model / Machine<input name="machine" placeholder="420D Backhoe Loader"></label></div><label>VIN / PIN / Serial<input name="pin_serial" placeholder="FDP15598"></label></div>
+<div class="form-actions full streamlined-job-actions"><a class="button ghost" href="/jobs">Cancel</a><button class="button" type="submit">Create Job &amp; Open Parts Basket →</button></div>
 </form>
+<script>(()=>{const s=document.getElementById('customer-selector');const m={name:document.getElementById('customer-name'),company:document.getElementById('customer-company'),phone:document.getElementById('customer-phone'),email:document.getElementById('customer-email'),address:document.getElementById('customer-address')};function sync(){const o=s.options[s.selectedIndex];const e=Boolean(s.value);for(const [k,f] of Object.entries(m)){f.value=e?(o.dataset[k]||''):'';f.readOnly=e;}}s.addEventListener('change',sync);sync();})();</script>
 {% endblock %}

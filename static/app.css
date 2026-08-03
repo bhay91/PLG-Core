@@ -2235,3 +2235,60 @@ small.secondary {
 
 /* Commit 0005A Professional Quote PDFs */
 .document-card-grid{margin-top:18px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.document-output-card{margin-top:0;min-height:210px;display:flex;flex-direction:column;justify-content:space-between}.document-output-actions{margin-top:22px;display:flex;gap:9px}.document-location-card{margin-top:18px}.document-location-card code{display:block;padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--surface-soft);overflow-wrap:anywhere}@media(max-width:780px){.document-card-grid{grid-template-columns:1fr}}
+
+/* Commit 0006A Customer Database Foundation */
+.customer-summary-grid{margin-top:18px}.customer-profile-panel{margin-top:18px}.customer-profile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.customer-profile-grid>div{padding:13px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface-soft)}.customer-profile-grid>div.full{grid-column:1/-1}.customer-profile-grid span{display:block;margin-bottom:4px;font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-strong)}.customer-profile-grid strong{font-size:15px;color:var(--ink-strong)}.customer-record-list{display:flex;flex-direction:column}.customer-record-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:15px 4px;border-bottom:1px solid var(--line);color:var(--ink-strong);text-decoration:none}.customer-record-row:last-child{border-bottom:0}.customer-record-row:hover{background:var(--surface-soft)}.customer-record-row>div{display:flex;flex-direction:column;gap:3px}.customer-record-row>div:last-child{text-align:right}.customer-record-row strong{font-size:15px;color:var(--ink-strong)}.customer-record-row span{font-size:12px;color:var(--ink-strong)}#customer-selector{margin-bottom:13px}input[readonly]{background:var(--surface-soft);cursor:not-allowed}@media(max-width:720px){.customer-profile-grid{grid-template-columns:1fr}.customer-profile-grid>div.full{grid-column:auto}.customer-record-row{align-items:flex-start;flex-direction:column}.customer-record-row>div:last-child{text-align:left}}
+
+/* Commit 0006B Customer Accounts */
+.account-action-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:18px}
+.account-action-card{margin-top:0}
+.account-action-card h2{margin:4px 0 14px}
+.account-action-card .button{width:100%;margin-top:8px}
+.transaction-ledger{display:flex;flex-direction:column}
+.transaction-row{display:flex;justify-content:space-between;gap:18px;padding:15px 4px;border-bottom:1px solid var(--line)}
+.transaction-row:last-child{border-bottom:0}
+.transaction-row>div{display:flex;flex-direction:column;gap:3px}
+.transaction-row span,.transaction-row small{font-size:12px;color:var(--ink-strong)}
+.transaction-positive{color:#157347}
+.transaction-negative{color:#b42318}
+@media(max-width:980px){.account-action-grid{grid-template-columns:1fr}}
+
+/* Commit 0006C Customer Management */
+.customer-tools-panel{margin-top:18px}.customer-tools-row{display:flex;align-items:flex-end;justify-content:space-between;gap:18px}.customer-search-label{flex:1;margin:0}.customer-filter-links{display:flex;gap:8px;flex-wrap:wrap}.customer-filter-links a{padding:9px 13px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--ink-strong);font-weight:700}.customer-filter-links a.active{background:var(--brand);border-color:var(--brand);color:#fff}.recent-customers-panel{margin-top:18px}.recent-customer-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.recent-customer-card{padding:14px;border:1px solid var(--line);border-radius:10px;text-decoration:none;background:var(--surface-soft)}.recent-customer-card strong,.recent-customer-card span{display:block;color:var(--ink-strong)}.recent-customer-card span{margin-top:4px;font-size:12px}.customer-management-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;padding:15px 4px;border-bottom:1px solid var(--line)}.customer-management-main{display:flex;justify-content:space-between;gap:18px;text-decoration:none;color:var(--ink-strong)}.customer-management-main>div{display:flex;flex-direction:column;gap:3px}.customer-list-metrics{align-items:flex-end;text-align:right}.customer-row-actions{display:flex;gap:8px;align-items:center}.customer-row-actions form{margin:0}.button.small{padding:8px 10px;font-size:12px}.hidden{display:none!important}.duplicate-warning-panel{margin-top:18px;border-color:#d8a000;background:#fff9df}.workspace-heading-actions{display:flex;gap:9px;align-items:center}@media(max-width:980px){.recent-customer-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.customer-management-row{grid-template-columns:1fr}.customer-management-main{flex-direction:column}.customer-list-metrics{align-items:flex-start;text-align:left}}@media(max-width:720px){.customer-tools-row{align-items:stretch;flex-direction:column}.recent-customer-grid{grid-template-columns:1fr}}
+
+
+/* Customer page visibility repair */
+.customer-new-button {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: #0b63ce !important;
+  border: 1px solid #0b63ce !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.customer-filter-links a.active {
+  background: #0b63ce !important;
+  border-color: #0b63ce !important;
+  color: #ffffff !important;
+}
+
+.workspace-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+@media (max-width: 720px) {
+  .workspace-heading {
+    flex-direction: column;
+  }
+
+  .customer-new-button {
+    width: 100%;
+  }
+}

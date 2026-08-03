@@ -300,6 +300,51 @@ def initialize_database() -> None:
 
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS customers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_number TEXT UNIQUE,
+                name TEXT NOT NULL,
+                company TEXT DEFAULT '',
+                phone TEXT DEFAULT '',
+                email TEXT DEFAULT '',
+                address TEXT DEFAULT '',
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+        customer_columns={row["name"] for row in connection.execute("PRAGMA table_info(customers)").fetchall()}
+        if "last_viewed_at" not in customer_columns:
+            connection.execute("ALTER TABLE customers ADD COLUMN last_viewed_at TEXT")
+
+        job_columns={row["name"] for row in connection.execute("PRAGMA table_info(jobs)").fetchall()}
+        if "customer_id" not in job_columns:
+            connection.execute("ALTER TABLE jobs ADD COLUMN customer_id INTEGER")
+        if "address" not in job_columns:
+            connection.execute("ALTER TABLE jobs ADD COLUMN address TEXT DEFAULT ''")
+
+        for old_job in connection.execute("SELECT id, customer, company, phone, email, address FROM jobs ORDER BY id").fetchall():
+            name=str(old_job["customer"] or "").strip()
+            if not name:
+                continue
+            row=connection.execute("""
+                SELECT id FROM customers
+                WHERE LOWER(TRIM(name))=LOWER(TRIM(?))
+                  AND LOWER(TRIM(COALESCE(company,'')))=LOWER(TRIM(COALESCE(?,'')))
+                ORDER BY id LIMIT 1
+            """,(name,old_job["company"] or "")).fetchone()
+            if row is None:
+                cur=connection.execute("INSERT INTO customers (name,company,phone,email,address) VALUES (?,?,?,?,?)",(name,old_job["company"] or "",old_job["phone"] or "",old_job["email"] or "",old_job["address"] or ""))
+                customer_id=cur.lastrowid
+                connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PLG-C{customer_id:05d}",customer_id))
+            else:
+                customer_id=row["id"]
+            connection.execute("UPDATE jobs SET customer_id=? WHERE id=?",(customer_id,old_job["id"]))
+
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS quotes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 quote_number TEXT UNIQUE NOT NULL,
@@ -354,6 +399,26 @@ def initialize_database() -> None:
                 uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 notes TEXT DEFAULT '',
                 UNIQUE(template_key, version_number)
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS customer_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_id INTEGER NOT NULL,
+                transaction_date TEXT NOT NULL,
+                transaction_type TEXT NOT NULL,
+                amount REAL NOT NULL,
+                payment_method TEXT DEFAULT '',
+                reference TEXT DEFAULT '',
+                reason TEXT DEFAULT '',
+                job_id INTEGER,
+                quote_id INTEGER,
+                invoice_id INTEGER,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (customer_id) REFERENCES customers(id)
             )
             """
         )
@@ -433,75 +498,147 @@ def dashboard(request: Request):
 
 
 @app.get("/jobs/new", response_class=HTMLResponse)
-def new_job_form(request: Request):
-    return templates.TemplateResponse(
-        request=request,
-        name="new_job.html",
-        context={"active_page": "jobs"},
-    )
+def new_job_form(request: Request, customer_id: int | None = None):
+    with closing(get_connection()) as connection:
+        customers=connection.execute("SELECT * FROM customers WHERE active=1 ORDER BY name COLLATE NOCASE, company COLLATE NOCASE").fetchall()
+    return templates.TemplateResponse(request=request,name="new_job.html",context={"customers":customers,"selected_customer_id":customer_id,"active_page":"jobs"})
+
 
 
 @app.post("/jobs")
 def create_job(
     customer: Annotated[str, Form()],
+    customer_id: Annotated[int | None, Form()] = None,
     company: Annotated[str, Form()] = "",
     phone: Annotated[str, Form()] = "",
     email: Annotated[str, Form()] = "",
+    address: Annotated[str, Form()] = "",
     manufacturer: Annotated[str, Form()] = "",
     machine: Annotated[str, Form()] = "",
     pin_serial: Annotated[str, Form()] = "",
     requested_parts: Annotated[str, Form()] = "",
     notes: Annotated[str, Form()] = "",
 ):
-    customer = customer.strip()
-    if not customer:
-        raise HTTPException(status_code=400, detail="Customer is required.")
-
-    part_lines = [
-        line.strip(" -•\t")
-        for line in requested_parts.splitlines()
-        if line.strip(" -•\t")
-    ]
-
     with closing(get_connection()) as connection:
-        job_number = next_job_number(connection)
-        cursor = connection.execute(
-            """
-            INSERT INTO jobs (
-                job_number, created_date, customer, company, phone, email,
-                manufacturer, machine, pin_serial, status, notes
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'REQUESTED', ?)
-            """,
-            (
-                job_number,
-                date.today().isoformat(),
-                customer,
-                company.strip(),
-                phone.strip(),
-                email.strip(),
-                manufacturer.strip(),
-                machine.strip(),
-                pin_serial.strip(),
-                notes.strip(),
-            ),
-        )
-        job_id = cursor.lastrowid
-
-        for part in part_lines:
-            connection.execute(
-                """
-                INSERT INTO job_parts (
-                    job_id, requested_description, quantity, verification_status
-                )
-                VALUES (?, ?, 1, 'PENDING')
-                """,
-                (job_id, part),
-            )
-
+        if customer_id:
+            customer_row=connection.execute("SELECT * FROM customers WHERE id=? AND active=1",(customer_id,)).fetchone()
+            if customer_row is None:
+                raise HTTPException(status_code=400,detail="Selected customer not found.")
+        else:
+            name=customer.strip()
+            if not name:
+                raise HTTPException(status_code=400,detail="Customer is required.")
+            cur=connection.execute("INSERT INTO customers (name,company,phone,email,address) VALUES (?,?,?,?,?)",(name,company.strip(),phone.strip(),email.strip(),address.strip()))
+            customer_id=cur.lastrowid
+            connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PLG-C{customer_id:05d}",customer_id))
+            customer_row=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
+        job_number=next_job_number(connection)
+        cur=connection.execute("""
+            INSERT INTO jobs (job_number,created_date,customer_id,customer,company,phone,email,address,manufacturer,machine,pin_serial,status,notes)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,'REQUESTED',?)
+        """,(job_number,date.today().isoformat(),customer_row["id"],customer_row["name"],customer_row["company"] or "",customer_row["phone"] or "",customer_row["email"] or "",customer_row["address"] or "",manufacturer.strip(),machine.strip(),pin_serial.strip(),notes.strip()))
+        job_id=cur.lastrowid
         connection.commit()
+    return RedirectResponse(url=f"/jobs/{job_id}/basket",status_code=303)
 
-    return RedirectResponse(url=f"/jobs/{job_id}/basket", status_code=303)
+
+
+@app.get("/customers", response_class=HTMLResponse)
+def list_customers(request: Request, view: str = "active"):
+    if view not in {"active", "inactive", "all"}: view = "active"
+    where = "" if view == "all" else ("WHERE customers.active=1" if view == "active" else "WHERE customers.active=0")
+    with closing(get_connection()) as connection:
+        rows=connection.execute(f"""
+            SELECT customers.*, COUNT(DISTINCT jobs.id) AS jobs_count,
+                   COUNT(DISTINCT quotes.id) AS quotes_count,
+                   COALESCE(SUM(customer_transactions.amount),0) AS net_balance
+            FROM customers
+            LEFT JOIN jobs ON jobs.customer_id=customers.id
+            LEFT JOIN quotes ON quotes.job_id=jobs.id
+            LEFT JOIN customer_transactions ON customer_transactions.customer_id=customers.id
+            {where}
+            GROUP BY customers.id
+            ORDER BY customers.name COLLATE NOCASE
+        """).fetchall()
+        customers=[]
+        for row in rows:
+            item=dict(row); net=float(item.get("net_balance") or 0)
+            item["available_credit"]=max(net,0); item["outstanding_balance"]=max(-net,0); customers.append(item)
+        recent_customers=connection.execute("SELECT * FROM customers WHERE active=1 AND last_viewed_at IS NOT NULL ORDER BY last_viewed_at DESC LIMIT 8").fetchall()
+    return templates.TemplateResponse(request=request,name="customers.html",context={"customers":customers,"recent_customers":recent_customers,"view":view,"active_page":"customers"})
+
+@app.get("/customers/new", response_class=HTMLResponse)
+def new_customer_form(request: Request):
+    return templates.TemplateResponse(request=request,name="customer_form.html",context={"title":"New Customer","subtitle":"Create a customer without creating a job.","form_action":"/customers/new","cancel_url":"/customers","submit_label":"Save Customer","duplicate":None,"form":{"name":"","company":"","phone":"","email":"","address":""},"active_page":"customers"})
+
+@app.post("/customers/new")
+def create_customer(request: Request,name: Annotated[str,Form()],company: Annotated[str,Form()]="",phone: Annotated[str,Form()]="",email: Annotated[str,Form()]="",address: Annotated[str,Form()]="",create_anyway: Annotated[int,Form()]=0):
+    name,company,phone,email,address=[v.strip() for v in (name,company,phone,email,address)]
+    if not name: raise HTTPException(status_code=400,detail="Customer name is required.")
+    with closing(get_connection()) as connection:
+        duplicate=connection.execute("""SELECT * FROM customers WHERE LOWER(TRIM(name))=LOWER(TRIM(?)) OR (?!='' AND TRIM(phone)=TRIM(?)) OR (?!='' AND LOWER(TRIM(email))=LOWER(TRIM(?))) ORDER BY active DESC,id LIMIT 1""",(name,phone,phone,email,email)).fetchone()
+        if duplicate is not None and not create_anyway:
+            return templates.TemplateResponse(request=request,name="customer_form.html",context={"title":"New Customer","subtitle":"Review the possible duplicate.","form_action":"/customers/new","cancel_url":"/customers","submit_label":"Save Customer","duplicate":duplicate,"form":{"name":name,"company":company,"phone":phone,"email":email,"address":address},"active_page":"customers"})
+        cur=connection.execute("INSERT INTO customers (name,company,phone,email,address,active) VALUES (?,?,?,?,?,1)",(name,company,phone,email,address))
+        customer_id=cur.lastrowid
+        connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PLG-C{customer_id:05d}",customer_id)); connection.commit()
+    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
+
+@app.get("/customers/{customer_id}/edit", response_class=HTMLResponse)
+def edit_customer_form(request: Request,customer_id: int):
+    with closing(get_connection()) as connection: customer=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
+    if customer is None: raise HTTPException(status_code=404,detail="Customer not found.")
+    return templates.TemplateResponse(request=request,name="customer_form.html",context={"title":"Edit Customer","subtitle":customer["customer_number"],"form_action":f"/customers/{customer_id}/edit","cancel_url":f"/customers/{customer_id}","submit_label":"Save Changes","duplicate":None,"form":customer,"active_page":"customers"})
+
+@app.post("/customers/{customer_id}/edit")
+def update_customer(customer_id: int,name: Annotated[str,Form()],company: Annotated[str,Form()]="",phone: Annotated[str,Form()]="",email: Annotated[str,Form()]="",address: Annotated[str,Form()]=""):
+    name=name.strip()
+    if not name: raise HTTPException(status_code=400,detail="Customer name is required.")
+    with closing(get_connection()) as connection:
+        connection.execute("UPDATE customers SET name=?,company=?,phone=?,email=?,address=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(name,company.strip(),phone.strip(),email.strip(),address.strip(),customer_id))
+        connection.execute("UPDATE jobs SET customer=?,company=?,phone=?,email=?,address=? WHERE customer_id=?",(name,company.strip(),phone.strip(),email.strip(),address.strip(),customer_id)); connection.commit()
+    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
+
+@app.post("/customers/{customer_id}/deactivate")
+def deactivate_customer(customer_id: int):
+    with closing(get_connection()) as connection: connection.execute("UPDATE customers SET active=0,updated_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,)); connection.commit()
+    return RedirectResponse(url="/customers?view=active",status_code=303)
+
+@app.post("/customers/{customer_id}/reactivate")
+def reactivate_customer(customer_id: int):
+    with closing(get_connection()) as connection: connection.execute("UPDATE customers SET active=1,updated_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,)); connection.commit()
+    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
+
+@app.get("/customers/{customer_id}", response_class=HTMLResponse)
+def customer_account(request: Request, customer_id: int):
+    with closing(get_connection()) as connection:
+        customer=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
+        if customer is None: raise HTTPException(status_code=404,detail="Customer not found.")
+        connection.execute("UPDATE customers SET last_viewed_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,))
+        jobs=connection.execute("SELECT * FROM jobs WHERE customer_id=? ORDER BY id DESC",(customer_id,)).fetchall()
+        quotes=connection.execute("SELECT quotes.* FROM quotes JOIN jobs ON jobs.id=quotes.job_id WHERE jobs.customer_id=? ORDER BY quotes.id DESC",(customer_id,)).fetchall()
+        transactions=connection.execute("SELECT * FROM customer_transactions WHERE customer_id=? ORDER BY transaction_date DESC,id DESC",(customer_id,)).fetchall()
+        summary=connection.execute("SELECT COALESCE(SUM(amount),0) AS net_balance,COALESCE(SUM(CASE WHEN transaction_type='PAYMENT' THEN amount ELSE 0 END),0) AS total_payments FROM customer_transactions WHERE customer_id=?",(customer_id,)).fetchone(); connection.commit()
+        net=float(summary["net_balance"] or 0); account={"available_credit":max(net,0),"outstanding_balance":max(-net,0),"total_payments":float(summary["total_payments"] or 0)}
+    return templates.TemplateResponse(request=request,name="customer_account.html",context={"customer":customer,"jobs":jobs,"quotes":quotes,"transactions":transactions,"account":account,"active_page":"customers"})
+
+@app.post("/customers/{customer_id}/transactions/payment")
+def record_customer_payment(customer_id: int,amount: Annotated[float,Form()],payment_method: Annotated[str,Form()],reference: Annotated[str,Form()]=""):
+    if amount<=0: raise HTTPException(status_code=400,detail="Payment amount must be greater than zero.")
+    with closing(get_connection()) as connection: connection.execute("INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,payment_method,reference) VALUES (?,?,'PAYMENT',?,?,?)",(customer_id,date.today().isoformat(),round(float(amount),2),payment_method.strip().upper(),reference.strip())); connection.commit()
+    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
+
+@app.post("/customers/{customer_id}/transactions/refund")
+def record_customer_refund(customer_id: int,amount: Annotated[float,Form()],reason: Annotated[str,Form()],reference: Annotated[str,Form()]=""):
+    if amount<=0: raise HTTPException(status_code=400,detail="Refund amount must be greater than zero.")
+    with closing(get_connection()) as connection: connection.execute("INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,reference,reason) VALUES (?,?,'REFUND',?,?,?)",(customer_id,date.today().isoformat(),-round(float(amount),2),reference.strip(),reason.strip())); connection.commit()
+    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
+
+@app.post("/customers/{customer_id}/transactions/adjustment")
+def record_customer_adjustment(customer_id: int,amount: Annotated[float,Form()],reason: Annotated[str,Form()],reference: Annotated[str,Form()]=""):
+    if amount==0: raise HTTPException(status_code=400,detail="Adjustment amount cannot be zero.")
+    with closing(get_connection()) as connection: connection.execute("INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,reference,reason) VALUES (?,?,'ADJUSTMENT',?,?,?)",(customer_id,date.today().isoformat(),round(float(amount),2),reference.strip(),reason.strip())); connection.commit()
+    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
 
 
 @app.get("/jobs", response_class=HTMLResponse)
