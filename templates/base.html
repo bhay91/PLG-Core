@@ -24,13 +24,17 @@
       <a class="{% if active_page == 'jobs' %}active{% endif %}" href="/jobs">
         <span class="nav-icon" aria-hidden="true">▣</span><span>Jobs</span>
       </a>
-      <span class="disabled"><span class="nav-icon">＄</span><span>Quotes</span></span>
+      <a class="{% if active_page == 'quotes' %}active{% endif %}" href="/quotes">
+        <span class="nav-icon" aria-hidden="true">＄</span><span>Quotes</span>
+      </a>
       <span class="disabled"><span class="nav-icon">▤</span><span>Invoices</span></span>
       <span class="disabled"><span class="nav-icon">◇</span><span>Orders</span></span>
       <a class="{% if active_page == 'customers' %}active{% endif %}" href="/customers">
         <span class="nav-icon" aria-hidden="true">♙</span><span>Customers</span>
       </a>
-      <span class="disabled"><span class="nav-icon">▰</span><span>Suppliers</span></span>
+      <a class="{% if active_page == 'suppliers' %}active{% endif %}" href="/suppliers">
+        <span class="nav-icon" aria-hidden="true">▰</span><span>Suppliers</span>
+      </a>
       <a class="{% if active_page == 'connectors' %}active{% endif %}" href="/connectors">
         <span class="nav-icon" aria-hidden="true">↔</span><span>Connectors</span>
       </a>

@@ -127,6 +127,21 @@ def initialize_database() -> None:
             """
         )
 
+        supplier_columns = {row["name"] for row in connection.execute("PRAGMA table_info(suppliers)").fetchall()}
+        supplier_additions = {
+            "website": "ALTER TABLE suppliers ADD COLUMN website TEXT DEFAULT ''",
+            "phone": "ALTER TABLE suppliers ADD COLUMN phone TEXT DEFAULT ''",
+            "email": "ALTER TABLE suppliers ADD COLUMN email TEXT DEFAULT ''",
+            "contact_person": "ALTER TABLE suppliers ADD COLUMN contact_person TEXT DEFAULT ''",
+            "account_number": "ALTER TABLE suppliers ADD COLUMN account_number TEXT DEFAULT ''",
+            "rating": "ALTER TABLE suppliers ADD COLUMN rating INTEGER NOT NULL DEFAULT 3",
+            "status": "ALTER TABLE suppliers ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE'",
+            "preferred": "ALTER TABLE suppliers ADD COLUMN preferred INTEGER NOT NULL DEFAULT 0",
+        }
+        for column, sql in supplier_additions.items():
+            if column not in supplier_columns:
+                connection.execute(sql)
+
         existing = column_names(connection, "job_parts")
         migrations = {
             "diagram_name": "ALTER TABLE job_parts ADD COLUMN diagram_name TEXT",
@@ -248,6 +263,10 @@ def initialize_database() -> None:
             """
         )
 
+        connector_columns = {row["name"] for row in connection.execute("PRAGMA table_info(connector_profiles)").fetchall()}
+        if "is_archived" not in connector_columns:
+            connection.execute("ALTER TABLE connector_profiles ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0")
+
         default_connectors = [
             ('cat_sis', 'CAT SIS', 'OEM', 'OEM_VERIFIED',
              'https://sis2.cat.com/#/cart', 'CART', 'cat_sis_cart', 1, 10),
@@ -361,6 +380,10 @@ def initialize_database() -> None:
             )
             """
         )
+
+        quote_columns = {row["name"] for row in connection.execute("PRAGMA table_info(quotes)").fetchall()}
+        if "is_archived" not in quote_columns:
+            connection.execute("ALTER TABLE quotes ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0")
 
         connection.execute(
             """
@@ -1234,6 +1257,76 @@ def load_quote(connection: sqlite3.Connection, quote_id: int):
 
     return quote, items
 
+
+
+@app.get("/suppliers", response_class=HTMLResponse)
+def list_suppliers(request: Request, view: str = "active"):
+    if view not in {"active","inactive","do_not_use","all"}: view="active"
+    where={"active":"WHERE suppliers.status='ACTIVE'","inactive":"WHERE suppliers.status='INACTIVE'","do_not_use":"WHERE suppliers.status='DO_NOT_USE'"}.get(view,"")
+    with closing(get_connection()) as connection:
+        rows=connection.execute(f"""SELECT suppliers.*, EXISTS(SELECT 1 FROM part_sources WHERE LOWER(TRIM(part_sources.supplier_name))=LOWER(TRIM(suppliers.name))) AS has_history FROM suppliers {where} ORDER BY suppliers.preferred DESC,suppliers.name COLLATE NOCASE""").fetchall()
+        suppliers=[]
+        for row in rows:
+            item=dict(row); item["rating"]=max(1,min(5,int(item.get("rating") or 3))); item["can_delete"]=not bool(item["has_history"]); suppliers.append(item)
+    return templates.TemplateResponse(request=request,name="suppliers.html",context={"suppliers":suppliers,"view":view,"active_page":"suppliers"})
+
+@app.get("/suppliers/new", response_class=HTMLResponse)
+def new_supplier_form(request: Request):
+    return templates.TemplateResponse(request=request,name="supplier_form.html",context={"title":"New Supplier","subtitle":"Add a supplier for sourcing.","form_action":"/suppliers/new","submit_label":"Save Supplier","supplier":{"name":"","website":"","phone":"","email":"","contact_person":"","account_number":"","rating":3,"status":"ACTIVE","preferred":0},"active_page":"suppliers"})
+
+@app.post("/suppliers/new")
+def create_supplier(name: Annotated[str, Form()], website: Annotated[str, Form()] = "", phone: Annotated[str, Form()] = "", email: Annotated[str, Form()] = "", contact_person: Annotated[str, Form()] = "", account_number: Annotated[str, Form()] = "", rating: Annotated[int, Form()] = 3, status: Annotated[str, Form()] = "ACTIVE", preferred: Annotated[int, Form()] = 0):
+    with closing(get_connection()) as connection:
+        cur=connection.execute("INSERT INTO suppliers (name,website,phone,email,contact_person,account_number,rating,status,preferred) VALUES (?,?,?,?,?,?,?,?,?)",(name.strip(),website.strip(),phone.strip(),email.strip(),contact_person.strip(),account_number.strip(),max(1,min(5,int(rating))),status,1 if preferred else 0)); connection.commit()
+    return RedirectResponse(url=f"/suppliers/{cur.lastrowid}/edit",status_code=303)
+
+@app.get("/suppliers/{supplier_id}/edit", response_class=HTMLResponse)
+def edit_supplier_form(request: Request, supplier_id: int):
+    with closing(get_connection()) as connection: s=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+    if s is None: raise HTTPException(status_code=404,detail="Supplier not found.")
+    return templates.TemplateResponse(request=request,name="supplier_form.html",context={"title":"Edit Supplier","subtitle":s["name"],"form_action":f"/suppliers/{supplier_id}/edit","submit_label":"Save Changes","supplier":s,"active_page":"suppliers"})
+
+@app.post("/suppliers/{supplier_id}/edit")
+def update_supplier(supplier_id: int, name: Annotated[str, Form()], website: Annotated[str, Form()] = "", phone: Annotated[str, Form()] = "", email: Annotated[str, Form()] = "", contact_person: Annotated[str, Form()] = "", account_number: Annotated[str, Form()] = "", rating: Annotated[int, Form()] = 3, status: Annotated[str, Form()] = "ACTIVE", preferred: Annotated[int, Form()] = 0):
+    with closing(get_connection()) as connection:
+        old=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+        connection.execute("UPDATE suppliers SET name=?,website=?,phone=?,email=?,contact_person=?,account_number=?,rating=?,status=?,preferred=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(name.strip(),website.strip(),phone.strip(),email.strip(),contact_person.strip(),account_number.strip(),max(1,min(5,int(rating))),status,1 if preferred else 0,supplier_id))
+        if old and old["name"].lower()!=name.strip().lower(): connection.execute("UPDATE part_sources SET supplier_name=? WHERE LOWER(TRIM(supplier_name))=LOWER(TRIM(?))",(name.strip(),old["name"]))
+        connection.commit()
+    return RedirectResponse(url="/suppliers",status_code=303)
+
+@app.post("/suppliers/{supplier_id}/status")
+def supplier_status(supplier_id: int, status: Annotated[str, Form()]):
+    with closing(get_connection()) as connection: connection.execute("UPDATE suppliers SET status=? WHERE id=?",(status,supplier_id)); connection.commit()
+    return RedirectResponse(url="/suppliers",status_code=303)
+
+@app.post("/suppliers/{supplier_id}/delete")
+def supplier_delete(supplier_id: int):
+    with closing(get_connection()) as connection:
+        s=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+        used=connection.execute("SELECT 1 FROM part_sources WHERE LOWER(TRIM(supplier_name))=LOWER(TRIM(?)) LIMIT 1",(s["name"],)).fetchone()
+        if used: raise HTTPException(status_code=400,detail="Supplier has history. Mark it Inactive or Do Not Use.")
+        connection.execute("DELETE FROM suppliers WHERE id=?",(supplier_id,)); connection.commit()
+    return RedirectResponse(url="/suppliers",status_code=303)
+
+
+@app.get("/quotes", response_class=HTMLResponse)
+def list_quotes(request: Request, view: str = "active"):
+    if view not in {"active","archived","all"}: view="active"
+    where={"active":"WHERE quotes.is_archived=0","archived":"WHERE quotes.is_archived=1"}.get(view,"")
+    with closing(get_connection()) as connection:
+        rows=connection.execute(f"""SELECT quotes.*,jobs.customer_id,jobs.customer,jobs.job_number,jobs.manufacturer,jobs.machine FROM quotes JOIN jobs ON jobs.id=quotes.job_id {where} ORDER BY quotes.id DESC""").fetchall()
+    return templates.TemplateResponse(request=request,name="quotes.html",context={"quotes":rows,"view":view,"active_page":"quotes"})
+
+@app.post("/quotes/{quote_id}/archive")
+def archive_quote(quote_id: int):
+    with closing(get_connection()) as connection: connection.execute("UPDATE quotes SET is_archived=1 WHERE id=?",(quote_id,)); connection.commit()
+    return RedirectResponse(url="/quotes",status_code=303)
+
+@app.post("/quotes/{quote_id}/restore")
+def restore_quote(quote_id: int):
+    with closing(get_connection()) as connection: connection.execute("UPDATE quotes SET is_archived=0 WHERE id=?",(quote_id,)); connection.commit()
+    return RedirectResponse(url="/quotes?view=archived",status_code=303)
 
 
 @app.get("/quotes/{quote_id}/documents", response_class=HTMLResponse)
@@ -2344,86 +2437,61 @@ def preview_document_template(template_id: int):
 
 
 @app.get("/connectors", response_class=HTMLResponse)
-def connector_manager(request: Request):
+def connector_manager(request: Request, view: str = "active"):
+    if view not in {"active","archived","all"}: view="active"
+    where={"active":"WHERE connector_profiles.is_archived=0","archived":"WHERE connector_profiles.is_archived=1"}.get(view,"")
     with closing(get_connection()) as connection:
-        connectors = connection.execute(
-            "SELECT * FROM connector_profiles ORDER BY sort_order, display_name"
-        ).fetchall()
+        rows=connection.execute(f"""SELECT connector_profiles.*, EXISTS(SELECT 1 FROM source_cart_imports WHERE source_key=connector_profiles.connector_key) AS has_history FROM connector_profiles {where} ORDER BY sort_order,display_name""").fetchall()
+        connectors=[]
+        for row in rows:
+            item=dict(row); item["can_delete"]=bool(item["is_archived"]) and not bool(item["has_history"]); connectors.append(item)
+    return templates.TemplateResponse(request=request,name="connectors.html",context={"connectors":connectors,"view":view,"active_page":"connectors"})
 
-    return templates.TemplateResponse(
-        request=request,
-        name="connectors.html",
-        context={"connectors": connectors, "active_page": "connectors"},
-    )
+@app.get("/connectors/new", response_class=HTMLResponse)
+def new_connector_form(request: Request):
+    return templates.TemplateResponse(request=request,name="connector_form.html",context={"title":"New Connector","subtitle":"Add a source connector.","form_action":"/connectors/new","submit_label":"Save Connector","connector":{"display_name":"","launch_url":"","category":"Supplier","trust_level":"SUPPLIER_VERIFIED","connector_type":"CART"},"active_page":"connectors"})
 
+@app.post("/connectors/new")
+def add_connector(display_name: Annotated[str, Form()], launch_url: Annotated[str, Form()] = "", category: Annotated[str, Form()] = "Supplier", trust_level: Annotated[str, Form()] = "SUPPLIER_VERIFIED", connector_type: Annotated[str, Form()] = "CART"):
+    key=re.sub(r"[^a-z0-9]+","_",display_name.lower()).strip("_")
+    with closing(get_connection()) as connection: connection.execute("INSERT INTO connector_profiles (connector_key,display_name,category,trust_level,launch_url,connector_type,parser_key,is_enabled,is_archived,sort_order) VALUES (?,?,?,?,?,?,'',1,0,100)",(key,display_name.strip(),category.strip(),trust_level.strip(),launch_url.strip(),connector_type.strip())); connection.commit()
+    return RedirectResponse(url="/connectors",status_code=303)
+
+@app.get("/connectors/{connector_id}/edit", response_class=HTMLResponse)
+def edit_connector_form(request: Request, connector_id: int):
+    with closing(get_connection()) as connection: c=connection.execute("SELECT * FROM connector_profiles WHERE id=?",(connector_id,)).fetchone()
+    return templates.TemplateResponse(request=request,name="connector_form.html",context={"title":"Edit Connector","subtitle":c["display_name"],"form_action":f"/connectors/{connector_id}/edit","submit_label":"Save Changes","connector":c,"active_page":"connectors"})
+
+@app.post("/connectors/{connector_id}/edit")
+def update_connector(connector_id: int, display_name: Annotated[str, Form()], launch_url: Annotated[str, Form()] = "", category: Annotated[str, Form()] = "Supplier", trust_level: Annotated[str, Form()] = "SUPPLIER_VERIFIED", connector_type: Annotated[str, Form()] = "CART"):
+    with closing(get_connection()) as connection: connection.execute("UPDATE connector_profiles SET display_name=?,launch_url=?,category=?,trust_level=?,connector_type=? WHERE id=?",(display_name.strip(),launch_url.strip(),category.strip(),trust_level.strip(),connector_type.strip(),connector_id)); connection.commit()
+    return RedirectResponse(url="/connectors",status_code=303)
 
 @app.post("/connectors/{connector_id}/toggle")
 def toggle_connector(connector_id: int):
     with closing(get_connection()) as connection:
-        row = connection.execute(
-            "SELECT is_enabled FROM connector_profiles WHERE id = ?",
-            (connector_id,),
-        ).fetchone()
-        if row is None:
-            raise HTTPException(status_code=404, detail="Connector not found.")
+        c=connection.execute("SELECT is_enabled FROM connector_profiles WHERE id=?",(connector_id,)).fetchone()
+        connection.execute("UPDATE connector_profiles SET is_enabled=? WHERE id=?",(0 if c["is_enabled"] else 1,connector_id)); connection.commit()
+    return RedirectResponse(url="/connectors",status_code=303)
 
-        connection.execute(
-            """
-            UPDATE connector_profiles
-            SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            (0 if row["is_enabled"] else 1, connector_id),
-        )
-        connection.commit()
+@app.post("/connectors/{connector_id}/archive")
+def archive_connector(connector_id: int):
+    with closing(get_connection()) as connection: connection.execute("UPDATE connector_profiles SET is_archived=1,is_enabled=0 WHERE id=?",(connector_id,)); connection.commit()
+    return RedirectResponse(url="/connectors",status_code=303)
 
-    return RedirectResponse(url="/connectors", status_code=303)
+@app.post("/connectors/{connector_id}/restore")
+def restore_connector(connector_id: int):
+    with closing(get_connection()) as connection: connection.execute("UPDATE connector_profiles SET is_archived=0 WHERE id=?",(connector_id,)); connection.commit()
+    return RedirectResponse(url="/connectors?view=archived",status_code=303)
 
-
-@app.post("/connectors")
-def add_connector(
-    display_name: str = Form(...),
-    launch_url: str = Form(""),
-    category: str = Form("Supplier"),
-    trust_level: str = Form("SUPPLIER_VERIFIED"),
-    connector_type: str = Form("CART"),
-):
-    name = display_name.strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="Connector name is required.")
-
-    connector_key = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
-    if not connector_key:
-        raise HTTPException(status_code=400, detail="Invalid connector name.")
-
+@app.post("/connectors/{connector_id}/delete")
+def delete_connector(connector_id: int):
     with closing(get_connection()) as connection:
-        connection.execute(
-            """
-            INSERT INTO connector_profiles (
-                connector_key, display_name, category, trust_level,
-                launch_url, connector_type, parser_key, is_enabled, sort_order
-            )
-            VALUES (?, ?, ?, ?, ?, ?, '', 1, 100)
-            ON CONFLICT(connector_key) DO UPDATE SET
-                display_name = excluded.display_name,
-                category = excluded.category,
-                trust_level = excluded.trust_level,
-                launch_url = excluded.launch_url,
-                connector_type = excluded.connector_type,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (
-                connector_key,
-                name,
-                category.strip() or "Supplier",
-                trust_level.strip() or "SUPPLIER_VERIFIED",
-                launch_url.strip(),
-                connector_type.strip() or "CART",
-            ),
-        )
-        connection.commit()
-
-    return RedirectResponse(url="/connectors", status_code=303)
+        c=connection.execute("SELECT * FROM connector_profiles WHERE id=?",(connector_id,)).fetchone()
+        used=connection.execute("SELECT 1 FROM source_cart_imports WHERE source_key=? LIMIT 1",(c["connector_key"],)).fetchone()
+        if used: raise HTTPException(status_code=400,detail="Connector has import history.")
+        connection.execute("DELETE FROM connector_profiles WHERE id=?",(connector_id,)); connection.commit()
+    return RedirectResponse(url="/connectors?view=archived",status_code=303)
 
 
 @app.get("/api/active-source-import")
