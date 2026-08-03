@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi.responses import FileResponse
 from plg_core.documents.quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
+from plg_core.documents.invoice_pdf import generate_invoice_pdfs, invoice_paths
 from fastapi import File, UploadFile
 
 import sqlite3
@@ -423,6 +424,55 @@ def initialize_database() -> None:
                 notes TEXT DEFAULT '',
                 UNIQUE(template_key, version_number)
             )
+            """
+        )
+
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS invoices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_number TEXT NOT NULL UNIQUE,
+                quote_id INTEGER NOT NULL UNIQUE,
+                job_id INTEGER NOT NULL,
+                invoice_date TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'UNPAID',
+                parts_subtotal REAL NOT NULL DEFAULT 0,
+                shipping_total REAL NOT NULL DEFAULT 0,
+                customer_total REAL NOT NULL DEFAULT 0,
+                supplier_total REAL NOT NULL DEFAULT 0,
+                profit_total REAL NOT NULL DEFAULT 0,
+                credit_applied REAL NOT NULL DEFAULT 0,
+                balance_due REAL NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (quote_id) REFERENCES quotes(id),
+                FOREIGN KEY (job_id) REFERENCES jobs(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS invoice_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_id INTEGER NOT NULL,
+                quote_item_id INTEGER,
+                part_id INTEGER,
+                source_id INTEGER,
+                quantity INTEGER NOT NULL DEFAULT 1,
+                description TEXT NOT NULL,
+                supplier_name TEXT DEFAULT '',
+                source_type TEXT DEFAULT '',
+                brand TEXT DEFAULT '',
+                supplier_part_number TEXT DEFAULT '',
+                supplier_unit_cost REAL NOT NULL DEFAULT 0,
+                customer_unit_price REAL NOT NULL DEFAULT 0,
+                supplier_line_total REAL NOT NULL DEFAULT 0,
+                customer_line_total REAL NOT NULL DEFAULT 0,
+                line_profit REAL NOT NULL DEFAULT 0,
+                FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+                FOREIGN KEY (quote_item_id) REFERENCES quote_items(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_invoices_quote_id ON invoices(quote_id);
+            CREATE INDEX IF NOT EXISTS idx_invoices_job_id ON invoices(job_id);
+            CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON invoice_items(invoice_id);
             """
         )
 
@@ -1259,6 +1309,101 @@ def load_quote(connection: sqlite3.Connection, quote_id: int):
 
 
 
+def next_invoice_number(connection: sqlite3.Connection) -> str:
+    current_year = date.today().year
+    prefix = f"PLG-{current_year}-"
+    row = connection.execute("SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY id DESC LIMIT 1",(f"{prefix}%",)).fetchone()
+    if row is None:
+        sequence = 1
+    else:
+        try:
+            sequence = int(row["invoice_number"].split("-")[-1]) + 1
+        except (ValueError, IndexError):
+            sequence = 1
+    return f"{prefix}{sequence:03d}"
+
+
+def load_invoice(connection: sqlite3.Connection, invoice_id: int):
+    invoice = connection.execute("""SELECT invoices.*,jobs.customer_id,jobs.job_number,jobs.customer,jobs.company,jobs.phone,jobs.email,jobs.address,jobs.manufacturer,jobs.machine,jobs.pin_serial FROM invoices JOIN jobs ON jobs.id=invoices.job_id WHERE invoices.id=?""",(invoice_id,)).fetchone()
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="Invoice not found.")
+    items = connection.execute("SELECT * FROM invoice_items WHERE invoice_id=? ORDER BY id",(invoice_id,)).fetchall()
+    return invoice, items
+
+
+@app.get("/invoices", response_class=HTMLResponse)
+def list_invoices(request: Request, view: str = "active"):
+    if view not in {"active","paid","void","all"}:
+        view = "active"
+    where = {"active":"WHERE invoices.status IN ('UNPAID','PARTIAL')","paid":"WHERE invoices.status='PAID'","void":"WHERE invoices.status='VOID'"}.get(view,"")
+    with closing(get_connection()) as connection:
+        rows = connection.execute(f"""SELECT invoices.*,jobs.customer_id,jobs.customer,jobs.job_number,jobs.manufacturer,jobs.machine FROM invoices JOIN jobs ON jobs.id=invoices.job_id {where} ORDER BY invoices.id DESC""").fetchall()
+    return templates.TemplateResponse(request=request,name="invoices.html",context={"invoices":rows,"view":view,"active_page":"invoices"})
+
+
+@app.post("/quotes/{quote_id}/convert-to-invoice")
+def convert_quote_to_invoice(quote_id: int):
+    with closing(get_connection()) as connection:
+        quote, quote_items = load_quote(connection, quote_id)
+        existing = connection.execute("SELECT id FROM invoices WHERE quote_id=?",(quote_id,)).fetchone()
+        if existing is not None:
+            return RedirectResponse(url=f"/invoices/{existing['id']}/documents",status_code=303)
+        job = connection.execute("SELECT * FROM jobs WHERE id=?",(quote["job_id"],)).fetchone()
+        invoice_number = next_invoice_number(connection)
+        invoice_date = date.today().isoformat()
+        customer_total = float(quote["customer_total"] or 0)
+        available_credit = 0.0
+        if job["customer_id"]:
+            balance = connection.execute("SELECT COALESCE(SUM(amount),0) AS net_balance FROM customer_transactions WHERE customer_id=?",(job["customer_id"],)).fetchone()
+            available_credit = max(float(balance["net_balance"] or 0),0.0)
+        credit_applied = min(available_credit,customer_total)
+        balance_due = max(customer_total-credit_applied,0.0)
+        status = "PAID" if balance_due == 0 else ("PARTIAL" if credit_applied > 0 else "UNPAID")
+        cur = connection.execute("""INSERT INTO invoices (invoice_number,quote_id,job_id,invoice_date,status,parts_subtotal,shipping_total,customer_total,supplier_total,profit_total,credit_applied,balance_due) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_number,quote_id,quote["job_id"],invoice_date,status,float(quote["parts_subtotal"] or 0),float(quote["shipping_total"] or 0),customer_total,float(quote["supplier_total"] or 0),float(quote["profit_total"] or 0),credit_applied,balance_due))
+        invoice_id = cur.lastrowid
+        for item in quote_items:
+            connection.execute("""INSERT INTO invoice_items (invoice_id,quote_item_id,part_id,source_id,quantity,description,supplier_name,source_type,brand,supplier_part_number,supplier_unit_cost,customer_unit_price,supplier_line_total,customer_line_total,line_profit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_id,item["id"],item["part_id"],item["source_id"],item["quantity"],item["description"],item["supplier_name"],item["source_type"],item["brand"],item["supplier_part_number"],item["supplier_unit_cost"],item["customer_unit_price"],item["supplier_line_total"],item["customer_line_total"],item["line_profit"]))
+        if job["customer_id"]:
+            connection.execute("""INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,reference,reason,job_id,quote_id,invoice_id) VALUES (?,?,'INVOICE',?,?,?,?,?,?)""",(job["customer_id"],invoice_date,-customer_total,invoice_number,f"Invoice created from {quote['quote_number']}",quote["job_id"],quote_id,invoice_id))
+        connection.execute("UPDATE quotes SET is_archived=1,status='CONVERTED' WHERE id=?",(quote_id,))
+        connection.execute("UPDATE jobs SET status='CONFIRMED' WHERE id=?",(quote["job_id"],))
+        connection.commit()
+        invoice, items = load_invoice(connection, invoice_id)
+        generate_invoice_pdfs(invoice, items)
+    return RedirectResponse(url=f"/invoices/{invoice_id}/documents",status_code=303)
+
+
+@app.get("/invoices/{invoice_id}/documents", response_class=HTMLResponse)
+def invoice_documents(request: Request, invoice_id: int):
+    with closing(get_connection()) as connection:
+        invoice, items = load_invoice(connection, invoice_id)
+    paths = invoice_paths(invoice["customer"],invoice["invoice_number"])
+    if not paths["customer"].exists() or not paths["internal"].exists():
+        generate_invoice_pdfs(invoice,items)
+    customer_path = Path("documents")/"Customers"/sanitize_path_name(invoice["customer"])/"Invoices"
+    return templates.TemplateResponse(request=request,name="invoice_documents.html",context={"invoice":invoice,"items":items,"customer_path":str(customer_path),"active_page":"invoices"})
+
+
+@app.get("/invoices/{invoice_id}/customer/pdf")
+def customer_invoice_pdf(invoice_id: int, download: int = 0):
+    with closing(get_connection()) as connection:
+        invoice, items = load_invoice(connection, invoice_id)
+    path = invoice_paths(invoice["customer"],invoice["invoice_number"])["customer"]
+    if not path.exists():
+        generate_invoice_pdfs(invoice,items)
+    return FileResponse(path=path,media_type="application/pdf",filename=path.name,content_disposition_type="attachment" if download else "inline")
+
+
+@app.get("/invoices/{invoice_id}/internal/pdf")
+def internal_invoice_pdf(invoice_id: int, download: int = 0):
+    with closing(get_connection()) as connection:
+        invoice, items = load_invoice(connection, invoice_id)
+    path = invoice_paths(invoice["customer"],invoice["invoice_number"])["internal"]
+    if not path.exists():
+        generate_invoice_pdfs(invoice,items)
+    return FileResponse(path=path,media_type="application/pdf",filename=path.name,content_disposition_type="attachment" if download else "inline")
+
+
 @app.get("/suppliers", response_class=HTMLResponse)
 def list_suppliers(request: Request, view: str = "active"):
     if view not in {"active","inactive","do_not_use","all"}: view="active"
@@ -1333,11 +1478,13 @@ def restore_quote(quote_id: int):
 def quote_documents(request: Request, quote_id: int):
     with closing(get_connection()) as connection:
         quote, items = load_quote(connection, quote_id)
-    paths = quote_paths(quote["customer"], quote["quote_number"])
+        invoice = connection.execute("SELECT id,invoice_number FROM invoices WHERE quote_id=?",(quote_id,)).fetchone()
+    paths = quote_paths(quote["customer"],quote["quote_number"])
     if not paths["customer"].exists() or not paths["internal"].exists():
-        generate_quote_pdfs(quote, items)
-    customer_path = Path("documents") / "Customers" / sanitize_path_name(quote["customer"]) / "Quotes"
-    return templates.TemplateResponse(request=request, name="quote_documents.html", context={"quote": quote, "items": items, "customer_path": str(customer_path), "active_page": "quotes"})
+        generate_quote_pdfs(quote,items)
+    customer_path = Path("documents")/"Customers"/sanitize_path_name(quote["customer"])/"Quotes"
+    return templates.TemplateResponse(request=request,name="quote_documents.html",context={"quote":quote,"items":items,"invoice":invoice,"customer_path":str(customer_path),"active_page":"quotes"})
+
 
 @app.get("/quotes/{quote_id}/customer/pdf")
 def customer_quote_pdf(quote_id: int, download: int = 0):
