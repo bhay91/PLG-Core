@@ -219,7 +219,7 @@
   {% endif %}
 </section>
 
-{% if basket.status == "CHECKED_OUT" %}
+{% if basket.status == "COMMITTED" %}
 <section class="checkout-complete-banner">
   <div>
     <p class="eyebrow">CHECKOUT COMPLETE</p>
@@ -266,7 +266,7 @@
     <small>Review the selected lines, then checkout the Parts Basket.</small>
   </div>
   <div class="basket-action-buttons">
-    {% if basket.status == "CHECKED_OUT" %}
+    {% if basket.status == "COMMITTED" %}
     <form method="post" action="/jobs/{{ job.id }}/generate-quote">
       <button class="button" type="submit">Create Quote →</button>
     </form>

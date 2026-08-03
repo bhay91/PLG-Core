@@ -339,30 +339,12 @@ def clear_form(job_id: int):
 
 @router.post("/jobs/{job_id}/basket/checkout")
 def checkout_basket(job_id: int):
-    basket = get_basket(job_id)
-    if basket["totals"]["selected_items"] < 1:
-        return RedirectResponse(
-            url=f"/jobs/{job_id}/basket",
-            status_code=303,
-        )
-
-    with closing(get_connection()) as connection:
-        stored = get_or_create_basket(connection, job_id)
-        connection.execute(
-            """
-            UPDATE baskets
-            SET status = 'CHECKED_OUT',
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            (stored["id"],),
-        )
-        connection.commit()
-
+    commit_basket(job_id)
     return RedirectResponse(
         url=f"/jobs/{job_id}/basket",
         status_code=303,
     )
+
 
 @router.post("/jobs/{job_id}/basket/commit")
 def commit_form(job_id: int):

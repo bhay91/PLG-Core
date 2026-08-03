@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi.responses import FileResponse
+from plg_core.documents.quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
 from fastapi import File, UploadFile
 
 import sqlite3
@@ -1052,8 +1053,11 @@ def generate_quote(job_id: int):
         )
         connection.commit()
 
+        quote, pdf_items = load_quote(connection, quote_id)
+        generate_quote_pdfs(quote, pdf_items)
+
     return RedirectResponse(
-        url=f"/quotes/{quote_id}/customer",
+        url=f"/quotes/{quote_id}/documents",
         status_code=303,
     )
 
@@ -1093,6 +1097,35 @@ def load_quote(connection: sqlite3.Connection, quote_id: int):
 
     return quote, items
 
+
+
+@app.get("/quotes/{quote_id}/documents", response_class=HTMLResponse)
+def quote_documents(request: Request, quote_id: int):
+    with closing(get_connection()) as connection:
+        quote, items = load_quote(connection, quote_id)
+    paths = quote_paths(quote["customer"], quote["quote_number"])
+    if not paths["customer"].exists() or not paths["internal"].exists():
+        generate_quote_pdfs(quote, items)
+    customer_path = Path("documents") / "Customers" / sanitize_path_name(quote["customer"]) / "Quotes"
+    return templates.TemplateResponse(request=request, name="quote_documents.html", context={"quote": quote, "items": items, "customer_path": str(customer_path), "active_page": "quotes"})
+
+@app.get("/quotes/{quote_id}/customer/pdf")
+def customer_quote_pdf(quote_id: int, download: int = 0):
+    with closing(get_connection()) as connection:
+        quote, items = load_quote(connection, quote_id)
+    path = quote_paths(quote["customer"], quote["quote_number"])["customer"]
+    if not path.exists():
+        generate_quote_pdfs(quote, items)
+    return FileResponse(path=path, media_type="application/pdf", filename=path.name, content_disposition_type="attachment" if download else "inline")
+
+@app.get("/quotes/{quote_id}/internal/pdf")
+def internal_quote_pdf(quote_id: int, download: int = 0):
+    with closing(get_connection()) as connection:
+        quote, items = load_quote(connection, quote_id)
+    path = quote_paths(quote["customer"], quote["quote_number"])["internal"]
+    if not path.exists():
+        generate_quote_pdfs(quote, items)
+    return FileResponse(path=path, media_type="application/pdf", filename=path.name, content_disposition_type="attachment" if download else "inline")
 
 @app.get("/quotes/{quote_id}/customer", response_class=HTMLResponse)
 def customer_quote(request: Request, quote_id: int):

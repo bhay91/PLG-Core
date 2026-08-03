@@ -328,6 +328,14 @@ def import_cart(job_id: int, payload: dict[str, Any]):
 def commit_basket(job_id: int):
     with closing(get_connection()) as connection:
         basket = get_or_create_basket(connection, job_id)
+
+        if basket["status"] == "COMMITTED":
+            return {
+                "ok": True,
+                "job_id": job_id,
+                "created_parts": 0,
+                "already_committed": True,
+            }
         items = connection.execute(
             """
             SELECT * FROM basket_items
