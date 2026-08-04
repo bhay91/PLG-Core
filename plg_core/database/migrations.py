@@ -99,8 +99,104 @@ def _migration_0001_basket_foundation(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_0002_machine_registry(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS machines (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL,
+            machine_number TEXT UNIQUE,
+            name TEXT NOT NULL DEFAULT '',
+            manufacturer TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            year TEXT NOT NULL DEFAULT '',
+            vin_pin_serial TEXT NOT NULL DEFAULT '',
+            engine TEXT NOT NULL DEFAULT '',
+            engine_serial TEXT NOT NULL DEFAULT '',
+            transmission TEXT NOT NULL DEFAULT '',
+            component_details TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_machines_customer_id
+            ON machines(customer_id);
+
+        CREATE INDEX IF NOT EXISTS idx_machines_serial
+            ON machines(vin_pin_serial);
+        """
+    )
+
+    job_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(jobs)").fetchall()
+    }
+    if "machine_id" not in job_columns:
+        connection.execute("ALTER TABLE jobs ADD COLUMN machine_id INTEGER")
+
+    existing_jobs = connection.execute(
+        """
+        SELECT id, customer_id, manufacturer, machine, pin_serial
+        FROM jobs
+        WHERE customer_id IS NOT NULL AND machine_id IS NULL
+          AND (TRIM(COALESCE(manufacturer, '')) != ''
+               OR TRIM(COALESCE(machine, '')) != ''
+               OR TRIM(COALESCE(pin_serial, '')) != '')
+        ORDER BY id
+        """
+    ).fetchall()
+
+    for job in existing_jobs:
+        manufacturer = (job["manufacturer"] or "").strip()
+        model = (job["machine"] or "").strip()
+        serial = (job["pin_serial"] or "").strip()
+        machine = connection.execute(
+            """
+            SELECT id FROM machines
+            WHERE customer_id = ?
+              AND LOWER(TRIM(manufacturer)) = LOWER(TRIM(?))
+              AND LOWER(TRIM(model)) = LOWER(TRIM(?))
+              AND LOWER(TRIM(vin_pin_serial)) = LOWER(TRIM(?))
+            ORDER BY id LIMIT 1
+            """,
+            (job["customer_id"], manufacturer, model, serial),
+        ).fetchone()
+
+        if machine is None:
+            display_name = " ".join(part for part in (manufacturer, model) if part).strip()
+            if not display_name:
+                display_name = serial or "Machine"
+            cursor = connection.execute(
+                """
+                INSERT INTO machines (
+                    customer_id, name, manufacturer, model, vin_pin_serial
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (job["customer_id"], display_name, manufacturer, model, serial),
+            )
+            machine_id = cursor.lastrowid
+            connection.execute(
+                "UPDATE machines SET machine_number = ? WHERE id = ?",
+                (f"PLG-M{machine_id:05d}", machine_id),
+            )
+        else:
+            machine_id = machine["id"]
+
+        connection.execute(
+            "UPDATE jobs SET machine_id = ? WHERE id = ?",
+            (machine_id, job["id"]),
+        )
+
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_jobs_machine_id ON jobs(machine_id)"
+    )
+
+
 MIGRATIONS: list[Migration] = [
     ("0001_basket_foundation", _migration_0001_basket_foundation),
+    ("0002_machine_registry", _migration_0002_machine_registry),
 ]
 
 

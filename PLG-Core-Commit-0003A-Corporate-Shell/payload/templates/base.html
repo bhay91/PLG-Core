@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b63ce">
+  <title>{% block title %}PartsLink Global{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/app.css') }}">
+</head>
+<body>
+  <aside class="sidebar">
+    <a href="/" class="brand" aria-label="PartsLink Global home">
+      <img class="brand-logo" src="{{ url_for('static', path='/plg-logo.webp') }}" alt="PartsLink Global">
+      <span class="brand-copy">
+        <strong>PartsLink Global</strong>
+        <small>Worldwide Parts Sourcing, Technical Identification &amp; Logistics</small>
+      </span>
+    </a>
+
+    <nav class="sidebar-nav" aria-label="Primary navigation">
+      <a class="{% if active_page == 'dashboard' %}active{% endif %}" href="/">
+        <span class="nav-icon" aria-hidden="true">⌂</span><span>Dashboard</span>
+      </a>
+      <a class="{% if active_page == 'jobs' %}active{% endif %}" href="/jobs">
+        <span class="nav-icon" aria-hidden="true">▣</span><span>Jobs</span>
+      </a>
+      <span class="disabled"><span class="nav-icon">＄</span><span>Quotes</span></span>
+      <span class="disabled"><span class="nav-icon">▤</span><span>Invoices</span></span>
+      <span class="disabled"><span class="nav-icon">◇</span><span>Orders</span></span>
+      <span class="disabled"><span class="nav-icon">♙</span><span>Customers</span></span>
+      <span class="disabled"><span class="nav-icon">▰</span><span>Suppliers</span></span>
+      <a class="{% if active_page == 'connectors' %}active{% endif %}" href="/connectors">
+        <span class="nav-icon" aria-hidden="true">↔</span><span>Connectors</span>
+      </a>
+      <span class="disabled"><span class="nav-icon">▥</span><span>Reports</span></span>
+      <a class="{% if active_page == 'admin' %}active{% endif %}" href="/admin">
+        <span class="nav-icon" aria-hidden="true">⚙</span><span>Administration</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <a class="button full-width" href="/jobs/new">＋ New Job</a>
+      <div class="support-card">
+        <strong>PartsLink Global</strong>
+        <span>PLG Core · Version 1.0 Alpha</span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main-shell">
+    <header class="topbar">
+      <div class="topbar-title">
+        <strong>PartsLink Global</strong>
+        <small>Parts sourcing control center</small>
+      </div>
+
+      <div class="topbar-tools">
+        <label class="global-search" aria-label="Search">
+          <span aria-hidden="true">⌕</span>
+          <input type="search" placeholder="Search jobs, parts, suppliers..." disabled>
+        </label>
+
+        <div class="user-chip">
+          <span class="user-avatar" aria-hidden="true">B</span>
+          <span>
+            <strong>Brandon</strong>
+            <small>Administrator</small>
+          </span>
+        </div>
+
+        <a class="button small topbar-new-job" href="/jobs/new">＋ New Job</a>
+      </div>
+    </header>
+
+    <section class="page">
+      {% block content %}{% endblock %}
+    </section>
+  </main>
+</body>
+</html>

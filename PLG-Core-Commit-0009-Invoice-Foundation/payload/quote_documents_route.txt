@@ -1,0 +1,11 @@
+@app.get("/quotes/{quote_id}/documents", response_class=HTMLResponse)
+def quote_documents(request: Request, quote_id: int):
+    with closing(get_connection()) as connection:
+        quote, items = load_quote(connection, quote_id)
+        invoice = connection.execute("SELECT id,invoice_number FROM invoices WHERE quote_id=?",(quote_id,)).fetchone()
+    paths = quote_paths(quote["customer"],quote["quote_number"])
+    if not paths["customer"].exists() or not paths["internal"].exists():
+        generate_quote_pdfs(quote,items)
+    customer_path = Path("documents")/"Customers"/sanitize_path_name(quote["customer"])/"Quotes"
+    return templates.TemplateResponse(request=request,name="quote_documents.html",context={"quote":quote,"items":items,"invoice":invoice,"customer_path":str(customer_path),"active_page":"quotes"})
+

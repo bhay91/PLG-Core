@@ -1,0 +1,6 @@
+/* Commit 0004E Vendor Import and Quantity */
+.basket-qty-form{display:inline-flex;align-items:center;justify-content:flex-end;gap:6px}
+.basket-qty-input{width:64px;margin:0;padding:7px 8px;text-align:center;font-weight:760}
+.basket-qty-save{min-height:32px;padding:6px 9px;border:1px solid var(--line-strong);border-radius:7px;background:#fff;color:var(--accent-dark);font-size:10px;font-weight:760;cursor:pointer}
+.basket-qty-save:hover{background:var(--accent-soft)}
+.vendor-import-card select{min-width:230px}

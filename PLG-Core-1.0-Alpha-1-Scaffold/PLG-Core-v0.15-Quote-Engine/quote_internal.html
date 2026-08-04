@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}{{ quote.quote_number }} · Internal Quote{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">INTERNAL ACCOUNTING COPY</p>
+    <h1>{{ quote.quote_number }}</h1>
+    <p class="muted">Quote date: {{ quote.quote_date }}</p>
+  </div>
+  <div class="actions">
+    <a class="button" href="/quotes/{{ quote.id }}/customer">Customer Copy</a>
+    <button class="button" type="button" onclick="window.print()">Print / Save PDF</button>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Qty</th>
+          <th>Description</th>
+          <th>Supplier</th>
+          <th>Type</th>
+          <th>Brand</th>
+          <th>Supplier Part #</th>
+          <th>Unit Cost</th>
+          <th>Customer Unit</th>
+          <th>Line Profit</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ item.quantity }}</td>
+          <td>{{ item.description }}</td>
+          <td>{{ item.supplier_name }}</td>
+          <td>{{ item.source_type }}</td>
+          <td>{{ item.brand }}</td>
+          <td>{{ item.supplier_part_number }}</td>
+          <td>${{ "%.2f"|format(item.supplier_unit_cost) }}</td>
+          <td>${{ "%.2f"|format(item.customer_unit_price) }}</td>
+          <td>${{ "%.2f"|format(item.line_profit) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="totals-block">
+    <div><span>Supplier Parts</span><strong>${{ "%.2f"|format(quote.supplier_total - quote.shipping_total) }}</strong></div>
+    <div><span>Shipping</span><strong>${{ "%.2f"|format(quote.shipping_total) }}</strong></div>
+    <div><span>Supplier Total</span><strong>${{ "%.2f"|format(quote.supplier_total) }}</strong></div>
+    <div><span>Customer Total</span><strong>${{ "%.2f"|format(quote.customer_total) }}</strong></div>
+    <div><span>Net Profit</span><strong>${{ "%.2f"|format(quote.profit_total) }}</strong></div>
+  </div>
+</section>
+{% endblock %}

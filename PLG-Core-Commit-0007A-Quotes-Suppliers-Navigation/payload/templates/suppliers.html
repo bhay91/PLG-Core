@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Suppliers · PartsLink Global{% endblock %}
+{% block content %}
+<section class="workspace-heading">
+  <div><p class="eyebrow">SUPPLIERS</p><h1>Supplier Register</h1><p>Supplier usage, sourced parts, spending, and recent activity.</p></div>
+</section>
+<section class="panel list-tools-panel">
+  <label class="list-search-label"><span>Search Suppliers</span><input id="supplier-search" type="search" placeholder="Supplier name"></label>
+</section>
+<section class="supplier-summary-grid">
+  <article class="context-card"><span>Suppliers</span><strong>{{ summary.suppliers_total }}</strong><small>Used in PLG</small></article>
+  <article class="context-card"><span>Sourced Lines</span><strong>{{ summary.parts_total }}</strong><small>Supplier source records</small></article>
+  <article class="context-card"><span>Selected Lines</span><strong>{{ summary.selected_total }}</strong><small>Chosen for quotes</small></article>
+  <article class="context-card"><span>Supplier Spend</span><strong>${{ "%.2f"|format(summary.spend_total) }}</strong><small>Selected line cost</small></article>
+</section>
+<section class="panel">
+{% if suppliers %}
+<div class="records-table-wrap">
+<table class="records-table" id="supplier-table">
+<thead><tr><th>Supplier</th><th class="numeric">Source Lines</th><th class="numeric">Selected</th><th class="numeric">Jobs</th><th class="numeric">Quoted Spend</th><th>Most Recent Use</th></tr></thead>
+<tbody>
+{% for supplier in suppliers %}
+<tr data-search="{{ supplier.name }}">
+<td><strong>{{ supplier.name }}</strong></td>
+<td class="numeric">{{ supplier.source_lines }}</td>
+<td class="numeric">{{ supplier.selected_lines }}</td>
+<td class="numeric">{{ supplier.jobs_count }}</td>
+<td class="numeric">${{ "%.2f"|format(supplier.quoted_spend) }}</td>
+<td>{{ supplier.last_used or "—" }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+<p id="no-supplier-results" class="hidden">No suppliers match your search.</p>
+{% else %}<p>No supplier records are available yet.</p>{% endif %}
+</section>
+<script>
+(() => {
+  const input=document.getElementById("supplier-search");
+  const rows=Array.from(document.querySelectorAll("#supplier-table tbody tr"));
+  const empty=document.getElementById("no-supplier-results");
+  if(!input||!rows.length)return;
+  input.addEventListener("input",()=>{
+    const q=input.value.trim().toLowerCase(); let visible=0;
+    rows.forEach(row=>{const match=row.dataset.search.toLowerCase().includes(q); row.hidden=!match; if(match)visible+=1;});
+    if(empty)empty.classList.toggle("hidden",visible!==0);
+  });
+})();
+</script>
+{% endblock %}

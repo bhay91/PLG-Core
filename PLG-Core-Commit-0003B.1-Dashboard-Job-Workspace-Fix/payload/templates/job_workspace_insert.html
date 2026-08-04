@@ -1,0 +1,27 @@
+
+<section class="job-workspace-nav">
+  <a class="active" href="/jobs/{{ job.id }}">Overview</a>
+  <a href="/jobs/{{ job.id }}/basket">Parts Basket</a>
+  <span>Timeline</span>
+  <span>Documents</span>
+  <span>Notes</span>
+</section>
+
+<section class="job-summary-grid">
+  <article class="context-card"><span>Customer</span><strong>{{ job.customer }}</strong><small>{{ job.company or "Individual Customer" }}</small></article>
+  <article class="context-card"><span>Machine / Vehicle</span><strong>{{ job.manufacturer }} {{ job.machine }}</strong><small>Equipment information</small></article>
+  <article class="context-card"><span>VIN / PIN / Serial</span><strong>{{ job.pin_serial or "Not Provided" }}</strong><small>Identification reference</small></article>
+  <article class="context-card"><span>Job Status</span><strong><span class="status status-{{ job.status|lower }}">{{ job.status }}</span></strong><small>Created {{ job.created_date }}</small></article>
+</section>
+
+<section class="job-primary-actions">
+  <div>
+    <p class="eyebrow">JOB WORKSPACE</p>
+    <h2>Manage sourcing and documents</h2>
+    <p>Use the Parts Basket to add new, aftermarket, remanufactured, or used parts.</p>
+  </div>
+  <div class="header-actions">
+    <a class="button" href="/jobs/{{ job.id }}/basket">Open Parts Basket</a>
+    <a class="button ghost" href="/jobs/{{ job.id }}/edit">Edit Job Information</a>
+  </div>
+</section>

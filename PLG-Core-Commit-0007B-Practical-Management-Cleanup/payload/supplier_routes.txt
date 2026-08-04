@@ -1,0 +1,50 @@
+@app.get("/suppliers", response_class=HTMLResponse)
+def list_suppliers(request: Request, view: str = "active"):
+    if view not in {"active","inactive","do_not_use","all"}: view="active"
+    where={"active":"WHERE suppliers.status='ACTIVE'","inactive":"WHERE suppliers.status='INACTIVE'","do_not_use":"WHERE suppliers.status='DO_NOT_USE'"}.get(view,"")
+    with closing(get_connection()) as connection:
+        rows=connection.execute(f"""SELECT suppliers.*, EXISTS(SELECT 1 FROM part_sources WHERE LOWER(TRIM(part_sources.supplier_name))=LOWER(TRIM(suppliers.name))) AS has_history FROM suppliers {where} ORDER BY suppliers.preferred DESC,suppliers.name COLLATE NOCASE""").fetchall()
+        suppliers=[]
+        for row in rows:
+            item=dict(row); item["rating"]=max(1,min(5,int(item.get("rating") or 3))); item["can_delete"]=not bool(item["has_history"]); suppliers.append(item)
+    return templates.TemplateResponse(request=request,name="suppliers.html",context={"suppliers":suppliers,"view":view,"active_page":"suppliers"})
+
+@app.get("/suppliers/new", response_class=HTMLResponse)
+def new_supplier_form(request: Request):
+    return templates.TemplateResponse(request=request,name="supplier_form.html",context={"title":"New Supplier","subtitle":"Add a supplier for sourcing.","form_action":"/suppliers/new","submit_label":"Save Supplier","supplier":{"name":"","website":"","phone":"","email":"","contact_person":"","account_number":"","rating":3,"status":"ACTIVE","preferred":0},"active_page":"suppliers"})
+
+@app.post("/suppliers/new")
+def create_supplier(name: Annotated[str, Form()], website: Annotated[str, Form()] = "", phone: Annotated[str, Form()] = "", email: Annotated[str, Form()] = "", contact_person: Annotated[str, Form()] = "", account_number: Annotated[str, Form()] = "", rating: Annotated[int, Form()] = 3, status: Annotated[str, Form()] = "ACTIVE", preferred: Annotated[int, Form()] = 0):
+    with closing(get_connection()) as connection:
+        cur=connection.execute("INSERT INTO suppliers (name,website,phone,email,contact_person,account_number,rating,status,preferred) VALUES (?,?,?,?,?,?,?,?,?)",(name.strip(),website.strip(),phone.strip(),email.strip(),contact_person.strip(),account_number.strip(),max(1,min(5,int(rating))),status,1 if preferred else 0)); connection.commit()
+    return RedirectResponse(url=f"/suppliers/{cur.lastrowid}/edit",status_code=303)
+
+@app.get("/suppliers/{supplier_id}/edit", response_class=HTMLResponse)
+def edit_supplier_form(request: Request, supplier_id: int):
+    with closing(get_connection()) as connection: s=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+    if s is None: raise HTTPException(status_code=404,detail="Supplier not found.")
+    return templates.TemplateResponse(request=request,name="supplier_form.html",context={"title":"Edit Supplier","subtitle":s["name"],"form_action":f"/suppliers/{supplier_id}/edit","submit_label":"Save Changes","supplier":s,"active_page":"suppliers"})
+
+@app.post("/suppliers/{supplier_id}/edit")
+def update_supplier(supplier_id: int, name: Annotated[str, Form()], website: Annotated[str, Form()] = "", phone: Annotated[str, Form()] = "", email: Annotated[str, Form()] = "", contact_person: Annotated[str, Form()] = "", account_number: Annotated[str, Form()] = "", rating: Annotated[int, Form()] = 3, status: Annotated[str, Form()] = "ACTIVE", preferred: Annotated[int, Form()] = 0):
+    with closing(get_connection()) as connection:
+        old=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+        connection.execute("UPDATE suppliers SET name=?,website=?,phone=?,email=?,contact_person=?,account_number=?,rating=?,status=?,preferred=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(name.strip(),website.strip(),phone.strip(),email.strip(),contact_person.strip(),account_number.strip(),max(1,min(5,int(rating))),status,1 if preferred else 0,supplier_id))
+        if old and old["name"].lower()!=name.strip().lower(): connection.execute("UPDATE part_sources SET supplier_name=? WHERE LOWER(TRIM(supplier_name))=LOWER(TRIM(?))",(name.strip(),old["name"]))
+        connection.commit()
+    return RedirectResponse(url="/suppliers",status_code=303)
+
+@app.post("/suppliers/{supplier_id}/status")
+def supplier_status(supplier_id: int, status: Annotated[str, Form()]):
+    with closing(get_connection()) as connection: connection.execute("UPDATE suppliers SET status=? WHERE id=?",(status,supplier_id)); connection.commit()
+    return RedirectResponse(url="/suppliers",status_code=303)
+
+@app.post("/suppliers/{supplier_id}/delete")
+def supplier_delete(supplier_id: int):
+    with closing(get_connection()) as connection:
+        s=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+        used=connection.execute("SELECT 1 FROM part_sources WHERE LOWER(TRIM(supplier_name))=LOWER(TRIM(?)) LIMIT 1",(s["name"],)).fetchone()
+        if used: raise HTTPException(status_code=400,detail="Supplier has history. Mark it Inactive or Do Not Use.")
+        connection.execute("DELETE FROM suppliers WHERE id=?",(supplier_id,)); connection.commit()
+    return RedirectResponse(url="/suppliers",status_code=303)
+

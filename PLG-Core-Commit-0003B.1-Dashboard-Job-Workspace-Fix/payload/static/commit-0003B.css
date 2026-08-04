@@ -1,0 +1,62 @@
+
+/* Commit 0003B Dashboard and Job Workspace */
+.workspace-heading{margin-bottom:20px;display:flex;justify-content:space-between;align-items:flex-end;gap:22px}
+.workspace-heading h1{margin:5px 0 7px;color:var(--ink-strong);font-size:clamp(30px,4vw,42px);line-height:1.08;letter-spacing:-.035em}
+.workspace-heading p:not(.eyebrow){margin:0;color:var(--muted)}
+.summary-grid{margin-bottom:20px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.summary-card{min-height:132px;padding:19px;display:flex;align-items:center;gap:15px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;box-shadow:var(--shadow-sm)}
+.summary-card-icon{width:48px;height:48px;display:grid;place-items:center;flex:0 0 48px;border-radius:13px;font-size:21px;font-weight:800}
+.summary-card-icon.blue{background:var(--accent-soft);color:var(--accent)}
+.summary-card-icon.amber{background:var(--warning-soft);color:var(--warning)}
+.summary-card-icon.violet{background:#f1edff;color:#6750c7}
+.summary-card-icon.green{background:var(--success-soft);color:var(--success)}
+.summary-card span{color:var(--muted);font-size:11px;font-weight:760;letter-spacing:.04em;text-transform:uppercase}
+.summary-card strong{display:block;margin:4px 0 1px;color:var(--ink-strong);font-size:28px}
+.summary-card small{color:var(--muted)}
+.dashboard-grid{display:grid;grid-template-columns:minmax(0,1.9fr) minmax(280px,.72fr);gap:18px;align-items:start}
+.dashboard-grid .panel{margin-top:0}
+.dashboard-side{display:grid;gap:18px}
+.text-link{color:var(--accent-dark);font-size:12px;font-weight:750;text-decoration:none}
+.recent-job-list{overflow:hidden;border:1px solid var(--line);border-radius:11px}
+.recent-job-row{min-height:68px;padding:12px 14px;display:grid;grid-template-columns:112px minmax(170px,1.4fr) minmax(130px,1fr) 95px 105px 20px;gap:12px;align-items:center;color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line);transition:background .15s ease}
+.recent-job-row:last-child{border-bottom:0}
+.recent-job-row:hover{background:#f7fbff}
+.recent-job-number{color:var(--accent-dark);font-size:12px;font-weight:780}
+.recent-job-main{display:grid;gap:3px}
+.recent-job-main strong{color:var(--ink-strong)}
+.recent-job-main span,.recent-job-serial,.recent-job-parts{overflow:hidden;color:var(--muted);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.recent-job-arrow{color:var(--accent);font-size:18px;font-weight:800}
+.quick-actions-card,.workflow-card{padding:20px}
+.quick-action{margin-top:10px;padding:12px;display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:10px;color:var(--ink);text-decoration:none;transition:border-color .15s ease,background .15s ease}
+.quick-action:hover{border-color:#9fc5f2;background:#f7fbff}
+.quick-action>span{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;background:var(--accent-soft);color:var(--accent);font-size:18px}
+.quick-action div{display:grid;gap:2px}
+.quick-action small{color:var(--muted)}
+.workflow-steps{margin:14px 0 0;padding:0;display:grid;gap:12px;list-style:none}
+.workflow-steps li{display:flex;align-items:center;gap:11px;color:#34445c;font-weight:620}
+.workflow-steps span{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;background:var(--accent-soft);color:var(--accent-dark);font-size:11px;font-weight:800}
+.job-workspace-nav{margin:18px 0;padding:5px;display:flex;gap:5px;overflow-x:auto;border:1px solid var(--line);border-radius:11px;background:#fff}
+.job-workspace-nav a,.job-workspace-nav span{padding:9px 14px;border-radius:8px;color:#58677e;font-size:12px;font-weight:720;text-decoration:none;white-space:nowrap}
+.job-workspace-nav a:hover{background:var(--surface-soft)}
+.job-workspace-nav a.active{background:var(--accent);color:#fff}
+.job-workspace-nav span{color:#a0aaba;cursor:not-allowed}
+.job-summary-grid{margin-bottom:18px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.context-card{min-height:116px;padding:17px;display:flex;flex-direction:column;justify-content:center;border:1px solid var(--line);border-radius:var(--radius);background:#fff;box-shadow:var(--shadow-sm)}
+.context-card>span{color:var(--muted);font-size:10px;font-weight:780;letter-spacing:.05em;text-transform:uppercase}
+.context-card>strong{margin:7px 0 3px;overflow:hidden;color:var(--ink-strong);font-size:17px;text-overflow:ellipsis}
+.context-card small{color:var(--muted)}
+.job-primary-actions{margin-bottom:18px;padding:20px 22px;display:flex;justify-content:space-between;align-items:center;gap:20px;border:1px solid #bad6f4;border-radius:var(--radius);background:linear-gradient(135deg,#f6fbff,#edf6ff)}
+.job-primary-actions h2{margin:4px 0;color:var(--ink-strong)}
+.job-primary-actions p:not(.eyebrow){margin:0;color:var(--muted)}
+.status-requested{background:#fff5df;color:#9a6100}
+.status-researching{background:#f1edff;color:#6750c7}
+.status-verified{background:var(--success-soft);color:var(--success)}
+.status-quoted{background:#eaf3ff;color:#0759be}
+.status-confirmed{background:#e8f8ef;color:#087441}
+.status-ordered{background:#eef0ff;color:#4054b2}
+.status-received{background:#e8f8f7;color:#087e76}
+.status-delivered{background:#e8f8ef;color:#087441}
+.status-void{background:var(--danger-soft);color:var(--danger)}
+@media(max-width:1180px){.dashboard-grid{grid-template-columns:1fr}.dashboard-side{grid-template-columns:1fr 1fr}.recent-job-row{grid-template-columns:105px minmax(160px,1.3fr) minmax(120px,1fr) 92px 100px 18px}}
+@media(max-width:980px){.summary-grid,.job-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.recent-job-row{grid-template-columns:100px minmax(160px,1fr) 95px 105px 18px}.recent-job-serial{display:none}}
+@media(max-width:720px){.workspace-heading,.job-primary-actions{align-items:flex-start;flex-direction:column}.summary-grid,.job-summary-grid,.dashboard-side{grid-template-columns:1fr}.recent-job-row{grid-template-columns:90px minmax(130px,1fr) 95px 18px}.recent-job-parts{display:none}}

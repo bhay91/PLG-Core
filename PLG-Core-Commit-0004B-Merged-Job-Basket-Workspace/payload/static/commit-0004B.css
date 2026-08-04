@@ -1,0 +1,16 @@
+
+/* Commit 0004B Merged Job and Basket Workspace */
+.merged-workspace-heading{margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-end;gap:20px}
+.merged-workspace-heading h1{margin:5px 0 7px;color:var(--ink-strong);font-size:clamp(30px,4vw,42px);line-height:1.08;letter-spacing:-.035em}
+.merged-workspace-heading p:not(.eyebrow){margin:0;color:var(--muted)}
+.merged-workspace-actions{display:flex;justify-content:flex-end;align-items:center;gap:9px;flex-wrap:wrap}
+.merged-workspace-actions form{margin:0}
+.merged-workspace-actions .status-form{min-width:260px}
+.merged-workspace-actions .status-form select{min-width:145px}
+.merged-job-nav{margin:0 0 18px}
+.merged-job-nav .active{background:var(--accent);color:#fff}
+.merged-workspace-notice{margin-bottom:18px;padding:14px 17px;display:flex;justify-content:space-between;align-items:center;gap:16px;border:1px solid #bad6f4;border-radius:12px;background:linear-gradient(135deg,#f7fbff,#eef6ff)}
+.merged-workspace-notice div{display:grid;gap:3px}
+.merged-workspace-notice strong{color:var(--ink-strong)}
+.merged-workspace-notice span{color:var(--muted);font-size:12px}
+@media(max-width:820px){.merged-workspace-heading,.merged-workspace-notice{align-items:flex-start;flex-direction:column}.merged-workspace-actions{width:100%;justify-content:flex-start}.merged-workspace-actions .status-form{width:100%}}

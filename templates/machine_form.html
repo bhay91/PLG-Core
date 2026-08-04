@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · PartsLink Global{% endblock %}
+{% block content %}
+<section class="workspace-heading"><div><p class="eyebrow">MACHINE REGISTRY</p><h1>{{ title }}</h1><p>{{ subtitle }}</p></div></section>
+<form method="post" action="{{ form_action }}" class="panel form-grid">
+<div class="form-section full"><p class="eyebrow">OWNER</p><h2>Customer</h2><label>Customer *<select name="customer_id" required><option value="">Select customer</option>{% for customer in customers %}<option value="{{ customer.id }}" {% if machine.customer_id|string == customer.id|string %}selected{% endif %}>{{ customer.name }}{% if customer.company %} · {{ customer.company }}{% endif %}</option>{% endfor %}</select></label></div>
+<div class="form-section"><p class="eyebrow">IDENTITY</p><h2>Machine Information</h2><label>Display Name<input name="name" value="{{ machine.name or '' }}" placeholder="CAT 420D Backhoe"></label><div class="two-column"><label>Manufacturer<input name="manufacturer" value="{{ machine.manufacturer or '' }}"></label><label>Model<input name="model" value="{{ machine.model or '' }}"></label></div><div class="two-column"><label>Year<input name="year" value="{{ machine.year or '' }}"></label><label>VIN / PIN / Serial<input name="vin_pin_serial" value="{{ machine.vin_pin_serial or '' }}"></label></div></div>
+<div class="form-section"><p class="eyebrow">POWERTRAIN</p><h2>Engine and Components</h2><label>Engine<input name="engine" value="{{ machine.engine or '' }}"></label><label>Engine Serial<input name="engine_serial" value="{{ machine.engine_serial or '' }}"></label><label>Transmission<input name="transmission" value="{{ machine.transmission or '' }}"></label><label>Component Details<textarea name="component_details" rows="3">{{ machine.component_details or '' }}</textarea></label></div>
+<div class="form-section full"><label>Notes<textarea name="notes" rows="4">{{ machine.notes or '' }}</textarea></label></div>
+<div class="form-actions full"><a class="button ghost" href="{{ cancel_url }}">Cancel</a><button class="button" type="submit">Save Machine</button></div>
+</form>{% endblock %}

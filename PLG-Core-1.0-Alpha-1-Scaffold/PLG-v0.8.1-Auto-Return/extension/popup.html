@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PLG Verify Assistant</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>PLG Verify Assistant</h1>
+  <p class="sub">CAT SIS verification</p>
+  <section class="card">
+    <strong id="jobNumber">Loading…</strong>
+    <span id="customer"></span>
+    <span id="machine"></span>
+    <span id="pin"></span>
+    <span id="requestedPart"></span>
+  </section>
+  <button id="refreshJob" class="secondary">Refresh active job</button>
+  <section class="capture-card">
+    <p class="label">Detected from CAT SIS</p>
+    <strong id="partNumber">Open the correct SIS part</strong>
+    <span id="description"></span>
+    <span id="price"></span>
+    <span id="availability"></span>
+    <span id="source"></span>
+  </section>
+  <button id="readPart">Read Current SIS Part</button>
+  <button id="importPart" class="primary">Import Verified Part</button>
+  <div id="status" role="status" aria-live="polite"></div>
+  <p class="note">After import, PLG refreshes and returns to the verified part automatically.</p>
+</main>
+<script src="popup.js"></script>
+</body>
+</html>

@@ -102,6 +102,23 @@
 
 <section class="panel">
   <div class="panel-heading">
+    <div><p class="eyebrow">MACHINES</p><h2>Customer Machines</h2></div>
+    <a class="button ghost" href="/machines/new?customer_id={{ customer.id }}">Add Machine</a>
+  </div>
+  {% if machines %}
+  <div class="customer-record-list">
+    {% for machine in machines %}
+    <a class="customer-record-row" href="/machines/{{ machine.id }}">
+      <div><strong>{{ machine.name }}</strong><span>{{ machine.manufacturer }} {{ machine.model }}{% if machine.vin_pin_serial %} · {{ machine.vin_pin_serial }}{% endif %}</span></div>
+      <div><strong>{{ machine.machine_number }}</strong><span>{{ "Active" if machine.active else "Inactive" }}</span></div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}<p>No machines saved for this customer.</p>{% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
     <div><p class="eyebrow">ACCOUNT HISTORY</p><h2>Transactions</h2></div>
   </div>
   {% if transactions %}

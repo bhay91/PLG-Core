@@ -1,0 +1,49 @@
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS invoices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_number TEXT NOT NULL UNIQUE,
+                quote_id INTEGER NOT NULL UNIQUE,
+                job_id INTEGER NOT NULL,
+                invoice_date TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'UNPAID',
+                parts_subtotal REAL NOT NULL DEFAULT 0,
+                shipping_total REAL NOT NULL DEFAULT 0,
+                customer_total REAL NOT NULL DEFAULT 0,
+                supplier_total REAL NOT NULL DEFAULT 0,
+                profit_total REAL NOT NULL DEFAULT 0,
+                credit_applied REAL NOT NULL DEFAULT 0,
+                balance_due REAL NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (quote_id) REFERENCES quotes(id),
+                FOREIGN KEY (job_id) REFERENCES jobs(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS invoice_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_id INTEGER NOT NULL,
+                quote_item_id INTEGER,
+                part_id INTEGER,
+                source_id INTEGER,
+                quantity INTEGER NOT NULL DEFAULT 1,
+                description TEXT NOT NULL,
+                supplier_name TEXT DEFAULT '',
+                source_type TEXT DEFAULT '',
+                brand TEXT DEFAULT '',
+                supplier_part_number TEXT DEFAULT '',
+                supplier_unit_cost REAL NOT NULL DEFAULT 0,
+                customer_unit_price REAL NOT NULL DEFAULT 0,
+                supplier_line_total REAL NOT NULL DEFAULT 0,
+                customer_line_total REAL NOT NULL DEFAULT 0,
+                line_profit REAL NOT NULL DEFAULT 0,
+                FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+                FOREIGN KEY (quote_item_id) REFERENCES quote_items(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_invoices_quote_id ON invoices(quote_id);
+            CREATE INDEX IF NOT EXISTS idx_invoices_job_id ON invoices(job_id);
+            CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON invoice_items(invoice_id);
+            """
+        )
+

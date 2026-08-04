@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Parts Basket · {{ job.job_number }}{% endblock %}
+{% block content %}
+<section class="page-heading row-between">
+  <div>
+    <p class="eyebrow">{{ job.job_number }}</p>
+    <h1>Parts Basket</h1>
+    <p>{{ job.customer }} · {{ job.manufacturer }} {{ job.machine }}{% if job.pin_serial %} · {{ job.pin_serial }}{% endif %}</p>
+  </div>
+  <a class="button ghost" href="/jobs/{{ job.id }}">Back to Job</a>
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div><p class="eyebrow">IMPORT SOURCES</p><h2>Add supplier carts</h2></div>
+  </div>
+  <div class="basket-source-buttons">
+    {% for connector in connectors %}
+    <form method="post" action="/jobs/{{ job.id }}/start-source-import" target="_blank">
+      <input type="hidden" name="source_key" value="{{ connector.connector_key }}">
+      <button class="button" type="submit">{{ connector.display_name }}</button>
+    </form>
+    {% endfor %}
+  </div>
+  <p class="muted">Build the supplier cart, then use the PLG Firefox extension to import it into this basket.</p>
+</section>
+
+<section class="basket-summary-grid">
+  <article class="panel basket-total-card"><span>Supplier Parts</span><strong>${{ "%.2f"|format(basket.totals.supplier_parts_total) }}</strong></article>
+  <article class="panel basket-total-card"><span>Shipping</span><strong>${{ "%.2f"|format(basket.totals.shipping_total) }}</strong></article>
+  <article class="panel basket-total-card"><span>Customer Total</span><strong>${{ "%.2f"|format(basket.totals.customer_total) }}</strong></article>
+  <article class="panel basket-total-card"><span>Estimated Profit</span><strong>${{ "%.2f"|format(basket.totals.estimated_profit) }}</strong></article>
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div><p class="eyebrow">BASKET ITEMS</p><h2>{{ basket.totals.all_items }} item{% if basket.totals.all_items != 1 %}s{% endif %}</h2></div>
+  </div>
+  {% if basket.items %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Use</th><th>Description</th><th>Supplier</th><th>Part #</th><th>Type</th><th>Qty</th><th>Cost</th><th></th></tr></thead>
+      <tbody>
+      {% for item in basket.items %}
+        <tr>
+          <td>
+            <form method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/toggle">
+              <input type="hidden" name="selected" value="{{ 0 if item.selected else 1 }}">
+              <button class="basket-check {% if item.selected %}selected{% endif %}" type="submit">{% if item.selected %}✓{% else %}○{% endif %}</button>
+            </form>
+          </td>
+          <td><strong>{{ item.requested_description }}</strong><div class="muted">{{ item.availability or "—" }}{% if item.lead_time %} · {{ item.lead_time }}{% endif %}</div></td>
+          <td>{{ item.supplier_name or "Manual" }}</td>
+          <td>{{ item.supplier_part_number or item.manufacturer_part_number or "—" }}</td>
+          <td>{{ item.source_type }}</td>
+          <td>{{ item.quantity }}</td>
+          <td>{% if item.supplier_unit_cost is not none %}${{ "%.2f"|format(item.supplier_unit_cost) }}{% else %}—{% endif %}</td>
+          <td>
+            <form method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/delete" onsubmit="return confirm('Remove this item from the basket?');">
+              <button class="button delete-part-button" type="submit">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">The basket is empty.</p>
+  {% endif %}
+</section>
+
+<section class="detail-grid">
+  <article class="panel">
+    <p class="eyebrow">MANUAL ITEM</p><h2>Add to basket</h2>
+    <form method="post" action="/jobs/{{ job.id }}/basket/items">
+      <label>Description<input name="requested_description" required></label>
+      <label>Supplier<input name="supplier_name"></label>
+      <label>Supplier Part #<input name="supplier_part_number"></label>
+      <label>Type<select name="source_type"><option>AFTERMARKET</option><option>OEM</option><option>REMAN</option><option>USED</option></select></label>
+      <label>Quantity<input type="number" name="quantity" value="1" min="1"></label>
+      <label>Supplier Unit Cost<input type="number" name="supplier_unit_cost" step="0.01" min="0"></label>
+      <button class="button" type="submit">Add to Basket</button>
+    </form>
+  </article>
+
+  <article class="panel">
+    <p class="eyebrow">FINALIZE</p><h2>Commit selected items</h2>
+    <p>{{ basket.totals.selected_items }} selected item{% if basket.totals.selected_items != 1 %}s{% endif %} will be added to the job and selected for quoting.</p>
+    <form method="post" action="/jobs/{{ job.id }}/basket/commit" onsubmit="return confirm('Commit the selected basket items to this job?');">
+      <button class="button" type="submit" {% if basket.totals.selected_items == 0 %}disabled{% endif %}>Commit to Job</button>
+    </form>
+    <form method="post" action="/jobs/{{ job.id }}/basket/clear" onsubmit="return confirm('Clear the entire basket?');">
+      <button class="button ghost" type="submit">Clear Basket</button>
+    </form>
+  </article>
+</section>
+{% endblock %}

@@ -574,7 +574,8 @@ def dashboard(request: Request):
 def new_job_form(request: Request, customer_id: int | None = None):
     with closing(get_connection()) as connection:
         customers=connection.execute("SELECT * FROM customers WHERE active=1 ORDER BY name COLLATE NOCASE, company COLLATE NOCASE").fetchall()
-    return templates.TemplateResponse(request=request,name="new_job.html",context={"customers":customers,"selected_customer_id":customer_id,"active_page":"jobs"})
+        machines=connection.execute("SELECT * FROM machines WHERE active=1 ORDER BY customer_id, name COLLATE NOCASE").fetchall()
+    return templates.TemplateResponse(request=request,name="new_job.html",context={"customers":customers,"machines":machines,"selected_customer_id":customer_id,"active_page":"jobs"})
 
 
 
@@ -582,6 +583,7 @@ def new_job_form(request: Request, customer_id: int | None = None):
 def create_job(
     customer: Annotated[str, Form()],
     customer_id: Annotated[int | None, Form()] = None,
+    machine_id: Annotated[int | None, Form()] = None,
     company: Annotated[str, Form()] = "",
     phone: Annotated[str, Form()] = "",
     email: Annotated[str, Form()] = "",
@@ -605,11 +607,30 @@ def create_job(
             customer_id=cur.lastrowid
             connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PLG-C{customer_id:05d}",customer_id))
             customer_row=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
+        selected_machine = None
+        if machine_id:
+            selected_machine = connection.execute(
+                "SELECT * FROM machines WHERE id=? AND customer_id=? AND active=1",
+                (machine_id, customer_row["id"]),
+            ).fetchone()
+            if selected_machine is None:
+                raise HTTPException(status_code=400, detail="Selected machine not found for this customer.")
+            manufacturer = selected_machine["manufacturer"] or ""
+            machine = selected_machine["model"] or selected_machine["name"] or ""
+            pin_serial = selected_machine["vin_pin_serial"] or ""
+        elif any((manufacturer.strip(), machine.strip(), pin_serial.strip())):
+            display_name = " ".join(part for part in (manufacturer.strip(), machine.strip()) if part).strip() or pin_serial.strip()
+            machine_cursor = connection.execute(
+                "INSERT INTO machines (customer_id,name,manufacturer,model,vin_pin_serial) VALUES (?,?,?,?,?)",
+                (customer_row["id"], display_name, manufacturer.strip(), machine.strip(), pin_serial.strip()),
+            )
+            machine_id = machine_cursor.lastrowid
+            connection.execute("UPDATE machines SET machine_number=? WHERE id=?", (f"PLG-M{machine_id:05d}", machine_id))
         job_number=next_job_number(connection)
         cur=connection.execute("""
-            INSERT INTO jobs (job_number,created_date,customer_id,customer,company,phone,email,address,manufacturer,machine,pin_serial,status,notes)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,'REQUESTED',?)
-        """,(job_number,date.today().isoformat(),customer_row["id"],customer_row["name"],customer_row["company"] or "",customer_row["phone"] or "",customer_row["email"] or "",customer_row["address"] or "",manufacturer.strip(),machine.strip(),pin_serial.strip(),notes.strip()))
+            INSERT INTO jobs (job_number,created_date,customer_id,machine_id,customer,company,phone,email,address,manufacturer,machine,pin_serial,status,notes)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'REQUESTED',?)
+        """,(job_number,date.today().isoformat(),customer_row["id"],machine_id,customer_row["name"],customer_row["company"] or "",customer_row["phone"] or "",customer_row["email"] or "",customer_row["address"] or "",manufacturer.strip(),machine.strip(),pin_serial.strip(),notes.strip()))
         job_id=cur.lastrowid
         connection.commit()
     return RedirectResponse(url=f"/jobs/{job_id}/basket",status_code=303)
@@ -689,11 +710,12 @@ def customer_account(request: Request, customer_id: int):
         if customer is None: raise HTTPException(status_code=404,detail="Customer not found.")
         connection.execute("UPDATE customers SET last_viewed_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,))
         jobs=connection.execute("SELECT * FROM jobs WHERE customer_id=? ORDER BY id DESC",(customer_id,)).fetchall()
+        machines=connection.execute("SELECT * FROM machines WHERE customer_id=? ORDER BY active DESC, name COLLATE NOCASE",(customer_id,)).fetchall()
         quotes=connection.execute("SELECT quotes.* FROM quotes JOIN jobs ON jobs.id=quotes.job_id WHERE jobs.customer_id=? ORDER BY quotes.id DESC",(customer_id,)).fetchall()
         transactions=connection.execute("SELECT * FROM customer_transactions WHERE customer_id=? ORDER BY transaction_date DESC,id DESC",(customer_id,)).fetchall()
         summary=connection.execute("SELECT COALESCE(SUM(amount),0) AS net_balance,COALESCE(SUM(CASE WHEN transaction_type='PAYMENT' THEN amount ELSE 0 END),0) AS total_payments FROM customer_transactions WHERE customer_id=?",(customer_id,)).fetchone(); connection.commit()
         net=float(summary["net_balance"] or 0); account={"available_credit":max(net,0),"outstanding_balance":max(-net,0),"total_payments":float(summary["total_payments"] or 0)}
-    return templates.TemplateResponse(request=request,name="customer_account.html",context={"customer":customer,"jobs":jobs,"quotes":quotes,"transactions":transactions,"account":account,"active_page":"customers"})
+    return templates.TemplateResponse(request=request,name="customer_account.html",context={"customer":customer,"machines":machines,"jobs":jobs,"quotes":quotes,"transactions":transactions,"account":account,"active_page":"customers"})
 
 @app.post("/customers/{customer_id}/transactions/payment")
 def record_customer_payment(customer_id: int,amount: Annotated[float,Form()],payment_method: Annotated[str,Form()],reference: Annotated[str,Form()]=""):

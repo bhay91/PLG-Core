@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Administration · PartsLink Global{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">SYSTEM MANAGEMENT</p>
+    <h1>Administration</h1>
+    <p class="muted">
+      Manage the settings that apply across PartsLink Global.
+    </p>
+  </div>
+</section>
+
+<section class="detail-grid">
+  <article class="panel">
+    <p class="eyebrow">DOCUMENTS</p>
+    <h2>Document Templates</h2>
+
+    {% if active_template %}
+    <p>
+      Active:
+      <strong>
+        {{ active_template.display_name }}
+        v{{ active_template.version_number }}
+      </strong>
+    </p>
+    {% else %}
+    <p class="muted">No master template is active.</p>
+    {% endif %}
+
+    <a class="button" href="/admin/document-templates">
+      Manage Templates
+    </a>
+  </article>
+
+  <article class="panel">
+    <p class="eyebrow">SOURCING</p>
+    <h2>Connectors</h2>
+    <p>{{ connector_count }} connector profile(s)</p>
+    <a class="button" href="/connectors">Manage Connectors</a>
+  </article>
+
+  <article class="panel">
+    <p class="eyebrow">SUPPLIERS</p>
+    <h2>Suppliers and Brands</h2>
+    <p>{{ supplier_count }} saved supplier(s)</p>
+    <p class="muted">
+      Full supplier and brand management will be added here.
+    </p>
+  </article>
+
+  <article class="panel">
+    <p class="eyebrow">COMING NEXT</p>
+    <h2>System Controls</h2>
+    <p class="muted">
+      Pricing rules, job stages, backups, and company settings.
+    </p>
+  </article>
+</section>
+{% endblock %}

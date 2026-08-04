@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+<h1>PLG Verify Assistant</h1>
+<div class="card">
+<strong id="jobNumber">Loading…</strong>
+<span id="customer"></span>
+<span id="source"></span>
+<span id="machine"></span>
+<span id="pin"></span>
+</div>
+<button id="refresh">Refresh active source</button>
+<button id="read">Read Current Cart</button>
+<div class="card results">
+<strong id="count">No cart read yet</strong>
+<div id="items"></div>
+<div class="totals">
+<div><span>Parts Subtotal</span><strong id="subtotal">—</strong></div>
+<div><span>Shipping</span><strong id="shipping">—</strong></div>
+<div><span>Supplier Total</span><strong id="supplierTotal">—</strong></div>
+</div>
+</div>
+<button id="import" class="primary">Import Cart Items</button>
+<div id="status"></div>
+<script src="popup.js"></script>
+</main>
+</body>
+</html>

@@ -1,0 +1,572 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 974bdd6..b6889c0 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,15 @@
+ # Changelog
+ 
++## Commit 0010 — Machine Registry Foundation
++
++- Added reusable machine profiles linked to customers.
++- Added machine list, create, detail, edit, deactivate, and reactivate workflows.
++- Added machine selection to new jobs and automatic machine creation when needed.
++- Added machine history links for jobs, quotes, and invoices.
++- Backfilled machine profiles from existing jobs without breaking legacy records.
++- Added Machines to primary navigation and customer accounts.
++
++
+ ## Clean Baseline
+ 
+ - Removed historical installer folders and duplicate extension copies.
+diff --git a/VERSION b/VERSION
+index ce2f9dc..b75fbf7 100644
+--- a/VERSION
++++ b/VERSION
+@@ -1 +1 @@
+-1.0-dev-build-001.1
++1.0-dev-build-002.0
+diff --git a/legacy_app.py b/legacy_app.py
+index b15140b..c3504da 100644
+--- a/legacy_app.py
++++ b/legacy_app.py
+@@ -574,7 +574,8 @@ def dashboard(request: Request):
+ def new_job_form(request: Request, customer_id: int | None = None):
+     with closing(get_connection()) as connection:
+         customers=connection.execute("SELECT * FROM customers WHERE active=1 ORDER BY name COLLATE NOCASE, company COLLATE NOCASE").fetchall()
+-    return templates.TemplateResponse(request=request,name="new_job.html",context={"customers":customers,"selected_customer_id":customer_id,"active_page":"jobs"})
++        machines=connection.execute("SELECT * FROM machines WHERE active=1 ORDER BY customer_id, name COLLATE NOCASE").fetchall()
++    return templates.TemplateResponse(request=request,name="new_job.html",context={"customers":customers,"machines":machines,"selected_customer_id":customer_id,"active_page":"jobs"})
+ 
+ 
+ 
+@@ -582,6 +583,7 @@ def new_job_form(request: Request, customer_id: int | None = None):
+ def create_job(
+     customer: Annotated[str, Form()],
+     customer_id: Annotated[int | None, Form()] = None,
++    machine_id: Annotated[int | None, Form()] = None,
+     company: Annotated[str, Form()] = "",
+     phone: Annotated[str, Form()] = "",
+     email: Annotated[str, Form()] = "",
+@@ -605,11 +607,30 @@ def create_job(
+             customer_id=cur.lastrowid
+             connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PLG-C{customer_id:05d}",customer_id))
+             customer_row=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
++        selected_machine = None
++        if machine_id:
++            selected_machine = connection.execute(
++                "SELECT * FROM machines WHERE id=? AND customer_id=? AND active=1",
++                (machine_id, customer_row["id"]),
++            ).fetchone()
++            if selected_machine is None:
++                raise HTTPException(status_code=400, detail="Selected machine not found for this customer.")
++            manufacturer = selected_machine["manufacturer"] or ""
++            machine = selected_machine["model"] or selected_machine["name"] or ""
++            pin_serial = selected_machine["vin_pin_serial"] or ""
++        elif any((manufacturer.strip(), machine.strip(), pin_serial.strip())):
++            display_name = " ".join(part for part in (manufacturer.strip(), machine.strip()) if part).strip() or pin_serial.strip()
++            machine_cursor = connection.execute(
++                "INSERT INTO machines (customer_id,name,manufacturer,model,vin_pin_serial) VALUES (?,?,?,?,?)",
++                (customer_row["id"], display_name, manufacturer.strip(), machine.strip(), pin_serial.strip()),
++            )
++            machine_id = machine_cursor.lastrowid
++            connection.execute("UPDATE machines SET machine_number=? WHERE id=?", (f"PLG-M{machine_id:05d}", machine_id))
+         job_number=next_job_number(connection)
+         cur=connection.execute("""
+-            INSERT INTO jobs (job_number,created_date,customer_id,customer,company,phone,email,address,manufacturer,machine,pin_serial,status,notes)
+-            VALUES (?,?,?,?,?,?,?,?,?,?,?,'REQUESTED',?)
+-        """,(job_number,date.today().isoformat(),customer_row["id"],customer_row["name"],customer_row["company"] or "",customer_row["phone"] or "",customer_row["email"] or "",customer_row["address"] or "",manufacturer.strip(),machine.strip(),pin_serial.strip(),notes.strip()))
++            INSERT INTO jobs (job_number,created_date,customer_id,machine_id,customer,company,phone,email,address,manufacturer,machine,pin_serial,status,notes)
++            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'REQUESTED',?)
++        """,(job_number,date.today().isoformat(),customer_row["id"],machine_id,customer_row["name"],customer_row["company"] or "",customer_row["phone"] or "",customer_row["email"] or "",customer_row["address"] or "",manufacturer.strip(),machine.strip(),pin_serial.strip(),notes.strip()))
+         job_id=cur.lastrowid
+         connection.commit()
+     return RedirectResponse(url=f"/jobs/{job_id}/basket",status_code=303)
+@@ -689,11 +710,12 @@ def customer_account(request: Request, customer_id: int):
+         if customer is None: raise HTTPException(status_code=404,detail="Customer not found.")
+         connection.execute("UPDATE customers SET last_viewed_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,))
+         jobs=connection.execute("SELECT * FROM jobs WHERE customer_id=? ORDER BY id DESC",(customer_id,)).fetchall()
++        machines=connection.execute("SELECT * FROM machines WHERE customer_id=? ORDER BY active DESC, name COLLATE NOCASE",(customer_id,)).fetchall()
+         quotes=connection.execute("SELECT quotes.* FROM quotes JOIN jobs ON jobs.id=quotes.job_id WHERE jobs.customer_id=? ORDER BY quotes.id DESC",(customer_id,)).fetchall()
+         transactions=connection.execute("SELECT * FROM customer_transactions WHERE customer_id=? ORDER BY transaction_date DESC,id DESC",(customer_id,)).fetchall()
+         summary=connection.execute("SELECT COALESCE(SUM(amount),0) AS net_balance,COALESCE(SUM(CASE WHEN transaction_type='PAYMENT' THEN amount ELSE 0 END),0) AS total_payments FROM customer_transactions WHERE customer_id=?",(customer_id,)).fetchone(); connection.commit()
+         net=float(summary["net_balance"] or 0); account={"available_credit":max(net,0),"outstanding_balance":max(-net,0),"total_payments":float(summary["total_payments"] or 0)}
+-    return templates.TemplateResponse(request=request,name="customer_account.html",context={"customer":customer,"jobs":jobs,"quotes":quotes,"transactions":transactions,"account":account,"active_page":"customers"})
++    return templates.TemplateResponse(request=request,name="customer_account.html",context={"customer":customer,"machines":machines,"jobs":jobs,"quotes":quotes,"transactions":transactions,"account":account,"active_page":"customers"})
+ 
+ @app.post("/customers/{customer_id}/transactions/payment")
+ def record_customer_payment(customer_id: int,amount: Annotated[float,Form()],payment_method: Annotated[str,Form()],reference: Annotated[str,Form()]=""):
+diff --git a/plg_core/application.py b/plg_core/application.py
+index 7379614..12ea229 100644
+--- a/plg_core/application.py
++++ b/plg_core/application.py
+@@ -3,9 +3,11 @@ from __future__ import annotations
+ from legacy_app import app
+ 
+ from plg_core.basket.routes import router as basket_router
++from plg_core.machines.routes import router as machines_router
+ from plg_core.database.migrations import run_migrations
+ 
+ app.include_router(basket_router)
++app.include_router(machines_router)
+ 
+ 
+ @app.on_event("startup")
+@@ -17,5 +19,5 @@ def run_modular_migrations() -> None:
+ def health():
+     return {
+         "ok": True,
+-        "version": "1.0.0-alpha.1-sprint-1",
++        "version": "1.0.0-alpha.2-machine-registry",
+     }
+diff --git a/plg_core/database/migrations.py b/plg_core/database/migrations.py
+index 5d1545e..048834b 100644
+--- a/plg_core/database/migrations.py
++++ b/plg_core/database/migrations.py
+@@ -99,8 +99,104 @@ def _migration_0001_basket_foundation(connection: sqlite3.Connection) -> None:
+     )
+ 
+ 
++def _migration_0002_machine_registry(connection: sqlite3.Connection) -> None:
++    connection.executescript(
++        """
++        CREATE TABLE IF NOT EXISTS machines (
++            id INTEGER PRIMARY KEY AUTOINCREMENT,
++            customer_id INTEGER NOT NULL,
++            machine_number TEXT UNIQUE,
++            name TEXT NOT NULL DEFAULT '',
++            manufacturer TEXT NOT NULL DEFAULT '',
++            model TEXT NOT NULL DEFAULT '',
++            year TEXT NOT NULL DEFAULT '',
++            vin_pin_serial TEXT NOT NULL DEFAULT '',
++            engine TEXT NOT NULL DEFAULT '',
++            engine_serial TEXT NOT NULL DEFAULT '',
++            transmission TEXT NOT NULL DEFAULT '',
++            component_details TEXT NOT NULL DEFAULT '',
++            notes TEXT NOT NULL DEFAULT '',
++            active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
++            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
++            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
++            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
++        );
++
++        CREATE INDEX IF NOT EXISTS idx_machines_customer_id
++            ON machines(customer_id);
++
++        CREATE INDEX IF NOT EXISTS idx_machines_serial
++            ON machines(vin_pin_serial);
++        """
++    )
++
++    job_columns = {
++        row["name"] for row in connection.execute("PRAGMA table_info(jobs)").fetchall()
++    }
++    if "machine_id" not in job_columns:
++        connection.execute("ALTER TABLE jobs ADD COLUMN machine_id INTEGER")
++
++    existing_jobs = connection.execute(
++        """
++        SELECT id, customer_id, manufacturer, machine, pin_serial
++        FROM jobs
++        WHERE customer_id IS NOT NULL AND machine_id IS NULL
++          AND (TRIM(COALESCE(manufacturer, '')) != ''
++               OR TRIM(COALESCE(machine, '')) != ''
++               OR TRIM(COALESCE(pin_serial, '')) != '')
++        ORDER BY id
++        """
++    ).fetchall()
++
++    for job in existing_jobs:
++        manufacturer = (job["manufacturer"] or "").strip()
++        model = (job["machine"] or "").strip()
++        serial = (job["pin_serial"] or "").strip()
++        machine = connection.execute(
++            """
++            SELECT id FROM machines
++            WHERE customer_id = ?
++              AND LOWER(TRIM(manufacturer)) = LOWER(TRIM(?))
++              AND LOWER(TRIM(model)) = LOWER(TRIM(?))
++              AND LOWER(TRIM(vin_pin_serial)) = LOWER(TRIM(?))
++            ORDER BY id LIMIT 1
++            """,
++            (job["customer_id"], manufacturer, model, serial),
++        ).fetchone()
++
++        if machine is None:
++            display_name = " ".join(part for part in (manufacturer, model) if part).strip()
++            if not display_name:
++                display_name = serial or "Machine"
++            cursor = connection.execute(
++                """
++                INSERT INTO machines (
++                    customer_id, name, manufacturer, model, vin_pin_serial
++                ) VALUES (?, ?, ?, ?, ?)
++                """,
++                (job["customer_id"], display_name, manufacturer, model, serial),
++            )
++            machine_id = cursor.lastrowid
++            connection.execute(
++                "UPDATE machines SET machine_number = ? WHERE id = ?",
++                (f"PLG-M{machine_id:05d}", machine_id),
++            )
++        else:
++            machine_id = machine["id"]
++
++        connection.execute(
++            "UPDATE jobs SET machine_id = ? WHERE id = ?",
++            (machine_id, job["id"]),
++        )
++
++    connection.execute(
++        "CREATE INDEX IF NOT EXISTS idx_jobs_machine_id ON jobs(machine_id)"
++    )
++
++
+ MIGRATIONS: list[Migration] = [
+     ("0001_basket_foundation", _migration_0001_basket_foundation),
++    ("0002_machine_registry", _migration_0002_machine_registry),
+ ]
+ 
+ 
+diff --git a/plg_core/machines/__init__.py b/plg_core/machines/__init__.py
+new file mode 100644
+index 0000000..ce8ca57
+--- /dev/null
++++ b/plg_core/machines/__init__.py
+@@ -0,0 +1 @@
++"""Machine registry module."""
+diff --git a/plg_core/machines/routes.py b/plg_core/machines/routes.py
+new file mode 100644
+index 0000000..487660e
+--- /dev/null
++++ b/plg_core/machines/routes.py
+@@ -0,0 +1,224 @@
++from __future__ import annotations
++
++from contextlib import closing
++from typing import Annotated
++
++from fastapi import APIRouter, Form, HTTPException, Request
++from fastapi.responses import HTMLResponse, RedirectResponse
++
++from legacy_app import get_connection, templates
++
++router = APIRouter()
++
++
++def _machine_form_context(*, title: str, subtitle: str, form_action: str,
++                          cancel_url: str, machine, customers):
++    return {
++        "title": title,
++        "subtitle": subtitle,
++        "form_action": form_action,
++        "cancel_url": cancel_url,
++        "machine": machine,
++        "customers": customers,
++        "active_page": "machines",
++    }
++
++
++@router.get("/machines", response_class=HTMLResponse)
++def list_machines(request: Request, view: str = "active"):
++    if view not in {"active", "inactive", "all"}:
++        view = "active"
++    where = "" if view == "all" else ("WHERE machines.active = 1" if view == "active" else "WHERE machines.active = 0")
++    with closing(get_connection()) as connection:
++        machines = connection.execute(
++            f"""
++            SELECT machines.*, customers.name AS customer_name,
++                   customers.company AS customer_company,
++                   COUNT(DISTINCT jobs.id) AS jobs_count
++            FROM machines
++            JOIN customers ON customers.id = machines.customer_id
++            LEFT JOIN jobs ON jobs.machine_id = machines.id
++            {where}
++            GROUP BY machines.id
++            ORDER BY machines.updated_at DESC, machines.id DESC
++            """
++        ).fetchall()
++    return templates.TemplateResponse(
++        request=request, name="machines.html",
++        context={"machines": machines, "view": view, "active_page": "machines"},
++    )
++
++
++@router.get("/machines/new", response_class=HTMLResponse)
++def new_machine_form(request: Request, customer_id: int | None = None):
++    with closing(get_connection()) as connection:
++        customers = connection.execute(
++            "SELECT * FROM customers WHERE active = 1 ORDER BY name COLLATE NOCASE"
++        ).fetchall()
++    machine = {
++        "customer_id": customer_id or "", "name": "", "manufacturer": "",
++        "model": "", "year": "", "vin_pin_serial": "", "engine": "",
++        "engine_serial": "", "transmission": "", "component_details": "",
++        "notes": "", "active": 1,
++    }
++    return templates.TemplateResponse(
++        request=request, name="machine_form.html",
++        context=_machine_form_context(
++            title="New Machine", subtitle="Create a reusable machine profile.",
++            form_action="/machines/new", cancel_url="/machines",
++            machine=machine, customers=customers,
++        ),
++    )
++
++
++@router.post("/machines/new")
++def create_machine(
++    customer_id: Annotated[int, Form()],
++    name: Annotated[str, Form()] = "",
++    manufacturer: Annotated[str, Form()] = "",
++    model: Annotated[str, Form()] = "",
++    year: Annotated[str, Form()] = "",
++    vin_pin_serial: Annotated[str, Form()] = "",
++    engine: Annotated[str, Form()] = "",
++    engine_serial: Annotated[str, Form()] = "",
++    transmission: Annotated[str, Form()] = "",
++    component_details: Annotated[str, Form()] = "",
++    notes: Annotated[str, Form()] = "",
++):
++    values = [name, manufacturer, model, year, vin_pin_serial, engine,
++              engine_serial, transmission, component_details, notes]
++    name, manufacturer, model, year, vin_pin_serial, engine, engine_serial, transmission, component_details, notes = [v.strip() for v in values]
++    if not any((name, manufacturer, model, vin_pin_serial)):
++        raise HTTPException(status_code=400, detail="Enter a machine name, manufacturer, model, or VIN/PIN/serial.")
++    if not name:
++        name = " ".join(part for part in (manufacturer, model) if part).strip() or vin_pin_serial
++    with closing(get_connection()) as connection:
++        customer = connection.execute(
++            "SELECT id FROM customers WHERE id = ? AND active = 1", (customer_id,)
++        ).fetchone()
++        if customer is None:
++            raise HTTPException(status_code=400, detail="Customer not found.")
++        cursor = connection.execute(
++            """
++            INSERT INTO machines (customer_id, name, manufacturer, model, year,
++                vin_pin_serial, engine, engine_serial, transmission,
++                component_details, notes)
++            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
++            """,
++            (customer_id, name, manufacturer, model, year, vin_pin_serial, engine,
++             engine_serial, transmission, component_details, notes),
++        )
++        machine_id = cursor.lastrowid
++        connection.execute(
++            "UPDATE machines SET machine_number = ? WHERE id = ?",
++            (f"PLG-M{machine_id:05d}", machine_id),
++        )
++        connection.commit()
++    return RedirectResponse(url=f"/machines/{machine_id}", status_code=303)
++
++
++@router.get("/machines/{machine_id}", response_class=HTMLResponse)
++def machine_detail(request: Request, machine_id: int):
++    with closing(get_connection()) as connection:
++        machine = connection.execute(
++            """SELECT machines.*, customers.name AS customer_name,
++                      customers.company AS customer_company,
++                      customers.customer_number
++               FROM machines JOIN customers ON customers.id = machines.customer_id
++               WHERE machines.id = ?""", (machine_id,)
++        ).fetchone()
++        if machine is None:
++            raise HTTPException(status_code=404, detail="Machine not found.")
++        jobs = connection.execute(
++            "SELECT * FROM jobs WHERE machine_id = ? ORDER BY id DESC", (machine_id,)
++        ).fetchall()
++        quotes = connection.execute(
++            """SELECT quotes.* FROM quotes JOIN jobs ON jobs.id = quotes.job_id
++               WHERE jobs.machine_id = ? ORDER BY quotes.id DESC""", (machine_id,)
++        ).fetchall()
++        invoices = connection.execute(
++            """SELECT invoices.* FROM invoices JOIN jobs ON jobs.id = invoices.job_id
++               WHERE jobs.machine_id = ? ORDER BY invoices.id DESC""", (machine_id,)
++        ).fetchall()
++    return templates.TemplateResponse(
++        request=request, name="machine_detail.html",
++        context={"machine": machine, "jobs": jobs, "quotes": quotes,
++                 "invoices": invoices, "active_page": "machines"},
++    )
++
++
++@router.get("/machines/{machine_id}/edit", response_class=HTMLResponse)
++def edit_machine_form(request: Request, machine_id: int):
++    with closing(get_connection()) as connection:
++        machine = connection.execute("SELECT * FROM machines WHERE id = ?", (machine_id,)).fetchone()
++        customers = connection.execute(
++            "SELECT * FROM customers WHERE active = 1 OR id = ? ORDER BY name COLLATE NOCASE",
++            (machine["customer_id"] if machine else -1,),
++        ).fetchall()
++    if machine is None:
++        raise HTTPException(status_code=404, detail="Machine not found.")
++    return templates.TemplateResponse(
++        request=request, name="machine_form.html",
++        context=_machine_form_context(
++            title="Edit Machine", subtitle=machine["machine_number"],
++            form_action=f"/machines/{machine_id}/edit",
++            cancel_url=f"/machines/{machine_id}", machine=machine, customers=customers,
++        ),
++    )
++
++
++@router.post("/machines/{machine_id}/edit")
++def update_machine(
++    machine_id: int, customer_id: Annotated[int, Form()],
++    name: Annotated[str, Form()] = "", manufacturer: Annotated[str, Form()] = "",
++    model: Annotated[str, Form()] = "", year: Annotated[str, Form()] = "",
++    vin_pin_serial: Annotated[str, Form()] = "", engine: Annotated[str, Form()] = "",
++    engine_serial: Annotated[str, Form()] = "", transmission: Annotated[str, Form()] = "",
++    component_details: Annotated[str, Form()] = "", notes: Annotated[str, Form()] = "",
++):
++    values = [name, manufacturer, model, year, vin_pin_serial, engine, engine_serial, transmission, component_details, notes]
++    name, manufacturer, model, year, vin_pin_serial, engine, engine_serial, transmission, component_details, notes = [v.strip() for v in values]
++    if not any((name, manufacturer, model, vin_pin_serial)):
++        raise HTTPException(status_code=400, detail="Machine information is required.")
++    if not name:
++        name = " ".join(part for part in (manufacturer, model) if part).strip() or vin_pin_serial
++    with closing(get_connection()) as connection:
++        result = connection.execute(
++            """UPDATE machines SET customer_id = ?, name = ?, manufacturer = ?,
++               model = ?, year = ?, vin_pin_serial = ?, engine = ?,
++               engine_serial = ?, transmission = ?, component_details = ?,
++               notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
++            (customer_id, name, manufacturer, model, year, vin_pin_serial, engine,
++             engine_serial, transmission, component_details, notes, machine_id),
++        )
++        if result.rowcount == 0:
++            raise HTTPException(status_code=404, detail="Machine not found.")
++        connection.execute(
++            """UPDATE jobs SET customer_id = ?, manufacturer = ?, machine = ?,
++               pin_serial = ? WHERE machine_id = ?""",
++            (customer_id, manufacturer, model or name, vin_pin_serial, machine_id),
++        )
++        connection.commit()
++    return RedirectResponse(url=f"/machines/{machine_id}", status_code=303)
++
++
++@router.post("/machines/{machine_id}/deactivate")
++def deactivate_machine(machine_id: int):
++    with closing(get_connection()) as connection:
++        connection.execute(
++            "UPDATE machines SET active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
++            (machine_id,),
++        )
++        connection.commit()
++    return RedirectResponse(url="/machines", status_code=303)
++
++
++@router.post("/machines/{machine_id}/reactivate")
++def reactivate_machine(machine_id: int):
++    with closing(get_connection()) as connection:
++        connection.execute(
++            "UPDATE machines SET active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
++            (machine_id,),
++        )
++        connection.commit()
++    return RedirectResponse(url=f"/machines/{machine_id}", status_code=303)
+diff --git a/templates/base.html b/templates/base.html
+index 6094b93..75c0bad 100644
+--- a/templates/base.html
++++ b/templates/base.html
+@@ -34,6 +34,9 @@
+       <a class="{% if active_page == 'customers' %}active{% endif %}" href="/customers">
+         <span class="nav-icon" aria-hidden="true">♙</span><span>Customers</span>
+       </a>
++      <a class="{% if active_page == 'machines' %}active{% endif %}" href="/machines">
++        <span class="nav-icon" aria-hidden="true">▱</span><span>Machines</span>
++      </a>
+       <a class="{% if active_page == 'suppliers' %}active{% endif %}" href="/suppliers">
+         <span class="nav-icon" aria-hidden="true">▰</span><span>Suppliers</span>
+       </a>
+diff --git a/templates/customer_account.html b/templates/customer_account.html
+index bc01760..a3c297a 100644
+--- a/templates/customer_account.html
++++ b/templates/customer_account.html
+@@ -100,6 +100,23 @@
+   </div>
+ </section>
+ 
++<section class="panel">
++  <div class="panel-heading">
++    <div><p class="eyebrow">MACHINES</p><h2>Customer Machines</h2></div>
++    <a class="button ghost" href="/machines/new?customer_id={{ customer.id }}">Add Machine</a>
++  </div>
++  {% if machines %}
++  <div class="customer-record-list">
++    {% for machine in machines %}
++    <a class="customer-record-row" href="/machines/{{ machine.id }}">
++      <div><strong>{{ machine.name }}</strong><span>{{ machine.manufacturer }} {{ machine.model }}{% if machine.vin_pin_serial %} · {{ machine.vin_pin_serial }}{% endif %}</span></div>
++      <div><strong>{{ machine.machine_number }}</strong><span>{{ "Active" if machine.active else "Inactive" }}</span></div>
++    </a>
++    {% endfor %}
++  </div>
++  {% else %}<p>No machines saved for this customer.</p>{% endif %}
++</section>
++
+ <section class="panel">
+   <div class="panel-heading">
+     <div><p class="eyebrow">ACCOUNT HISTORY</p><h2>Transactions</h2></div>
+diff --git a/templates/machine_detail.html b/templates/machine_detail.html
+new file mode 100644
+index 0000000..aec7ddb
+--- /dev/null
++++ b/templates/machine_detail.html
+@@ -0,0 +1,10 @@
++{% extends "base.html" %}
++{% block title %}{{ machine.name }} · PartsLink Global{% endblock %}
++{% block content %}
++<section class="workspace-heading"><div><p class="eyebrow">{{ machine.machine_number }}</p><h1>{{ machine.name }}</h1><p><a href="/customers/{{ machine.customer_id }}">{{ machine.customer_name }}</a>{% if machine.customer_company %} · {{ machine.customer_company }}{% endif %}</p></div><div class="heading-actions"><a class="button ghost" href="/machines/{{ machine.id }}/edit">Edit</a><a class="button" href="/jobs/new?customer_id={{ machine.customer_id }}">Create Job</a></div></section>
++<section class="job-summary-grid"><article class="context-card"><span>Manufacturer</span><strong>{{ machine.manufacturer or '—' }}</strong><small>{{ machine.model or 'No model saved' }}</small></article><article class="context-card"><span>VIN / PIN / Serial</span><strong>{{ machine.vin_pin_serial or '—' }}</strong><small>{{ machine.year or 'Year not saved' }}</small></article><article class="context-card"><span>Engine</span><strong>{{ machine.engine or '—' }}</strong><small>{{ machine.engine_serial or 'No engine serial' }}</small></article><article class="context-card"><span>Jobs</span><strong>{{ jobs|length }}</strong><small>{{ quotes|length }} quotes · {{ invoices|length }} invoices</small></article></section>
++<section class="panel customer-profile-panel"><div class="panel-heading"><div><p class="eyebrow">PROFILE</p><h2>Machine Details</h2></div></div><div class="customer-profile-grid"><div><span>Transmission</span><strong>{{ machine.transmission or '—' }}</strong></div><div><span>Status</span><strong>{{ 'Active' if machine.active else 'Inactive' }}</strong></div><div class="full"><span>Component Details</span><strong>{{ machine.component_details or '—' }}</strong></div><div class="full"><span>Notes</span><strong>{{ machine.notes or '—' }}</strong></div></div></section>
++<section class="panel"><div class="panel-heading"><div><p class="eyebrow">JOBS</p><h2>Machine Jobs</h2></div></div>{% if jobs %}<div class="customer-record-list">{% for job in jobs %}<a class="customer-record-row" href="/jobs/{{ job.id }}/basket"><div><strong>{{ job.job_number }}</strong><span>{{ job.created_date }}</span></div><div><strong>{{ job.status }}</strong><span>{{ job.notes or '' }}</span></div></a>{% endfor %}</div>{% else %}<p>No jobs have been linked to this machine.</p>{% endif %}</section>
++<section class="panel"><div class="panel-heading"><div><p class="eyebrow">DOCUMENTS</p><h2>Quotes and Invoices</h2></div></div>{% if quotes or invoices %}<div class="customer-record-list">{% for quote in quotes %}<a class="customer-record-row" href="/quotes/{{ quote.id }}/documents"><div><strong>{{ quote.quote_number }}</strong><span>Quote · {{ quote.quote_date }}</span></div><div><strong>${{ '%.2f'|format(quote.customer_total) }}</strong><span>{{ quote.status }}</span></div></a>{% endfor %}{% for invoice in invoices %}<a class="customer-record-row" href="/invoices/{{ invoice.id }}/documents"><div><strong>{{ invoice.invoice_number }}</strong><span>Invoice · {{ invoice.invoice_date }}</span></div><div><strong>${{ '%.2f'|format(invoice.customer_total) }}</strong><span>{{ invoice.status }}</span></div></a>{% endfor %}</div>{% else %}<p>No quotes or invoices for this machine.</p>{% endif %}</section>
++<section class="panel"><div class="panel-heading"><div><p class="eyebrow">STATUS</p><h2>Machine Record</h2></div></div>{% if machine.active %}<form method="post" action="/machines/{{ machine.id }}/deactivate"><button class="button ghost" type="submit">Deactivate Machine</button></form>{% else %}<form method="post" action="/machines/{{ machine.id }}/reactivate"><button class="button" type="submit">Reactivate Machine</button></form>{% endif %}</section>
++{% endblock %}
+diff --git a/templates/machine_form.html b/templates/machine_form.html
+new file mode 100644
+index 0000000..ebdc5e9
+--- /dev/null
++++ b/templates/machine_form.html
+@@ -0,0 +1,11 @@
++{% extends "base.html" %}
++{% block title %}{{ title }} · PartsLink Global{% endblock %}
++{% block content %}
++<section class="workspace-heading"><div><p class="eyebrow">MACHINE REGISTRY</p><h1>{{ title }}</h1><p>{{ subtitle }}</p></div></section>
++<form method="post" action="{{ form_action }}" class="panel form-grid">
++<div class="form-section full"><p class="eyebrow">OWNER</p><h2>Customer</h2><label>Customer *<select name="customer_id" required><option value="">Select customer</option>{% for customer in customers %}<option value="{{ customer.id }}" {% if machine.customer_id|string == customer.id|string %}selected{% endif %}>{{ customer.name }}{% if customer.company %} · {{ customer.company }}{% endif %}</option>{% endfor %}</select></label></div>
++<div class="form-section"><p class="eyebrow">IDENTITY</p><h2>Machine Information</h2><label>Display Name<input name="name" value="{{ machine.name or '' }}" placeholder="CAT 420D Backhoe"></label><div class="two-column"><label>Manufacturer<input name="manufacturer" value="{{ machine.manufacturer or '' }}"></label><label>Model<input name="model" value="{{ machine.model or '' }}"></label></div><div class="two-column"><label>Year<input name="year" value="{{ machine.year or '' }}"></label><label>VIN / PIN / Serial<input name="vin_pin_serial" value="{{ machine.vin_pin_serial or '' }}"></label></div></div>
++<div class="form-section"><p class="eyebrow">POWERTRAIN</p><h2>Engine and Components</h2><label>Engine<input name="engine" value="{{ machine.engine or '' }}"></label><label>Engine Serial<input name="engine_serial" value="{{ machine.engine_serial or '' }}"></label><label>Transmission<input name="transmission" value="{{ machine.transmission or '' }}"></label><label>Component Details<textarea name="component_details" rows="3">{{ machine.component_details or '' }}</textarea></label></div>
++<div class="form-section full"><label>Notes<textarea name="notes" rows="4">{{ machine.notes or '' }}</textarea></label></div>
++<div class="form-actions full"><a class="button ghost" href="{{ cancel_url }}">Cancel</a><button class="button" type="submit">Save Machine</button></div>
++</form>{% endblock %}
+diff --git a/templates/machines.html b/templates/machines.html
+new file mode 100644
+index 0000000..5a132ce
+--- /dev/null
++++ b/templates/machines.html
+@@ -0,0 +1,8 @@
++{% extends "base.html" %}
++{% block title %}Machines · PartsLink Global{% endblock %}
++{% block content %}
++<section class="workspace-heading"><div><p class="eyebrow">MACHINE REGISTRY</p><h1>Machines</h1><p>Reusable vehicle, equipment, engine, and component profiles.</p></div><a class="button" href="/machines/new">＋ New Machine</a></section>
++<section class="panel">
++<div class="panel-heading"><div><p class="eyebrow">REGISTRY</p><h2>Machine Profiles</h2></div><div class="view-switch"><a href="/machines?view=active" class="{% if view == 'active' %}active{% endif %}">Active</a><a href="/machines?view=inactive" class="{% if view == 'inactive' %}active{% endif %}">Inactive</a><a href="/machines?view=all" class="{% if view == 'all' %}active{% endif %}">All</a></div></div>
++{% if machines %}<div class="customer-record-list">{% for machine in machines %}<a class="customer-record-row" href="/machines/{{ machine.id }}"><div><strong>{{ machine.name }}</strong><span>{{ machine.manufacturer }} {{ machine.model }}{% if machine.year %} · {{ machine.year }}{% endif %}{% if machine.vin_pin_serial %} · {{ machine.vin_pin_serial }}{% endif %}</span></div><div><strong>{{ machine.customer_name }}</strong><span>{{ machine.machine_number }} · {{ machine.jobs_count }} job{% if machine.jobs_count != 1 %}s{% endif %}</span></div></a>{% endfor %}</div>{% else %}<p>No machine profiles found.</p>{% endif %}
++</section>{% endblock %}
+diff --git a/templates/new_job.html b/templates/new_job.html
+index be39db9..5c5c135 100644
+--- a/templates/new_job.html
++++ b/templates/new_job.html
+@@ -7,8 +7,10 @@
+ <div class="form-section"><p class="eyebrow">CUSTOMER</p><h2>Customer Information</h2>
+ <label>Existing Customer<select name="customer_id" id="customer-selector"><option value="">+ Create New Customer</option>{% for customer in customers %}<option value="{{ customer.id }}" data-name="{{ customer.name|e }}" data-company="{{ (customer.company or '')|e }}" data-phone="{{ (customer.phone or '')|e }}" data-email="{{ (customer.email or '')|e }}" data-address="{{ (customer.address or '')|e }}" {% if selected_customer_id == customer.id %}selected{% endif %}>{{ customer.name }}{% if customer.company %} · {{ customer.company }}{% endif %} ({{ customer.customer_number }})</option>{% endfor %}</select></label>
+ <label>Customer Name *<input name="customer" id="customer-name" required autofocus></label><label>Company<input name="company" id="customer-company"></label><div class="two-column"><label>Phone<input name="phone" id="customer-phone"></label><label>Email<input name="email" type="email" id="customer-email"></label></div><label>Address<input name="address" id="customer-address"></label></div>
+-<div class="form-section"><p class="eyebrow">EQUIPMENT</p><h2>Machine or Vehicle</h2><div class="two-column"><label>Manufacturer<input name="manufacturer" placeholder="CAT"></label><label>Model / Machine<input name="machine" placeholder="420D Backhoe Loader"></label></div><label>VIN / PIN / Serial<input name="pin_serial" placeholder="FDP15598"></label></div>
++<div class="form-section"><p class="eyebrow">EQUIPMENT</p><h2>Machine or Vehicle</h2>
++<label>Existing Machine<select name="machine_id" id="machine-selector"><option value="">+ Add New Machine</option>{% for item in machines %}<option value="{{ item.id }}" data-customer-id="{{ item.customer_id }}">{{ item.name }}{% if item.vin_pin_serial %} · {{ item.vin_pin_serial }}{% endif %}</option>{% endfor %}</select></label>
++<div id="new-machine-fields"><div class="two-column"><label>Manufacturer<input name="manufacturer" placeholder="CAT"></label><label>Model / Machine<input name="machine" placeholder="420D Backhoe Loader"></label></div><label>VIN / PIN / Serial<input name="pin_serial" placeholder="FDP15598"></label></div></div>
+ <div class="form-actions full streamlined-job-actions"><a class="button ghost" href="/jobs">Cancel</a><button class="button" type="submit">Create Job &amp; Open Parts Basket →</button></div>
+ </form>
+-<script>(()=>{const s=document.getElementById('customer-selector');const m={name:document.getElementById('customer-name'),company:document.getElementById('customer-company'),phone:document.getElementById('customer-phone'),email:document.getElementById('customer-email'),address:document.getElementById('customer-address')};function sync(){const o=s.options[s.selectedIndex];const e=Boolean(s.value);for(const [k,f] of Object.entries(m)){f.value=e?(o.dataset[k]||''):'';f.readOnly=e;}}s.addEventListener('change',sync);sync();})();</script>
++<script>(()=>{const c=document.getElementById('customer-selector');const ms=document.getElementById('machine-selector');const nf=document.getElementById('new-machine-fields');const m={name:document.getElementById('customer-name'),company:document.getElementById('customer-company'),phone:document.getElementById('customer-phone'),email:document.getElementById('customer-email'),address:document.getElementById('customer-address')};function filterMachines(){const customerId=c.value;for(const o of ms.options){if(!o.value){o.hidden=false;continue;}o.hidden=!customerId||o.dataset.customerId!==customerId;}if(ms.selectedOptions[0]?.hidden)ms.value='';nf.hidden=Boolean(ms.value);}function sync(){const o=c.options[c.selectedIndex];const e=Boolean(c.value);for(const [k,f] of Object.entries(m)){f.value=e?(o.dataset[k]||''):'';f.readOnly=e;}filterMachines();}c.addEventListener('change',sync);ms.addEventListener('change',()=>{nf.hidden=Boolean(ms.value);});sync();})();</script>
+ {% endblock %}

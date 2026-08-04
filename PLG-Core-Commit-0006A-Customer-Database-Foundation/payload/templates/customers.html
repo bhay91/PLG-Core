@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Customers · PartsLink Global{% endblock %}
+{% block content %}
+<section class="workspace-heading"><div><p class="eyebrow">CUSTOMERS</p><h1>Customer Accounts</h1><p>Customer records, jobs, quotes, and account history.</p></div><a class="button" href="/jobs/new">Create Job</a></section>
+<section class="panel">
+{% if customers %}<div class="customer-record-list">{% for customer in customers %}<a class="customer-record-row" href="/customers/{{ customer.id }}"><div><strong>{{ customer.name }}</strong><span>{{ customer.customer_number }}{% if customer.company %} · {{ customer.company }}{% endif %}</span></div><div><strong>{{ customer.jobs_count }} job{% if customer.jobs_count != 1 %}s{% endif %}</strong><span>{{ customer.phone or customer.email or "No contact information" }}</span></div></a>{% endfor %}</div>{% else %}<p>No customer records yet. Create a job to add the first customer.</p>{% endif %}
+</section>
+{% endblock %}

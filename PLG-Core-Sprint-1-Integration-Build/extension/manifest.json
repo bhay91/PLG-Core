@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "PLG Verify Assistant",
+  "version": "0.15.0",
+  "description": "PLG connector SDK with normalized CAT SIS and Worldpac cart import.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://sis2.cat.com/*",
+    "https://speeddial.worldpac.com/*",
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*"
+  ],
+  "action": {
+    "default_title": "PLG Verify Assistant",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://sis2.cat.com/*",
+        "https://speeddial.worldpac.com/*"
+      ],
+      "js": [
+        "sdk.js",
+        "connectors.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "plg-verify-assistant@partslinkglobal.local",
+      "strict_min_version": "121.0"
+    }
+  }
+}

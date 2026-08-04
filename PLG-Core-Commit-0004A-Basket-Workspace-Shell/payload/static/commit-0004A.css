@@ -1,0 +1,459 @@
+
+/* Commit 0004A Parts Basket Workspace Shell */
+.basket-page-heading {
+  margin-bottom: 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+}
+
+.basket-page-heading h1 {
+  margin: 5px 0 7px;
+  color: var(--ink-strong);
+  font-size: clamp(30px, 4vw, 42px);
+  line-height: 1.08;
+  letter-spacing: -.035em;
+}
+
+.basket-page-heading p:not(.eyebrow) {
+  margin: 0;
+  color: var(--muted);
+}
+
+.basket-context-grid {
+  margin-bottom: 18px;
+}
+
+.basket-workspace {
+  margin-top: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.basket-toolbar {
+  padding: 20px 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.basket-toolbar h2 {
+  margin: 4px 0;
+  color: var(--ink-strong);
+}
+
+.basket-toolbar p:last-child {
+  margin: 0;
+  color: var(--muted);
+}
+
+.basket-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.used-part-button {
+  border-color: #c79a38 !important;
+  background: #fff9eb !important;
+  color: #775500 !important;
+  box-shadow: none !important;
+}
+
+.basket-table-wrap {
+  overflow-x: auto;
+}
+
+.basket-table {
+  min-width: 1320px;
+}
+
+.basket-table th {
+  top: 0;
+}
+
+.basket-table th.numeric,
+.basket-table td.numeric {
+  text-align: right;
+}
+
+.basket-table td {
+  vertical-align: middle;
+}
+
+.basket-table td > strong,
+.basket-table td > small {
+  display: block;
+}
+
+.basket-table td > small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.basket-use-column {
+  width: 50px;
+  text-align: center !important;
+}
+
+.basket-actions-column {
+  width: 44px;
+  text-align: center !important;
+}
+
+.basket-select-button {
+  width: 29px;
+  height: 29px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: #fff;
+  color: #8a97aa;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.basket-select-button.selected {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.basket-row-muted {
+  opacity: .52;
+  background: #fafbfc;
+}
+
+.source-type {
+  display: inline-flex;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #edf2f8;
+  color: #53627a;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .03em;
+}
+
+.source-type-oem {
+  background: #eaf3ff;
+  color: #0759be;
+}
+
+.source-type-used {
+  background: #fff3d7;
+  color: #7d5900;
+}
+
+.source-type-reman {
+  background: #f1edff;
+  color: #654bc0;
+}
+
+.markup-value,
+.customer-price {
+  color: var(--accent-dark);
+  font-weight: 780;
+}
+
+.availability-badge {
+  display: inline-flex;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 9px;
+  font-weight: 780;
+  white-space: nowrap;
+}
+
+.availability-badge.neutral {
+  background: #eef2f6;
+  color: #68768d;
+}
+
+.basket-delete-button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #efb4b4;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--danger);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.basket-delete-button:hover {
+  background: var(--danger-soft);
+}
+
+.basket-empty {
+  padding: 58px 20px;
+  text-align: center;
+}
+
+.basket-empty-icon {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 24px;
+}
+
+.basket-empty h3 {
+  margin: 0 0 6px;
+  color: var(--ink-strong);
+}
+
+.basket-empty p {
+  margin: 0 0 17px;
+  color: var(--muted);
+}
+
+.basket-empty > div:last-child {
+  display: flex;
+  justify-content: center;
+  gap: 9px;
+}
+
+.basket-totals-bar {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.basket-totals-bar article {
+  min-height: 120px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-right: 1px solid var(--line);
+}
+
+.basket-totals-bar article:last-child {
+  border-right: 0;
+}
+
+.basket-totals-bar span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 780;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.basket-totals-bar strong {
+  margin: 7px 0 2px;
+  color: var(--ink-strong);
+  font-size: 25px;
+  letter-spacing: -.03em;
+}
+
+.basket-totals-bar small {
+  color: var(--muted);
+}
+
+.basket-totals-bar .customer-total strong {
+  color: var(--accent-dark);
+}
+
+.basket-totals-bar .profit-total strong {
+  color: var(--success);
+}
+
+.basket-action-bar {
+  margin-top: 16px;
+  padding: 17px 19px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  border: 1px solid #bcd5f1;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #f7fbff, #eef6ff);
+}
+
+.basket-action-bar > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.basket-action-bar span {
+  color: var(--ink-strong);
+  font-weight: 760;
+}
+
+.basket-action-bar small {
+  color: var(--muted);
+}
+
+.basket-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.basket-action-buttons form {
+  margin: 0;
+}
+
+.basket-dialog {
+  width: min(680px, calc(100% - 28px));
+  padding: 0;
+  border: 0;
+  border-radius: 15px;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 24px 70px rgba(10, 34, 70, .26);
+}
+
+.basket-dialog::backdrop {
+  background: rgba(6, 24, 50, .48);
+  backdrop-filter: blur(3px);
+}
+
+.basket-dialog form {
+  padding: 22px;
+}
+
+.dialog-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.dialog-heading h2 {
+  margin: 4px 0;
+  color: var(--ink-strong);
+}
+
+.dialog-heading p:last-child {
+  margin: 0;
+  color: var(--muted);
+}
+
+.dialog-close {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.dialog-grid {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.dialog-grid label {
+  margin: 0;
+}
+
+.dialog-full {
+  grid-column: 1 / -1;
+}
+
+.dialog-actions {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.used-part-note {
+  margin-top: 16px;
+  padding: 13px;
+  border: 1px solid #ead18f;
+  border-radius: 10px;
+  background: #fff9e9;
+  color: #664c0b;
+  font-size: 12px;
+}
+
+@media (max-width: 1050px) {
+  .basket-totals-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .basket-totals-bar article:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .basket-totals-bar article:last-child {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 720px) {
+  .basket-page-heading,
+  .basket-toolbar,
+  .basket-action-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .basket-toolbar-actions,
+  .basket-action-buttons {
+    width: 100%;
+  }
+
+  .basket-toolbar-actions .button,
+  .basket-action-buttons form,
+  .basket-action-buttons .button {
+    width: 100%;
+  }
+
+  .basket-action-buttons {
+    flex-direction: column;
+  }
+
+  .basket-totals-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .basket-totals-bar article,
+  .basket-totals-bar article:nth-child(2n) {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .basket-totals-bar article:last-child {
+    grid-column: auto;
+    border-bottom: 0;
+  }
+
+  .dialog-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dialog-full {
+    grid-column: auto;
+  }
+}
