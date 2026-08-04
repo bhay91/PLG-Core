@@ -12,6 +12,7 @@ class BasketItemCreate(BaseModel):
     brand: str = ""
     quantity: int = Field(default=1, ge=1)
     supplier_unit_cost: float | None = Field(default=None, ge=0)
+    markup_percent: float | None = Field(default=None, ge=0)
     availability: str = ""
     lead_time: str = ""
     selected: bool = True

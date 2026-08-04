@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from plg_core.jobs.engine import JobEngine
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -741,19 +742,50 @@ def record_customer_adjustment(customer_id: int,amount: Annotated[float,Form()],
 @app.get("/jobs", response_class=HTMLResponse)
 def list_jobs(request: Request):
     with closing(get_connection()) as connection:
-        jobs = connection.execute(
+        rows = connection.execute(
             """
             SELECT
                 jobs.*,
-                COUNT(job_parts.id) AS parts_count,
+                COUNT(DISTINCT job_parts.id) AS parts_count,
                 SUM(CASE WHEN job_parts.verification_status = 'VERIFIED' THEN 1 ELSE 0 END)
-                    AS verified_parts
+                    AS verified_parts,
+                baskets.status AS basket_status,
+                COALESCE(SUM(CASE WHEN basket_items.selected = 1 THEN 1 ELSE 0 END), 0)
+                    AS selected_items,
+                customer_requests.id AS customer_request_id,
+                quotes.id AS quote_id,
+                quotes.status AS quote_status,
+                invoices.id AS invoice_id,
+                invoices.status AS invoice_status
             FROM jobs
             LEFT JOIN job_parts ON job_parts.job_id = jobs.id
+            LEFT JOIN baskets ON baskets.job_id = jobs.id
+            LEFT JOIN basket_items ON basket_items.basket_id = baskets.id
+            LEFT JOIN customer_requests ON customer_requests.job_id = jobs.id
+            LEFT JOIN quotes ON quotes.id = (
+                SELECT q.id FROM quotes q
+                WHERE q.job_id = jobs.id AND COALESCE(q.is_archived, 0) = 0
+                ORDER BY q.id DESC LIMIT 1
+            )
+            LEFT JOIN invoices ON invoices.id = (
+                SELECT i.id FROM invoices i
+                WHERE i.job_id = jobs.id
+                ORDER BY i.id DESC LIMIT 1
+            )
             GROUP BY jobs.id
             ORDER BY jobs.id DESC
             """
         ).fetchall()
+
+        jobs = []
+        for row in rows:
+            item = dict(row)
+            item["intelligence"] = JobEngine.evaluate(
+                item,
+                selected_items=item.get("selected_items", 0),
+                basket_status=item.get("basket_status") or "OPEN",
+            ).to_dict()
+            jobs.append(item)
 
     return templates.TemplateResponse(
         request=request,

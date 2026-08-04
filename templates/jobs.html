@@ -94,7 +94,7 @@
       <span>Customer</span>
       <span>Machine / Vehicle</span>
       <span>VIN / PIN / Serial</span>
-      <span>Verification</span>
+      <span>Next Action</span>
       <span>Status</span>
       <span></span>
     </div>
@@ -127,13 +127,8 @@
       </div>
 
       <div class="job-register-progress">
-        {% set total = job.parts_count or 0 %}
-        {% set verified = job.verified_parts or 0 %}
-        {% set percent = ((verified / total) * 100) if total else 0 %}
-        <div class="verification-count">{{ verified }}/{{ total }} verified</div>
-        <div class="verification-bar" aria-label="{{ percent|round(0)|int }} percent verified">
-          <span style="width: {{ percent }}%"></span>
-        </div>
+        <strong>{{ job.intelligence.next_action }}</strong>
+        <small>{{ job.intelligence.health_label }} · {{ job.intelligence.workflow_stage|title }}</small>
       </div>
 
       <div>

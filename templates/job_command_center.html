@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Job Command Center · {{ job.job_number }}{% endblock %}
+{% block content %}
+<style>
+.cc-shell{max-width:1460px;margin:0 auto;display:grid;gap:18px}.cc-card{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-sm)}
+.cc-hero{padding:24px;display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:22px;align-items:stretch}.cc-kicker{margin:0 0 8px;color:var(--accent-dark);font-size:12px;font-weight:850;letter-spacing:.09em}.cc-hero h1{margin:0;color:var(--ink-strong);font-size:38px;line-height:1.05}.cc-subtitle{margin:10px 0 0;color:var(--muted);font-size:16px}.cc-meta{margin-top:18px;display:flex;flex-wrap:wrap;gap:9px}.cc-chip{padding:8px 11px;border:1px solid var(--line);border-radius:999px;background:var(--surface-soft);font-size:12px;font-weight:800}.cc-next{padding:20px;border-radius:14px;background:linear-gradient(135deg,#0b3267,#092650);color:#fff;display:flex;flex-direction:column;justify-content:space-between}.cc-next span{font-size:10px;font-weight:850;letter-spacing:.12em;opacity:.72}.cc-next strong{margin:8px 0 18px;font-size:24px}.cc-next .button{background:#fff;color:var(--ink-strong);border-color:#fff}
+.cc-progress{padding:14px 18px;display:flex;gap:9px;flex-wrap:wrap}.cc-step{padding:8px 12px;border-radius:999px;background:#f2f5f9;color:#778399;font-size:12px;font-weight:800;text-decoration:none}.cc-step.done{background:var(--success-soft);color:var(--success)}.cc-step.current{background:var(--accent-soft);color:var(--accent-dark)}
+.cc-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(310px,.55fr);gap:18px}.cc-request{padding:22px}.cc-label{margin:0 0 7px;color:var(--accent-dark);font-size:11px;font-weight:850;letter-spacing:.1em}.cc-request h2,.cc-section h2,.cc-summary h2{margin:0;color:var(--ink-strong);font-size:23px}.cc-request-text{margin:18px 0;color:#2f405b;font-size:16px;line-height:1.65;white-space:pre-wrap}.cc-muted{color:var(--muted);font-size:13px}.cc-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.cc-job-summary{padding:22px;display:grid;gap:16px}.cc-summary-line{display:grid;gap:3px;padding-bottom:14px;border-bottom:1px solid var(--line)}.cc-summary-line:last-child{padding-bottom:0;border-bottom:0}.cc-summary-line span{color:var(--muted);font-size:11px;font-weight:800;text-transform:uppercase}.cc-summary-line strong{font-size:15px;color:var(--ink-strong)}
+.cc-section{padding:22px}.cc-section-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:18px}.cc-research-layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:16px}.cc-tools{padding:16px;border:1px solid #cfe0f5;border-radius:13px;background:#f5f9ff}.cc-tools form{display:grid;gap:10px}.cc-tools label{font-size:12px;font-weight:800}.cc-tools select{width:100%}.cc-results{min-width:0}.cc-source{border:1px solid var(--line);border-radius:13px;overflow:hidden;margin-bottom:12px}.cc-source-head{padding:14px 16px;background:#f8fafc;display:flex;justify-content:space-between;gap:12px;align-items:center}.cc-source-head strong{font-size:16px}.cc-result-table,.cc-ready-table{width:100%;border-collapse:collapse}.cc-result-table th,.cc-ready-table th{padding:11px 12px;background:#f7f9fc;color:#6c7890;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.04em}.cc-result-table td,.cc-ready-table td{padding:13px 12px;border-top:1px solid var(--line);vertical-align:middle;font-size:13px}.cc-result-table tr.selected{background:#effbf4}.cc-part-title{display:grid;gap:2px}.cc-part-title small{color:var(--muted)}
+.cc-empty{padding:34px;border:1px dashed var(--line-strong);border-radius:13px;text-align:center;color:var(--muted)}.cc-badge{display:inline-flex;align-items:center;padding:5px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent-dark);font-size:10px;font-weight:850}.cc-count{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent-dark);font-size:12px;font-weight:850}
+.cc-summary{overflow:hidden}.cc-summary-head{padding:20px 22px;display:flex;justify-content:space-between;gap:18px;align-items:center}.cc-primary-numbers{display:grid;grid-template-columns:1fr 1fr}.cc-primary-number{padding:24px 22px}.cc-primary-number:first-child{background:#eaf4ff}.cc-primary-number:last-child{background:#ebf9ef}.cc-primary-number span,.cc-costs span{display:block;color:#6b7890;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.06em}.cc-primary-number strong{display:block;margin-top:7px;font-size:30px;color:#0863cb}.cc-primary-number:last-child strong{color:#168648}.cc-costs{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line)}.cc-costs div{padding:18px 22px;border-right:1px solid var(--line)}.cc-costs div:last-child{border-right:0}.cc-costs strong{display:block;margin-top:5px;font-size:17px}
+.cc-qty-form{display:flex;align-items:center;gap:6px}.cc-qty-form input{width:58px}.cc-remove{width:30px;height:30px;border:1px solid #f1b6b6;border-radius:8px;background:#fff;color:var(--danger);font-weight:900}.cc-dialog{width:min(720px,calc(100vw - 32px));border:0;border-radius:16px;padding:0;box-shadow:0 24px 80px rgba(8,30,65,.25)}.cc-dialog::backdrop{background:rgba(7,26,54,.55)}.cc-dialog form{padding:22px}.cc-dialog-head{display:flex;justify-content:space-between;gap:18px}.cc-dialog-grid{margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:14px}.cc-dialog-grid label{display:grid;gap:6px;font-size:12px;font-weight:800}.cc-dialog-grid .full{grid-column:1/-1}.cc-dialog-actions{margin-top:20px;display:flex;justify-content:flex-end;gap:10px}
+@media(max-width:1050px){.cc-hero,.cc-grid,.cc-research-layout{grid-template-columns:1fr}.cc-next{min-height:160px}.cc-primary-numbers,.cc-costs{grid-template-columns:1fr}.cc-costs div{border-right:0;border-bottom:1px solid var(--line)}.cc-costs div:last-child{border-bottom:0}}@media(max-width:720px){.cc-hero h1{font-size:30px}.cc-section-head,.cc-summary-head{flex-direction:column}.cc-result-table,.cc-ready-table{display:block;overflow-x:auto}.cc-dialog-grid{grid-template-columns:1fr}.cc-dialog-grid .full{grid-column:auto}}
+</style>
+
+<div class="cc-shell">
+  {% set has_request = customer_request is not none %}
+  {% set has_parts = basket.totals.selected_items > 0 %}
+  {% set quote_ready = basket.status == "COMMITTED" %}
+
+  <section class="cc-card cc-hero">
+    <div>
+      <p class="cc-kicker">{{ job.job_number }} · JOB COMMAND CENTER</p>
+      <h1>{{ job.customer }}</h1>
+      <p class="cc-subtitle">{{ job.manufacturer }} {{ job.machine }}{% if job.pin_serial %} · {{ job.pin_serial }}{% endif %}</p>
+      <div class="cc-meta">
+        <span class="cc-chip">{{ job.status }}</span>
+        <span class="cc-chip">{{ basket.totals.selected_items }} part{% if basket.totals.selected_items != 1 %}s{% endif %} ready</span>
+        {% if request_attachment_count %}<span class="cc-chip">{{ request_attachment_count }} attachment{% if request_attachment_count != 1 %}s{% endif %}</span>{% endif %}
+      </div>
+    </div>
+    <aside class="cc-next">
+      <div>
+        <span>NEXT ACTION · {{ intelligence.health_label|upper }}</span>
+        <strong>{{ intelligence.next_action }}</strong>
+      </div>
+      {% if intelligence.action_method == "POST" %}
+      <form method="post" action="{{ intelligence.action_url }}"><button class="button full-width" type="submit">{{ intelligence.next_action }} →</button></form>
+      {% elif intelligence.action_key != "COMPLETED" %}
+      <a class="button full-width" href="{{ intelligence.action_url }}">{{ intelligence.next_action }} →</a>
+      {% else %}
+      <a class="button full-width" href="{{ intelligence.action_url }}">Open Invoice →</a>
+      {% endif %}
+    </aside>
+  </section>
+
+  <nav class="cc-card cc-progress" aria-label="Job progress">
+    {% for step in intelligence.workflow_steps %}
+      {% if step.url %}
+      <a class="cc-step {{ step.state }}" href="{{ step.url }}">{{ step.symbol }} {{ step.label }}</a>
+      {% else %}
+      <span class="cc-step {{ step.state }}">{{ step.symbol }} {{ step.label }}</span>
+      {% endif %}
+    {% endfor %}
+  </nav>
+
+  <div class="cc-grid">
+    <section class="cc-card cc-request">
+      <p class="cc-label">CUSTOMER REQUEST</p>
+      <h2>Why this job is here</h2>
+      {% if customer_request %}
+        <div class="cc-request-text">{{ customer_request.request_text or "No request details entered." }}</div>
+        <p class="cc-muted">{% if request_attachment_count %}{{ request_attachment_count }} attachment{% if request_attachment_count != 1 %}s{% endif %}{% else %}No attachments{% endif %}</p>
+        <div class="cc-actions"><a class="button ghost" href="/requests/{{ customer_request.id }}">Open Original Request</a></div>
+      {% else %}
+        <div class="cc-empty">This job was not created from a Customer Request.</div>
+      {% endif %}
+    </section>
+
+    <aside class="cc-card cc-job-summary">
+      <p class="cc-label">JOB SUMMARY</p>
+      <div class="cc-summary-line"><span>Customer</span><strong>{{ job.customer }}</strong></div>
+      <div class="cc-summary-line"><span>Vehicle / Machine</span><strong>{{ job.manufacturer }} {{ job.machine }}</strong></div>
+      <div class="cc-summary-line"><span>VIN / PIN / Serial</span><strong>{{ job.pin_serial or "Not provided" }}</strong></div>
+      <div class="cc-summary-line"><span>Status</span><strong>{{ job.status }}</strong></div>
+      <a class="button ghost full-width" href="/jobs/{{ job.id }}/edit">Edit Job</a>
+    </aside>
+  </div>
+
+  <section class="cc-card cc-section" id="parts-research">
+    <div class="cc-section-head">
+      <div><p class="cc-label">PARTS RESEARCH</p><h2>Find and compare parts</h2><p class="cc-muted">Open a supplier, import its results, or add a part manually.</p></div>
+      <button class="button ghost" type="button" data-dialog-open="manual-vendor-line">＋ Manual Part</button>
+    </div>
+    <div class="cc-research-layout">
+      <aside class="cc-tools">
+        <p class="cc-label">RESEARCH TOOLS</p>
+        <form method="post" action="/jobs/{{ job.id }}/start-source-import" target="_blank">
+          <label>Supplier / Source
+            <select name="source_key" required>{% for connector in connectors %}<option value="{{ connector.connector_key }}">{{ connector.display_name }}</option>{% endfor %}</select>
+          </label>
+          <button class="button full-width" type="submit">Open Source</button>
+        </form>
+        <p class="cc-muted">Complete the supplier cart, then import it with the Firefox extension.</p>
+      </aside>
+      <div class="cc-results">
+        <div class="cc-section-head"><div><p class="cc-label">RESEARCH RESULTS</p></div><span class="cc-count">{{ basket.totals.all_items }}</span></div>
+        {% if vendor_carts %}
+          {% for vendor_cart in vendor_carts %}
+          <article class="cc-source">
+            <header class="cc-source-head"><div><small class="cc-muted">SOURCE</small><br><strong>{{ vendor_cart['source'].source_name }}</strong></div><span class="cc-muted">{{ vendor_cart['items']|length }} result{% if vendor_cart['items']|length != 1 %}s{% endif %}</span></header>
+            {% if vendor_cart['items'] %}
+            <div style="overflow-x:auto"><table class="cc-result-table"><thead><tr><th>Part</th><th>Description</th><th>Type</th><th>Qty</th><th>Cost</th><th>Availability</th><th></th></tr></thead><tbody>
+            {% for item in vendor_cart['items'] %}<tr class="{% if item.selected %}selected{% endif %}"><td><div class="cc-part-title"><strong>{{ item.supplier_part_number or item.manufacturer_part_number or "—" }}</strong><small>{{ item.brand or "" }}</small></div></td><td><div class="cc-part-title"><strong>{{ item.requested_description }}</strong><small>{{ item.lead_time or "No lead time" }}</small></div></td><td><span class="cc-badge">{{ item.source_type }}</span></td><td>{{ item.quantity }}</td><td>{% if item.supplier_unit_cost is not none %}${{ "%.2f"|format(item.supplier_unit_cost) }}{% else %}—{% endif %}</td><td>{{ item.availability or "Not entered" }}</td><td><form method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/toggle"><input type="hidden" name="selected" value="{{ 0 if item.selected else 1 }}"><button class="button small {% if item.selected %}ghost{% endif %}" type="submit">{% if item.selected %}✓ Added to Quote{% else %}+ Add to Quote{% endif %}</button></form></td></tr>{% endfor %}
+            </tbody></table></div>
+            {% else %}<div class="cc-empty">No parts imported from this source.</div>{% endif %}
+          </article>
+          {% endfor %}
+        {% else %}<div class="cc-empty">No research results yet. Open a source or add a manual part.</div>{% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="cc-card cc-section" id="parts-ready">
+    <div class="cc-section-head"><div><p class="cc-label">PARTS READY FOR QUOTE</p><h2>Review selected parts</h2><p class="cc-muted">Only selected parts move into the customer quote.</p></div><span class="cc-count">{{ basket.totals.selected_items }}</span></div>
+    {% if basket_items %}
+    <div style="overflow-x:auto"><table class="cc-ready-table"><thead><tr><th>Supplier</th><th>Part Number</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Cost</th><th>Markup</th><th>Customer Unit</th><th>Total</th><th></th></tr></thead><tbody>
+    {% for item in basket_items %}{% set cost = item.supplier_unit_cost or 0 %}{% if item.markup_percent is not none %}{% set markup = item.markup_percent %}{% set customer_unit = (cost * (1 + markup / 100))|round(2) %}{% elif cost <= 50 %}{% set markup = 40 %}{% set customer_unit = (cost * 1.40)|round(0, 'ceil') %}{% elif cost <= 200 %}{% set markup = 30 %}{% set customer_unit = (cost * 1.30)|round(0, 'ceil') %}{% elif cost <= 500 %}{% set markup = 25 %}{% set customer_unit = (cost * 1.25)|round(0, 'ceil') %}{% else %}{% set markup = 20 %}{% set customer_unit = (cost * 1.20)|round(0, 'ceil') %}{% endif %}
+    <tr>
+<td><strong>{{ item.supplier_name or "Manual Vendor" }}</strong></td>
+<td>{{ item.supplier_part_number or item.manufacturer_part_number or "—" }}</td>
+<td>{{ item.requested_description }}</td>
+<td><span class="cc-badge">{{ item.source_type }}</span></td>
+
+<td>
+<form class="cc-inline-edit-form" method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/update">
+<input type="number" name="quantity" value="{{ item.quantity }}" min="1" required>
+</td>
+
+<td>
+<input type="number" name="supplier_unit_cost" value="{{ '%.2f'|format(cost) }}" step="0.01" min="0" required>
+</td>
+
+<td>
+<input type="number" name="markup_percent" value="{{ markup }}" step="0.01" min="0" required>
+</td>
+
+<td>
+<strong style="color:var(--accent)">${{ "%.2f"|format(customer_unit) }}</strong>
+</td>
+
+<td>
+<strong style="color:var(--accent)">${{ "%.2f"|format(customer_unit * item.quantity) }}</strong>
+<button class="button small ghost" type="submit">Save</button>
+</form>
+</td>
+
+<td>
+<form method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/toggle">
+<input type="hidden" name="selected" value="0">
+<button class="cc-remove" type="submit">×</button>
+</form>
+</td>
+</tr>
+    {% endfor %}</tbody></table></div>
+    {% else %}<div class="cc-empty"><strong>No parts selected yet.</strong><br>Start by researching parts above.</div>{% endif %}
+  </section>
+
+  <section class="cc-card cc-summary">
+    <header class="cc-summary-head"><div><p class="cc-label">QUOTE SUMMARY</p><h2>{% if has_parts %}Ready for review{% else %}Waiting for parts{% endif %}</h2></div>{% if quote_ready %}<form method="post" action="/jobs/{{ job.id }}/generate-quote"><button class="button" type="submit">Create Quote</button></form>{% elif has_parts %}<form method="post" action="/jobs/{{ job.id }}/basket/checkout"><button class="button" type="submit">Review Quote</button></form>{% endif %}</header>
+    <div class="cc-primary-numbers"><div class="cc-primary-number"><span>Customer Total</span><strong>${{ "%.2f"|format(basket.totals.customer_total) }}</strong></div><div class="cc-primary-number"><span>Estimated Profit</span><strong>${{ "%.2f"|format(basket.totals.estimated_profit) }}</strong></div></div>
+    <div class="cc-costs"><div><span>Parts Cost</span><strong>${{ "%.2f"|format(basket.totals.supplier_parts_total) }}</strong></div><div><span>Shipping</span><strong>${{ "%.2f"|format(basket.totals.shipping_total) }}</strong></div><div><span>Total Cost</span><strong>${{ "%.2f"|format(basket.totals.supplier_total) }}</strong></div></div>
+  </section>
+</div>
+
+<dialog class="cc-dialog" id="manual-vendor-line"><form method="post" action="/jobs/{{ job.id }}/vendor-carts/manual"><div class="cc-dialog-head"><div><p class="cc-label">MANUAL PART</p><h2>Add a supplier option</h2></div><button type="button" class="cc-remove" data-dialog-close>×</button></div><div class="cc-dialog-grid"><label>Supplier Name<input name="vendor_name" required></label><label>Part Type<select name="source_type"><option value="AFTERMARKET">Aftermarket</option><option value="OEM">OEM</option><option value="REMAN">Remanufactured</option><option value="USED">Used</option></select></label><label class="full">Description<input name="requested_description" required></label><label>Supplier Part Number<input name="supplier_part_number"></label><label>Brand<input name="brand"></label><label>Quantity<input type="number" name="quantity" value="1" min="1"></label><label>Supplier Unit Cost<input type="number" name="supplier_unit_cost" step="0.01" min="0"></label><label>Availability<input name="availability"></label><label>Lead Time<input name="lead_time"></label></div><div class="cc-dialog-actions"><button class="button ghost" type="button" data-dialog-close>Cancel</button><button class="button" type="submit">Add Part</button></div></form></dialog>
+<script>(()=>{document.querySelectorAll('[data-dialog-open]').forEach(b=>b.addEventListener('click',()=>document.getElementById(b.dataset.dialogOpen)?.showModal()));document.querySelectorAll('[data-dialog-close]').forEach(b=>b.addEventListener('click',()=>b.closest('dialog')?.close()));})();</script>
+{% endblock %}

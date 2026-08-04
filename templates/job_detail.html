@@ -27,7 +27,7 @@
 
 <section class="job-workspace-nav">
   <a class="active" href="/jobs/{{ job.id }}">Overview</a>
-  <a href="/jobs/{{ job.id }}/basket">Parts Basket</a>
+  <a href="/jobs/{{ job.id }}/basket">Parts</a>
   <span>Timeline</span>
   <span>Documents</span>
   <span>Notes</span>
@@ -44,10 +44,10 @@
   <div>
     <p class="eyebrow">JOB WORKSPACE</p>
     <h2>Manage sourcing and documents</h2>
-    <p>Use the Parts Basket to add new, aftermarket, remanufactured, or used parts.</p>
+    <p>Research suppliers, compare options, and prepare parts for the customer quote.</p>
   </div>
   <div class="header-actions">
-    <a class="button" href="/jobs/{{ job.id }}/basket">Open Parts Basket</a>
+    <a class="button" href="/jobs/{{ job.id }}/basket">Open Parts Workspace</a>
     <a class="button ghost" href="/jobs/{{ job.id }}/edit">Edit Job Information</a>
   </div>
 </section>
@@ -57,8 +57,8 @@
 <section class="panel source-import-panel">
   <div class="panel-heading">
     <div>
-      <p class="eyebrow">IMPORT SUPPLIER CART OR QUOTE</p>
-      <h2>Choose a source</h2>
+      <p class="eyebrow">PARTS RESEARCH</p>
+      <h2>Open a supplier source</h2>
     </div>
   </div>
 
@@ -88,8 +88,8 @@
 <section class="panel source-import-summary">
   <div class="panel-heading">
     <div>
-      <p class="eyebrow">SOURCE IMPORTS</p>
-      <h2>Imported cart costs</h2>
+      <p class="eyebrow">RESEARCH SUMMARY</p>
+      <h2>Imported supplier costs</h2>
     </div>
   </div>
 
@@ -180,7 +180,7 @@
 <section class="panel">
   <div class="panel-heading parts-workspace-heading">
     <div>
-      <p class="eyebrow">PARTS SOURCING WORKSPACE</p>
+      <p class="eyebrow">PARTS RESEARCH WORKSPACE</p>
       <h2>{{ parts|length }} item{% if parts|length != 1 %}s{% endif %}</h2>
       <p>Review OEM identification, supplier options, pricing, and the selected source for each part.</p>
     </div>

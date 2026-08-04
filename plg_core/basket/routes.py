@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from legacy_app import get_connection, templates
 from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
+from plg_core.jobs.engine import JobEngine
 from plg_core.basket.service import (
     add_item,
     clear_basket,
@@ -100,6 +101,50 @@ def basket_page(request: Request, job_id: int):
             """
         ).fetchall()
 
+        customer_request = connection.execute(
+            """
+            SELECT *
+            FROM customer_requests
+            WHERE job_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (job_id,),
+        ).fetchone()
+
+        request_attachment_count = 0
+        if customer_request is not None:
+            request_attachment_count = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM customer_request_attachments
+                WHERE request_id = ?
+                """,
+                (customer_request["id"],),
+            ).fetchone()[0]
+
+        quote = connection.execute(
+            """
+            SELECT *
+            FROM quotes
+            WHERE job_id = ? AND COALESCE(is_archived, 0) = 0
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (job_id,),
+        ).fetchone()
+
+        invoice = connection.execute(
+            """
+            SELECT *
+            FROM invoices
+            WHERE job_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (job_id,),
+        ).fetchone()
+
     source_lookup = {
         source["id"]: source
         for source in basket["sources"]
@@ -144,9 +189,18 @@ def basket_page(request: Request, job_id: int):
         if item["selected"]
     ]
 
+    intelligence = JobEngine.evaluate(
+        job,
+        selected_items=basket["totals"]["selected_items"],
+        basket_status=basket["status"],
+        customer_request=customer_request,
+        quote=quote,
+        invoice=invoice,
+    ).to_dict()
+
     return templates.TemplateResponse(
         request=request,
-        name="basket.html",
+        name="job_command_center.html",
         context={
             "job": job,
             "basket": basket,
@@ -154,6 +208,11 @@ def basket_page(request: Request, job_id: int):
             "vendor_carts": vendor_carts,
             "source_lookup": source_lookup,
             "connectors": connectors,
+            "customer_request": customer_request,
+            "request_attachment_count": request_attachment_count,
+            "quote": quote,
+            "invoice": invoice,
+            "intelligence": intelligence,
             "active_page": "jobs",
         },
     )
@@ -351,5 +410,28 @@ def commit_form(job_id: int):
     commit_basket(job_id)
     return RedirectResponse(
         url=f"/jobs/{job_id}/basket",
+        status_code=303,
+    )
+
+
+@router.post("/jobs/{job_id}/basket/items/{item_id}/update")
+def update_basket_item_form(
+    job_id: int,
+    item_id: int,
+    quantity: int = Form(...),
+    supplier_unit_cost: float = Form(...),
+    markup_percent: float = Form(...),
+):
+    update_item(
+        item_id,
+        BasketItemUpdate(
+            quantity=quantity,
+            supplier_unit_cost=supplier_unit_cost,
+            markup_percent=markup_percent,
+        ),
+    )
+
+    return RedirectResponse(
+        url=f"/jobs/{job_id}/basket#parts-ready",
         status_code=303,
     )
