@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Register · PartsLink Global{% endblock %}
+{% block content %}
+<section class="workspace-heading"><div><p class="eyebrow">UNIVERSAL REGISTRY</p><h1>What are we working on today?</h1><p>Choose the closest type. PLG will use the right labels for that record.</p></div></section>
+<section class="panel">
+<div class="registry-type-grid">
+{% for item in registry_types %}
+<a class="context-card registry-type-card" href="/machines/new?registry_type={{ item.value }}{% if customer_id %}&customer_id={{ customer_id }}{% endif %}">
+<span class="registry-type-icon">{{ item.icon }}</span><strong>{{ item.label }}</strong><small>{{ item.description }}</small>
+</a>
+{% endfor %}
+</div>
+</section>
+{% endblock %}

@@ -194,9 +194,40 @@ def _migration_0002_machine_registry(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_0003_universal_registry(connection: sqlite3.Connection) -> None:
+    machine_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(machines)").fetchall()
+    }
+    if "registry_type" not in machine_columns:
+        connection.execute(
+            "ALTER TABLE machines ADD COLUMN registry_type TEXT NOT NULL DEFAULT 'machine'"
+        )
+
+    # Preserve existing records while applying practical defaults where the type is obvious.
+    connection.execute(
+        """
+        UPDATE machines
+        SET registry_type = CASE
+            WHEN LENGTH(REPLACE(TRIM(vin_pin_serial), ' ', '')) = 17 THEN 'vehicle'
+            WHEN LOWER(name || ' ' || manufacturer || ' ' || model) LIKE '%hummer%' THEN 'vehicle'
+            WHEN LOWER(name || ' ' || manufacturer || ' ' || model) LIKE '%trailer%' THEN 'trailer'
+            WHEN LOWER(name || ' ' || manufacturer || ' ' || model) LIKE '%generator%' THEN 'generator'
+            WHEN LOWER(name || ' ' || manufacturer || ' ' || model) LIKE '%engine%' THEN 'engine'
+            WHEN LOWER(name || ' ' || manufacturer || ' ' || model) LIKE '%outboard%' THEN 'marine'
+            WHEN LOWER(name || ' ' || manufacturer || ' ' || model) LIKE '%marine%' THEN 'marine'
+            ELSE COALESCE(NULLIF(registry_type, ''), 'machine')
+        END
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_machines_registry_type ON machines(registry_type)"
+    )
+
+
 MIGRATIONS: list[Migration] = [
     ("0001_basket_foundation", _migration_0001_basket_foundation),
     ("0002_machine_registry", _migration_0002_machine_registry),
+    ("0003_universal_registry", _migration_0003_universal_registry),
 ]
 
 

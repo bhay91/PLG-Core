@@ -139,6 +139,15 @@ a { color: inherit; }
   cursor: not-allowed;
 }
 
+.nav-section-label {
+  margin: 12px 10px 2px;
+  color: #7d899b;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
 .sidebar-footer {
   margin-top: auto;
   display: grid;
@@ -1049,9 +1058,10 @@ textarea {
 @media(max-width:720px){.workspace-heading,.job-primary-actions{align-items:flex-start;flex-direction:column}.summary-grid,.job-summary-grid,.dashboard-side{grid-template-columns:1fr}.recent-job-row{grid-template-columns:90px minmax(130px,1fr) 95px 18px}.recent-job-parts{display:none}}
 
 
-/* Commit 0003B.2 Workspace Cleanup */
+/* Workspace heading primary actions */
 .workspace-heading > .button {
-  display: none;
+  display: inline-flex;
+  flex: 0 0 auto;
 }
 
 .job-top-actions-clean {
@@ -2540,3 +2550,43 @@ small.secondary {
 .workspace-heading-actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
 .workspace-heading-actions form{margin:0}
 @media(max-width:720px){.workspace-heading-actions{width:100%;flex-direction:column}.workspace-heading-actions .button,.workspace-heading-actions form,.workspace-heading-actions form .button{width:100%}}
+
+
+/* Universal Registry type selector */
+.registry-type-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1rem;
+}
+.registry-type-card {
+  text-decoration: none;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+.registry-type-card > span {
+  font-size: 1.6rem;
+  margin-bottom: .45rem;
+}
+.registry-type-card:hover {
+  transform: translateY(-2px);
+}
+
+
+/* Build 0011 Universal Registry */
+.registry-record-list{display:flex;flex-direction:column}
+.registry-record-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:16px 4px;border-bottom:1px solid var(--line);text-decoration:none;color:var(--ink-strong)}
+.registry-record-row:last-child{border-bottom:0}
+.registry-record-row:hover{background:var(--surface-soft)}
+.registry-record-main,.registry-record-owner{display:flex;flex-direction:column;gap:4px}
+.registry-record-owner{text-align:right;align-items:flex-end}
+.registry-record-main>strong,.registry-record-owner>strong{font-size:15px;color:var(--ink-strong)}
+.registry-record-main>span:not(.registry-type-badge),.registry-record-owner>span,.registry-record-main>small{font-size:12px;color:var(--muted)}
+.registry-record-main>small b{margin-right:6px;color:var(--ink-strong);font-size:10px;letter-spacing:.05em;text-transform:uppercase}
+.registry-type-badge{display:inline-flex;align-items:center;width:max-content;padding:5px 9px;border:1px solid var(--line);border-radius:999px;background:var(--surface-soft);font-size:10px;font-weight:800;letter-spacing:.055em;text-transform:uppercase;color:var(--ink-strong)}
+.registry-type-icon{font-size:1.8rem}
+.registry-detail-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:5px}
+.registry-detail-title h1{margin:0}
+@media(max-width:720px){.registry-record-row{align-items:flex-start;flex-direction:column}.registry-record-owner{text-align:left;align-items:flex-start}}

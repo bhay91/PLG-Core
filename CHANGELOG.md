@@ -1,5 +1,14 @@
 # Changelog
 
+## Build 0011 — Universal Registry
+
+- Added persistent registry types for vehicles, machines, engines, marine equipment, generators, trailers, components/assemblies, and other records.
+- Added a type-first registration workflow.
+- Added type badges and type-aware identifier labels throughout the Registry.
+- Updated Registry create, edit, detail, status, and list screens.
+- Added a safe database migration and practical backfill for existing records.
+
+
 ## Commit 0010 — Machine Registry Foundation
 
 - Added reusable machine profiles linked to customers.

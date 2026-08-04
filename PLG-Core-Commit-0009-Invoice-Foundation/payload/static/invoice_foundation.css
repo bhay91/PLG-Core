@@ -1,4 +1,0 @@
-/* Commit 0009 Invoice Foundation */
-.workspace-heading-actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
-.workspace-heading-actions form{margin:0}
-@media(max-width:720px){.workspace-heading-actions{width:100%;flex-direction:column}.workspace-heading-actions .button,.workspace-heading-actions form,.workspace-heading-actions form .button{width:100%}}

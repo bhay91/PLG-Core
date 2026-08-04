@@ -1,27 +1,41 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
 .venv/
 venv/
+env/
 
-# Runtime / local files
-*.log
-.DS_Store
+# Editor files
 .vscode/
-.pytest_cache/
+.idea/
+*.code-workspace
 
-# Backups and release packages
-backup-*/
-backups/
-releases/
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+*~
+
+# Local archives and screenshots
 *.zip
+*.patch
 
-# Uploaded working documents
-uploads/*
-!uploads/.gitkeep
-documents/*
-!documents/.gitkeep
+# Local project storage
+backups/
+archive/
+releases/
 
-# Keep the live database local and out of GitHub
+# Generated uploads/documents
+
+# Local database
 data/*.db
-data/*.db-*
+data/*.db-shm
+data/*.db-wal

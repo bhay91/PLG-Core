@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Customer Requests · PartsLink Global{% endblock %}
+{% block content %}
+<section class="workspace-heading">
+  <div>
+    <p class="eyebrow">CUSTOMER REQUESTS</p>
+    <h1>Customer Requests</h1>
+    <p>Keep new messages, screenshots, calls, and follow-ups in one place before they become jobs.</p>
+  </div>
+  <a class="button" href="/requests/new">＋ New Request</a>
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div><p class="eyebrow">REQUEST QUEUE</p><h2>Requests needing attention</h2></div>
+  </div>
+  <div class="empty">
+    <h3>No customer requests yet</h3>
+    <p>Create your first request from a text, WhatsApp message, screenshot, phone call, or email.</p>
+    <a class="button" href="/requests/new">Create Request</a>
+  </div>
+</section>
+{% endblock %}

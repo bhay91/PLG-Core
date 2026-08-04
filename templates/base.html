@@ -21,6 +21,11 @@
       <a class="{% if active_page == 'dashboard' %}active{% endif %}" href="/">
         <span class="nav-icon" aria-hidden="true">⌂</span><span>Dashboard</span>
       </a>
+
+      <div class="nav-section-label">Daily Work</div>
+      <a class="{% if active_page == 'requests' %}active{% endif %}" href="/requests">
+        <span class="nav-icon" aria-hidden="true">✉</span><span>Customer Requests</span>
+      </a>
       <a class="{% if active_page == 'jobs' %}active{% endif %}" href="/jobs">
         <span class="nav-icon" aria-hidden="true">▣</span><span>Jobs</span>
       </a>
@@ -30,27 +35,26 @@
       <a class="{% if active_page == 'invoices' %}active{% endif %}" href="/invoices">
         <span class="nav-icon" aria-hidden="true">▤</span><span>Invoices</span>
       </a>
-      <span class="disabled"><span class="nav-icon">◇</span><span>Orders</span></span>
+
+      <div class="nav-section-label">Records &amp; Sources</div>
       <a class="{% if active_page == 'customers' %}active{% endif %}" href="/customers">
         <span class="nav-icon" aria-hidden="true">♙</span><span>Customers</span>
       </a>
       <a class="{% if active_page == 'machines' %}active{% endif %}" href="/machines">
-        <span class="nav-icon" aria-hidden="true">▱</span><span>Machines</span>
+        <span class="nav-icon" aria-hidden="true">▱</span><span>Registry</span>
       </a>
       <a class="{% if active_page == 'suppliers' %}active{% endif %}" href="/suppliers">
         <span class="nav-icon" aria-hidden="true">▰</span><span>Suppliers</span>
       </a>
-      <a class="{% if active_page == 'connectors' %}active{% endif %}" href="/connectors">
-        <span class="nav-icon" aria-hidden="true">↔</span><span>Connectors</span>
-      </a>
-      <span class="disabled"><span class="nav-icon">▥</span><span>Reports</span></span>
+
+      <div class="nav-section-label">System</div>
       <a class="{% if active_page == 'admin' %}active{% endif %}" href="/admin">
         <span class="nav-icon" aria-hidden="true">⚙</span><span>Administration</span>
       </a>
     </nav>
 
     <div class="sidebar-footer">
-      <a class="button full-width" href="/jobs/new">＋ New Job</a>
+      <a class="button full-width" href="/requests/new">＋ New Request</a>
       <div class="support-card">
         <strong>PartsLink Global</strong>
         <span>PLG Core · Version 1.0 Alpha</span>
