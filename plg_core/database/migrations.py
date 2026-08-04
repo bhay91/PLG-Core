@@ -224,10 +224,85 @@ def _migration_0003_universal_registry(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_0004_customer_requests(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS customer_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_number TEXT UNIQUE,
+            request_text TEXT NOT NULL DEFAULT '',
+            individual_name TEXT NOT NULL DEFAULT '',
+            company_name TEXT NOT NULL DEFAULT '',
+            phone TEXT NOT NULL DEFAULT '',
+            email TEXT NOT NULL DEFAULT '',
+            reminder_date TEXT,
+            status TEXT NOT NULL DEFAULT 'NEW'
+                CHECK (status IN ('NEW', 'WAITING', 'READY', 'COMPLETED')),
+            customer_id INTEGER,
+            machine_id INTEGER,
+            job_id INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+            FOREIGN KEY (machine_id) REFERENCES machines(id) ON DELETE SET NULL,
+            FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE SET NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS customer_request_attachments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id INTEGER NOT NULL,
+            original_filename TEXT NOT NULL,
+            stored_filename TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            media_type TEXT NOT NULL DEFAULT '',
+            uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (request_id) REFERENCES customer_requests(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_customer_requests_status
+            ON customer_requests(status);
+        CREATE INDEX IF NOT EXISTS idx_customer_requests_reminder
+            ON customer_requests(reminder_date);
+        CREATE INDEX IF NOT EXISTS idx_customer_request_attachments_request
+            ON customer_request_attachments(request_id);
+        """
+    )
+
+
+def _migration_0005_request_job_ready(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(customer_requests)").fetchall()
+    }
+    additions = {
+        "location": "TEXT NOT NULL DEFAULT ''",
+        "registry_type": "TEXT NOT NULL DEFAULT 'other'",
+        "manufacturer": "TEXT NOT NULL DEFAULT ''",
+        "model": "TEXT NOT NULL DEFAULT ''",
+        "year": "TEXT NOT NULL DEFAULT ''",
+        "identifier": "TEXT NOT NULL DEFAULT ''",
+        "requested_parts": "TEXT NOT NULL DEFAULT ''",
+    }
+    for name, definition in additions.items():
+        if name not in columns:
+            connection.execute(f"ALTER TABLE customer_requests ADD COLUMN {name} {definition}")
+
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_customer_requests_customer_id ON customer_requests(customer_id)"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_customer_requests_machine_id ON customer_requests(machine_id)"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_customer_requests_job_id ON customer_requests(job_id)"
+    )
+
+
 MIGRATIONS: list[Migration] = [
     ("0001_basket_foundation", _migration_0001_basket_foundation),
     ("0002_machine_registry", _migration_0002_machine_registry),
     ("0003_universal_registry", _migration_0003_universal_registry),
+    ("0004_customer_requests", _migration_0004_customer_requests),
+    ("0005_request_job_ready", _migration_0005_request_job_ready),
 ]
 
 

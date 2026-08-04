@@ -570,22 +570,6 @@ def dashboard(request: Request):
     )
 
 
-@app.get("/requests", response_class=HTMLResponse)
-def customer_requests(request: Request):
-    return templates.TemplateResponse(
-        request=request,
-        name="requests.html",
-        context={"active_page": "requests"},
-    )
-
-
-@app.get("/requests/new", response_class=HTMLResponse)
-def new_customer_request(request: Request):
-    return templates.TemplateResponse(
-        request=request,
-        name="request_form.html",
-        context={"active_page": "requests"},
-    )
 
 
 @app.get("/jobs/new", response_class=HTMLResponse)

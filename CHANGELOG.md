@@ -27,3 +27,6 @@
 - Preserved the current application code, templates, static files, live
   database, and document templates.
 - Added `.gitignore`, `VERSION`, and clean development folders.
+
+## Customer Requests v1.0
+- Added working Customer Requests intake, search, status filters, reminders, attachments, editing, and deletion.

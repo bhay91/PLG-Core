@@ -39,3 +39,7 @@ releases/
 data/*.db
 data/*.db-shm
 data/*.db-wal
+
+# Customer request uploads
+uploads/requests/*
+!uploads/requests/.gitkeep

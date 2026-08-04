@@ -1,23 +1,70 @@
 {% extends "base.html" %}
 {% block title %}Customer Requests · PartsLink Global{% endblock %}
 {% block content %}
-<section class="workspace-heading">
+<link rel="stylesheet" href="/static/customer_requests.css">
+
+<section class="workspace-heading request-page-heading">
   <div>
-    <p class="eyebrow">CUSTOMER REQUESTS</p>
+    <p class="eyebrow">DAILY WORK</p>
     <h1>Customer Requests</h1>
-    <p>Keep new messages, screenshots, calls, and follow-ups in one place before they become jobs.</p>
+    <p>Record inquiries now and complete the missing information later.</p>
   </div>
   <a class="button" href="/requests/new">＋ New Request</a>
 </section>
 
-<section class="panel">
-  <div class="panel-heading">
-    <div><p class="eyebrow">REQUEST QUEUE</p><h2>Requests needing attention</h2></div>
+<section class="panel request-queue-panel">
+  <form class="request-toolbar" method="get" action="/requests">
+    <label class="request-search">
+      <span aria-hidden="true">⌕</span>
+      <input name="q" value="{{ q }}" placeholder="Search requests">
+    </label>
+
+    <div class="request-filters" role="group" aria-label="Filter customer requests">
+      {% for value, label in [('ALL','All'),('NEW','New'),('WAITING','Waiting'),('READY','Ready'),('COMPLETED','Completed')] %}
+      <button type="submit" name="status" value="{{ value }}" class="request-filter {% if status == value %}active{% endif %}">{{ label }}</button>
+      {% endfor %}
+    </div>
+  </form>
+
+  {% if requests %}
+  <div class="request-list">
+    {% for item in requests %}
+    <a class="request-card" href="/requests/{{ item.id }}">
+      <div class="request-card-content">
+        <div class="request-card-topline">
+          <span class="request-status status-{{ item.status|lower }}">{{ item.status }}</span>
+          <span class="request-number">{{ item.request_number }}</span>
+        </div>
+
+        <h2 class="request-customer">{{ item.company_name or item.individual_name or item.phone or 'Unknown Customer' }}</h2>
+        <p class="request-summary">{{ (item.request_text or 'Attachment only')[:180] }}{% if item.request_text and item.request_text|length > 180 %}…{% endif %}</p>
+
+        <div class="request-card-meta">
+          {% if item.reminder_date %}
+          <span class="request-meta-item {% if item.reminder_date <= today and item.status != 'COMPLETED' %}reminder-due{% endif %}">
+            <span aria-hidden="true">◷</span> Reminder {{ item.reminder_date }}
+          </span>
+          {% endif %}
+          {% if item.attachment_count %}
+          <span class="request-meta-item"><span aria-hidden="true">⌕</span> {{ item.attachment_count }} attachment{% if item.attachment_count != 1 %}s{% endif %}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="request-card-open">
+        <span>Open Request</span>
+        <span aria-hidden="true">→</span>
+      </div>
+    </a>
+    {% endfor %}
   </div>
-  <div class="empty">
-    <h3>No customer requests yet</h3>
-    <p>Create your first request from a text, WhatsApp message, screenshot, phone call, or email.</p>
-    <a class="button" href="/requests/new">Create Request</a>
+  {% else %}
+  <div class="empty-state request-empty-state">
+    <div class="empty-state-icon" aria-hidden="true">▤</div>
+    <h2>No customer requests found</h2>
+    <p>Save a message, screenshot, phone inquiry, or reminder here so it does not get forgotten.</p>
+    <a class="button" href="/requests/new">＋ New Request</a>
   </div>
+  {% endif %}
 </section>
 {% endblock %}

@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}{{ record.request_number }} · PartsLink Global{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/customer_requests.css">
+
+<section class="workspace-heading request-detail-heading">
+  <div>
+    <p class="eyebrow">CUSTOMER REQUEST</p>
+    <h1>{{ record.company_name or record.individual_name or record.phone or 'Waiting for contact information' }}</h1>
+    <p>{{ record.request_number }}</p>
+  </div>
+  <div class="page-actions">
+    <a class="button ghost" href="/requests">Back to Requests</a>
+    <a class="button" href="/requests/{{ record.id }}/edit">Edit Request</a>
+  </div>
+</section>
+
+<div class="request-detail-grid">
+  <section class="panel request-main-panel">
+    <div class="panel-heading request-panel-heading">
+      <div><p class="eyebrow">REQUEST</p><h2>Customer Request</h2></div>
+      <span class="request-status status-{{ record.status|lower }}">{{ record.status }}</span>
+    </div>
+    <div class="request-message">{{ record.request_text or 'No message entered.' }}</div>
+  </section>
+
+  <section class="panel request-contact-panel">
+    <p class="eyebrow">CONTACT</p>
+    <h2>Quick Contact</h2>
+    <dl class="detail-list">
+      <dt>Individual</dt><dd>{{ record.individual_name or '—' }}</dd>
+      <dt>Company</dt><dd>{{ record.company_name or '—' }}</dd>
+      <dt>Phone</dt><dd>{{ record.phone or '—' }}</dd>
+      <dt>Email</dt><dd>{{ record.email or '—' }}</dd>
+      <dt>Location</dt><dd>{{ record.location or '—' }}</dd>
+      <dt>Reminder</dt><dd class="{% if record.reminder_date and record.reminder_date <= today and record.status != 'COMPLETED' %}reminder-due{% endif %}">{{ record.reminder_date or '—' }}</dd>
+    </dl>
+  </section>
+</div>
+
+<section class="panel request-files-panel">
+  <div class="panel-heading request-panel-heading">
+    <div><p class="eyebrow">FILES</p><h2>Photos / Screenshots</h2></div>
+    {% if attachments %}<span class="attachment-count">{{ attachments|length }} file{% if attachments|length != 1 %}s{% endif %}</span>{% endif %}
+  </div>
+  {% if attachments %}
+  <div class="attachment-list">
+    {% for file in attachments %}
+    <div class="attachment-row">
+      <a class="attachment-link" href="/requests/{{ record.id }}/attachments/{{ file.id }}">
+        <span class="attachment-icon" aria-hidden="true">▧</span><span>{{ file.original_filename }}</span>
+      </a>
+      <form method="post" action="/requests/{{ record.id }}/attachments/{{ file.id }}/delete" onsubmit="return confirm('Delete this attachment?')">
+        <button class="link-button danger" type="submit">Delete</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}<p class="muted-copy">No files uploaded.</p>{% endif %}
+</section>
+
+<section class="panel job-ready-panel" id="next-steps">
+  <div class="panel-heading request-panel-heading">
+    <div><p class="eyebrow">NEXT STEPS</p><h2>Get Job Ready</h2><p class="muted-copy">Use the information once. PLG carries it into the customer, Registry, and Job.</p></div>
+  </div>
+
+  <form method="post" action="/requests/{{ record.id }}/prepare" class="job-ready-details">
+    <div class="two-column">
+      <label>What are we working on?
+        <select name="registry_type">
+          {% for value, label in registry_types.items() %}<option value="{{ value }}" {% if record.registry_type == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Year<input name="year" value="{{ record.year or '' }}"></label>
+    </div>
+    <div class="two-column">
+      <label>Manufacturer<input name="manufacturer" value="{{ record.manufacturer or '' }}" placeholder="CAT, Honda, Cummins..."></label>
+      <label>Model<input name="model" value="{{ record.model or '' }}" placeholder="420D, CR-V, N14..."></label>
+    </div>
+    <label>VIN / PIN / Serial<input name="identifier" value="{{ record.identifier or '' }}"></label>
+    <label>Parts Needed
+      <textarea name="requested_parts" rows="4" placeholder="Enter one requested part per line">{{ record.requested_parts or '' }}</textarea>
+    </label>
+    <div class="form-actions"><button class="button ghost" type="submit">Save Job Details</button></div>
+  </form>
+
+  <div class="job-ready-steps">
+    <article class="job-ready-step {% if customer %}complete{% endif %}">
+      <div class="step-number">1</div>
+      <div class="step-content">
+        <h3>Customer</h3>
+        {% if customer %}
+          <p class="step-success">✓ Linked: {{ customer.company or customer.name }}{% if customer.company and customer.name %} — {{ customer.name }}{% endif %}</p>
+          <a class="text-link" href="/customers/{{ customer.id }}">Open Customer</a>
+        {% else %}
+          <p>Create from the contact above, or link an existing customer.</p>
+          <div class="step-actions">
+            <form method="post" action="/requests/{{ record.id }}/customer/create"><button class="button" type="submit">Create Customer</button></form>
+            <form method="post" action="/requests/{{ record.id }}/customer/link" class="inline-link-form">
+              <select name="customer_id" required><option value="">Link existing...</option>{% for item in customers %}<option value="{{ item.id }}">{{ item.company or item.name }}{% if item.company and item.name %} — {{ item.name }}{% endif %}</option>{% endfor %}</select>
+              <button class="button ghost" type="submit">Link</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+    </article>
+
+    <article class="job-ready-step {% if machine %}complete{% endif %}">
+      <div class="step-number">2</div>
+      <div class="step-content">
+        <h3>Registry</h3>
+        {% if machine %}
+          <p class="step-success">✓ Linked: {{ machine.manufacturer }} {{ machine.model or machine.name }}{% if machine.vin_pin_serial %} — {{ machine.vin_pin_serial }}{% endif %}</p>
+          <a class="text-link" href="/machines/{{ machine.id }}">Open Registry Item</a>
+        {% elif not customer %}
+          <p class="step-muted">Create or link the customer first.</p>
+        {% else %}
+          <p>Register the item above, or link one already saved for this customer.</p>
+          <div class="step-actions">
+            <form method="post" action="/requests/{{ record.id }}/registry/create"><button class="button" type="submit">Register Item</button></form>
+            {% if machines %}
+            <form method="post" action="/requests/{{ record.id }}/registry/link" class="inline-link-form">
+              <select name="machine_id" required><option value="">Link existing...</option>{% for item in machines %}<option value="{{ item.id }}">{{ item.manufacturer }} {{ item.model or item.name }}{% if item.vin_pin_serial %} — {{ item.vin_pin_serial }}{% endif %}</option>{% endfor %}</select>
+              <button class="button ghost" type="submit">Link</button>
+            </form>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    </article>
+
+    <article class="job-ready-step {% if job %}complete{% endif %}">
+      <div class="step-number">3</div>
+      <div class="step-content">
+        <h3>Job</h3>
+        {% if job %}
+          <p class="step-success">✓ Created: {{ job.job_number }}</p>
+          <a class="button" href="/jobs/{{ job.id }}/basket">Open Job</a>
+        {% elif not customer %}
+          <p class="step-muted">Create or link the customer first.</p>
+        {% else %}
+          <p>Create the Job with the linked customer, Registry item, request message, and parts needed.</p>
+          <form method="post" action="/requests/{{ record.id }}/job/create"><button class="button" type="submit">Create Job</button></form>
+        {% endif %}
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="panel request-status-panel">
+  <div class="panel-heading request-panel-heading"><div><p class="eyebrow">STATUS</p><h2>Request Status</h2></div></div>
+  <form method="post" action="/requests/{{ record.id }}/status" class="status-actions">
+    <button name="status" value="NEW" class="status-action {% if record.status == 'NEW' %}active{% endif %}">New</button>
+    <button name="status" value="WAITING" class="status-action {% if record.status == 'WAITING' %}active{% endif %}">Waiting</button>
+    <button name="status" value="READY" class="status-action {% if record.status == 'READY' %}active{% endif %}">Ready</button>
+    <button name="status" value="COMPLETED" class="status-action {% if record.status == 'COMPLETED' %}active{% endif %}">Completed</button>
+  </form>
+</section>
+
+<section class="danger-zone">
+  <form method="post" action="/requests/{{ record.id }}/delete" onsubmit="return confirm('Delete this customer request and its attachments?')">
+    <button class="button danger" type="submit">Delete Request</button>
+  </form>
+</section>
+{% endblock %}

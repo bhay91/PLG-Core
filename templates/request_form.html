@@ -1,19 +1,39 @@
 {% extends "base.html" %}
-{% block title %}New Customer Request · PartsLink Global{% endblock %}
+{% block title %}{{ title }} · PartsLink Global{% endblock %}
+<link rel="stylesheet" href="/static/customer_requests.css">
 {% block content %}
-<section class="workspace-heading">
-  <div>
-    <p class="eyebrow">CUSTOMER REQUESTS</p>
-    <h1>New Request</h1>
-    <p>Start with whatever information you have. The full request form comes in the next step.</p>
+<section class="workspace-heading"><div><p class="eyebrow">CUSTOMER REQUESTS</p><h1>{{ title }}</h1><p>Capture whatever information you have now. You can complete the rest later.</p></div></section>
+<form method="post" action="{{ form_action }}" enctype="multipart/form-data" class="panel form-grid request-form">
+  <div class="form-section full">
+    <label>Customer Request
+      <textarea name="request_text" rows="7" placeholder="Paste the customer's message here...">{{ record.request_text or '' }}</textarea>
+    </label>
   </div>
-  <a class="button secondary" href="/requests">Back to Requests</a>
-</section>
-
-<section class="panel">
-  <div class="empty">
-    <h3>Request intake is next</h3>
-    <p>The navigation is now organized around the PLG workflow. Next we will build the working request form and request queue.</p>
+  <div class="form-section full">
+    <label>Photos / Screenshots
+      <input type="file" name="attachments" multiple accept="image/*,.pdf">
+    </label>
+    <small>You can upload screenshots, photos, or PDFs.</small>
   </div>
-</section>
+  <details class="form-section full request-optional" {% if record.individual_name or record.company_name or record.phone or record.email %}open{% endif %}>
+    <summary>Quick Contact (optional)</summary>
+    <div class="two-column">
+      <label>Individual Name<input name="individual_name" value="{{ record.individual_name or '' }}"></label>
+      <label>Company Name<input name="company_name" value="{{ record.company_name or '' }}"></label>
+    </div>
+    <div class="two-column">
+      <label>Phone<input name="phone" value="{{ record.phone or '' }}"></label>
+      <label>Email<input type="email" name="email" value="{{ record.email or '' }}"></label>
+    </div>
+    <label>Location<input name="location" value="{{ record.location or '' }}" placeholder="City, island, parish, or shipping location"></label>
+  </details>
+  <details class="form-section full request-optional" {% if record.reminder_date %}open{% endif %}>
+    <summary>Reminder (optional)</summary>
+    <label>Reminder Date<input type="date" name="reminder_date" value="{{ record.reminder_date or '' }}"></label>
+  </details>
+  {% if record.id %}
+  <div class="form-section full"><label>Status<select name="status"><option value="NEW" {% if record.status == 'NEW' %}selected{% endif %}>New</option><option value="WAITING" {% if record.status == 'WAITING' %}selected{% endif %}>Waiting</option><option value="READY" {% if record.status == 'READY' %}selected{% endif %}>Ready</option><option value="COMPLETED" {% if record.status == 'COMPLETED' %}selected{% endif %}>Completed</option></select></label></div>
+  {% endif %}
+  <div class="form-actions full"><a class="button ghost" href="{{ cancel_url }}">Cancel</a><button class="button" type="submit">Save</button></div>
+</form>
 {% endblock %}
