@@ -730,8 +730,8 @@
     <section class="quote-revenue-review">
       <header class="quote-revenue-review-head">
         <div>
-          <p class="cc-label">ADDITIONAL CHARGES REVIEW</p>
-          <h3>Final revenue check</h3>
+          <p class="cc-label">ADDITIONAL CHARGES</p>
+          <h3>Additional billable work</h3>
         </div>
 
         <a
@@ -747,10 +747,10 @@
           <div>
             {% if (job.service_charge or 0) > 0 %}
             <span class="quote-review-indicator service">●</span>
-            <strong>Service Charge Applied</strong>
+            <strong>✓ Service Charge</strong>
             {% else %}
             <span class="quote-review-indicator missing">●</span>
-            <strong>No Service Charge</strong>
+            <strong>○ Service Charge</strong>
             {% endif %}
           </div>
 
@@ -763,10 +763,10 @@
           <div>
             {% if (job.sourcing_fee or 0) > 0 %}
             <span class="quote-review-indicator sourcing">●</span>
-            <strong>Sourcing Fee Applied</strong>
+            <strong>✓ Sourcing Fee</strong>
             {% else %}
             <span class="quote-review-indicator missing">●</span>
-            <strong>No Sourcing Fee</strong>
+            <strong>○ Sourcing Fee</strong>
             {% endif %}
           </div>
 
@@ -778,9 +778,9 @@
 
       <footer class="quote-revenue-review-total">
         <div>
-          <span>Additional Revenue</span>
+          <span>Additional Charges Total</span>
           <small>
-            Informational preview — not included in quote totals yet.
+            
           </small>
         </div>
 

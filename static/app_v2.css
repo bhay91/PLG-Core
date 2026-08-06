@@ -1970,3 +1970,122 @@ tbody tr:last-child td {
   background: #edf5ff;
   color: #1267d6;
 }
+
+
+/* =========================================================
+   PLG ALPHA 8.3 — QUOTE SUMMARY REVENUE REVIEW
+   ========================================================= */
+
+.quote-revenue-review {
+  margin: 18px 22px 0;
+  overflow: hidden;
+  border: 1px solid #cfdceb;
+  border-radius: 14px;
+  background: #fbfdff;
+}
+
+.quote-revenue-review-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 17px 18px;
+  border-bottom: 1px solid #dce6f0;
+}
+
+.quote-revenue-review-head h3 {
+  margin: 2px 0 0;
+  color: var(--ink-strong);
+  font-size: 1rem;
+}
+
+.quote-revenue-review-lines {
+  display: grid;
+}
+
+.quote-revenue-review-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e5ebf2;
+}
+
+.quote-revenue-review-line > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.quote-revenue-review-line > span {
+  color: var(--ink-strong);
+  font-weight: 850;
+}
+
+.quote-review-indicator {
+  font-size: 0.74rem;
+}
+
+.quote-review-indicator.service {
+  color: #168648;
+}
+
+.quote-review-indicator.sourcing {
+  color: #1267d6;
+}
+
+.quote-review-indicator.missing {
+  color: #98a2b3;
+}
+
+.quote-revenue-review-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 18px;
+  background: #f3f8fd;
+}
+
+.quote-revenue-review-total > div {
+  display: grid;
+  gap: 3px;
+}
+
+.quote-revenue-review-total span {
+  color: var(--ink-strong);
+  font-size: 0.8rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.quote-revenue-review-total small {
+  color: var(--muted);
+  font-size: 0.69rem;
+}
+
+.quote-revenue-review-total strong {
+  color: #168648;
+  font-size: 1.5rem;
+}
+
+.quote-summary-generate-form {
+  display: flex;
+  justify-content: flex-end;
+  padding: 18px 22px 22px;
+}
+
+@media (max-width: 720px) {
+  .quote-revenue-review-head,
+  .quote-revenue-review-line,
+  .quote-revenue-review-total {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .quote-summary-generate-form .button {
+    width: 100%;
+  }
+}

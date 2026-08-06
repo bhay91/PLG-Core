@@ -167,3 +167,36 @@ Descriptions are optional.
 - Active Sourcing Fee badge displays `🔵 Sourcing Fee Added`.
 - A temporary success confirmation appears after saving.
 - A small Quote Summary revenue indicator will be added when charge calculations are integrated.
+
+## Quote Summary Revenue Review
+
+The Additional Charges Review appears near the bottom of Quote Summary.
+
+Display order:
+
+1. Current quote totals
+2. Cost and profit information
+3. Additional Charges Review
+4. Complete & Generate Quote action
+
+The review must show:
+
+- Service Charge status and current amount
+- Sourcing Fee status and current amount
+- Combined additional revenue
+- A link back to the Additional Charges panel
+
+This milestone is informational only. Service Charge and Sourcing Fee do not alter quote calculations yet.
+
+## Quote Summary Layout
+
+The Quote Summary follows the financial review order:
+
+1. Costs
+2. Additional Charges
+3. Results
+4. Generate Quote
+
+This is a presentation improvement only.
+
+No calculations change during this milestone.
