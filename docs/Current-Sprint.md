@@ -60,3 +60,7 @@ Before continuing Revenue Adjustments polish, build the read-only Developer Star
 Official command: `python3 -m plg_core.devtools.startup`
 
 The tool must report documentation health, the current sprint, Git status, branch synchronization, and whether a checkpoint is required.
+
+## Command Center Layout
+
+The Job Timeline appears as the final section, below Quote Summary and the Complete & Generate Quote action. Active work remains above historical activity.

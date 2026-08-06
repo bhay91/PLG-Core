@@ -524,40 +524,7 @@
     {% else %}<div class="cc-empty"><strong>No parts selected yet.</strong><br>Start by researching parts above.</div>{% endif %}
   </section>
 
-  <section class="cc-card cc-section" id="job-timeline">
-    <div class="cc-section-head">
-      <div>
-        <p class="cc-label">JOB TIMELINE</p>
-        <h2>Automatic activity history</h2>
-        <p class="cc-muted">
-          Important job actions are recorded automatically.
-        </p>
-      </div>
-      <span class="cc-count">{{ timeline|length }}</span>
-    </div>
-
-    {% if timeline %}
-    <div class="cc-timeline">
-      {% for event in timeline %}
-      <article class="cc-timeline-event">
-        <div class="cc-timeline-icon">
-          {{ event.icon or "•" }}
-        </div>
-        <div class="cc-timeline-content">
-          <strong>{{ event.message }}</strong>
-          <time>
-            {{ event.created_at }}
-          </time>
-        </div>
-      </article>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="cc-empty">
-      Timeline activity will appear here automatically.
-    </div>
-    {% endif %}
-  </section>
+  
 
   <section
     class="cc-card cc-section revenue-adjustments-section"
@@ -756,19 +723,122 @@
         </h2>
       </div>
 
-      {% if has_parts %}
-      <form
-        method="post"
-        action="/jobs/{{ job.id }}/generate-quote"
-      >
-        <button class="button" type="submit">
-          Complete &amp; Generate Quote
-        </button>
-      </form>
-      {% endif %}
     </header>
     <div class="cc-primary-numbers"><div class="cc-primary-number"><span>Customer Total</span><strong>${{ "%.2f"|format(basket.totals.customer_total) }}</strong></div><div class="cc-primary-number"><span>Estimated Profit</span><strong>${{ "%.2f"|format(basket.totals.estimated_profit) }}</strong></div></div>
     <div class="cc-costs"><div><span>Parts Cost</span><strong>${{ "%.2f"|format(basket.totals.supplier_parts_total) }}</strong></div><div><span>Shipping</span><strong>${{ "%.2f"|format(basket.totals.shipping_total) }}</strong></div><div><span>Total Cost</span><strong>${{ "%.2f"|format(basket.totals.supplier_total) }}</strong></div></div>
+
+    <section class="quote-revenue-review">
+      <header class="quote-revenue-review-head">
+        <div>
+          <p class="cc-label">ADDITIONAL CHARGES REVIEW</p>
+          <h3>Final revenue check</h3>
+        </div>
+
+        <a
+          class="button ghost small"
+          href="#revenue-adjustments"
+        >
+          Edit Charges
+        </a>
+      </header>
+
+      <div class="quote-revenue-review-lines">
+        <div class="quote-revenue-review-line">
+          <div>
+            {% if (job.service_charge or 0) > 0 %}
+            <span class="quote-review-indicator service">●</span>
+            <strong>Service Charge Applied</strong>
+            {% else %}
+            <span class="quote-review-indicator missing">●</span>
+            <strong>No Service Charge</strong>
+            {% endif %}
+          </div>
+
+          <span>
+            ${{ "%.2f"|format(job.service_charge or 0) }}
+          </span>
+        </div>
+
+        <div class="quote-revenue-review-line">
+          <div>
+            {% if (job.sourcing_fee or 0) > 0 %}
+            <span class="quote-review-indicator sourcing">●</span>
+            <strong>Sourcing Fee Applied</strong>
+            {% else %}
+            <span class="quote-review-indicator missing">●</span>
+            <strong>No Sourcing Fee</strong>
+            {% endif %}
+          </div>
+
+          <span>
+            ${{ "%.2f"|format(job.sourcing_fee or 0) }}
+          </span>
+        </div>
+      </div>
+
+      <footer class="quote-revenue-review-total">
+        <div>
+          <span>Additional Revenue</span>
+          <small>
+            Informational preview — not included in quote totals yet.
+          </small>
+        </div>
+
+        <strong>
+          ${{ "%.2f"|format(
+            (job.service_charge or 0) +
+            (job.sourcing_fee or 0)
+          ) }}
+        </strong>
+      </footer>
+    </section>
+
+    {% if has_parts %}
+    <form
+      class="quote-summary-generate-form"
+      method="post"
+      action="/jobs/{{ job.id }}/generate-quote"
+    >
+      <button class="button" type="submit">
+        Complete &amp; Generate Quote
+      </button>
+    </form>
+    {% endif %}
+  </section>
+
+<section class="cc-card cc-section" id="job-timeline">
+    <div class="cc-section-head">
+      <div>
+        <p class="cc-label">JOB TIMELINE</p>
+        <h2>Automatic activity history</h2>
+        <p class="cc-muted">
+          Important job actions are recorded automatically.
+        </p>
+      </div>
+      <span class="cc-count">{{ timeline|length }}</span>
+    </div>
+
+    {% if timeline %}
+    <div class="cc-timeline">
+      {% for event in timeline %}
+      <article class="cc-timeline-event">
+        <div class="cc-timeline-icon">
+          {{ event.icon or "•" }}
+        </div>
+        <div class="cc-timeline-content">
+          <strong>{{ event.message }}</strong>
+          <time>
+            {{ event.created_at }}
+          </time>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="cc-empty">
+      Timeline activity will appear here automatically.
+    </div>
+    {% endif %}
   </section>
 </div>
 
