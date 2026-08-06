@@ -1,0 +1,561 @@
+==================================================
+PLG FULL SYSTEM AUDIT
+Generated: Wed Aug  5 09:05:09 PM EDT 2026
+==================================================
+
+===== 1. PROJECT LOCATION =====
+/home/brandonbayleyhay/Desktop/PLG-Core
+/home/brandonbayleyhay/Desktop/PLG-Core
+
+===== 2. PYTHON / ENVIRONMENT =====
+Python 3.14.6
+/home/brandonbayleyhay/Desktop/PLG-Core/.venv/bin/python3
+/home/brandonbayleyhay/Desktop/PLG-Core/.venv/bin/uvicorn
+Running uvicorn 0.52.1 with CPython 3.14.6 on Linux
+
+Name: fastapi
+Version: 0.141.1
+Summary: FastAPI framework, high performance, easy to learn, fast to code, ready for production
+Home-page: https://github.com/fastapi/fastapi
+Author: 
+Author-email: =?utf-8?q?Sebasti=C3=A1n_Ram=C3=ADrez?= <tiangolo@gmail.com>
+License-Expression: MIT
+Location: /home/brandonbayleyhay/Desktop/PLG-Core/.venv/lib64/python3.14/site-packages
+Requires: annotated-doc, pydantic, starlette, typing-extensions, typing-inspection
+Required-by: 
+---
+Name: starlette
+Version: 1.3.1
+Summary: The little ASGI library that shines.
+Home-page: https://github.com/Kludex/starlette
+Author: 
+Author-email: Tom Christie <tom@tomchristie.com>
+License-Expression: BSD-3-Clause
+Location: /home/brandonbayleyhay/Desktop/PLG-Core/.venv/lib64/python3.14/site-packages
+Requires: anyio
+Required-by: fastapi
+---
+Name: uvicorn
+Version: 0.52.1
+Summary: The lightning-fast ASGI server.
+Home-page: https://uvicorn.dev/
+Author: 
+Author-email: Tom Christie <tom@tomchristie.com>
+License-Expression: BSD-3-Clause
+Location: /home/brandonbayleyhay/Desktop/PLG-Core/.venv/lib64/python3.14/site-packages
+Requires: click, h11
+Required-by: 
+---
+Name: Jinja2
+Version: 3.1.6
+Summary: A very fast and expressive template engine.
+Home-page: 
+Author: 
+Author-email: 
+License: 
+Location: /home/brandonbayleyhay/Desktop/PLG-Core/.venv/lib64/python3.14/site-packages
+Requires: MarkupSafe
+Required-by: 
+---
+Name: reportlab
+Version: 5.0.0
+Summary: The Reportlab Toolkit
+Home-page: https://www.reportlab.com/
+Author: Andy Robinson, Robin Becker, the ReportLab team and the community
+Author-email: reportlab-users@lists2.reportlab.com
+License: BSD license (see license.txt for details), Copyright (c) 2000-2025, ReportLab Inc.
+Location: /home/brandonbayleyhay/Desktop/PLG-Core/.venv/lib64/python3.14/site-packages
+Requires: charset-normalizer, pillow
+Required-by: 
+---
+Name: python-multipart
+Version: 0.0.32
+Summary: A streaming multipart parser for Python
+Home-page: https://github.com/Kludex/python-multipart
+Author: 
+Author-email: Andrew Dunham <andrew@du.nham.ca>
+License-Expression: Apache-2.0
+Location: /home/brandonbayleyhay/Desktop/PLG-Core/.venv/lib64/python3.14/site-packages
+Requires: 
+Required-by: 
+
+===== 3. GIT STATUS =====
+feature/job-workspace
+On branch feature/job-workspace
+Your branch is up to date with 'origin/feature/job-workspace'.
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	debug/plg_full_audit_20260805-210509.txt
+
+nothing added to commit but untracked files present (use "git add" to track)
+
+Latest commits:
+6374ea0 (HEAD -> feature/job-workspace, origin/feature/job-workspace) Customer Requests workspace complete, Smart Intake restored, paid PDF fixes, Parts Order Sheet workflow
+39837f3 (tag: v0.4.0) Sprint 004: Job Intelligence Engine, Command Center, and Parts Ready inline editing
+de058b5 (origin/feature/customer-requests, feature/customer-requests) Complete Customer Requests and Get Job Ready workflow
+c516cb9 Repository cleanup and workflow foundation
+3b5783b (feature/basket-foundation, cleanup/repository-standardization) Pre-cleanup snapshot before project reorganization
+c7967a2 (origin/feature/basket-foundation) Start invoice foundation
+30bf7e9 Remove accidental shell-created files
+0b4d058 Standardize management UI and complete supplier connector quote cleanup
+1d79dfb Complete customer accounts and customer management
+561fafd Commit 0005A - Quote PDF foundation and basket workflow
+
+Remote repositories:
+origin	https://github.com/bhay91/PLG-Core.git (fetch)
+origin	https://github.com/bhay91/PLG-Core.git (push)
+
+===== 4. UNTRACKED / IGNORED FILE CHECK =====
+?? debug/plg_full_audit_20260805-210509.txt
+
+.gitignore:
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editor files
+.vscode/
+.idea/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+*~
+
+# Local archives and screenshots
+*.zip
+*.patch
+
+# Local project storage
+backups/
+archive/
+releases/
+
+# Generated uploads/documents
+
+# Local database
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Customer request uploads
+uploads/requests/*
+!uploads/requests/.gitkeep
+
+===== 5. IMPORTANT PROJECT FILES =====
+OK       legacy_app.py
+OK       plg_core/application.py
+OK       plg_core/requests/routes.py
+OK       plg_core/basket/routes.py
+OK       plg_core/documents/quote_pdf.py
+OK       plg_core/documents/invoice_pdf.py
+OK       plg_core/documents/parts_order_pdf.py
+OK       templates/requests.html
+OK       templates/smart_intake.html
+OK       templates/jobs.html
+OK       templates/quotes.html
+OK       templates/invoices.html
+OK       templates/invoice_documents.html
+OK       static/app.css
+OK       static/customer_requests.css
+
+===== 6. PYTHON COMPILE CHECK =====
+compileall exit code: 0
+
+===== 7. COMPLETE APPLICATION IMPORT =====
+Application imported successfully.
+Total registered routes: 83
+
+Duplicate method/path registrations:
+None
+
+Main workflow routes:
+GET                /jobs/new
+POST               /jobs
+GET                /customers
+GET                /customers/new
+POST               /customers/new
+GET                /customers/{customer_id}/edit
+POST               /customers/{customer_id}/edit
+POST               /customers/{customer_id}/deactivate
+POST               /customers/{customer_id}/reactivate
+GET                /customers/{customer_id}
+POST               /customers/{customer_id}/transactions/payment
+POST               /customers/{customer_id}/transactions/refund
+POST               /customers/{customer_id}/transactions/adjustment
+GET                /jobs
+GET                /jobs/{job_id}
+GET                /jobs/{job_id}/edit
+POST               /jobs/{job_id}/edit
+POST               /jobs/{job_id}/parts
+POST               /jobs/{job_id}/generate-quote
+GET                /invoices
+POST               /quotes/{quote_id}/convert-to-invoice
+GET                /invoices/{invoice_id}/documents
+POST               /invoices/{invoice_id}/payments
+POST               /invoices/{invoice_id}/parts-order-sheet
+GET                /invoices/{invoice_id}/parts-order-sheet/pdf
+GET                /invoices/{invoice_id}/customer/pdf
+GET                /invoices/{invoice_id}/internal/pdf
+GET                /suppliers
+GET                /suppliers/new
+POST               /suppliers/new
+GET                /suppliers/{supplier_id}/edit
+POST               /suppliers/{supplier_id}/edit
+POST               /suppliers/{supplier_id}/status
+POST               /suppliers/{supplier_id}/delete
+GET                /quotes
+POST               /quotes/{quote_id}/archive
+POST               /quotes/{quote_id}/restore
+GET                /quotes/{quote_id}/documents
+GET                /quotes/{quote_id}/customer/pdf
+GET                /quotes/{quote_id}/internal/pdf
+GET                /quotes/{quote_id}/customer
+GET                /quotes/{quote_id}/internal
+POST               /jobs/{job_id}/status
+POST               /jobs/{job_id}/start-sis-cart-import
+POST               /jobs/{job_id}/start-source-import
+GET                /health
+Application import exit code: 0
+
+===== 8. LIVE SERVER HEALTH =====
+HTTP 200
+{"ok":true,"version":"1.0.0-alpha.2-machine-registry"}
+
+===== 9. MAIN PAGE HTTP CHECKS =====
+200  /
+200  /requests
+200  /requests/smart-intake
+200  /requests/new
+200  /jobs
+200  /quotes
+200  /invoices
+200  /customers
+200  /machines
+200  /suppliers
+
+===== 10. DATABASE LOCATION SEARCH =====
+./data/plg_core.db  299008 bytes
+./PLG-Core-1.0-Alpha-1-Scaffold/data/plg_core-backup.db  20480 bytes
+./PLG-Core-1.0-Alpha-1-Scaffold/data/plg_core-backup-v0.3.db  20480 bytes
+./PLG-Core-1.0-Alpha-1-Scaffold/data/plg_core.db  94208 bytes
+
+SQLite connections found in code:
+legacy_app.py:24:DB_PATH = DATA_DIR / "plg_core.db"
+legacy_app.py:48:def get_connection() -> sqlite3.Connection:
+legacy_app.py:50:    connection = sqlite3.connect(DB_PATH)
+legacy_app.py:62:    with closing(get_connection()) as connection:
+legacy_app.py:541:    with closing(get_connection()) as connection:
+legacy_app.py:661:    with closing(get_connection()) as connection:
+legacy_app.py:683:    with closing(get_connection()) as connection:
+legacy_app.py:730:    with closing(get_connection()) as connection:
+legacy_app.py:758:    with closing(get_connection()) as connection:
+legacy_app.py:769:    with closing(get_connection()) as connection: customer=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
+legacy_app.py:777:    with closing(get_connection()) as connection:
+legacy_app.py:784:    with closing(get_connection()) as connection: connection.execute("UPDATE customers SET active=0,updated_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,)); connection.commit()
+legacy_app.py:789:    with closing(get_connection()) as connection: connection.execute("UPDATE customers SET active=1,updated_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,)); connection.commit()
+legacy_app.py:794:    with closing(get_connection()) as connection:
+legacy_app.py:809:    with closing(get_connection()) as connection: connection.execute("INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,payment_method,reference) VALUES (?,?,'PAYMENT',?,?,?)",(customer_id,date.today().isoformat(),round(float(amount),2),payment_method.strip().upper(),reference.strip())); connection.commit()
+legacy_app.py:815:    with closing(get_connection()) as connection: connection.execute("INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,reference,reason) VALUES (?,?,'REFUND',?,?,?)",(customer_id,date.today().isoformat(),-round(float(amount),2),reference.strip(),reason.strip())); connection.commit()
+legacy_app.py:821:    with closing(get_connection()) as connection: connection.execute("INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,reference,reason) VALUES (?,?,'ADJUSTMENT',?,?,?)",(customer_id,date.today().isoformat(),round(float(amount),2),reference.strip(),reason.strip())); connection.commit()
+legacy_app.py:827:    with closing(get_connection()) as connection:
+legacy_app.py:1210:    with closing(get_connection()) as connection:
+legacy_app.py:1321:    with closing(get_connection()) as connection:
+legacy_app.py:1353:    with closing(get_connection()) as connection:
+legacy_app.py:1401:    with closing(get_connection()) as connection:
+legacy_app.py:1427:    with closing(get_connection()) as connection:
+legacy_app.py:1558:    with closing(get_connection()) as connection:
+legacy_app.py:1977:    with closing(get_connection()) as connection:
+legacy_app.py:2025:    with closing(get_connection()) as connection:
+legacy_app.py:2060:    with closing(get_connection()) as connection:
+legacy_app.py:2144:    with closing(get_connection()) as connection:
+legacy_app.py:2281:    with closing(get_connection()) as connection:
+legacy_app.py:2334:    with closing(get_connection()) as connection:
+legacy_app.py:2392:    with closing(get_connection()) as connection:
+legacy_app.py:2414:    with closing(get_connection()) as connection:
+legacy_app.py:2438:    with closing(get_connection()) as connection:
+legacy_app.py:2451:    with closing(get_connection()) as connection:
+legacy_app.py:2457:    with closing(get_connection()) as connection: s=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+legacy_app.py:2463:    with closing(get_connection()) as connection:
+legacy_app.py:2472:    with closing(get_connection()) as connection: connection.execute("UPDATE suppliers SET status=? WHERE id=?",(status,supplier_id)); connection.commit()
+legacy_app.py:2477:    with closing(get_connection()) as connection:
+legacy_app.py:2495:    with closing(get_connection()) as connection:
+legacy_app.py:2567:    with closing(get_connection()) as connection: connection.execute("UPDATE quotes SET is_archived=1 WHERE id=?",(quote_id,)); connection.commit()
+legacy_app.py:2572:    with closing(get_connection()) as connection: connection.execute("UPDATE quotes SET is_archived=0 WHERE id=?",(quote_id,)); connection.commit()
+legacy_app.py:2578:    with closing(get_connection()) as connection:
+legacy_app.py:2590:    with closing(get_connection()) as connection:
+legacy_app.py:2599:    with closing(get_connection()) as connection:
+legacy_app.py:2608:    with closing(get_connection()) as connection:
+legacy_app.py:2624:    with closing(get_connection()) as connection:
+legacy_app.py:2652:    with closing(get_connection()) as connection:
+legacy_app.py:2672:    with closing(get_connection()) as connection:
+legacy_app.py:2748:    with closing(get_connection()) as connection:
+legacy_app.py:2790:    with closing(get_connection()) as connection:
+legacy_app.py:2833:    with closing(get_connection()) as connection:
+legacy_app.py:2876:    with closing(get_connection()) as connection:
+legacy_app.py:2937:    with closing(get_connection()) as connection:
+legacy_app.py:2985:    with closing(get_connection()) as connection:
+legacy_app.py:3010:    with closing(get_connection()) as connection:
+legacy_app.py:3055:    with closing(get_connection()) as connection:
+legacy_app.py:3229:    with closing(get_connection()) as connection:
+legacy_app.py:3354:    with closing(get_connection()) as connection:
+legacy_app.py:3420:    with closing(get_connection()) as connection:
+legacy_app.py:3468:    with closing(get_connection()) as connection:
+legacy_app.py:3502:    with closing(get_connection()) as connection:
+legacy_app.py:3543:    with closing(get_connection()) as connection:
+legacy_app.py:3608:    with closing(get_connection()) as connection:
+legacy_app.py:3651:    with closing(get_connection()) as connection:
+legacy_app.py:3689:    with closing(get_connection()) as connection:
+legacy_app.py:3703:    with closing(get_connection()) as connection: connection.execute("INSERT INTO connector_profiles (connector_key,display_name,category,trust_level,launch_url,connector_type,parser_key,is_enabled,is_archived,sort_order) VALUES (?,?,?,?,?,?,'',1,0,100)",(key,display_name.strip(),category.strip(),trust_level.strip(),launch_url.strip(),connector_type.strip())); connection.commit()
+legacy_app.py:3708:    with closing(get_connection()) as connection: c=connection.execute("SELECT * FROM connector_profiles WHERE id=?",(connector_id,)).fetchone()
+legacy_app.py:3713:    with closing(get_connection()) as connection: connection.execute("UPDATE connector_profiles SET display_name=?,launch_url=?,category=?,trust_level=?,connector_type=? WHERE id=?",(display_name.strip(),launch_url.strip(),category.strip(),trust_level.strip(),connector_type.strip(),connector_id)); connection.commit()
+legacy_app.py:3718:    with closing(get_connection()) as connection:
+legacy_app.py:3725:    with closing(get_connection()) as connection: connection.execute("UPDATE connector_profiles SET is_archived=1,is_enabled=0 WHERE id=?",(connector_id,)); connection.commit()
+legacy_app.py:3730:    with closing(get_connection()) as connection: connection.execute("UPDATE connector_profiles SET is_archived=0 WHERE id=?",(connector_id,)); connection.commit()
+legacy_app.py:3735:    with closing(get_connection()) as connection:
+legacy_app.py:3745:    with closing(get_connection()) as connection:
+legacy_app.py:3775:    with closing(get_connection()) as connection:
+legacy_app.py:3832:    with closing(get_connection()) as connection:
+plg_core/database/migrations.py:7:from legacy_app import get_connection
+plg_core/database/migrations.py:426:    with closing(get_connection()) as connection:
+plg_core/basket/service.py:10:from legacy_app import get_connection
+plg_core/basket/service.py:93:    with closing(get_connection()) as connection:
+plg_core/basket/service.py:100:    with closing(get_connection()) as connection:
+plg_core/basket/service.py:153:    with closing(get_connection()) as connection:
+plg_core/basket/service.py:186:    with closing(get_connection()) as connection:
+plg_core/basket/service.py:201:    with closing(get_connection()) as connection:
+plg_core/basket/service.py:248:    with closing(get_connection()) as connection:
+plg_core/basket/service.py:329:    with closing(get_connection()) as connection:
+plg_core/basket/routes.py:9:from legacy_app import get_connection, templates
+plg_core/basket/routes.py:89:    with closing(get_connection()) as connection:
+plg_core/basket/routes.py:303:    with closing(get_connection()) as connection:
+plg_core/basket/routes.py:544:    with closing(get_connection()) as connection:
+plg_core/basket/routes.py:614:    with closing(get_connection()) as connection:
+plg_core/basket/routes.py:726:    with closing(get_connection()) as connection:
+plg_core/basket/routes.py:926:    with closing(get_connection()) as connection:
+plg_core/basket/routes.py:981:        with closing(get_connection()) as connection:
+plg_core/machines/routes.py:9:from legacy_app import get_connection, templates
+plg_core/machines/routes.py:59:    with closing(get_connection()) as connection:
+plg_core/machines/routes.py:100:    with closing(get_connection()) as connection:
+plg_core/machines/routes.py:145:    with closing(get_connection()) as connection:
+plg_core/machines/routes.py:172:    with closing(get_connection()) as connection:
+plg_core/machines/routes.py:205:    with closing(get_connection()) as connection:
+plg_core/machines/routes.py:242:    with closing(get_connection()) as connection:
+plg_core/machines/routes.py:264:    with closing(get_connection()) as connection:
+plg_core/machines/routes.py:275:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:13:from legacy_app import BASE_DIR, get_connection, next_job_number, templates
+plg_core/requests/routes.py:83:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:201:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:634:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:713:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:1039:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:1089:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:1162:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:1233:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:1250:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:1304:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:1321:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:1355:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:1375:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:1435:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:1447:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:1459:    with closing(get_connection()) as connection:
+plg_core/requests/routes.py:1475:    with closing(get_connection()) as connection:
+
+===== 11. SQLITE INTEGRITY CHECK =====
+
+Database: /home/brandonbayleyhay/Desktop/PLG-Core/data/plg_core.db
+Size: 299008 bytes
+Integrity: ok
+Tables: active_job_import, active_source_import, active_verification, basket_activity, basket_attachments, basket_items, basket_sources, baskets, connector_profiles, customer_locations, customer_request_attachments, customer_requests, customer_transactions, customers, document_templates, invoice_items, invoices, job_parts, job_timeline, jobs, machines, part_sources, quote_items, quotes, schema_migrations, source_cart_imports, suppliers
+customer_requests: 0
+customers: 5
+machines: 6
+jobs: 10
+job_parts: 32
+quotes: 11
+quote_items: 22
+invoices: 3
+invoice_items: 6
+customer_transactions: 9
+suppliers: 6
+
+Database: /home/brandonbayleyhay/Desktop/PLG-Core/PLG-Core-1.0-Alpha-1-Scaffold/data/plg_core-backup.db
+Size: 20480 bytes
+Integrity: ok
+Tables: job_parts, jobs
+customer_requests: TABLE MISSING
+customers: TABLE MISSING
+machines: TABLE MISSING
+jobs: 1
+job_parts: 3
+quotes: TABLE MISSING
+quote_items: TABLE MISSING
+invoices: TABLE MISSING
+invoice_items: TABLE MISSING
+customer_transactions: TABLE MISSING
+suppliers: TABLE MISSING
+
+Database: /home/brandonbayleyhay/Desktop/PLG-Core/PLG-Core-1.0-Alpha-1-Scaffold/data/plg_core-backup-v0.3.db
+Size: 20480 bytes
+Integrity: ok
+Tables: job_parts, jobs
+customer_requests: TABLE MISSING
+customers: TABLE MISSING
+machines: TABLE MISSING
+jobs: 1
+job_parts: 3
+quotes: TABLE MISSING
+quote_items: TABLE MISSING
+invoices: TABLE MISSING
+invoice_items: TABLE MISSING
+customer_transactions: TABLE MISSING
+suppliers: TABLE MISSING
+
+Database: /home/brandonbayleyhay/Desktop/PLG-Core/PLG-Core-1.0-Alpha-1-Scaffold/data/plg_core.db
+Size: 94208 bytes
+Integrity: ok
+Tables: active_job_import, active_source_import, active_verification, connector_profiles, document_templates, job_parts, jobs, part_sources, quote_items, quotes, source_cart_imports, suppliers
+customer_requests: TABLE MISSING
+customers: TABLE MISSING
+machines: TABLE MISSING
+jobs: 2
+job_parts: 7
+quotes: 1
+quote_items: 2
+invoices: TABLE MISSING
+invoice_items: TABLE MISSING
+customer_transactions: TABLE MISSING
+suppliers: 4
+
+===== 12. REQUEST WORKFLOW CHECK =====
+templates/jobs.html:179:  <a class="button" href="/jobs/new">Create Job</a>
+templates/dashboard.html:14:    <a class="button" href="/requests/smart-intake">
+templates/customer_account.html:10:  <a class="button" href="/jobs/new?customer_id={{ customer.id }}">Create Job</a>
+templates/new_job.html:13:<div class="form-actions full streamlined-job-actions"><a class="button ghost" href="/jobs">Cancel</a><button class="button" type="submit">Create Job &amp; Open Parts Basket →</button></div>
+templates/base.html:57:      <a class="button full-width" href="/requests/smart-intake">＋ Smart Intake</a>
+templates/machine_detail.html:4:<section class="workspace-heading"><div><p class="eyebrow">UNIVERSAL REGISTRY</p><div class="registry-detail-title"><span class="registry-type-badge">{{ type_icon }} {{ type_label }}</span><h1>{{ machine.name }}</h1></div><p>{{ machine.machine_number }} · {{ machine.customer_name }}</p></div><div class="workspace-heading-actions"><a class="button ghost" href="/machines/{{ machine.id }}/edit">Edit</a><a class="button" href="/jobs/new?customer_id={{ machine.customer_id }}&machine_id={{ machine.id }}">Create Job</a></div></section>
+templates/machines.html:15:      + Register Item
+templates/request_detail.html:98:            <form method="post" action="/requests/{{ record.id }}/customer/create"><button class="button" type="submit">Create Customer</button></form>
+templates/request_detail.html:120:            <form method="post" action="/requests/{{ record.id }}/registry/create"><button class="button" type="submit">Register Item</button></form>
+templates/request_detail.html:143:          <form method="post" action="/requests/{{ record.id }}/job/create"><button class="button" type="submit">Create Job</button></form>
+templates/requests.html:12:  <a class="button" href="/requests/smart-intake">＋ Smart Intake</a>
+templates/requests.html:66:    <a class="button" href="/requests/smart-intake">＋ Smart Intake</a>
+templates/smart_intake.html:17:<section class="panel smart-intake-panel">
+templates/smart_intake.html:20:    action="/requests/smart-intake/analyze"
+templates/smart_intake.html:21:    class="smart-intake-paste"
+templates/smart_intake.html:50:  action="/requests/smart-intake/create"
+templates/smart_intake.html:51:  class="smart-intake-review"
+templates/smart_intake.html:55:  <section class="panel smart-intake-match-grid">
+templates/smart_intake.html:116:  <section class="panel smart-intake-fields">
+templates/smart_intake.html:220:        Create Request and Job
+plg_core/requests/routes.py:610:@router.get("/smart-intake", response_class=HTMLResponse)
+plg_core/requests/routes.py:627:@router.post("/smart-intake/analyze", response_class=HTMLResponse)
+plg_core/requests/routes.py:671:@router.post("/smart-intake/create")
+
+===== 13. QUOTE / INVOICE / PAYMENT CHECK =====
+legacy_app.py:1550:@app.post("/jobs/{job_id}/generate-quote")
+legacy_app.py:2150:                detail="A void invoice cannot receive payment.",
+legacy_app.py:2279:@app.post("/invoices/{invoice_id}/parts-order-sheet")
+legacy_app.py:2332:@app.get("/invoices/{invoice_id}/parts-order-sheet/pdf")
+templates/job_detail.html:152:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+templates/basket.html:18:    <form method="post" action="/jobs/{{ job.id }}/generate-quote"><button class="button" type="submit">Create Quote →</button></form>
+templates/basket.html:98:  <div class="quote-command-heading"><div><p class="eyebrow">QUOTE SUMMARY</p><h2>{% if basket.totals.selected_items %}Ready for review{% else %}Waiting for parts{% endif %}</h2></div>{% if basket.totals.selected_items %}{% if basket.status == "COMMITTED" %}<form method="post" action="/jobs/{{ job.id }}/generate-quote"><button class="button" type="submit">Create Quote</button></form>{% else %}<form method="post" action="/jobs/{{ job.id }}/basket/checkout"><button class="button" type="submit">Review Quote</button></form>{% endif %}{% endif %}</div>
+templates/quote_documents.html:45:          Customer Accepted — Create Invoice
+templates/quote_documents.html:262:          Customer Accepted — Create Invoice
+templates/quotes.html:143:          <strong>Customer Accepted</strong>
+templates/invoices.html:142:              href="/invoices/{{ invoice.id }}/parts-order-sheet/pdf?v={{ invoice.status }}-{{ invoice.invoice_date }}"
+templates/invoice_documents.html:156:        href="/invoices/{{ invoice.id }}/parts-order-sheet/pdf?v={{ invoice.status }}-{{ invoice.invoice_date }}"
+templates/invoice_documents.html:163:        action="/invoices/{{ invoice.id }}/parts-order-sheet"
+templates/invoice_documents.html:299:        <p>This invoice cannot receive payment.</p>
+templates/job_command_center.html:578:        action="/jobs/{{ job.id }}/generate-quote"
+plg_core/documents/invoice_pdf.py:229:            "label": "PAID IN FULL",
+plg_core/documents/invoice_pdf.py:655:            rows.append(["PAYMENT STATUS", "PAID IN FULL"])
+plg_core/documents/invoice_pdf.py:685:            rows.append(["PAID IN FULL", ""])
+plg_core/documents/parts_order_pdf.py:222:            id="parts-order-sheet",
+plg_core/jobs/engine.py:289:                    f"/jobs/{job_id}/generate-quote",
+
+===== 14. DOCUMENT GENERATOR IMPORT TEST =====
+Quote PDF generator: OK
+Invoice PDF generator: OK
+Parts Order Sheet generator: OK
+
+===== 15. GENERATED DOCUMENT INVENTORY =====
+Total generated files:
+35
+
+PDF count:
+34
+
+Newest generated documents:
+2026-08-05 20:56:40.1907145320  documents/Customers/David Smith/Parts Order Sheets/PLG-2026-003-Parts-Order-Sheet.pdf
+2026-08-05 20:56:35.4296961380  documents/Customers/David Smith/Invoices/Internal/PLG-2026-003-Internal.pdf
+2026-08-05 20:56:35.3276957440  documents/Customers/David Smith/Invoices/Customer/PLG-2026-003.pdf
+2026-08-05 20:55:47.0975094110  documents/Customers/David Smith/Quotes/Internal/PLG-Q-2026-011-Internal.pdf
+2026-08-05 20:55:46.9945090130  documents/Customers/David Smith/Quotes/Customer/PLG-Q-2026-011.pdf
+2026-08-05 06:22:12.9017465360  documents/Customers/Cameron King/Parts Order Sheets/PLG-2026-002-Parts-Order-Sheet.pdf
+2026-08-05 06:09:28.4639091420  documents/Customers/Cameron King/Invoices/Internal/PLG-2026-002-Internal.pdf
+2026-08-05 06:09:28.3619086290  documents/Customers/Cameron King/Invoices/Customer/PLG-2026-002.pdf
+2026-08-05 05:58:42.6311545040  documents/Customers/brandon hay/Invoices/Internal/PLG-2026-001-Internal.pdf
+2026-08-05 05:58:42.5281541140  documents/Customers/brandon hay/Invoices/Customer/PLG-2026-001.pdf
+2026-08-05 04:14:54.9438944700  documents/Customers/Marcus Rolle/Quotes/Internal/PLG-Q-2026-010-Internal.pdf
+2026-08-05 04:14:54.8408940660  documents/Customers/Marcus Rolle/Quotes/Customer/PLG-Q-2026-010.pdf
+2026-08-05 01:04:53.4082602000  documents/Customers/Cameron King/Quotes/Internal/PLG-Q-2026-009-Internal.pdf
+2026-08-05 01:04:53.3052598670  documents/Customers/Cameron King/Quotes/Customer/PLG-Q-2026-009.pdf
+2026-08-04 23:34:54.7424457510  documents/Customers/Cameron King/Quotes/Internal/PLG-Q-2026-008-Internal.pdf
+2026-08-04 23:34:54.6394453990  documents/Customers/Cameron King/Quotes/Customer/PLG-Q-2026-008.pdf
+2026-08-04 04:22:35.2293539260  documents/Customers/brandon/Quotes/Internal/PLG-Q-2026-005-Internal.pdf
+2026-08-04 04:22:35.2283539230  documents/Customers/brandon/Quotes/Internal/PLG-Q-2026-004-Internal.pdf
+2026-08-04 04:22:35.2263539150  documents/Customers/brandon/Quotes/Internal/PLG-Q-2026-003-Internal.pdf
+2026-08-04 04:22:35.2253539110  documents/Customers/brandon/Quotes/Customer/PLG-Q-2026-005.pdf
+2026-08-04 04:22:35.2233539040  documents/Customers/brandon/Quotes/Customer/PLG-Q-2026-004.pdf
+2026-08-04 04:22:35.2223539000  documents/Customers/brandon/Quotes/Customer/PLG-Q-2026-003.pdf
+2026-08-04 04:22:35.2203538920  documents/Customers/brandon hay/Quotes/Internal/PLG-Q-2026-006-Internal.pdf
+2026-08-04 04:22:35.2183538850  documents/Customers/brandon hay/Quotes/Internal/PLG-Q-2026-005-Internal.pdf
+2026-08-04 04:22:35.2173538810  documents/Customers/brandon hay/Quotes/Internal/PLG-Q-2026-004-Internal.pdf
+2026-08-04 04:22:35.2153538740  documents/Customers/brandon hay/Quotes/Customer/PLG-Q-2026-006.pdf
+2026-08-04 04:22:35.2143538700  documents/Customers/brandon hay/Quotes/Customer/PLG-Q-2026-005.pdf
+2026-08-04 04:22:35.2123538620  documents/Customers/brandon hay/Quotes/Customer/PLG-Q-2026-004.pdf
+2026-08-04 04:22:35.2073538430  documents/Customers/Cameron King/Quotes/Internal/PLG-Q-2026-007-Internal.pdf
+2026-08-04 04:22:35.2063538400  documents/Customers/Cameron King/Quotes/Internal/PLG-Q-2026-002-Internal.pdf
+
+===== 16. HARDCODED LOCAL PATHS =====
+legacy_app.py:35:        "http://127.0.0.1:8000",
+legacy_app.py:36:        "http://localhost:8000",
+
+===== 17. POSSIBLE SECRETS =====
+
+===== 18. TODO / PLACEHOLDER / OLD LINKS =====
+plg_core/requests/routes.py:15:router = APIRouter(prefix="/requests", tags=["customer-requests"])
+
+===== 19. REQUIREMENTS / DEPLOYMENT READINESS =====
+-rw-r--r--. 1 brandonbayleyhay brandonbayleyhay 91 Aug  2 22:56 requirements.txt
+
+requirements.txt contents:
+fastapi>=0.128
+uvicorn[standard]>=0.35
+jinja2>=3.1
+python-multipart>=0.0.20
+reportlab>=4.0
+
+===== 20. RECENT BACKUPS =====
+2026-08-05 20:21  10556685 bytes  backups/PLG-Core-20260805-202141.tar.gz
+2026-08-05 06:30  10556806 bytes  backups/PLG-Core-20260805-063003.tar.gz
+
+==================================================
+END OF PLG FULL SYSTEM AUDIT
+==================================================
