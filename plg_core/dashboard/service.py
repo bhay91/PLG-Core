@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import date, timedelta
 from typing import Any
 
 
@@ -127,6 +128,69 @@ def get_dashboard_stats(
     ).fetchone()
 
 
+def get_financial_snapshot(
+    connection: sqlite3.Connection,
+    *,
+    today: date | None = None,
+) -> sqlite3.Row:
+    """Return cash received and outstanding invoice metrics."""
+
+    report_date = today or date.today()
+    week_start = report_date - timedelta(
+        days=report_date.weekday()
+    )
+
+    return connection.execute(
+        """
+        SELECT
+            (
+                SELECT COALESCE(SUM(amount), 0)
+                FROM customer_transactions
+                WHERE transaction_type = 'PAYMENT'
+                  AND transaction_date = ?
+            ) AS payments_today,
+
+            (
+                SELECT COUNT(*)
+                FROM customer_transactions
+                WHERE transaction_type = 'PAYMENT'
+                  AND transaction_date = ?
+            ) AS payment_transactions_today,
+
+            (
+                SELECT COALESCE(SUM(amount), 0)
+                FROM customer_transactions
+                WHERE transaction_type = 'PAYMENT'
+                  AND transaction_date BETWEEN ? AND ?
+            ) AS payments_this_week,
+
+            (
+                SELECT COALESCE(SUM(balance_due), 0)
+                FROM invoices
+                WHERE status IN ('UNPAID', 'PARTIAL')
+            ) AS outstanding_balance,
+
+            (
+                SELECT COUNT(DISTINCT transactions.invoice_id)
+                FROM customer_transactions AS transactions
+                JOIN invoices
+                  ON invoices.id = transactions.invoice_id
+                WHERE transactions.transaction_type = 'PAYMENT'
+                  AND transactions.transaction_date = ?
+                  AND transactions.invoice_id IS NOT NULL
+                  AND invoices.status = 'PAID'
+            ) AS invoices_paid_today
+        """,
+        (
+            report_date.isoformat(),
+            report_date.isoformat(),
+            week_start.isoformat(),
+            report_date.isoformat(),
+            report_date.isoformat(),
+        ),
+    ).fetchone()
+
+
 def get_dashboard_data(
     connection: sqlite3.Connection,
     *,
@@ -140,4 +204,5 @@ def get_dashboard_data(
             limit=recent_job_limit,
         ),
         "stats": get_dashboard_stats(connection),
+        "financial": get_financial_snapshot(connection),
     }
