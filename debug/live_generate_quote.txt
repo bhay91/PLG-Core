@@ -1,0 +1,193 @@
+@app.post("/jobs/{job_id}/generate-quote")
+def generate_quote(job_id: int):
+    with closing(get_connection()) as connection:
+        job = connection.execute(
+            "SELECT * FROM jobs WHERE id = ?",
+            (job_id,),
+        ).fetchone()
+
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found.")
+
+        selected = connection.execute(
+            """
+            SELECT
+                job_parts.id AS part_id,
+                job_parts.requested_description,
+                job_parts.oem_description,
+                job_parts.quantity,
+                part_sources.id AS source_id,
+                part_sources.supplier_name,
+                part_sources.source_type,
+                part_sources.brand,
+                part_sources.supplier_part_number,
+                part_sources.supplier_cost
+            FROM job_parts
+            JOIN part_sources
+                ON part_sources.part_id = job_parts.id
+               AND part_sources.selected_for_quote = 1
+            WHERE job_parts.job_id = ?
+            ORDER BY job_parts.id
+            """,
+            (job_id,),
+        ).fetchall()
+
+        total_parts = connection.execute(
+            "SELECT COUNT(*) AS count FROM job_parts WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()["count"]
+
+        if total_parts == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Add at least one part before generating a quote.",
+            )
+
+        if len(selected) != total_parts:
+            raise HTTPException(
+                status_code=400,
+                detail="Select one supplier source for every part first.",
+            )
+
+        quote_number = next_quote_number(connection)
+        quote_date = date.today().isoformat()
+
+        shipping_rows = connection.execute(
+            """
+            SELECT source_name, shipping_total
+            FROM source_cart_imports
+            WHERE id IN (
+                SELECT MAX(id)
+                FROM source_cart_imports
+                WHERE job_id = ?
+                GROUP BY LOWER(TRIM(source_name))
+            )
+            """,
+            (job_id,),
+        ).fetchall()
+
+        selected_suppliers = {
+            str(row["supplier_name"] or "").strip().lower()
+            for row in selected
+        }
+
+        shipping_total = sum(
+            float(row["shipping_total"] or 0)
+            for row in shipping_rows
+            if str(row["source_name"] or "").strip().lower()
+            in selected_suppliers
+        )
+
+        parts_subtotal = 0.0
+        supplier_parts_total = 0.0
+        item_rows = []
+
+        for row in selected:
+            quantity = max(1, int(row["quantity"] or 1))
+            supplier_unit_cost = float(row["supplier_cost"] or 0)
+            customer_unit_price = calculate_customer_unit_price(
+                supplier_unit_cost
+            )
+            supplier_line_total = supplier_unit_cost * quantity
+            customer_line_total = customer_unit_price * quantity
+            line_profit = customer_line_total - supplier_line_total
+
+            description = (
+                str(row["requested_description"] or "").strip()
+                or str(row["oem_description"] or "").strip()
+                or "Part"
+            )
+
+            supplier_parts_total += supplier_line_total
+            parts_subtotal += customer_line_total
+
+            item_rows.append(
+                (
+                    row["part_id"],
+                    row["source_id"],
+                    quantity,
+                    description,
+                    row["supplier_name"],
+                    row["source_type"],
+                    row["brand"] or "",
+                    row["supplier_part_number"] or "",
+                    supplier_unit_cost,
+                    customer_unit_price,
+                    supplier_line_total,
+                    customer_line_total,
+                    line_profit,
+                )
+            )
+
+        customer_total = parts_subtotal + shipping_total
+        supplier_total = supplier_parts_total + shipping_total
+        profit_total = customer_total - supplier_total
+
+        cursor = connection.execute(
+            """
+            INSERT INTO quotes (
+                quote_number,
+                job_id,
+                quote_date,
+                status,
+                parts_subtotal,
+                shipping_total,
+                customer_total,
+                supplier_total,
+                profit_total
+            )
+            VALUES (?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?)
+            """,
+            (
+                quote_number,
+                job_id,
+                quote_date,
+                parts_subtotal,
+                shipping_total,
+                customer_total,
+                supplier_total,
+                profit_total,
+            ),
+        )
+        quote_id = cursor.lastrowid
+
+        for item in item_rows:
+            connection.execute(
+                """
+                INSERT INTO quote_items (
+                    quote_id,
+                    part_id,
+                    source_id,
+                    quantity,
+                    description,
+                    supplier_name,
+                    source_type,
+                    brand,
+                    supplier_part_number,
+                    supplier_unit_cost,
+                    customer_unit_price,
+                    supplier_line_total,
+                    customer_line_total,
+                    line_profit
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (quote_id, *item),
+            )
+
+        connection.execute(
+            "UPDATE jobs SET status = 'QUOTED' WHERE id = ?",
+            (job_id,),
+        )
+        connection.commit()
+
+        quote, pdf_items = load_quote(connection, quote_id)
+        generate_quote_pdfs(quote, pdf_items)
+
+    return RedirectResponse(
+        url=f"/quotes/{quote_id}/documents",
+        status_code=303,
+    )
+
+
+def load_quote(connection: sqlite3.Connection, quote_id: int):

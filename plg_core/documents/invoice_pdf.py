@@ -42,6 +42,14 @@ PALE_BLUE = colors.HexColor("#EAF2FC")
 GREEN = colors.HexColor("#138A4B")
 WHITE = colors.white
 
+# PLG Corporate PDF V2
+PDF_PAGE_SIZE = LETTER
+PDF_LEFT_MARGIN = 0.28 * inch
+PDF_RIGHT_MARGIN = 0.28 * inch
+PDF_TOP_MARGIN = 0.27 * inch
+PDF_BOTTOM_MARGIN = 0.52 * inch
+PDF_CONTENT_WIDTH = 7.94 * inch
+
 
 def sanitize_path_name(value: str) -> str:
     value = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "-", str(value or "").strip())
@@ -148,37 +156,96 @@ def _styles():
 
 def _page_footer(canvas, doc, title, number):
     canvas.saveState()
-    width, _ = LETTER
+    width, _ = PDF_PAGE_SIZE
     canvas.setStrokeColor(NAVY)
     canvas.setLineWidth(0.8)
-    canvas.line(0.43 * inch, 0.47 * inch, width - 0.43 * inch, 0.47 * inch)
+    canvas.line(
+        PDF_LEFT_MARGIN,
+        0.39 * inch,
+        width - PDF_RIGHT_MARGIN,
+        0.39 * inch,
+    )
     canvas.setFont("Helvetica", 6.5)
     canvas.setFillColor(MUTED)
-    canvas.drawString(0.44 * inch, 0.28 * inch, "PLG Corporate Document Standard v1.0")
-    canvas.drawRightString(width - 0.44 * inch, 0.28 * inch, f"{title} {number} | Page {doc.page}")
+    canvas.drawString(
+        PDF_LEFT_MARGIN,
+        0.21 * inch,
+        "PLG Corporate Document Standard v2.0",
+    )
+    canvas.drawRightString(
+        width - PDF_RIGHT_MARGIN,
+        0.21 * inch,
+        f"{title} {number} | Page {doc.page}",
+    )
     canvas.restoreState()
 
 
 def _document(path: Path, invoice, title: str):
     doc = BaseDocTemplate(
-        str(path), pagesize=LETTER,
-        leftMargin=0.43 * inch, rightMargin=0.43 * inch,
-        topMargin=0.38 * inch, bottomMargin=0.63 * inch,
+        str(path),
+        pagesize=PDF_PAGE_SIZE,
+        leftMargin=PDF_LEFT_MARGIN,
+        rightMargin=PDF_RIGHT_MARGIN,
+        topMargin=PDF_TOP_MARGIN,
+        bottomMargin=PDF_BOTTOM_MARGIN,
         title=f"{title} {_value(invoice, 'invoice_number')}",
         author="PartsLink Global",
     )
-    frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="main")
+
+    frame = Frame(
+        doc.leftMargin,
+        doc.bottomMargin,
+        doc.width,
+        doc.height,
+        id="main",
+        leftPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        bottomPadding=0,
+    )
+
     doc.addPageTemplates([
         PageTemplate(
-            id="corporate",
+            id="corporate-v2",
             frames=[frame],
             onPage=lambda canvas, d: _page_footer(
-                canvas, d, title, str(_value(invoice, "invoice_number"))
+                canvas,
+                d,
+                title,
+                str(_value(invoice, "invoice_number")),
             ),
         )
     ])
+
     return doc
 
+def _invoice_status_details(invoice):
+    status = str(
+        _value(invoice, "status", "UNPAID") or "UNPAID"
+    ).strip().upper()
+
+    if status == "PAID":
+        return {
+            "label": "PAID IN FULL",
+            "color": colors.HexColor("#1F7A4F"),
+        }
+
+    if status == "PARTIAL":
+        return {
+            "label": "PARTIALLY PAID",
+            "color": colors.HexColor("#B26A00"),
+        }
+
+    if status == "VOID":
+        return {
+            "label": "VOID",
+            "color": colors.HexColor("#A53945"),
+        }
+
+    return {
+        "label": "UNPAID",
+        "color": colors.HexColor("#A53945"),
+    }
 
 def _header(invoice, internal: bool):
     s = _styles()
@@ -186,7 +253,7 @@ def _header(invoice, internal: bool):
     logo_flow = []
     if logo:
         try:
-            logo_flow.append(Image(str(logo), width=1.28 * inch, height=0.63 * inch))
+            logo_flow.append(Image(str(logo), width=1.14 * inch, height=0.56 * inch))
         except Exception:
             pass
     if not logo_flow:
@@ -197,37 +264,81 @@ def _header(invoice, internal: bool):
     business = [
         Paragraph("PARTSLINK GLOBAL", s["brand"]),
         Paragraph("Worldwide Parts Sourcing &amp; Logistics", s["tagline"]),
-        Spacer(1, 3),
-        Paragraph("2033 W McNab Rd Ste S, Pompano Beach, FL 33069", s["contact"]),
+        Spacer(1, 1),
+        Paragraph(
+            "2033 W McNab Rd Ste S, Pompano Beach, FL 33069",
+            s["contact"],
+        ),
         Paragraph("USA: +1 (561) 978-4452 &nbsp; | &nbsp; Jamaica: +1 (876) 429-0046", s["contact"]),
         Paragraph("partslinkglobal@icloud.com", s["contact"]),
     ]
 
     title = "INTERNAL INVOICE" if internal else "INVOICE"
+    status_details = _invoice_status_details(invoice)
+    invoice_status = str(
+        _value(invoice, "status", "UNPAID") or "UNPAID"
+    ).strip().upper()
+
+    meta_rows = [
+        ["Invoice No.", str(_value(invoice, "invoice_number"))],
+        ["Date", _date_text(_value(invoice, "invoice_date"))],
+    ]
+
+    if invoice_status == "PAID":
+        paid_date = _value(invoice, "paid_date", "")
+
+        if paid_date:
+            meta_rows.append([
+                "Paid Date",
+                _date_text(paid_date),
+            ])
+    else:
+        meta_rows.append([
+            "Valid Until",
+            _valid_until(_value(invoice, "invoice_date")),
+        ])
+
+    meta_rows.append([
+        "Status",
+        Paragraph(
+            status_details["label"],
+            ParagraphStyle(
+                "InvoiceStatusDisplay",
+                parent=s["small"],
+                fontName="Helvetica-Bold",
+                fontSize=7.7,
+                textColor=status_details["color"],
+                alignment=TA_RIGHT,
+            ),
+        ),
+    ])
+
     meta = [
         Paragraph(title, s["doc_title"]),
         Spacer(1, 4),
-        Table([
-            ["Invoice No.", str(_value(invoice, "invoice_number"))],
-            ["Date", _date_text(_value(invoice, "invoice_date"))],
-            ["Valid Until", _valid_until(_value(invoice, "invoice_date"))],
-            ["Status", str(_value(invoice, "status", "DRAFT"))],
-        ], colWidths=[0.78 * inch, 1.28 * inch], style=[
-            ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
-            ("FONTNAME", (1,0), (1,-1), "Helvetica"),
-            ("FONTSIZE", (0,0), (-1,-1), 7.7),
-            ("TEXTCOLOR", (0,0), (-1,-1), INK),
-            ("ALIGN", (1,0), (1,-1), "RIGHT"),
-            ("TOPPADDING", (0,0), (-1,-1), 2),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 2),
-            ("TEXTCOLOR", (1,-1), (1,-1), BLUE),
-            ("FONTNAME", (1,-1), (1,-1), "Helvetica-Bold"),
-        ]),
+        Table(
+            meta_rows,
+            colWidths=[0.78 * inch, 1.28 * inch],
+            style=[
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTNAME", (1, 0), (1, -2), "Helvetica"),
+                ("FONTSIZE", (0, 0), (-1, -1), 7.7),
+                ("TEXTCOLOR", (0, 0), (0, -1), INK),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ],
+        ),
     ]
 
     table = Table(
         [[logo_flow, business, meta]],
-        colWidths=[1.42 * inch, 3.72 * inch, 2.18 * inch],
+        colWidths=[
+            1.26 * inch,
+            4.18 * inch,
+            2.50 * inch,
+        ],
     )
     table.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
@@ -236,7 +347,7 @@ def _header(invoice, internal: bool):
         ("TOPPADDING", (0,0), (-1,-1), 0),
         ("BOTTOMPADDING", (0,0), (-1,-1), 0),
         ("LINEBEFORE", (2,0), (2,0), 0.7, LINE),
-        ("LEFTPADDING", (2,0), (2,0), 14),
+        ("LEFTPADDING", (2,0), (2,0), 10),
     ]))
     return table
 
@@ -259,15 +370,15 @@ def _info_box(title, rows):
                 ("VALIGN", (0,0), (-1,-1), "TOP"),
             ])
         ])
-    box = Table(data, colWidths=[3.67 * inch])
+    box = Table(data, colWidths=[3.92 * inch])
     box.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), PALE_BLUE),
         ("BOX", (0,0), (-1,-1), 0.65, LINE),
         ("LINEBELOW", (0,0), (-1,0), 0.65, LINE),
         ("LEFTPADDING", (0,0), (-1,-1), 10),
         ("RIGHTPADDING", (0,0), (-1,-1), 10),
-        ("TOPPADDING", (0,0), (-1,-1), 6),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+        ("TOPPADDING", (0,0), (-1,-1), 4),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
     ]))
     return box
 
@@ -286,18 +397,21 @@ def _information(invoice):
         ("Year", _value(invoice, "year", "Not Provided")),
         ("VIN / PIN / Serial", _value(invoice, "pin_serial", "Not Provided")),
     ])
-    table = Table([[customer, machine]], colWidths=[3.72 * inch, 3.72 * inch])
+    table = Table(
+        [[customer, machine]],
+        colWidths=[3.97 * inch, 3.97 * inch],
+    )
     table.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("LEFTPADDING", (0,0), (-1,-1), 0),
         ("RIGHTPADDING", (0,0), (-1,-1), 0),
-        ("LEFTPADDING", (1,0), (1,0), 8),
+        ("LEFTPADDING", (1,0), (1,0), 5),
     ]))
     return table
 
 
 def _section_bar(text):
-    return Table([[text]], colWidths=[7.44 * inch], style=[
+    return Table([[text]], colWidths=[PDF_CONTENT_WIDTH], style=[
         ("BACKGROUND", (0,0), (-1,-1), NAVY),
         ("TEXTCOLOR", (0,0), (-1,-1), WHITE),
         ("FONTNAME", (0,0), (-1,-1), "Helvetica-Bold"),
@@ -311,79 +425,148 @@ def _section_bar(text):
 
 def _customer_items(items):
     s = _styles()
-    rows = [["QTY", "PARTS & SERVICES DESCRIPTION", "UNIT PRICE", "LINE TOTAL"]]
+
+    rows = [[
+        "QTY",
+        "PART NUMBER",
+        "DESCRIPTION",
+        "UNIT PRICE",
+        "TOTAL",
+    ]]
+
     for item in items:
-        description = str(_value(item, "description", "Part"))
-        pn = str(_value(item, "supplier_part_number", "")).strip()
-        if pn:
-            description += f"<br/><font color='#5E6D7E' size='7'>Part No.: {pn}</font>"
         rows.append([
             str(_value(item, "quantity", 1)),
-            Paragraph(description, s["value"]),
+            Paragraph(
+                str(
+                    _value(
+                        item,
+                        "supplier_part_number",
+                        "",
+                    )
+                    or "—"
+                ),
+                s["small"],
+            ),
+            Paragraph(
+                str(_value(item, "description", "Part")),
+                s["value"],
+            ),
             money(_value(item, "customer_unit_price", 0)),
             money(_value(item, "customer_line_total", 0)),
         ])
-    while len(rows) < 5:
-        rows.append(["", "", "", ""])
-    table = Table(rows, colWidths=[0.58 * inch, 4.12 * inch, 1.22 * inch, 1.52 * inch], repeatRows=1)
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), SOFT),
-        ("TEXTCOLOR", (0,0), (-1,0), INK),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ("FONTSIZE", (0,0), (-1,0), 7.5),
-        ("ALIGN", (0,0), (0,-1), "CENTER"),
-        ("ALIGN", (2,1), (-1,-1), "RIGHT"),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("FONTNAME", (0,1), (-1,-1), "Helvetica"),
-        ("FONTSIZE", (0,1), (-1,-1), 8.2),
-        ("TEXTCOLOR", (0,1), (-1,-1), INK),
-        ("GRID", (0,0), (-1,-1), 0.45, LINE),
-        ("ROWBACKGROUNDS", (0,1), (-1,-1), [WHITE, colors.HexColor("#FAFBFD")]),
-        ("LEFTPADDING", (0,0), (-1,-1), 8),
-        ("RIGHTPADDING", (0,0), (-1,-1), 8),
-        ("TOPPADDING", (0,0), (-1,-1), 7),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 7),
-        ("MINROWHEIGHT", (0,1), (-1,-1), 29),
-    ]))
-    return table
 
+    table = Table(
+        rows,
+        colWidths=[
+            0.45 * inch,
+            1.28 * inch,
+            3.82 * inch,
+            1.08 * inch,
+            1.31 * inch,
+        ],
+        repeatRows=1,
+        splitByRow=1,
+    )
+
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), SOFT),
+        ("TEXTCOLOR", (0, 0), (-1, 0), INK),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 7.2),
+        ("ALIGN", (0, 0), (0, -1), "CENTER"),
+        ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 1), (-1, -1), 8.2),
+        ("TEXTCOLOR", (0, 1), (-1, -1), INK),
+        ("GRID", (0, 0), (-1, -1), 0.45, LINE),
+        (
+            "ROWBACKGROUNDS",
+            (0, 1),
+            (-1, -1),
+            [WHITE, colors.HexColor("#FAFBFD")],
+        ),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+
+    return table
 
 def _internal_items(items):
     s = _styles()
-    rows = [["QTY", "DESCRIPTION", "VENDOR", "PART #", "COST", "SELL", "PROFIT"]]
+
+    rows = [[
+        "QTY",
+        "DESCRIPTION",
+        "VENDOR",
+        "PART #",
+        "COST",
+        "SELL",
+        "PROFIT",
+    ]]
+
     for item in items:
         rows.append([
             str(_value(item, "quantity", 1)),
-            Paragraph(str(_value(item, "description", "Part")), s["small"]),
-            Paragraph(str(_value(item, "supplier_name", "")), s["small"]),
-            Paragraph(str(_value(item, "supplier_part_number", "")), s["small"]),
+            Paragraph(
+                str(_value(item, "description", "Part")),
+                s["small"],
+            ),
+            Paragraph(
+                str(_value(item, "supplier_name", "")),
+                s["small"],
+            ),
+            Paragraph(
+                str(_value(item, "supplier_part_number", "")),
+                s["small"],
+            ),
             money(_value(item, "supplier_line_total", 0)),
             money(_value(item, "customer_line_total", 0)),
             money(_value(item, "line_profit", 0)),
         ])
-    while len(rows) < 5:
-        rows.append(["", "", "", "", "", "", ""])
-    table = Table(rows, colWidths=[0.38*inch,2.22*inch,1.0*inch,1.0*inch,0.92*inch,0.92*inch,1.0*inch], repeatRows=1)
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), SOFT),
-        ("TEXTCOLOR", (0,0), (-1,0), INK),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ("FONTSIZE", (0,0), (-1,0), 7),
-        ("ALIGN", (0,0), (0,-1), "CENTER"),
-        ("ALIGN", (4,1), (-1,-1), "RIGHT"),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("FONTNAME", (0,1), (-1,-1), "Helvetica"),
-        ("FONTSIZE", (0,1), (-1,-1), 7.2),
-        ("GRID", (0,0), (-1,-1), 0.45, LINE),
-        ("ROWBACKGROUNDS", (0,1), (-1,-1), [WHITE, colors.HexColor("#FAFBFD")]),
-        ("LEFTPADDING", (0,0), (-1,-1), 5),
-        ("RIGHTPADDING", (0,0), (-1,-1), 5),
-        ("TOPPADDING", (0,0), (-1,-1), 7),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 7),
-        ("MINROWHEIGHT", (0,1), (-1,-1), 29),
-    ]))
-    return table
 
+    table = Table(
+        rows,
+        colWidths=[
+            0.38 * inch,
+            2.62 * inch,
+            1.08 * inch,
+            1.12 * inch,
+            0.90 * inch,
+            0.90 * inch,
+            0.94 * inch,
+        ],
+        repeatRows=1,
+        splitByRow=1,
+    )
+
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), SOFT),
+        ("TEXTCOLOR", (0, 0), (-1, 0), INK),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 6.8),
+        ("ALIGN", (0, 0), (0, -1), "CENTER"),
+        ("ALIGN", (4, 1), (-1, -1), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 1), (-1, -1), 7.1),
+        ("GRID", (0, 0), (-1, -1), 0.45, LINE),
+        (
+            "ROWBACKGROUNDS",
+            (0, 1),
+            (-1, -1),
+            [WHITE, colors.HexColor("#FAFBFD")],
+        ),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+
+    return table
 
 def _payment_box():
     s = _styles()
@@ -402,7 +585,10 @@ def _payment_box():
         Paragraph("Name: Brandon Bayley-Hay", s["small"]),
         Paragraph("Phone: +1 (561) 978-4452", s["small"]),
     ]
-    inner = Table([[jmm, zelle]], colWidths=[2.65*inch,1.65*inch])
+    inner = Table(
+        [[jmm, zelle]],
+        colWidths=[2.82 * inch, 1.82 * inch],
+    )
     inner.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("LINEBEFORE", (1,0), (1,0), 0.5, LINE),
@@ -416,7 +602,7 @@ def _payment_box():
             "PaymentHeader", parent=s["label"], fontSize=9.5, textColor=NAVY
         ))],
         [inner],
-    ], colWidths=[4.52*inch])
+    ], colWidths=[4.82 * inch])
     box.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), PALE_BLUE),
         ("BOX", (0,0), (-1,-1), 0.65, LINE),
@@ -430,58 +616,132 @@ def _payment_box():
 
 
 def _totals_box(invoice, internal: bool):
-    s = _styles()
-    shipping = float(_value(invoice, "shipping_total", 0) or 0)
+    shipping = float(
+        _value(invoice, "shipping_total", 0) or 0
+    )
+
+    status = str(
+        _value(invoice, "status", "UNPAID") or "UNPAID"
+    ).strip().upper()
+
+    balance_due = float(
+        _value(invoice, "balance_due", 0) or 0
+    )
+
     if internal:
-        supplier_parts = float(_value(invoice, "supplier_total", 0) or 0) - shipping
+        supplier_parts = (
+            float(_value(invoice, "supplier_total", 0) or 0)
+            - shipping
+        )
+
         rows = [
             ["Supplier Parts", money(supplier_parts)],
             ["Shipping", money(shipping)],
-            ["Supplier Total", money(_value(invoice, "supplier_total", 0))],
-            ["Customer Total", money(_value(invoice, "customer_total", 0))],
-            ["NET PROFIT", money(_value(invoice, "profit_total", 0))],
+            [
+                "Supplier Total",
+                money(_value(invoice, "supplier_total", 0)),
+            ],
+            [
+                "Customer Total",
+                money(_value(invoice, "customer_total", 0)),
+            ],
+            [
+                "NET PROFIT",
+                money(_value(invoice, "profit_total", 0)),
+            ],
         ]
+
+        if status == "PAID":
+            rows.append(["PAYMENT STATUS", "PAID IN FULL"])
+        elif status == "PARTIAL":
+            rows.append(["BALANCE DUE", money(balance_due)])
     else:
         rows = [
-            ["Subtotal", money(_value(invoice, "parts_subtotal", 0))],
-            ["Shipping", money(shipping)],
-            ["Sourcing Fee", money(_value(invoice, "sourcing_fee", 0))],
-            ["Service Charge", money(_value(invoice, "service_charge", 0))],
-            ["TOTAL", money(_value(invoice, "customer_total", 0))],
+            [
+                "Subtotal",
+                money(_value(invoice, "parts_subtotal", 0)),
+            ],
         ]
-    table = Table(rows, colWidths=[1.35*inch,1.57*inch])
-    table.setStyle(TableStyle([
-        ("FONTNAME", (0,0), (0,-2), "Helvetica-Bold"),
-        ("FONTNAME", (1,0), (1,-2), "Helvetica"),
-        ("FONTSIZE", (0,0), (-1,-2), 8),
-        ("TEXTCOLOR", (0,0), (-1,-2), INK),
-        ("ALIGN", (1,0), (1,-1), "RIGHT"),
-        ("LEFTPADDING", (0,0), (-1,-1), 10),
-        ("RIGHTPADDING", (0,0), (-1,-1), 10),
-        ("TOPPADDING", (0,0), (-1,-2), 6),
-        ("BOTTOMPADDING", (0,0), (-1,-2), 6),
-        ("BACKGROUND", (0,0), (-1,-2), WHITE),
-        ("BOX", (0,0), (-1,-2), 0.65, LINE),
-        ("LINEBELOW", (0,0), (-1,-2), 0.35, LINE),
-        ("BACKGROUND", (0,-1), (-1,-1), NAVY),
-        ("TEXTCOLOR", (0,-1), (-1,-1), WHITE),
-        ("FONTNAME", (0,-1), (-1,-1), "Helvetica-Bold"),
-        ("FONTSIZE", (0,-1), (-1,-1), 11),
-        ("TOPPADDING", (0,-1), (-1,-1), 7),
-        ("BOTTOMPADDING", (0,-1), (-1,-1), 7),
-    ]))
-    return table
 
+        if shipping > 0:
+            rows.append(["Shipping", money(shipping)])
+
+        rows.append([
+            "Invoice Total",
+            money(_value(invoice, "customer_total", 0)),
+        ])
+
+        credit_applied = float(
+            _value(invoice, "credit_applied", 0) or 0
+        )
+
+        if credit_applied > 0:
+            rows.append([
+                "Credit Applied",
+                money(credit_applied),
+            ])
+
+        if status == "PAID":
+            rows.append(["PAID IN FULL", ""])
+        else:
+            rows.append(["BALANCE DUE", money(balance_due)])
+
+    table = Table(
+        rows,
+        colWidths=[1.35 * inch, 1.57 * inch],
+    )
+
+    final_row = len(rows) - 1
+    paid = status == "PAID"
+
+    table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("TEXTCOLOR", (0, 0), (-1, -1), INK),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LINEBELOW", (0, 0), (-1, final_row - 1), 0.35, LINE),
+        (
+            "BACKGROUND",
+            (0, final_row),
+            (-1, final_row),
+            colors.HexColor("#1F7A4F") if paid else NAVY,
+        ),
+        ("TEXTCOLOR", (0, final_row), (-1, final_row), WHITE),
+        (
+            "FONTNAME",
+            (0, final_row),
+            (-1, final_row),
+            "Helvetica-Bold",
+        ),
+        ("FONTSIZE", (0, final_row), (-1, final_row), 11),
+        ("TOPPADDING", (0, final_row), (-1, final_row), 8),
+        ("BOTTOMPADDING", (0, final_row), (-1, final_row), 8),
+    ]))
+
+    if paid:
+        table.setStyle(TableStyle([
+            ("SPAN", (0, final_row), (1, final_row)),
+            ("ALIGN", (0, final_row), (1, final_row), "CENTER"),
+        ]))
+
+    return table
 
 def _bottom_blocks(invoice, internal):
     payment = _payment_box()
     totals = _totals_box(invoice, internal)
-    table = Table([[payment, totals]], colWidths=[4.52*inch,2.92*inch])
+    table = Table(
+        [[payment, totals]],
+        colWidths=[4.82 * inch, 3.12 * inch],
+    )
     table.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("LEFTPADDING", (0,0), (-1,-1), 0),
         ("RIGHTPADDING", (0,0), (-1,-1), 0),
-        ("LEFTPADDING", (1,0), (1,0), 8),
+        ("LEFTPADDING", (1,0), (1,0), 5),
     ]))
     return table
 
@@ -510,13 +770,20 @@ def _footer_blocks():
             s["footer"],
         ),
     ]
-    table = Table([[left, center, right]], colWidths=[2.48*inch,2.48*inch,2.48*inch])
+    table = Table(
+        [[left, center, right]],
+        colWidths=[
+            2.646 * inch,
+            2.648 * inch,
+            2.646 * inch,
+        ],
+    )
     table.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("LINEABOVE", (0,0), (-1,0), 0.8, NAVY),
-        ("LEFTPADDING", (0,0), (-1,-1), 12),
-        ("RIGHTPADDING", (0,0), (-1,-1), 12),
-        ("TOPPADDING", (0,0), (-1,-1), 5),
+        ("LEFTPADDING", (0,0), (-1,-1), 7),
+        ("RIGHTPADDING", (0,0), (-1,-1), 7),
+        ("TOPPADDING", (0,0), (-1,-1), 3),
         ("BOTTOMPADDING", (0,0), (-1,-1), 0),
     ]))
     return table
@@ -543,34 +810,55 @@ def _invoice_notice(internal):
     ])
 
 
-def build_invoice_pdf(invoice, items: Iterable, path: Path, internal: bool):
+def build_invoice_pdf(
+    invoice,
+    items: Iterable,
+    path: Path,
+    internal: bool,
+):
     items = list(items)
     path.parent.mkdir(parents=True, exist_ok=True)
+
     title = "INTERNAL INVOICE" if internal else "INVOICE"
     doc = _document(path, invoice, title)
 
     story = [
         _header(invoice, internal),
-        Spacer(1, 9),
-        Table([[""]], colWidths=[7.44*inch], style=[
-            ("LINEBELOW", (0,0), (-1,-1), 1.1, NAVY),
-            ("TOPPADDING", (0,0), (-1,-1), 0),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 0),
-        ]),
-        Spacer(1, 10),
+        Spacer(1, 5),
+
+        Table(
+            [[""]],
+            colWidths=[PDF_CONTENT_WIDTH],
+            style=[
+                ("LINEBELOW", (0, 0), (-1, -1), 1.0, NAVY),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ],
+        ),
+
+        Spacer(1, 5),
         _information(invoice),
-        Spacer(1, 10),
-        _section_bar("PARTS & SERVICES" if not internal else "INTERNAL COST & PROFIT DETAIL"),
-        _internal_items(items) if internal else _customer_items(items),
-        Spacer(1, 10),
+        Spacer(1, 5),
+
+        _section_bar(
+            "PARTS & SERVICES"
+            if not internal
+            else "INTERNAL COST & PROFIT DETAIL"
+        ),
+
+        _internal_items(items)
+        if internal
+        else _customer_items(items),
+
+        Spacer(1, 5),
         _invoice_notice(internal),
-        Spacer(1, 10),
+        Spacer(1, 5),
         _bottom_blocks(invoice, internal),
-        Spacer(1, 4),
+        Spacer(1, 2),
         _footer_blocks(),
     ]
-    doc.build(story)
 
+    doc.build(story)
 
 def generate_invoice_pdfs(invoice, items: Iterable) -> dict[str, str]:
     items = list(items)

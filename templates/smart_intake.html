@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}Smart Intake · PartsLink Global{% endblock %}
+<link rel="stylesheet" href="/static/customer_requests.css">
+
+{% block content %}
+<section class="workspace-heading">
+  <div>
+    <p class="eyebrow">CUSTOMER REQUESTS</p>
+    <h1>Smart Intake</h1>
+    <p>
+      Paste the information once. PLG extracts, matches, saves,
+      and creates the job.
+    </p>
+  </div>
+</section>
+
+<section class="panel smart-intake-panel">
+  <form
+    method="post"
+    action="/requests/smart-intake/analyze"
+    class="smart-intake-paste"
+  >
+    <label>
+      Paste Customer Request
+      <textarea
+        name="raw_text"
+        rows="16"
+        required
+        placeholder="Customer: Marcus Rolle&#10;Phone: 242-555-0198&#10;Location: George Town, Exuma&#10;Registry Type: Heavy Equipment&#10;Manufacturer: Caterpillar&#10;Model: 420D Backhoe Loader&#10;Identifier: FDP12345&#10;&#10;Requested Parts:&#10;Water pump&#10;Upper radiator hose"
+      >{{ raw_text or "" }}</textarea>
+    </label>
+
+    <div class="form-actions">
+      <a class="button ghost" href="/requests">Cancel</a>
+
+      <a class="button ghost" href="/requests/new">
+        Enter Manually
+      </a>
+
+      <button class="button" type="submit">
+        Analyze Request
+      </button>
+    </div>
+  </form>
+</section>
+
+{% if parsed %}
+<form
+  method="post"
+  action="/requests/smart-intake/create"
+  class="smart-intake-review"
+>
+  <input type="hidden" name="raw_text" value="{{ raw_text }}">
+
+  <section class="panel smart-intake-match-grid">
+    <article class="smart-match-card">
+      <p class="eyebrow">CUSTOMER</p>
+
+      {% if customer_match %}
+      <div class="smart-match-state matched">
+        ✓ Existing customer
+      </div>
+      <h2>{{ customer_match.name }}</h2>
+      <p>{{ customer_match.phone or "No phone saved" }}</p>
+      {% else %}
+      <div class="smart-match-state new">
+        ＋ New customer
+      </div>
+      <h2>{{ parsed.individual_name or parsed.company_name or "Missing customer" }}</h2>
+      {% endif %}
+    </article>
+
+    <article class="smart-match-card">
+      <p class="eyebrow">LOCATION</p>
+
+      {% if location_match %}
+      <div class="smart-match-state matched">
+        ✓ Existing location
+      </div>
+      <h2>{{ location_match.location_name }}</h2>
+      {% elif parsed.location %}
+      <div class="smart-match-state new">
+        ＋ New location
+      </div>
+      <h2>{{ parsed.location }}</h2>
+      <p>Will be saved under this customer.</p>
+      {% else %}
+      <div class="smart-match-state review">
+        Location not provided
+      </div>
+      {% endif %}
+    </article>
+
+    <article class="smart-match-card">
+      <p class="eyebrow">REGISTRY</p>
+
+      {% if machine_match %}
+      <div class="smart-match-state matched">
+        ✓ Existing machine
+      </div>
+      <h2>
+        {{ machine_match.manufacturer }}
+        {{ machine_match.model or machine_match.name }}
+      </h2>
+      <p>{{ machine_match.vin_pin_serial or "No identifier" }}</p>
+      {% else %}
+      <div class="smart-match-state new">
+        ＋ New machine
+      </div>
+      <h2>{{ parsed.manufacturer }} {{ parsed.model }}</h2>
+      <p>{{ parsed.identifier or "No identifier" }}</p>
+      {% endif %}
+    </article>
+  </section>
+
+  <section class="panel smart-intake-fields">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">REVIEW</p>
+        <h2>Parsed information</h2>
+        <p>Edit only if something was interpreted incorrectly.</p>
+      </div>
+    </div>
+
+    <div class="two-column">
+      <label>
+        Customer
+        <input
+          name="individual_name"
+          value="{{ parsed.individual_name }}"
+        >
+      </label>
+
+      <label>
+        Company
+        <input
+          name="company_name"
+          value="{{ parsed.company_name }}"
+        >
+      </label>
+    </div>
+
+    <div class="two-column">
+      <label>
+        Phone
+        <input name="phone" value="{{ parsed.phone }}">
+      </label>
+
+      <label>
+        Email
+        <input
+          type="email"
+          name="email"
+          value="{{ parsed.email }}"
+        >
+      </label>
+    </div>
+
+    <label>
+      Location
+      <input name="location" value="{{ parsed.location }}">
+    </label>
+
+    <div class="two-column">
+      <label>
+        Registry Type
+        <select name="registry_type">
+          {% for value, label in registry_types.items() %}
+          <option
+            value="{{ value }}"
+            {% if parsed.registry_type == value %}selected{% endif %}
+          >
+            {{ label }}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        Year
+        <input name="year" value="{{ parsed.year }}">
+      </label>
+    </div>
+
+    <div class="two-column">
+      <label>
+        Manufacturer
+        <input
+          name="manufacturer"
+          value="{{ parsed.manufacturer }}"
+        >
+      </label>
+
+      <label>
+        Model
+        <input name="model" value="{{ parsed.model }}">
+      </label>
+    </div>
+
+    <label>
+      VIN / PIN / Serial
+      <input
+        name="identifier"
+        value="{{ parsed.identifier }}"
+      >
+    </label>
+
+    <label>
+      Requested Parts
+      <textarea name="requested_parts" rows="7">{{ parsed.requested_parts }}</textarea>
+    </label>
+
+    <label>
+      Customer Message / Notes
+      <textarea name="request_text" rows="5">{{ parsed.request_text }}</textarea>
+    </label>
+
+    <div class="form-actions">
+      <button class="button" type="submit">
+        Create Request and Job
+      </button>
+    </div>
+  </section>
+</form>
+{% endif %}
+{% endblock %}

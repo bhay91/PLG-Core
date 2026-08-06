@@ -1,75 +1,137 @@
 {% extends "base.html" %}
 {% block title %}Dashboard · PartsLink Global{% endblock %}
+
 {% block content %}
-<section class="workspace-heading">
-  <div>
-    <p class="eyebrow">DASHBOARD</p>
-    <h1>Parts Sourcing Control Center</h1>
-    <p>Manage customer requests, supplier sourcing, verification, quotations, and order progress.</p>
+<div class="workspace-v2">
+
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">CONTROL CENTER</p>
+      <h1>Dashboard</h1>
+      <p>See what needs attention and continue the work.</p>
+    </div>
+
+    <a class="button" href="/requests/smart-intake">
+      + New Request
+    </a>
+  </section>
+
+  <section class="workspace-stat-strip">
+    <a href="/jobs">
+      <span>Needs Attention</span>
+      <strong>{{ stats.needs_attention or 0 }}</strong>
+    </a>
+
+    <a href="/quotes">
+      <span>Active Quotes</span>
+      <strong>{{ stats.active_quotes or 0 }}</strong>
+    </a>
+
+    <a href="/invoices">
+      <span>Waiting for Payment</span>
+      <strong>{{ stats.waiting_payment or 0 }}</strong>
+    </a>
+
+    <a href="/invoices?view=paid">
+      <span>Ready to Order</span>
+      <strong>{{ stats.ready_to_order or 0 }}</strong>
+    </a>
+  </section>
+
+  <section class="workspace-section-heading">
+    <div>
+      <p class="eyebrow">RECENT WORK</p>
+      <h2>Continue where you left off</h2>
+    </div>
+
+    <a href="/jobs">View All Jobs →</a>
+  </section>
+
+  {% if recent_jobs %}
+  <section class="workspace-row-list dashboard-work-list">
+
+    {% for job in recent_jobs %}
+    <article class="workspace-row">
+      <div class="workspace-row-mark">
+        {{ (job.manufacturer or "PLG")[:3]|upper }}
+      </div>
+
+      <div class="workspace-row-identity">
+        <small>{{ job.job_number }}</small>
+
+        <h2>{{ job.customer }}</h2>
+
+        <strong>
+          {% if job.manufacturer or job.machine %}
+            {{ job.manufacturer }} {{ job.machine }}
+          {% else %}
+            No machine linked
+          {% endif %}
+
+          {% if job.pin_serial %}
+            <span>· {{ job.pin_serial }}</span>
+          {% endif %}
+        </strong>
+
+        <p>
+          {{ job.selected_descriptions or job.notes or "No job description entered" }}
+        </p>
+      </div>
+
+      <div class="workspace-row-status">
+        <div class="workspace-status-line">
+          <span
+            class="workspace-status-badge
+                   workspace-status-{{ job.status|lower }}"
+          >
+            {{ job.status }}
+          </span>
+        </div>
+
+        <div class="workspace-row-meta">
+          {{ job.selected_items or 0 }}
+          selected part{% if job.selected_items != 1 %}s{% endif %}
+        </div>
+      </div>
+
+      <div class="workspace-row-action">
+        <span>NEXT ACTION</span>
+
+        {% if job.invoice_id and job.invoice_status == "PAID" %}
+          <strong>Create Parts Order Sheet</strong>
+        {% elif job.invoice_id %}
+          <strong>Receive Payment</strong>
+        {% elif job.quote_id %}
+          <strong>Review Customer Quote</strong>
+        {% elif job.selected_items %}
+          <strong>Generate Quote</strong>
+        {% else %}
+          <strong>Research Parts</strong>
+        {% endif %}
+
+        <a
+          class="workspace-primary-link"
+          href="/jobs/{{ job.id }}/basket"
+        >
+          Continue Job →
+        </a>
+      </div>
+
+      <div class="workspace-row-open">
+        <a href="/jobs/{{ job.id }}/basket">
+          Open Job
+        </a>
+      </div>
+    </article>
+    {% endfor %}
+
+  </section>
+  {% else %}
+  <div class="workspace-empty">
+    <strong>No jobs yet.</strong>
+    <p>Create a customer request to begin.</p>
   </div>
-</section>
+  {% endif %}
 
-<section class="summary-grid">
-  <article class="summary-card">
-    <div class="summary-card-icon blue">▣</div>
-    <div><span>Total Jobs</span><strong>{{ totals.jobs_total or 0 }}</strong><small>All customer requests</small></div>
-  </article>
-  <article class="summary-card">
-    <div class="summary-card-icon amber">◷</div>
-    <div><span>Requested</span><strong>{{ totals.requested or 0 }}</strong><small>Waiting to be sourced</small></div>
-  </article>
-  <article class="summary-card">
-    <div class="summary-card-icon violet">⌕</div>
-    <div><span>Researching</span><strong>{{ totals.researching or 0 }}</strong><small>Parts being identified</small></div>
-  </article>
-  <article class="summary-card">
-    <div class="summary-card-icon green">✓</div>
-    <div><span>Verified</span><strong>{{ totals.verified or 0 }}</strong><small>Ready for sourcing or quote</small></div>
-  </article>
-</section>
-
-<section class="dashboard-grid">
-  <article class="panel dashboard-recent">
-    <div class="panel-heading">
-      <div><p class="eyebrow">RECENT JOBS</p><h2>Continue where you left off</h2></div>
-      <a class="text-link" href="/jobs">View All Jobs →</a>
-    </div>
-    {% if recent_jobs %}
-    <div class="recent-job-list">
-      {% for job in recent_jobs %}
-      <a class="recent-job-row" href="/jobs/{{ job.id }}/basket">
-        <div class="recent-job-number">{{ job.job_number }}</div>
-        <div class="recent-job-main"><strong>{{ job.customer }}</strong><span>{{ job.manufacturer }} {{ job.machine }}</span></div>
-        <div class="recent-job-serial">{{ job.pin_serial or "No VIN / Serial" }}</div>
-        <div class="recent-job-parts">{{ job.verified_parts or 0 }}/{{ job.parts_count }} verified</div>
-        <span class="status status-{{ job.status|lower }}">{{ job.status }}</span>
-        <span class="recent-job-arrow">→</span>
-      </a>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="empty"><h3>No jobs yet</h3><p>Create the first PartsLink Global sourcing job.</p><a class="button" href="/jobs/new">Create Job</a></div>
-    {% endif %}
-  </article>
-
-  <aside class="dashboard-side">
-    <article class="panel quick-actions-card">
-      <p class="eyebrow">QUICK ACTIONS</p><h2>Start working</h2>
-      <a class="quick-action primary" href="/jobs/new"><span>＋</span><div><strong>New Job</strong><small>Create a sourcing request</small></div></a>
-      <a class="quick-action" href="/jobs"><span>▣</span><div><strong>View Jobs</strong><small>Open all active work</small></div></a>
-      <a class="quick-action" href="/connectors"><span>↔</span><div><strong>Connectors</strong><small>Open supplier sources</small></div></a>
-    </article>
-
-    <article class="panel workflow-card">
-      <p class="eyebrow">PLG WORKFLOW</p><h2>From request to delivery</h2>
-      <ol class="workflow-steps">
-        <li><span>1</span> Create Job</li>
-        <li><span>2</span> Build Parts Basket</li>
-        <li><span>3</span> Generate Quote</li>
-        <li><span>4</span> Confirm &amp; Order</li>
-        <li><span>5</span> Receive &amp; Deliver</li>
-      </ol>
-    </article>
-  </aside>
-</section>
+</div>
 {% endblock %}

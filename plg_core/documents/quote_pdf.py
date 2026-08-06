@@ -296,6 +296,79 @@ def _information(quote):
     return table
 
 
+
+def _customer_information(quote):
+    """Compact customer-facing identity block."""
+    s = _styles()
+
+    customer_lines = [
+        Paragraph("CUSTOMER", s["label"]),
+        Spacer(1, 5),
+        Paragraph(
+            str(_value(quote, "customer", "Not Provided")),
+            s["value"],
+        ),
+    ]
+
+    company = str(_value(quote, "company", "") or "").strip()
+    address = str(_value(quote, "address", "") or "").strip()
+    phone = str(_value(quote, "phone", "") or "").strip()
+
+    if company and company.lower() != "individual customer":
+        customer_lines.append(Paragraph(company, s["small"]))
+
+    if address:
+        customer_lines.append(Paragraph(address, s["small"]))
+
+    if phone:
+        customer_lines.append(Paragraph(phone, s["small"]))
+
+    manufacturer = str(
+        _value(quote, "manufacturer", "") or ""
+    ).strip()
+    model = str(_value(quote, "machine", "") or "").strip()
+    identifier = str(
+        _value(quote, "pin_serial", "") or ""
+    ).strip()
+
+    machine_name = " ".join(
+        value
+        for value in (manufacturer, model)
+        if value
+    ).strip() or "Not Provided"
+
+    machine_lines = [
+        Paragraph("MACHINE", s["label"]),
+        Spacer(1, 5),
+        Paragraph(machine_name, s["value"]),
+    ]
+
+    if identifier:
+        machine_lines.append(
+            Paragraph(
+                f"VIN / PIN / Serial: {identifier}",
+                s["small"],
+            )
+        )
+
+    table = Table(
+        [[customer_lines, machine_lines]],
+        colWidths=[3.72 * inch, 3.72 * inch],
+    )
+
+    table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BOX", (0, 0), (-1, -1), 0.55, LINE),
+        ("LINEBEFORE", (1, 0), (1, 0), 0.55, LINE),
+        ("BACKGROUND", (0, 0), (-1, -1), WHITE),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+    ]))
+
+    return table
+
 def _section_bar(text):
     return Table([[text]], colWidths=[7.44 * inch], style=[
         ("BACKGROUND", (0,0), (-1,-1), NAVY),
@@ -311,42 +384,87 @@ def _section_bar(text):
 
 def _customer_items(items):
     s = _styles()
-    rows = [["QTY", "PARTS & SERVICES DESCRIPTION", "UNIT PRICE", "LINE TOTAL"]]
+
+    rows = [[
+        "QTY",
+        "PART NUMBER",
+        "DESCRIPTION",
+        "UNIT PRICE",
+        "TOTAL",
+    ]]
+
     for item in items:
-        description = str(_value(item, "description", "Part"))
-        pn = str(_value(item, "supplier_part_number", "")).strip()
-        if pn:
-            description += f"<br/><font color='#5E6D7E' size='7'>Part No.: {pn}</font>"
         rows.append([
             str(_value(item, "quantity", 1)),
-            Paragraph(description, s["value"]),
-            money(_value(item, "customer_unit_price", 0)),
-            money(_value(item, "customer_line_total", 0)),
+            Paragraph(
+                str(
+                    _value(
+                        item,
+                        "supplier_part_number",
+                        "",
+                    )
+                    or "-"
+                ),
+                s["small"],
+            ),
+            Paragraph(
+                str(_value(item, "description", "Part")),
+                s["value"],
+            ),
+            money(
+                _value(
+                    item,
+                    "customer_unit_price",
+                    0,
+                )
+            ),
+            money(
+                _value(
+                    item,
+                    "customer_line_total",
+                    0,
+                )
+            ),
         ])
-    while len(rows) < 5:
-        rows.append(["", "", "", ""])
-    table = Table(rows, colWidths=[0.58 * inch, 4.12 * inch, 1.22 * inch, 1.52 * inch], repeatRows=1)
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), SOFT),
-        ("TEXTCOLOR", (0,0), (-1,0), INK),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ("FONTSIZE", (0,0), (-1,0), 7.5),
-        ("ALIGN", (0,0), (0,-1), "CENTER"),
-        ("ALIGN", (2,1), (-1,-1), "RIGHT"),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("FONTNAME", (0,1), (-1,-1), "Helvetica"),
-        ("FONTSIZE", (0,1), (-1,-1), 8.2),
-        ("TEXTCOLOR", (0,1), (-1,-1), INK),
-        ("GRID", (0,0), (-1,-1), 0.45, LINE),
-        ("ROWBACKGROUNDS", (0,1), (-1,-1), [WHITE, colors.HexColor("#FAFBFD")]),
-        ("LEFTPADDING", (0,0), (-1,-1), 8),
-        ("RIGHTPADDING", (0,0), (-1,-1), 8),
-        ("TOPPADDING", (0,0), (-1,-1), 7),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 7),
-        ("MINROWHEIGHT", (0,1), (-1,-1), 29),
-    ]))
-    return table
 
+    table = Table(
+        rows,
+        colWidths=[
+            0.48 * inch,
+            1.25 * inch,
+            3.25 * inch,
+            1.10 * inch,
+            1.36 * inch,
+        ],
+        repeatRows=1,
+    )
+
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), SOFT),
+        ("TEXTCOLOR", (0, 0), (-1, 0), INK),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 7.2),
+        ("ALIGN", (0, 0), (0, -1), "CENTER"),
+        ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 1), (-1, -1), 8.2),
+        ("TEXTCOLOR", (0, 1), (-1, -1), INK),
+        ("GRID", (0, 0), (-1, -1), 0.45, LINE),
+        (
+            "ROWBACKGROUNDS",
+            (0, 1),
+            (-1, -1),
+            [WHITE, colors.HexColor("#FAFBFD")],
+        ),
+        ("LEFTPADDING", (0, 0), (-1, -1), 7),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("MINROWHEIGHT", (0, 1), (-1, -1), 28),
+    ]))
+
+    return table
 
 def _internal_items(items):
     s = _styles()
@@ -431,47 +549,82 @@ def _payment_box():
 
 def _totals_box(quote, internal: bool):
     s = _styles()
-    shipping = float(_value(quote, "shipping_total", 0) or 0)
+    shipping = float(
+        _value(quote, "shipping_total", 0) or 0
+    )
+
     if internal:
-        supplier_parts = float(_value(quote, "supplier_total", 0) or 0) - shipping
+        supplier_parts = (
+            float(_value(quote, "supplier_total", 0) or 0)
+            - shipping
+        )
+
         rows = [
             ["Supplier Parts", money(supplier_parts)],
             ["Shipping", money(shipping)],
-            ["Supplier Total", money(_value(quote, "supplier_total", 0))],
-            ["Customer Total", money(_value(quote, "customer_total", 0))],
-            ["NET PROFIT", money(_value(quote, "profit_total", 0))],
+            [
+                "Supplier Total",
+                money(_value(quote, "supplier_total", 0)),
+            ],
+            [
+                "Customer Total",
+                money(_value(quote, "customer_total", 0)),
+            ],
+            [
+                "NET PROFIT",
+                money(_value(quote, "profit_total", 0)),
+            ],
         ]
     else:
         rows = [
-            ["Subtotal", money(_value(quote, "parts_subtotal", 0))],
-            ["Shipping", money(shipping)],
-            ["Sourcing Fee", money(_value(quote, "sourcing_fee", 0))],
-            ["Service Charge", money(_value(quote, "service_charge", 0))],
-            ["TOTAL", money(_value(quote, "customer_total", 0))],
+            [
+                "Subtotal",
+                money(_value(quote, "parts_subtotal", 0)),
+            ],
         ]
-    table = Table(rows, colWidths=[1.35*inch,1.57*inch])
-    table.setStyle(TableStyle([
-        ("FONTNAME", (0,0), (0,-2), "Helvetica-Bold"),
-        ("FONTNAME", (1,0), (1,-2), "Helvetica"),
-        ("FONTSIZE", (0,0), (-1,-2), 8),
-        ("TEXTCOLOR", (0,0), (-1,-2), INK),
-        ("ALIGN", (1,0), (1,-1), "RIGHT"),
-        ("LEFTPADDING", (0,0), (-1,-1), 10),
-        ("RIGHTPADDING", (0,0), (-1,-1), 10),
-        ("TOPPADDING", (0,0), (-1,-2), 6),
-        ("BOTTOMPADDING", (0,0), (-1,-2), 6),
-        ("BACKGROUND", (0,0), (-1,-2), WHITE),
-        ("BOX", (0,0), (-1,-2), 0.65, LINE),
-        ("LINEBELOW", (0,0), (-1,-2), 0.35, LINE),
-        ("BACKGROUND", (0,-1), (-1,-1), NAVY),
-        ("TEXTCOLOR", (0,-1), (-1,-1), WHITE),
-        ("FONTNAME", (0,-1), (-1,-1), "Helvetica-Bold"),
-        ("FONTSIZE", (0,-1), (-1,-1), 11),
-        ("TOPPADDING", (0,-1), (-1,-1), 7),
-        ("BOTTOMPADDING", (0,-1), (-1,-1), 7),
-    ]))
-    return table
 
+        if shipping > 0:
+            rows.append([
+                "Shipping",
+                money(shipping),
+            ])
+
+        rows.append([
+            "TOTAL",
+            money(_value(quote, "customer_total", 0)),
+        ])
+
+    table = Table(
+        rows,
+        colWidths=[1.35 * inch, 1.57 * inch],
+    )
+
+    final_row = len(rows) - 1
+
+    table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+        ("TEXTCOLOR", (0, 0), (-1, -1), INK),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("LINEBELOW", (0, 0), (-1, final_row - 1), 0.35, LINE),
+        ("LEFTPADDING", (0, 0), (-1, -1), 9),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 9),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("BACKGROUND", (0, final_row), (-1, final_row), NAVY),
+        ("TEXTCOLOR", (0, final_row), (-1, final_row), WHITE),
+        (
+            "FONTNAME",
+            (0, final_row),
+            (-1, final_row),
+            "Helvetica-Bold",
+        ),
+        ("FONTSIZE", (0, final_row), (-1, final_row), 11),
+        ("TOPPADDING", (0, final_row), (-1, final_row), 7),
+        ("BOTTOMPADDING", (0, final_row), (-1, final_row), 7),
+    ]))
+
+    return table
 
 def _bottom_blocks(quote, internal):
     payment = _payment_box()
@@ -524,24 +677,48 @@ def _footer_blocks():
 
 def _quote_notice(internal):
     s = _styles()
-    text = (
-        "INTERNAL USE ONLY - Supplier pricing and profit are confidential."
-        if internal else
-        "Quote valid for 30 days. Pricing and availability are subject to confirmation."
-    )
-    return Table([[Paragraph(text, ParagraphStyle(
-        "Notice", parent=s["small"], alignment=TA_CENTER,
-        textColor=NAVY if not internal else colors.HexColor("#9B2C2C"),
-        fontName="Helvetica-Bold"
-    ))]], colWidths=[7.44*inch], style=[
-        ("BACKGROUND", (0,0), (-1,-1), PALE_BLUE if not internal else colors.HexColor("#FFF1F1")),
-        ("BOX", (0,0), (-1,-1), 0.5, LINE),
-        ("LEFTPADDING", (0,0), (-1,-1), 8),
-        ("RIGHTPADDING", (0,0), (-1,-1), 8),
-        ("TOPPADDING", (0,0), (-1,-1), 5),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
-    ])
 
+    if internal:
+        return Table(
+            [[Paragraph(
+                (
+                    "INTERNAL USE ONLY - Supplier pricing "
+                    "and profit are confidential."
+                ),
+                ParagraphStyle(
+                    "InternalNotice",
+                    parent=s["small"],
+                    alignment=TA_CENTER,
+                    textColor=colors.HexColor("#9B2C2C"),
+                    fontName="Helvetica-Bold",
+                ),
+            )]],
+            colWidths=[7.44 * inch],
+            style=[
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, -1),
+                    colors.HexColor("#FFF1F1"),
+                ),
+                ("BOX", (0, 0), (-1, -1), 0.5, LINE),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ],
+        )
+
+    return Paragraph(
+        "Quote valid for 30 days.",
+        ParagraphStyle(
+            "CustomerQuoteNotice",
+            parent=s["small"],
+            alignment=TA_CENTER,
+            textColor=colors.HexColor("#5E6D7E"),
+            fontSize=7.5,
+        ),
+    )
 
 def build_quote_pdf(quote, items: Iterable, path: Path, internal: bool):
     items = list(items)
@@ -558,9 +735,9 @@ def build_quote_pdf(quote, items: Iterable, path: Path, internal: bool):
             ("BOTTOMPADDING", (0,0), (-1,-1), 0),
         ]),
         Spacer(1, 10),
-        _information(quote),
+        _information(quote) if internal else _customer_information(quote),
         Spacer(1, 10),
-        _section_bar("PARTS & SERVICES" if not internal else "INTERNAL COST & PROFIT DETAIL"),
+        _section_bar("QUOTED ITEMS" if not internal else "INTERNAL COST & PROFIT DETAIL"),
         _internal_items(items) if internal else _customer_items(items),
         Spacer(1, 10),
         _quote_notice(internal),

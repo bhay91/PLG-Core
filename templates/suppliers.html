@@ -1,5 +1,239 @@
-{% extends "base.html" %}{% block title %}Suppliers · PartsLink Global{% endblock %}{% block content %}
-<section class="workspace-heading"><div><p class="eyebrow">SUPPLIERS</p><h1>Supplier Directory</h1><p>Manage suppliers available during sourcing.</p></div><a class="button management-new-button" href="/suppliers/new">+ New Supplier</a></section>
-<section class="panel management-tools"><label><span>Search Suppliers</span><input id="supplier-search" type="search"></label><div class="filter-links"><a class="{% if view=='active' %}active{% endif %}" href="/suppliers?view=active">Active</a><a class="{% if view=='inactive' %}active{% endif %}" href="/suppliers?view=inactive">Inactive</a><a class="{% if view=='do_not_use' %}active{% endif %}" href="/suppliers?view=do_not_use">Do Not Use</a><a class="{% if view=='all' %}active{% endif %}" href="/suppliers?view=all">All</a></div></section>
-<section class="panel">{% if suppliers %}{% for s in suppliers %}<article class="management-row supplier-row" data-search="{{ s.name }} {{ s.website }} {{ s.phone }} {{ s.email }} {{ s.contact_person }}"><div><strong>{{ s.name }}</strong><small>{{ s.website or s.phone or s.email or 'No contact details' }}</small></div><div class="supplier-preferred">{% if s.preferred %}<span>★ Preferred</span>{% endif %}</div><div class="row-actions"><a class="button ghost small" href="/suppliers/{{ s.id }}/edit">Edit</a>{% if s.status=='ACTIVE' %}<form method="post" action="/suppliers/{{ s.id }}/status"><input type="hidden" name="status" value="INACTIVE"><button class="button ghost small">Inactive</button></form><form method="post" action="/suppliers/{{ s.id }}/status"><input type="hidden" name="status" value="DO_NOT_USE"><button class="button ghost small">Do Not Use</button></form>{% else %}<form method="post" action="/suppliers/{{ s.id }}/status"><input type="hidden" name="status" value="ACTIVE"><button class="button small">Reactivate</button></form>{% endif %}{% if s.can_delete %}<form method="post" action="/suppliers/{{ s.id }}/delete"><button class="button ghost small">Delete</button></form>{% endif %}</div></article>{% endfor %}{% else %}<p>No suppliers in this view.</p>{% endif %}</section>
-<script>(()=>{const i=document.getElementById('supplier-search'),r=[...document.querySelectorAll('.supplier-row')];if(i)i.oninput=()=>{const q=i.value.toLowerCase();r.forEach(x=>x.hidden=!x.dataset.search.toLowerCase().includes(q))}})();</script>{% endblock %}
+{% extends "base.html" %}
+{% block title %}Suppliers · PartsLink Global{% endblock %}
+
+{% block content %}
+<div class="workspace-v2">
+
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">SUPPLIER WORKSPACE</p>
+      <h1>Suppliers</h1>
+      <p>Manage the suppliers available during sourcing.</p>
+    </div>
+
+    <a class="button" href="/suppliers/new">
+      + New Supplier
+    </a>
+  </section>
+
+  <section class="workspace-toolbar">
+    <label class="workspace-search">
+      <span aria-hidden="true">⌕</span>
+
+      <input
+        id="supplier-search"
+        type="search"
+        placeholder="Search supplier, contact, phone, email or website..."
+      >
+    </label>
+
+    <nav class="workspace-tabs">
+      <a
+        class="{% if view == 'active' %}active{% endif %}"
+        href="/suppliers?view=active"
+      >
+        Active
+      </a>
+
+      <a
+        class="{% if view == 'inactive' %}active{% endif %}"
+        href="/suppliers?view=inactive"
+      >
+        Inactive
+      </a>
+
+      <a
+        class="{% if view == 'do_not_use' %}active{% endif %}"
+        href="/suppliers?view=do_not_use"
+      >
+        Do Not Use
+      </a>
+
+      <a
+        class="{% if view == 'all' %}active{% endif %}"
+        href="/suppliers?view=all"
+      >
+        All
+      </a>
+    </nav>
+  </section>
+
+  {% if suppliers %}
+  <section class="workspace-row-list">
+
+    {% for supplier in suppliers %}
+    <article
+      class="workspace-row supplier-workspace-row"
+      data-search="
+        {{ supplier.name }}
+        {{ supplier.website }}
+        {{ supplier.phone }}
+        {{ supplier.email }}
+        {{ supplier.contact_person }}
+        {{ supplier.account_number }}
+        {{ supplier.status }}
+      "
+    >
+      <div class="workspace-row-mark supplier-mark">
+        {{ (supplier.name or "S")[:2]|upper }}
+      </div>
+
+      <div class="workspace-row-identity">
+        <small>
+          SUPPLIER
+          {% if supplier.preferred %}
+            · PREFERRED
+          {% endif %}
+        </small>
+
+        <h2>{{ supplier.name }}</h2>
+
+        <strong>
+          {{ supplier.contact_person or "No contact person" }}
+        </strong>
+
+        <p>
+          {% if supplier.website %}
+            {{ supplier.website }}
+          {% elif supplier.phone %}
+            {{ supplier.phone }}
+          {% elif supplier.email %}
+            {{ supplier.email }}
+          {% else %}
+            No contact details
+          {% endif %}
+        </p>
+      </div>
+
+      <div class="workspace-row-status">
+        <span
+          class="workspace-status-badge
+                 workspace-status-{{ supplier.status|lower }}"
+        >
+          {{ supplier.status.replace("_", " ") }}
+        </span>
+
+        {% if supplier.preferred %}
+        <div class="workspace-preferred-label">
+          ★ Preferred Supplier
+        </div>
+        {% endif %}
+
+        <div class="workspace-row-meta">
+          Rating:
+          {% for number in range(1, 6) %}
+            {% if number <= supplier.rating %}★{% else %}☆{% endif %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="workspace-row-action workspace-action-panel">
+        <span>NEXT ACTION</span>
+
+        {% if supplier.status == "ACTIVE" %}
+          <strong>Manage Supplier</strong>
+        {% else %}
+          <strong>Review Supplier Status</strong>
+        {% endif %}
+
+        <a
+          class="workspace-btn workspace-btn-primary"
+          href="/suppliers/{{ supplier.id }}/edit"
+        >
+          Open Supplier
+        </a>
+
+        <div class="workspace-btn-row">
+          {% if supplier.status == "ACTIVE" %}
+          <form
+            class="workspace-action-form"
+            method="post"
+            action="/suppliers/{{ supplier.id }}/status"
+          >
+            <input type="hidden" name="status" value="INACTIVE">
+
+            <button
+              class="workspace-btn workspace-btn-secondary"
+              type="submit"
+            >
+              Inactive
+            </button>
+          </form>
+
+          <form
+            class="workspace-action-form"
+            method="post"
+            action="/suppliers/{{ supplier.id }}/status"
+          >
+            <input type="hidden" name="status" value="DO_NOT_USE">
+
+            <button
+              class="workspace-btn workspace-btn-secondary"
+              type="submit"
+            >
+              Do Not Use
+            </button>
+          </form>
+          {% else %}
+          <form
+            class="workspace-action-form workspace-action-wide"
+            method="post"
+            action="/suppliers/{{ supplier.id }}/status"
+          >
+            <input type="hidden" name="status" value="ACTIVE">
+
+            <button
+              class="workspace-btn workspace-btn-secondary"
+              type="submit"
+            >
+              Reactivate
+            </button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+
+  </section>
+
+  <p id="no-supplier-results" class="workspace-empty hidden">
+    No suppliers match your search.
+  </p>
+  {% else %}
+  <div class="workspace-empty">
+    No suppliers are available in this view.
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+(() => {
+  const input = document.getElementById("supplier-search");
+  const rows = [...document.querySelectorAll(".supplier-workspace-row")];
+  const empty = document.getElementById("no-supplier-results");
+
+  if (!input || !rows.length) return;
+
+  input.addEventListener("input", () => {
+    const query = input.value.trim().toLowerCase();
+    let visible = 0;
+
+    rows.forEach((row) => {
+      const match = row.dataset.search
+        .toLowerCase()
+        .includes(query);
+
+      row.hidden = !match;
+
+      if (match) visible += 1;
+    });
+
+    if (empty) {
+      empty.classList.toggle("hidden", visible !== 0);
+    }
+  });
+})();
+</script>
+{% endblock %}

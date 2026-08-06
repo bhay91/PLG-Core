@@ -23,6 +23,11 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DB_PATH = DATA_DIR / "plg_core.db"
 
+from plg_core.documents.parts_order_pdf import (
+    generate_parts_order_sheet,
+    parts_order_sheet_path,
+)
+
 app = FastAPI(title="PartsLink Global Core")
 app.add_middleware(
     CORSMiddleware,
@@ -538,25 +543,105 @@ def dashboard(request: Request):
             """
             SELECT
                 jobs.*,
-                COUNT(job_parts.id) AS parts_count,
-                SUM(CASE WHEN job_parts.verification_status = 'VERIFIED' THEN 1 ELSE 0 END)
-                    AS verified_parts
+
+                (
+                    SELECT COUNT(*)
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                ) AS selected_items,
+
+                (
+                    SELECT GROUP_CONCAT(
+                        basket_items.requested_description,
+                        ', '
+                    )
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                ) AS selected_descriptions,
+
+                (
+                    SELECT quotes.id
+                    FROM quotes
+                    WHERE quotes.job_id = jobs.id
+                      AND COALESCE(quotes.is_archived, 0) = 0
+                    ORDER BY quotes.id DESC
+                    LIMIT 1
+                ) AS quote_id,
+
+                (
+                    SELECT quotes.quote_number
+                    FROM quotes
+                    WHERE quotes.job_id = jobs.id
+                    ORDER BY quotes.id DESC
+                    LIMIT 1
+                ) AS quote_number,
+
+                (
+                    SELECT invoices.id
+                    FROM invoices
+                    WHERE invoices.job_id = jobs.id
+                    ORDER BY invoices.id DESC
+                    LIMIT 1
+                ) AS invoice_id,
+
+                (
+                    SELECT invoices.status
+                    FROM invoices
+                    WHERE invoices.job_id = jobs.id
+                    ORDER BY invoices.id DESC
+                    LIMIT 1
+                ) AS invoice_status,
+
+                (
+                    SELECT invoices.balance_due
+                    FROM invoices
+                    WHERE invoices.job_id = jobs.id
+                    ORDER BY invoices.id DESC
+                    LIMIT 1
+                ) AS balance_due
+
             FROM jobs
-            LEFT JOIN job_parts ON job_parts.job_id = jobs.id
-            GROUP BY jobs.id
             ORDER BY jobs.id DESC
             LIMIT 10
             """
         ).fetchall()
 
-        totals = connection.execute(
+        dashboard_stats = connection.execute(
             """
             SELECT
-                COUNT(*) AS jobs_total,
-                SUM(CASE WHEN status = 'REQUESTED' THEN 1 ELSE 0 END) AS requested,
-                SUM(CASE WHEN status = 'RESEARCHING' THEN 1 ELSE 0 END) AS researching,
-                SUM(CASE WHEN status = 'VERIFIED' THEN 1 ELSE 0 END) AS verified
-            FROM jobs
+                (
+                    SELECT COUNT(*)
+                    FROM jobs
+                    WHERE status IN (
+                        'REQUESTED',
+                        'RESEARCHING',
+                        'VERIFIED'
+                    )
+                ) AS needs_attention,
+
+                (
+                    SELECT COUNT(*)
+                    FROM quotes
+                    WHERE COALESCE(is_archived, 0) = 0
+                ) AS active_quotes,
+
+                (
+                    SELECT COUNT(*)
+                    FROM invoices
+                    WHERE status IN ('UNPAID', 'PARTIAL')
+                ) AS waiting_payment,
+
+                (
+                    SELECT COUNT(*)
+                    FROM invoices
+                    WHERE status = 'PAID'
+                ) AS ready_to_order
             """
         ).fetchone()
 
@@ -565,12 +650,10 @@ def dashboard(request: Request):
         name="dashboard.html",
         context={
             "recent_jobs": recent_jobs,
-            "totals": totals,
+            "stats": dashboard_stats,
             "active_page": "dashboard",
         },
     )
-
-
 
 
 @app.get("/jobs/new", response_class=HTMLResponse)
@@ -746,51 +829,379 @@ def list_jobs(request: Request):
             """
             SELECT
                 jobs.*,
-                COUNT(DISTINCT job_parts.id) AS parts_count,
-                SUM(CASE WHEN job_parts.verification_status = 'VERIFIED' THEN 1 ELSE 0 END)
-                    AS verified_parts,
-                baskets.status AS basket_status,
-                COALESCE(SUM(CASE WHEN basket_items.selected = 1 THEN 1 ELSE 0 END), 0)
-                    AS selected_items,
-                customer_requests.id AS customer_request_id,
-                quotes.id AS quote_id,
-                quotes.status AS quote_status,
-                invoices.id AS invoice_id,
-                invoices.status AS invoice_status
+
+                (
+                    SELECT COUNT(*)
+                    FROM job_parts
+                    WHERE job_parts.job_id = jobs.id
+                ) AS parts_count,
+
+                (
+                    SELECT COUNT(*)
+                    FROM job_parts
+                    WHERE job_parts.job_id = jobs.id
+                      AND job_parts.verification_status = 'VERIFIED'
+                ) AS verified_parts,
+
+                (
+                    SELECT baskets.status
+                    FROM baskets
+                    WHERE baskets.job_id = jobs.id
+                    ORDER BY baskets.id DESC
+                    LIMIT 1
+                ) AS basket_status,
+
+                (
+                    SELECT COUNT(*)
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                ) AS selected_items,
+
+                (
+                    SELECT COUNT(*)
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                      AND COALESCE(
+                            basket_items.part_status,
+                            'RESEARCH'
+                          ) = 'RESEARCH'
+                ) AS research_items,
+
+                (
+                    SELECT COUNT(*)
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                      AND basket_items.part_status = 'QUOTED'
+                ) AS quoted_items,
+
+                (
+                    SELECT COUNT(*)
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                      AND basket_items.part_status = 'ORDERED'
+                ) AS ordered_items,
+
+                (
+                    SELECT COUNT(*)
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                      AND basket_items.part_status = 'RECEIVED'
+                ) AS received_items,
+
+                (
+                    SELECT customer_requests.id
+                    FROM customer_requests
+                    WHERE customer_requests.job_id = jobs.id
+                    ORDER BY customer_requests.id DESC
+                    LIMIT 1
+                ) AS customer_request_id,
+
+                (
+                    SELECT COALESCE(
+                        NULLIF(TRIM(customer_requests.requested_parts), ''),
+                        NULLIF(TRIM(customer_requests.request_text), '')
+                    )
+                    FROM customer_requests
+                    WHERE customer_requests.job_id = jobs.id
+                    ORDER BY customer_requests.id DESC
+                    LIMIT 1
+                ) AS request_description,
+
+                (
+                    SELECT GROUP_CONCAT(
+                        basket_items.requested_description,
+                        ', '
+                    )
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                ) AS selected_part_descriptions,
+
+                (
+                    SELECT quotes.id
+                    FROM quotes
+                    WHERE quotes.job_id = jobs.id
+                      AND COALESCE(quotes.is_archived, 0) = 0
+                    ORDER BY quotes.id DESC
+                    LIMIT 1
+                ) AS quote_id,
+
+                (
+                    SELECT quotes.status
+                    FROM quotes
+                    WHERE quotes.job_id = jobs.id
+                      AND COALESCE(quotes.is_archived, 0) = 0
+                    ORDER BY quotes.id DESC
+                    LIMIT 1
+                ) AS quote_status,
+
+                (
+                    SELECT invoices.id
+                    FROM invoices
+                    WHERE invoices.job_id = jobs.id
+                    ORDER BY invoices.id DESC
+                    LIMIT 1
+                ) AS invoice_id,
+
+                (
+                    SELECT invoices.status
+                    FROM invoices
+                    WHERE invoices.job_id = jobs.id
+                    ORDER BY invoices.id DESC
+                    LIMIT 1
+                ) AS invoice_status,
+
+                (
+                    SELECT MAX(job_timeline.created_at)
+                    FROM job_timeline
+                    WHERE job_timeline.job_id = jobs.id
+                ) AS last_activity,
+
+                (
+                    SELECT GROUP_CONCAT(
+                        basket_items.requested_description,
+                        '||'
+                    )
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                      AND COALESCE(
+                            basket_items.part_status,
+                            'RESEARCH'
+                          ) != 'RECEIVED'
+                ) AS outstanding_part_descriptions
+
             FROM jobs
-            LEFT JOIN job_parts ON job_parts.job_id = jobs.id
-            LEFT JOIN baskets ON baskets.job_id = jobs.id
-            LEFT JOIN basket_items ON basket_items.basket_id = baskets.id
-            LEFT JOIN customer_requests ON customer_requests.job_id = jobs.id
-            LEFT JOIN quotes ON quotes.id = (
-                SELECT q.id FROM quotes q
-                WHERE q.job_id = jobs.id AND COALESCE(q.is_archived, 0) = 0
-                ORDER BY q.id DESC LIMIT 1
-            )
-            LEFT JOIN invoices ON invoices.id = (
-                SELECT i.id FROM invoices i
-                WHERE i.job_id = jobs.id
-                ORDER BY i.id DESC LIMIT 1
-            )
-            GROUP BY jobs.id
             ORDER BY jobs.id DESC
             """
         ).fetchall()
 
         jobs = []
+
+        manufacturer_codes = {
+            "CATERPILLAR": "CAT",
+            "CAT": "CAT",
+            "CUMMINS": "CUM",
+            "DETROIT DIESEL": "DD",
+            "DETROIT": "DD",
+            "JOHN DEERE": "JD",
+            "JCB": "JCB",
+            "TOYOTA": "TOY",
+            "HONDA": "HON",
+            "BMW": "BMW",
+            "AUDI": "AUD",
+            "FREIGHTLINER": "FTL",
+            "MACK": "MACK",
+            "INTERNATIONAL": "INT",
+            "ISUZU": "ISU",
+            "YANMAR": "YAN",
+        }
+
+        paid_statuses = {
+            "PAID",
+            "PAYMENT RECEIVED",
+            "PAYMENT_RECEIVED",
+        }
+
+        completed_statuses = {
+            "COMPLETE",
+            "COMPLETED",
+            "DELIVERED",
+            "CLOSED",
+        }
+
+        approved_statuses = {
+            "APPROVED",
+            "ACCEPTED",
+            "CONFIRMED",
+        }
+
         for row in rows:
             item = dict(row)
-            item["intelligence"] = JobEngine.evaluate(
+
+            outstanding_parts = [
+                part.strip()
+                for part in str(
+                    item.get("outstanding_part_descriptions") or ""
+                ).split("||")
+                if part.strip()
+            ]
+
+            intelligence = JobEngine.evaluate(
                 item,
                 selected_items=item.get("selected_items", 0),
+                research_items=item.get("research_items", 0),
+                quoted_items=item.get("quoted_items", 0),
+                ordered_items=item.get("ordered_items", 0),
+                received_items=item.get("received_items", 0),
+                outstanding_parts=outstanding_parts,
                 basket_status=item.get("basket_status") or "OPEN",
             ).to_dict()
+
+            item["intelligence"] = intelligence
+
+            description = (
+                item.get("request_description")
+                or item.get("selected_part_descriptions")
+                or "No job description entered"
+            )
+
+            item["job_description"] = " ".join(
+                str(description).split()
+            )
+
+            manufacturer = (
+                item.get("manufacturer") or ""
+            ).strip()
+
+            item["manufacturer_code"] = manufacturer_codes.get(
+                manufacturer.upper(),
+                manufacturer[:3].upper() or "PLG",
+            )
+
+            job_status = (
+                item.get("status") or ""
+            ).strip().upper()
+
+            quote_status = (
+                item.get("quote_status") or ""
+            ).strip().upper()
+
+            invoice_status = (
+                item.get("invoice_status") or ""
+            ).strip().upper()
+
+            health_label = (
+                intelligence.get("health_label") or ""
+            ).strip().lower()
+
+            selected_items = int(
+                item.get("selected_items") or 0
+            )
+
+            research_items = int(
+                item.get("research_items") or 0
+            )
+
+            received_items = int(
+                item.get("received_items") or 0
+            )
+
+            if job_status in completed_statuses:
+                stage_key = "COMPLETED"
+                stage_label = "Completed"
+                stage_icon = "✅"
+                progress = 100
+                priority_rank = 70
+
+            elif invoice_status in paid_statuses:
+                stage_key = "PAID"
+                stage_label = "Paid"
+                stage_icon = "💰"
+                progress = 88
+                priority_rank = 60
+
+            elif quote_status in approved_statuses:
+                stage_key = "APPROVED"
+                stage_label = "Customer Approved"
+                stage_icon = "👍"
+                progress = 75
+                priority_rank = 50
+
+            elif item.get("quote_id"):
+                stage_key = "WAITING"
+                stage_label = "Waiting for Customer"
+                stage_icon = "⏳"
+                progress = 63
+                priority_rank = 40
+
+            elif selected_items > 0 and research_items == 0:
+                stage_key = "READY"
+                stage_label = "Ready to Quote"
+                stage_icon = "📝"
+                progress = 50
+                priority_rank = 30
+
+            elif selected_items > 0:
+                stage_key = "RESEARCH"
+                stage_label = "Parts Research"
+                stage_icon = "🔍"
+                progress = 42
+                priority_rank = 20
+
+            else:
+                stage_key = "RESEARCH"
+                stage_label = "Research Required"
+                stage_icon = "🔍"
+                progress = 30
+                priority_rank = 20
+
+            if (
+                "attention" in health_label
+                or "action required" in health_label
+                or "overdue" in health_label
+            ):
+                stage_key = "URGENT"
+                stage_label = "Needs Attention"
+                stage_icon = "🔥"
+                priority_rank = 10
+
+            item["stage_key"] = stage_key
+            item["stage_label"] = stage_label
+            item["stage_icon"] = stage_icon
+            item["progress_percent"] = progress
+            item["priority_rank"] = priority_rank
+
+            item["parts_progress"] = {
+                "research": research_items,
+                "quoted": int(item.get("quoted_items") or 0),
+                "ordered": int(item.get("ordered_items") or 0),
+                "received": received_items,
+                "total": selected_items,
+            }
+
+            item["last_activity_display"] = (
+                item.get("last_activity")
+                or item.get("created_date")
+                or "No activity recorded"
+            )
+
             jobs.append(item)
+
+        jobs.sort(
+            key=lambda job: (
+                job["priority_rank"],
+                job.get("last_activity_display") or "",
+                job.get("id") or 0,
+            )
+        )
 
     return templates.TemplateResponse(
         request=request,
         name="jobs.html",
-        context={"jobs": jobs, "active_page": "jobs"},
+        context={
+            "jobs": jobs,
+            "active_page": "jobs",
+        },
     )
 
 
@@ -1138,6 +1549,12 @@ def calculate_customer_unit_price(cost: float) -> float:
 
 @app.post("/jobs/{job_id}/generate-quote")
 def generate_quote(job_id: int):
+    # The basket commit is an internal step. The user should not
+    # have to click Review Quote before generating the quote.
+    from plg_core.basket.service import commit_basket
+
+    commit_basket(job_id)
+
     with closing(get_connection()) as connection:
         job = connection.execute(
             "SELECT * FROM jobs WHERE id = ?",
@@ -1145,7 +1562,10 @@ def generate_quote(job_id: int):
         ).fetchone()
 
         if job is None:
-            raise HTTPException(status_code=404, detail="Job not found.")
+            raise HTTPException(
+                status_code=404,
+                detail="Job not found.",
+            )
 
         selected = connection.execute(
             """
@@ -1162,29 +1582,69 @@ def generate_quote(job_id: int):
                 part_sources.supplier_cost
             FROM job_parts
             JOIN part_sources
-                ON part_sources.part_id = job_parts.id
-               AND part_sources.selected_for_quote = 1
+              ON part_sources.part_id = job_parts.id
+             AND part_sources.selected_for_quote = 1
             WHERE job_parts.job_id = ?
             ORDER BY job_parts.id
             """,
             (job_id,),
         ).fetchall()
 
+        # Count only quote-ready parts that have supplier-source
+        # records. Smart Intake request placeholders are excluded.
         total_parts = connection.execute(
-            "SELECT COUNT(*) AS count FROM job_parts WHERE job_id = ?",
+            """
+            SELECT COUNT(DISTINCT job_parts.id) AS count
+            FROM job_parts
+            JOIN part_sources
+              ON part_sources.part_id = job_parts.id
+            WHERE job_parts.job_id = ?
+            """,
             (job_id,),
         ).fetchone()["count"]
 
         if total_parts == 0:
             raise HTTPException(
                 status_code=400,
-                detail="Add at least one part before generating a quote.",
+                detail=(
+                    "Select at least one priced supplier part "
+                    "before generating the quote."
+                ),
             )
 
         if len(selected) != total_parts:
+            missing = connection.execute(
+                """
+                SELECT DISTINCT
+                    job_parts.requested_description
+                FROM job_parts
+                JOIN part_sources
+                  ON part_sources.part_id = job_parts.id
+                WHERE job_parts.job_id = ?
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM part_sources selected_source
+                      WHERE selected_source.part_id = job_parts.id
+                        AND selected_source.selected_for_quote = 1
+                  )
+                ORDER BY job_parts.id
+                """,
+                (job_id,),
+            ).fetchall()
+
+            missing_names = [
+                str(row["requested_description"] or "Part").strip()
+                for row in missing
+            ]
+
+            detail = "Choose one supplier for every quoted part."
+
+            if missing_names:
+                detail += " Missing: " + ", ".join(missing_names)
+
             raise HTTPException(
                 status_code=400,
-                detail="Select one supplier source for every part first.",
+                detail=detail,
             )
 
         quote_number = next_quote_number(connection)
@@ -1222,17 +1682,33 @@ def generate_quote(job_id: int):
 
         for row in selected:
             quantity = max(1, int(row["quantity"] or 1))
-            supplier_unit_cost = float(row["supplier_cost"] or 0)
-            customer_unit_price = calculate_customer_unit_price(
-                supplier_unit_cost
+            supplier_unit_cost = float(
+                row["supplier_cost"] or 0
             )
-            supplier_line_total = supplier_unit_cost * quantity
-            customer_line_total = customer_unit_price * quantity
-            line_profit = customer_line_total - supplier_line_total
+
+            customer_unit_price = (
+                calculate_customer_unit_price(
+                    supplier_unit_cost
+                )
+            )
+
+            supplier_line_total = (
+                supplier_unit_cost * quantity
+            )
+            customer_line_total = (
+                customer_unit_price * quantity
+            )
+            line_profit = (
+                customer_line_total - supplier_line_total
+            )
 
             description = (
-                str(row["requested_description"] or "").strip()
-                or str(row["oem_description"] or "").strip()
+                str(
+                    row["requested_description"] or ""
+                ).strip()
+                or str(
+                    row["oem_description"] or ""
+                ).strip()
                 or "Part"
             )
 
@@ -1258,7 +1734,9 @@ def generate_quote(job_id: int):
             )
 
         customer_total = parts_subtotal + shipping_total
-        supplier_total = supplier_parts_total + shipping_total
+        supplier_total = (
+            supplier_parts_total + shipping_total
+        )
         profit_total = customer_total - supplier_total
 
         cursor = connection.execute(
@@ -1274,7 +1752,9 @@ def generate_quote(job_id: int):
                 supplier_total,
                 profit_total
             )
-            VALUES (?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?)
+            VALUES (
+                ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?
+            )
             """,
             (
                 quote_number,
@@ -1287,6 +1767,7 @@ def generate_quote(job_id: int):
                 profit_total,
             ),
         )
+
         quote_id = cursor.lastrowid
 
         for item in item_rows:
@@ -1308,18 +1789,44 @@ def generate_quote(job_id: int):
                     customer_line_total,
                     line_profit
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
                 """,
                 (quote_id, *item),
             )
 
         connection.execute(
-            "UPDATE jobs SET status = 'QUOTED' WHERE id = ?",
+            """
+            UPDATE jobs
+            SET status = 'QUOTED'
+            WHERE id = ?
+            """,
             (job_id,),
         )
+
+        connection.execute(
+            """
+            INSERT INTO job_timeline (
+                job_id,
+                event_type,
+                icon,
+                message
+            )
+            VALUES (?, 'QUOTE_CREATED', '📝', ?)
+            """,
+            (
+                job_id,
+                f"Customer quote {quote_number} created",
+            ),
+        )
+
         connection.commit()
 
-        quote, pdf_items = load_quote(connection, quote_id)
+        quote, pdf_items = load_quote(
+            connection,
+            quote_id,
+        )
         generate_quote_pdfs(quote, pdf_items)
 
     return RedirectResponse(
@@ -1338,6 +1845,7 @@ def load_quote(connection: sqlite3.Connection, quote_id: int):
             jobs.company,
             jobs.phone,
             jobs.email,
+            jobs.address,
             jobs.manufacturer,
             jobs.machine,
             jobs.pin_serial
@@ -1379,22 +1887,137 @@ def next_invoice_number(connection: sqlite3.Connection) -> str:
     return f"{prefix}{sequence:03d}"
 
 
-def load_invoice(connection: sqlite3.Connection, invoice_id: int):
-    invoice = connection.execute("""SELECT invoices.*,jobs.customer_id,jobs.job_number,jobs.customer,jobs.company,jobs.phone,jobs.email,jobs.address,jobs.manufacturer,jobs.machine,jobs.pin_serial FROM invoices JOIN jobs ON jobs.id=invoices.job_id WHERE invoices.id=?""",(invoice_id,)).fetchone()
+def load_invoice(
+    connection: sqlite3.Connection,
+    invoice_id: int,
+):
+    invoice = connection.execute(
+        """
+        SELECT
+            invoices.*,
+            jobs.customer_id,
+            jobs.job_number,
+            jobs.customer,
+            jobs.company,
+            jobs.phone,
+            jobs.email,
+            jobs.address,
+            jobs.manufacturer,
+            jobs.machine,
+            jobs.pin_serial,
+
+            (
+                SELECT customer_transactions.transaction_date
+                FROM customer_transactions
+                WHERE customer_transactions.invoice_id = invoices.id
+                  AND customer_transactions.transaction_type = 'PAYMENT'
+                ORDER BY customer_transactions.transaction_date DESC,
+                         customer_transactions.id DESC
+                LIMIT 1
+            ) AS paid_date,
+
+            (
+                SELECT customer_transactions.payment_method
+                FROM customer_transactions
+                WHERE customer_transactions.invoice_id = invoices.id
+                  AND customer_transactions.transaction_type = 'PAYMENT'
+                ORDER BY customer_transactions.transaction_date DESC,
+                         customer_transactions.id DESC
+                LIMIT 1
+            ) AS payment_method,
+
+            (
+                SELECT customer_transactions.reference
+                FROM customer_transactions
+                WHERE customer_transactions.invoice_id = invoices.id
+                  AND customer_transactions.transaction_type = 'PAYMENT'
+                ORDER BY customer_transactions.transaction_date DESC,
+                         customer_transactions.id DESC
+                LIMIT 1
+            ) AS payment_reference
+
+        FROM invoices
+        JOIN jobs
+          ON jobs.id = invoices.job_id
+        WHERE invoices.id = ?
+        """,
+        (invoice_id,),
+    ).fetchone()
+
     if invoice is None:
-        raise HTTPException(status_code=404, detail="Invoice not found.")
-    items = connection.execute("SELECT * FROM invoice_items WHERE invoice_id=? ORDER BY id",(invoice_id,)).fetchall()
+        raise HTTPException(
+            status_code=404,
+            detail="Invoice not found.",
+        )
+
+    items = connection.execute(
+        """
+        SELECT *
+        FROM invoice_items
+        WHERE invoice_id = ?
+        ORDER BY id
+        """,
+        (invoice_id,),
+    ).fetchall()
+
     return invoice, items
 
 
 @app.get("/invoices", response_class=HTMLResponse)
-def list_invoices(request: Request, view: str = "active"):
-    if view not in {"active","paid","void","all"}:
-        view = "active"
-    where = {"active":"WHERE invoices.status IN ('UNPAID','PARTIAL')","paid":"WHERE invoices.status='PAID'","void":"WHERE invoices.status='VOID'"}.get(view,"")
+def list_invoices(request: Request, view: str = "all"):
+    if view not in {"active", "paid", "void", "all"}:
+        view = "all"
+
+    where = {
+        "active": "WHERE invoices.status IN ('UNPAID', 'PARTIAL')",
+        "paid": "WHERE invoices.status = 'PAID'",
+        "void": "WHERE invoices.status = 'VOID'",
+    }.get(view, "")
+
     with closing(get_connection()) as connection:
-        rows = connection.execute(f"""SELECT invoices.*,jobs.customer_id,jobs.customer,jobs.job_number,jobs.manufacturer,jobs.machine FROM invoices JOIN jobs ON jobs.id=invoices.job_id {where} ORDER BY invoices.id DESC""").fetchall()
-    return templates.TemplateResponse(request=request,name="invoices.html",context={"invoices":rows,"view":view,"active_page":"invoices"})
+        rows = connection.execute(
+            f"""
+            SELECT
+                invoices.*,
+                jobs.customer_id,
+                jobs.customer,
+                jobs.job_number,
+                jobs.manufacturer,
+                jobs.machine,
+                jobs.pin_serial,
+
+                (
+                    SELECT COUNT(*)
+                    FROM invoice_items
+                    WHERE invoice_items.invoice_id = invoices.id
+                ) AS item_count,
+
+                (
+                    SELECT GROUP_CONCAT(
+                        invoice_items.description,
+                        ', '
+                    )
+                    FROM invoice_items
+                    WHERE invoice_items.invoice_id = invoices.id
+                ) AS item_descriptions
+
+            FROM invoices
+            JOIN jobs
+              ON jobs.id = invoices.job_id
+            {where}
+            ORDER BY invoices.id DESC
+            """
+        ).fetchall()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="invoices.html",
+        context={
+            "invoices": rows,
+            "view": view,
+            "active_page": "invoices",
+        },
+    )
 
 
 @app.post("/quotes/{quote_id}/convert-to-invoice")
@@ -1429,15 +2052,339 @@ def convert_quote_to_invoice(quote_id: int):
     return RedirectResponse(url=f"/invoices/{invoice_id}/documents",status_code=303)
 
 
-@app.get("/invoices/{invoice_id}/documents", response_class=HTMLResponse)
+@app.get(
+    "/invoices/{invoice_id}/documents",
+    response_class=HTMLResponse,
+)
 def invoice_documents(request: Request, invoice_id: int):
     with closing(get_connection()) as connection:
         invoice, items = load_invoice(connection, invoice_id)
-    paths = invoice_paths(invoice["customer"],invoice["invoice_number"])
-    if not paths["customer"].exists() or not paths["internal"].exists():
-        generate_invoice_pdfs(invoice,items)
-    customer_path = Path("documents")/"Customers"/sanitize_path_name(invoice["customer"])/"Invoices"
-    return templates.TemplateResponse(request=request,name="invoice_documents.html",context={"invoice":invoice,"items":items,"customer_path":str(customer_path),"active_page":"invoices"})
+
+        payments = connection.execute(
+            """
+            SELECT *
+            FROM customer_transactions
+            WHERE invoice_id = ?
+              AND transaction_type = 'PAYMENT'
+            ORDER BY transaction_date DESC, id DESC
+            """,
+            (invoice_id,),
+        ).fetchall()
+
+        payment_total = sum(
+            float(payment["amount"] or 0)
+            for payment in payments
+        )
+
+    paths = invoice_paths(
+        invoice["customer"],
+        invoice["invoice_number"],
+    )
+
+    if (
+        not paths["customer"].exists()
+        or not paths["internal"].exists()
+    ):
+        generate_invoice_pdfs(invoice, items)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="invoice_documents.html",
+        context={
+            "invoice": invoice,
+            "items": items,
+            "payments": payments,
+            "payment_total": payment_total,
+            "today": date.today().isoformat(),
+            "parts_order_sheet_exists": parts_order_sheet_path(
+                invoice
+            ).exists(),
+            "active_page": "invoices",
+        },
+    )
+
+
+@app.post("/invoices/{invoice_id}/payments")
+def receive_invoice_payment(
+    invoice_id: int,
+    amount: Annotated[float, Form()],
+    payment_method: Annotated[str, Form()],
+    reference: Annotated[str, Form()] = "",
+    payment_date: Annotated[str, Form()] = "",
+):
+    amount = round(float(amount or 0), 2)
+    payment_method = (payment_method or "").strip().upper()
+    reference = (reference or "").strip()
+    payment_date = (
+        (payment_date or "").strip()
+        or date.today().isoformat()
+    )
+
+    if amount <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Payment amount must be greater than zero.",
+        )
+
+    allowed_methods = {
+        "CASH",
+        "BANK TRANSFER",
+        "ZELLE",
+        "CARD",
+        "CHEQUE",
+        "OTHER",
+    }
+
+    if payment_method not in allowed_methods:
+        raise HTTPException(
+            status_code=400,
+            detail="Select a valid payment method.",
+        )
+
+    with closing(get_connection()) as connection:
+        invoice, items = load_invoice(connection, invoice_id)
+
+        if invoice["status"] == "VOID":
+            raise HTTPException(
+                status_code=400,
+                detail="A void invoice cannot receive payment.",
+            )
+
+        current_balance = round(
+            float(invoice["balance_due"] or 0),
+            2,
+        )
+
+        if current_balance <= 0:
+            return RedirectResponse(
+                url=f"/invoices/{invoice_id}/documents",
+                status_code=303,
+            )
+
+        if amount > current_balance:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Payment cannot be greater than the "
+                    f"current balance of ${current_balance:.2f}."
+                ),
+            )
+
+        new_balance = round(current_balance - amount, 2)
+
+        new_status = (
+            "PAID"
+            if new_balance <= 0
+            else "PARTIAL"
+        )
+
+        connection.execute(
+            """
+            INSERT INTO customer_transactions (
+                customer_id,
+                transaction_date,
+                transaction_type,
+                amount,
+                payment_method,
+                reference,
+                reason,
+                job_id,
+                quote_id,
+                invoice_id
+            )
+            VALUES (
+                ?, ?, 'PAYMENT', ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            (
+                invoice["customer_id"],
+                payment_date,
+                amount,
+                payment_method,
+                reference,
+                f"Payment received for {invoice['invoice_number']}",
+                invoice["job_id"],
+                invoice["quote_id"],
+                invoice_id,
+            ),
+        )
+
+        connection.execute(
+            """
+            UPDATE invoices
+            SET balance_due = ?,
+                status = ?
+            WHERE id = ?
+            """,
+            (
+                max(new_balance, 0),
+                new_status,
+                invoice_id,
+            ),
+        )
+
+        if new_status == "PAID":
+            connection.execute(
+                """
+                UPDATE jobs
+                SET status = 'CONFIRMED'
+                WHERE id = ?
+                """,
+                (invoice["job_id"],),
+            )
+
+        try:
+            connection.execute(
+                """
+                INSERT INTO job_timeline (
+                    job_id,
+                    event_type,
+                    icon,
+                    message
+                )
+                VALUES (?, 'PAYMENT_RECEIVED', '💳', ?)
+                """,
+                (
+                    invoice["job_id"],
+                    (
+                        f"${amount:.2f} payment received "
+                        f"for {invoice['invoice_number']} "
+                        f"via {payment_method.title()}"
+                    ),
+                ),
+            )
+        except Exception:
+            # Payment must still succeed if timeline support
+            # is unavailable in an older database.
+            pass
+
+        connection.commit()
+
+        updated_invoice, updated_items = load_invoice(
+            connection,
+            invoice_id,
+        )
+
+        generate_invoice_pdfs(
+            updated_invoice,
+            updated_items,
+        )
+
+    return RedirectResponse(
+        url=f"/invoices/{invoice_id}/documents",
+        status_code=303,
+    )
+
+
+@app.post("/invoices/{invoice_id}/parts-order-sheet")
+def create_parts_order_sheet(invoice_id: int):
+    with closing(get_connection()) as connection:
+        invoice, items = load_invoice(connection, invoice_id)
+
+        if str(invoice["status"] or "").upper() != "PAID":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "The invoice must be paid before creating "
+                    "a Parts Order Sheet."
+                ),
+            )
+
+        supplier_rows = connection.execute(
+            """
+            SELECT
+                name,
+                contact_person,
+                phone,
+                email,
+                website,
+                account_number
+            FROM suppliers
+            """
+        ).fetchall()
+
+        supplier_details = {
+            str(row["name"] or "").strip().lower(): dict(row)
+            for row in supplier_rows
+        }
+
+    generated_path = generate_parts_order_sheet(
+        invoice,
+        items,
+        supplier_details,
+    )
+
+    return FileResponse(
+        path=generated_path,
+        media_type="application/pdf",
+        filename=Path(generated_path).name,
+        content_disposition_type="inline",
+        headers={
+            "Cache-Control": (
+                "no-store, no-cache, must-revalidate, max-age=0"
+            ),
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@app.get("/invoices/{invoice_id}/parts-order-sheet/pdf")
+def open_parts_order_sheet(invoice_id: int, download: int = 0):
+    with closing(get_connection()) as connection:
+        invoice, items = load_invoice(connection, invoice_id)
+
+        supplier_rows = connection.execute(
+            """
+            SELECT
+                name,
+                contact_person,
+                phone,
+                email,
+                website,
+                account_number
+            FROM suppliers
+            """
+        ).fetchall()
+
+        supplier_details = {
+            str(row["name"] or "").strip().lower(): dict(row)
+            for row in supplier_rows
+        }
+
+    path = parts_order_sheet_path(invoice)
+
+    if not path.exists():
+        if str(invoice["status"] or "").upper() != "PAID":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "The invoice must be paid before creating "
+                    "a Parts Order Sheet."
+                ),
+            )
+
+        generate_parts_order_sheet(
+            invoice,
+            items,
+            supplier_details,
+        )
+
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type=(
+            "attachment" if download else "inline"
+        ),
+        headers={
+            "Cache-Control": (
+                "no-store, no-cache, must-revalidate, max-age=0"
+            ),
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @app.get("/invoices/{invoice_id}/customer/pdf")
@@ -1447,7 +2394,19 @@ def customer_invoice_pdf(invoice_id: int, download: int = 0):
     path = invoice_paths(invoice["customer"],invoice["invoice_number"])["customer"]
     if not path.exists():
         generate_invoice_pdfs(invoice,items)
-    return FileResponse(path=path,media_type="application/pdf",filename=path.name,content_disposition_type="attachment" if download else "inline")
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type=(
+            "attachment" if download else "inline"
+        ),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @app.get("/invoices/{invoice_id}/internal/pdf")
@@ -1457,7 +2416,19 @@ def internal_invoice_pdf(invoice_id: int, download: int = 0):
     path = invoice_paths(invoice["customer"],invoice["invoice_number"])["internal"]
     if not path.exists():
         generate_invoice_pdfs(invoice,items)
-    return FileResponse(path=path,media_type="application/pdf",filename=path.name,content_disposition_type="attachment" if download else "inline")
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type=(
+            "attachment" if download else "inline"
+        ),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @app.get("/suppliers", response_class=HTMLResponse)
@@ -1513,11 +2484,83 @@ def supplier_delete(supplier_id: int):
 
 @app.get("/quotes", response_class=HTMLResponse)
 def list_quotes(request: Request, view: str = "active"):
-    if view not in {"active","archived","all"}: view="active"
-    where={"active":"WHERE quotes.is_archived=0","archived":"WHERE quotes.is_archived=1"}.get(view,"")
+    if view not in {"active", "archived", "all"}:
+        view = "active"
+
+    where = {
+        "active": "WHERE COALESCE(quotes.is_archived, 0) = 0",
+        "archived": "WHERE COALESCE(quotes.is_archived, 0) = 1",
+    }.get(view, "")
+
     with closing(get_connection()) as connection:
-        rows=connection.execute(f"""SELECT quotes.*,jobs.customer_id,jobs.customer,jobs.job_number,jobs.manufacturer,jobs.machine FROM quotes JOIN jobs ON jobs.id=quotes.job_id {where} ORDER BY quotes.id DESC""").fetchall()
-    return templates.TemplateResponse(request=request,name="quotes.html",context={"quotes":rows,"view":view,"active_page":"quotes"})
+        rows = connection.execute(
+            f"""
+            SELECT
+                quotes.*,
+                jobs.customer_id,
+                jobs.customer,
+                jobs.job_number,
+                jobs.manufacturer,
+                jobs.machine,
+                jobs.pin_serial,
+
+                (
+                    SELECT COUNT(*)
+                    FROM quote_items
+                    WHERE quote_items.quote_id = quotes.id
+                ) AS item_count,
+
+                (
+                    SELECT GROUP_CONCAT(
+                        quote_items.description,
+                        ', '
+                    )
+                    FROM quote_items
+                    WHERE quote_items.quote_id = quotes.id
+                ) AS item_descriptions,
+
+                (
+                    SELECT invoices.id
+                    FROM invoices
+                    WHERE invoices.quote_id = quotes.id
+                    ORDER BY invoices.id DESC
+                    LIMIT 1
+                ) AS invoice_id,
+
+                (
+                    SELECT invoices.invoice_number
+                    FROM invoices
+                    WHERE invoices.quote_id = quotes.id
+                    ORDER BY invoices.id DESC
+                    LIMIT 1
+                ) AS invoice_number,
+
+                (
+                    SELECT invoices.status
+                    FROM invoices
+                    WHERE invoices.quote_id = quotes.id
+                    ORDER BY invoices.id DESC
+                    LIMIT 1
+                ) AS invoice_status
+
+            FROM quotes
+            JOIN jobs
+              ON jobs.id = quotes.job_id
+            {where}
+            ORDER BY quotes.id DESC
+            """
+        ).fetchall()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="quotes.html",
+        context={
+            "quotes": rows,
+            "view": view,
+            "active_page": "quotes",
+        },
+    )
+
 
 @app.post("/quotes/{quote_id}/archive")
 def archive_quote(quote_id: int):

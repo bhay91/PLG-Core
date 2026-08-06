@@ -297,12 +297,128 @@ def _migration_0005_request_job_ready(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_0006_part_status_timeline(
+    connection: sqlite3.Connection,
+) -> None:
+    basket_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(basket_items)"
+        ).fetchall()
+    }
+
+    if "markup_percent" not in basket_columns:
+        connection.execute(
+            """
+            ALTER TABLE basket_items
+            ADD COLUMN markup_percent REAL
+            """
+        )
+
+    if "part_status" not in basket_columns:
+        connection.execute(
+            """
+            ALTER TABLE basket_items
+            ADD COLUMN part_status TEXT NOT NULL DEFAULT 'RESEARCH'
+            """
+        )
+
+    connection.execute(
+        """
+        UPDATE basket_items
+        SET part_status = 'RESEARCH'
+        WHERE part_status IS NULL OR TRIM(part_status) = ''
+        """
+    )
+
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS job_timeline (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL,
+            event_type TEXT NOT NULL,
+            icon TEXT NOT NULL DEFAULT '',
+            message TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (job_id) REFERENCES jobs(id)
+        )
+        """
+    )
+
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_job_timeline_job
+        ON job_timeline(job_id, created_at DESC)
+        """
+    )
+
+
+def _migration_0007_smart_intake_locations(
+    connection: sqlite3.Connection,
+) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS customer_locations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL,
+            location_name TEXT NOT NULL DEFAULT '',
+            address TEXT NOT NULL DEFAULT '',
+            phone TEXT NOT NULL DEFAULT '',
+            email TEXT NOT NULL DEFAULT '',
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES customers(id)
+        )
+        """
+    )
+
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_customer_locations_customer
+        ON customer_locations(customer_id)
+        """
+    )
+
+    request_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(customer_requests)"
+        ).fetchall()
+    }
+
+    if "customer_location_id" not in request_columns:
+        connection.execute(
+            """
+            ALTER TABLE customer_requests
+            ADD COLUMN customer_location_id INTEGER
+            """
+        )
+
+    machine_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(machines)"
+        ).fetchall()
+    }
+
+    if "customer_location_id" not in machine_columns:
+        connection.execute(
+            """
+            ALTER TABLE machines
+            ADD COLUMN customer_location_id INTEGER
+            """
+        )
+
+
 MIGRATIONS: list[Migration] = [
     ("0001_basket_foundation", _migration_0001_basket_foundation),
     ("0002_machine_registry", _migration_0002_machine_registry),
     ("0003_universal_registry", _migration_0003_universal_registry),
     ("0004_customer_requests", _migration_0004_customer_requests),
     ("0005_request_job_ready", _migration_0005_request_job_ready),
+    ("0006_part_status_timeline", _migration_0006_part_status_timeline),    ("0007_smart_intake_locations", _migration_0007_smart_intake_locations),
+
 ]
 
 

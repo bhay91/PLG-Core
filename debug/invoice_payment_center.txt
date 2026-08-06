@@ -1,0 +1,917 @@
+===== INVOICE DOCUMENT PAGE =====
+{% extends "base.html" %}
+{% block title %}Invoice Documents · {{ invoice.invoice_number }}{% endblock %}
+{% block content %}
+<section class="workspace-heading"><div><p class="eyebrow">INVOICE CREATED</p><h1>{{ invoice.invoice_number }}</h1><p>{{ invoice.customer }} · {{ invoice.manufacturer }} {{ invoice.machine }}</p></div><div class="workspace-heading-actions"><a class="button ghost" href="/quotes/{{ invoice.quote_id }}/documents">Source Quote</a><a class="button ghost" href="/invoices">Invoice Register</a></div></section>
+<section class="job-summary-grid customer-summary-grid"><article class="context-card"><span>Invoice Total</span><strong>${{ "%.2f"|format(invoice.customer_total) }}</strong><small>Customer total</small></article><article class="context-card"><span>Credit Applied</span><strong>${{ "%.2f"|format(invoice.credit_applied) }}</strong><small>Existing account credit</small></article><article class="context-card"><span>Balance Due</span><strong>${{ "%.2f"|format(invoice.balance_due) }}</strong><small>Remaining amount</small></article><article class="context-card"><span>Status</span><strong>{{ invoice.status }}</strong><small>{{ invoice.invoice_date }}</small></article></section>
+<section class="document-card-grid"><article class="panel document-output-card"><div><p class="eyebrow">CUSTOMER COPY</p><h2>Customer Invoice PDF</h2><p>Customer-facing invoice with final selling prices only.</p></div><div class="document-output-actions"><a class="button ghost" target="_blank" href="/invoices/{{ invoice.id }}/customer/pdf">Open PDF</a><a class="button" href="/invoices/{{ invoice.id }}/customer/pdf?download=1">Download</a></div></article><article class="panel document-output-card"><div><p class="eyebrow">INTERNAL COPY</p><h2>Internal Accounting PDF</h2><p>Supplier cost, customer price, line profit, and net profit.</p></div><div class="document-output-actions"><a class="button ghost" target="_blank" href="/invoices/{{ invoice.id }}/internal/pdf">Open PDF</a><a class="button" href="/invoices/{{ invoice.id }}/internal/pdf?download=1">Download</a></div></article></section>
+<section class="panel document-location-card"><p class="eyebrow">LOCAL STORAGE</p><h2>Saved Under Customer Folder</h2><p><code>{{ customer_path }}</code></p></section>
+{% endblock %}
+===== INVOICE TABLE SCHEMA =====
+413-        connection.execute(
+414-            """
+415-            CREATE TABLE IF NOT EXISTS document_templates (
+416-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+417-                template_key TEXT NOT NULL DEFAULT 'master_corporate',
+418-                display_name TEXT NOT NULL,
+419-                version_number INTEGER NOT NULL DEFAULT 1,
+420-                original_filename TEXT NOT NULL,
+421-                stored_filename TEXT NOT NULL,
+422-                file_path TEXT NOT NULL,
+423-                is_active INTEGER NOT NULL DEFAULT 0,
+424-                uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
+425-                notes TEXT DEFAULT '',
+426-                UNIQUE(template_key, version_number)
+427-            )
+428-            """
+429-        )
+430-
+431-        connection.executescript(
+432-            """
+433:            CREATE TABLE IF NOT EXISTS invoices (
+434-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+435-                invoice_number TEXT NOT NULL UNIQUE,
+436-                quote_id INTEGER NOT NULL UNIQUE,
+437-                job_id INTEGER NOT NULL,
+438-                invoice_date TEXT NOT NULL,
+439-                status TEXT NOT NULL DEFAULT 'UNPAID',
+440-                parts_subtotal REAL NOT NULL DEFAULT 0,
+441-                shipping_total REAL NOT NULL DEFAULT 0,
+442-                customer_total REAL NOT NULL DEFAULT 0,
+443-                supplier_total REAL NOT NULL DEFAULT 0,
+444-                profit_total REAL NOT NULL DEFAULT 0,
+445-                credit_applied REAL NOT NULL DEFAULT 0,
+446-                balance_due REAL NOT NULL DEFAULT 0,
+447-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+448-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+449-                FOREIGN KEY (quote_id) REFERENCES quotes(id),
+450-                FOREIGN KEY (job_id) REFERENCES jobs(id)
+451-            );
+452-
+453-            CREATE TABLE IF NOT EXISTS invoice_items (
+454-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+455-                invoice_id INTEGER NOT NULL,
+456-                quote_item_id INTEGER,
+457-                part_id INTEGER,
+458-                source_id INTEGER,
+459-                quantity INTEGER NOT NULL DEFAULT 1,
+460-                description TEXT NOT NULL,
+461-                supplier_name TEXT DEFAULT '',
+462-                source_type TEXT DEFAULT '',
+463-                brand TEXT DEFAULT '',
+464-                supplier_part_number TEXT DEFAULT '',
+465-                supplier_unit_cost REAL NOT NULL DEFAULT 0,
+466-                customer_unit_price REAL NOT NULL DEFAULT 0,
+467-                supplier_line_total REAL NOT NULL DEFAULT 0,
+468-                customer_line_total REAL NOT NULL DEFAULT 0,
+469-                line_profit REAL NOT NULL DEFAULT 0,
+470-                FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+471-                FOREIGN KEY (quote_item_id) REFERENCES quote_items(id)
+472-            );
+473-
+474-            CREATE INDEX IF NOT EXISTS idx_invoices_quote_id ON invoices(quote_id);
+475-            CREATE INDEX IF NOT EXISTS idx_invoices_job_id ON invoices(job_id);
+476-            CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON invoice_items(invoice_id);
+477-            """
+478-        )
+479-
+480-        connection.execute(
+481-            """
+482-            CREATE TABLE IF NOT EXISTS customer_transactions (
+483-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+484-                customer_id INTEGER NOT NULL,
+485-                transaction_date TEXT NOT NULL,
+486-                transaction_type TEXT NOT NULL,
+487-                amount REAL NOT NULL,
+488-                payment_method TEXT DEFAULT '',
+489-                reference TEXT DEFAULT '',
+490-                reason TEXT DEFAULT '',
+491-                job_id INTEGER,
+492-                quote_id INTEGER,
+493-                invoice_id INTEGER,
+494-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+495-                FOREIGN KEY (customer_id) REFERENCES customers(id)
+496-            )
+497-            """
+498-        )
+499-
+500-        connection.commit()
+501-
+502-
+503-def next_job_number(connection: sqlite3.Connection) -> str:
+504-    current_year = date.today().year
+505-    prefix = f"PLG-J-{current_year}-"
+506-
+507-    row = connection.execute(
+508-        """
+509-        SELECT job_number
+510-        FROM jobs
+511-        WHERE job_number LIKE ?
+512-        ORDER BY id DESC
+513-        LIMIT 1
+514-        """,
+515-        (f"{prefix}%",),
+516-    ).fetchone()
+517-
+518-    if row is None:
+519-        sequence = 1
+520-    else:
+521-        try:
+522-            sequence = int(row["job_number"].split("-")[-1]) + 1
+523-        except (ValueError, IndexError):
+
+===== PAYMENT FUNCTIONS / ROUTES =====
+420-                original_filename TEXT NOT NULL,
+421-                stored_filename TEXT NOT NULL,
+422-                file_path TEXT NOT NULL,
+423-                is_active INTEGER NOT NULL DEFAULT 0,
+424-                uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
+425-                notes TEXT DEFAULT '',
+426-                UNIQUE(template_key, version_number)
+427-            )
+428-            """
+429-        )
+430-
+431-        connection.executescript(
+432-            """
+433-            CREATE TABLE IF NOT EXISTS invoices (
+434-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+435-                invoice_number TEXT NOT NULL UNIQUE,
+436-                quote_id INTEGER NOT NULL UNIQUE,
+437-                job_id INTEGER NOT NULL,
+438-                invoice_date TEXT NOT NULL,
+439-                status TEXT NOT NULL DEFAULT 'UNPAID',
+440-                parts_subtotal REAL NOT NULL DEFAULT 0,
+441-                shipping_total REAL NOT NULL DEFAULT 0,
+442-                customer_total REAL NOT NULL DEFAULT 0,
+443-                supplier_total REAL NOT NULL DEFAULT 0,
+444-                profit_total REAL NOT NULL DEFAULT 0,
+445:                credit_applied REAL NOT NULL DEFAULT 0,
+446:                balance_due REAL NOT NULL DEFAULT 0,
+447-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+448-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+449-                FOREIGN KEY (quote_id) REFERENCES quotes(id),
+450-                FOREIGN KEY (job_id) REFERENCES jobs(id)
+451-            );
+452-
+453-            CREATE TABLE IF NOT EXISTS invoice_items (
+454-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+455-                invoice_id INTEGER NOT NULL,
+456-                quote_item_id INTEGER,
+457-                part_id INTEGER,
+458-                source_id INTEGER,
+459-                quantity INTEGER NOT NULL DEFAULT 1,
+460-                description TEXT NOT NULL,
+461-                supplier_name TEXT DEFAULT '',
+462-                source_type TEXT DEFAULT '',
+463-                brand TEXT DEFAULT '',
+464-                supplier_part_number TEXT DEFAULT '',
+465-                supplier_unit_cost REAL NOT NULL DEFAULT 0,
+466-                customer_unit_price REAL NOT NULL DEFAULT 0,
+467-                supplier_line_total REAL NOT NULL DEFAULT 0,
+468-                customer_line_total REAL NOT NULL DEFAULT 0,
+469-                line_profit REAL NOT NULL DEFAULT 0,
+470-                FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+471-                FOREIGN KEY (quote_item_id) REFERENCES quote_items(id)
+472-            );
+473-
+474-            CREATE INDEX IF NOT EXISTS idx_invoices_quote_id ON invoices(quote_id);
+475-            CREATE INDEX IF NOT EXISTS idx_invoices_job_id ON invoices(job_id);
+476-            CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON invoice_items(invoice_id);
+477-            """
+478-        )
+479-
+480-        connection.execute(
+481-            """
+482:            CREATE TABLE IF NOT EXISTS customer_transactions (
+483-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+484-                customer_id INTEGER NOT NULL,
+485-                transaction_date TEXT NOT NULL,
+486-                transaction_type TEXT NOT NULL,
+487-                amount REAL NOT NULL,
+488-                payment_method TEXT DEFAULT '',
+489-                reference TEXT DEFAULT '',
+490-                reason TEXT DEFAULT '',
+491-                job_id INTEGER,
+492-                quote_id INTEGER,
+493-                invoice_id INTEGER,
+494-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+495-                FOREIGN KEY (customer_id) REFERENCES customers(id)
+496-            )
+497-            """
+498-        )
+499-
+500-        connection.commit()
+501-
+502-
+503-def next_job_number(connection: sqlite3.Connection) -> str:
+504-    current_year = date.today().year
+505-    prefix = f"PLG-J-{current_year}-"
+506-
+507-    row = connection.execute(
+508-        """
+509-        SELECT job_number
+510-        FROM jobs
+511-        WHERE job_number LIKE ?
+512-        ORDER BY id DESC
+513-        LIMIT 1
+514-        """,
+515-        (f"{prefix}%",),
+516-    ).fetchone()
+517-
+518-    if row is None:
+519-        sequence = 1
+520-    else:
+521-        try:
+522-            sequence = int(row["job_number"].split("-")[-1]) + 1
+523-        except (ValueError, IndexError):
+524-            sequence = 1
+525-
+526-    return f"{prefix}{sequence:03d}"
+527-
+528-
+529-@app.on_event("startup")
+530-def startup() -> None:
+531-    initialize_database()
+532-
+533-
+534-@app.get("/", response_class=HTMLResponse)
+535-def dashboard(request: Request):
+536-    with closing(get_connection()) as connection:
+537-        recent_jobs = connection.execute(
+538-            """
+539-            SELECT
+540-                jobs.*,
+541-
+542-                (
+543-                    SELECT COUNT(*)
+544-                    FROM basket_items
+545-                    JOIN baskets
+546-                      ON baskets.id = basket_items.basket_id
+547-                    WHERE baskets.job_id = jobs.id
+548-                      AND basket_items.selected = 1
+549-                ) AS selected_items,
+550-
+551-                (
+552-                    SELECT GROUP_CONCAT(
+553-                        basket_items.requested_description,
+554-                        ', '
+555-                    )
+556-                    FROM basket_items
+557-                    JOIN baskets
+558-                      ON baskets.id = basket_items.basket_id
+559-                    WHERE baskets.job_id = jobs.id
+560-                      AND basket_items.selected = 1
+561-                ) AS selected_descriptions,
+562-
+563-                (
+564-                    SELECT quotes.id
+565-                    FROM quotes
+566-                    WHERE quotes.job_id = jobs.id
+567-                      AND COALESCE(quotes.is_archived, 0) = 0
+568-                    ORDER BY quotes.id DESC
+569-                    LIMIT 1
+570-                ) AS quote_id,
+571-
+572-                (
+573-                    SELECT quotes.quote_number
+574-                    FROM quotes
+575-                    WHERE quotes.job_id = jobs.id
+576-                    ORDER BY quotes.id DESC
+577-                    LIMIT 1
+578-                ) AS quote_number,
+579-
+580-                (
+581-                    SELECT invoices.id
+582-                    FROM invoices
+583-                    WHERE invoices.job_id = jobs.id
+584-                    ORDER BY invoices.id DESC
+585-                    LIMIT 1
+586-                ) AS invoice_id,
+587-
+588-                (
+589-                    SELECT invoices.status
+590-                    FROM invoices
+591-                    WHERE invoices.job_id = jobs.id
+592-                    ORDER BY invoices.id DESC
+593-                    LIMIT 1
+594-                ) AS invoice_status,
+595-
+596-                (
+597:                    SELECT invoices.balance_due
+598-                    FROM invoices
+599-                    WHERE invoices.job_id = jobs.id
+600-                    ORDER BY invoices.id DESC
+601-                    LIMIT 1
+602:                ) AS balance_due
+603-
+604-            FROM jobs
+605-            ORDER BY jobs.id DESC
+606-            LIMIT 10
+607-            """
+608-        ).fetchall()
+609-
+610-        dashboard_stats = connection.execute(
+611-            """
+612-            SELECT
+613-                (
+614-                    SELECT COUNT(*)
+615-                    FROM jobs
+616-                    WHERE status IN (
+617-                        'REQUESTED',
+618-                        'RESEARCHING',
+619-                        'VERIFIED'
+620-                    )
+621-                ) AS needs_attention,
+622-
+623-                (
+624-                    SELECT COUNT(*)
+625-                    FROM quotes
+626-                    WHERE COALESCE(is_archived, 0) = 0
+627-                ) AS active_quotes,
+628-
+629-                (
+630-                    SELECT COUNT(*)
+631-                    FROM invoices
+632-                    WHERE status IN ('UNPAID', 'PARTIAL')
+633-                ) AS waiting_payment,
+634-
+635-                (
+636-                    SELECT COUNT(*)
+637-                    FROM invoices
+638-                    WHERE status = 'PAID'
+639-                ) AS ready_to_order
+640-            """
+641-        ).fetchone()
+642-
+643-    return templates.TemplateResponse(
+644-        request=request,
+645-        name="dashboard.html",
+646-        context={
+647-            "recent_jobs": recent_jobs,
+648-            "stats": dashboard_stats,
+649-            "active_page": "dashboard",
+650-        },
+651-    )
+652-
+653-
+654-@app.get("/jobs/new", response_class=HTMLResponse)
+655-def new_job_form(request: Request, customer_id: int | None = None):
+656-    with closing(get_connection()) as connection:
+657-        customers=connection.execute("SELECT * FROM customers WHERE active=1 ORDER BY name COLLATE NOCASE, company COLLATE NOCASE").fetchall()
+658-        machines=connection.execute("SELECT * FROM machines WHERE active=1 ORDER BY customer_id, name COLLATE NOCASE").fetchall()
+659-    return templates.TemplateResponse(request=request,name="new_job.html",context={"customers":customers,"machines":machines,"selected_customer_id":customer_id,"active_page":"jobs"})
+660-
+661-
+662-
+663-@app.post("/jobs")
+664-def create_job(
+665-    customer: Annotated[str, Form()],
+666-    customer_id: Annotated[int | None, Form()] = None,
+667-    machine_id: Annotated[int | None, Form()] = None,
+668-    company: Annotated[str, Form()] = "",
+669-    phone: Annotated[str, Form()] = "",
+670-    email: Annotated[str, Form()] = "",
+671-    address: Annotated[str, Form()] = "",
+672-    manufacturer: Annotated[str, Form()] = "",
+673-    machine: Annotated[str, Form()] = "",
+674-    pin_serial: Annotated[str, Form()] = "",
+675-    requested_parts: Annotated[str, Form()] = "",
+676-    notes: Annotated[str, Form()] = "",
+677-):
+678-    with closing(get_connection()) as connection:
+679-        if customer_id:
+680-            customer_row=connection.execute("SELECT * FROM customers WHERE id=? AND active=1",(customer_id,)).fetchone()
+681-            if customer_row is None:
+682-                raise HTTPException(status_code=400,detail="Selected customer not found.")
+683-        else:
+684-            name=customer.strip()
+685-            if not name:
+686-                raise HTTPException(status_code=400,detail="Customer is required.")
+687-            cur=connection.execute("INSERT INTO customers (name,company,phone,email,address) VALUES (?,?,?,?,?)",(name,company.strip(),phone.strip(),email.strip(),address.strip()))
+688-            customer_id=cur.lastrowid
+689-            connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PLG-C{customer_id:05d}",customer_id))
+690-            customer_row=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
+691-        selected_machine = None
+692-        if machine_id:
+693-            selected_machine = connection.execute(
+694-                "SELECT * FROM machines WHERE id=? AND customer_id=? AND active=1",
+695-                (machine_id, customer_row["id"]),
+696-            ).fetchone()
+697-            if selected_machine is None:
+698-                raise HTTPException(status_code=400, detail="Selected machine not found for this customer.")
+699-            manufacturer = selected_machine["manufacturer"] or ""
+700-            machine = selected_machine["model"] or selected_machine["name"] or ""
+701-            pin_serial = selected_machine["vin_pin_serial"] or ""
+702-        elif any((manufacturer.strip(), machine.strip(), pin_serial.strip())):
+703-            display_name = " ".join(part for part in (manufacturer.strip(), machine.strip()) if part).strip() or pin_serial.strip()
+704-            machine_cursor = connection.execute(
+705-                "INSERT INTO machines (customer_id,name,manufacturer,model,vin_pin_serial) VALUES (?,?,?,?,?)",
+706-                (customer_row["id"], display_name, manufacturer.strip(), machine.strip(), pin_serial.strip()),
+707-            )
+708-            machine_id = machine_cursor.lastrowid
+709-            connection.execute("UPDATE machines SET machine_number=? WHERE id=?", (f"PLG-M{machine_id:05d}", machine_id))
+710-        job_number=next_job_number(connection)
+711-        cur=connection.execute("""
+712-            INSERT INTO jobs (job_number,created_date,customer_id,machine_id,customer,company,phone,email,address,manufacturer,machine,pin_serial,status,notes)
+713-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'REQUESTED',?)
+714-        """,(job_number,date.today().isoformat(),customer_row["id"],machine_id,customer_row["name"],customer_row["company"] or "",customer_row["phone"] or "",customer_row["email"] or "",customer_row["address"] or "",manufacturer.strip(),machine.strip(),pin_serial.strip(),notes.strip()))
+715-        job_id=cur.lastrowid
+716-        connection.commit()
+717-    return RedirectResponse(url=f"/jobs/{job_id}/basket",status_code=303)
+718-
+719-
+720-
+721-@app.get("/customers", response_class=HTMLResponse)
+722-def list_customers(request: Request, view: str = "active"):
+723-    if view not in {"active", "inactive", "all"}: view = "active"
+724-    where = "" if view == "all" else ("WHERE customers.active=1" if view == "active" else "WHERE customers.active=0")
+725-    with closing(get_connection()) as connection:
+726-        rows=connection.execute(f"""
+727-            SELECT customers.*, COUNT(DISTINCT jobs.id) AS jobs_count,
+728-                   COUNT(DISTINCT quotes.id) AS quotes_count,
+729:                   COALESCE(SUM(customer_transactions.amount),0) AS net_balance
+730-            FROM customers
+731-            LEFT JOIN jobs ON jobs.customer_id=customers.id
+732-            LEFT JOIN quotes ON quotes.job_id=jobs.id
+733:            LEFT JOIN customer_transactions ON customer_transactions.customer_id=customers.id
+734-            {where}
+735-            GROUP BY customers.id
+736-            ORDER BY customers.name COLLATE NOCASE
+737-        """).fetchall()
+738-        customers=[]
+739-        for row in rows:
+740-            item=dict(row); net=float(item.get("net_balance") or 0)
+741-            item["available_credit"]=max(net,0); item["outstanding_balance"]=max(-net,0); customers.append(item)
+742-        recent_customers=connection.execute("SELECT * FROM customers WHERE active=1 AND last_viewed_at IS NOT NULL ORDER BY last_viewed_at DESC LIMIT 8").fetchall()
+743-    return templates.TemplateResponse(request=request,name="customers.html",context={"customers":customers,"recent_customers":recent_customers,"view":view,"active_page":"customers"})
+744-
+745-@app.get("/customers/new", response_class=HTMLResponse)
+746-def new_customer_form(request: Request):
+747-    return templates.TemplateResponse(request=request,name="customer_form.html",context={"title":"New Customer","subtitle":"Create a customer without creating a job.","form_action":"/customers/new","cancel_url":"/customers","submit_label":"Save Customer","duplicate":None,"form":{"name":"","company":"","phone":"","email":"","address":""},"active_page":"customers"})
+748-
+749-@app.post("/customers/new")
+750-def create_customer(request: Request,name: Annotated[str,Form()],company: Annotated[str,Form()]="",phone: Annotated[str,Form()]="",email: Annotated[str,Form()]="",address: Annotated[str,Form()]="",create_anyway: Annotated[int,Form()]=0):
+751-    name,company,phone,email,address=[v.strip() for v in (name,company,phone,email,address)]
+752-    if not name: raise HTTPException(status_code=400,detail="Customer name is required.")
+753-    with closing(get_connection()) as connection:
+754-        duplicate=connection.execute("""SELECT * FROM customers WHERE LOWER(TRIM(name))=LOWER(TRIM(?)) OR (?!='' AND TRIM(phone)=TRIM(?)) OR (?!='' AND LOWER(TRIM(email))=LOWER(TRIM(?))) ORDER BY active DESC,id LIMIT 1""",(name,phone,phone,email,email)).fetchone()
+755-        if duplicate is not None and not create_anyway:
+756-            return templates.TemplateResponse(request=request,name="customer_form.html",context={"title":"New Customer","subtitle":"Review the possible duplicate.","form_action":"/customers/new","cancel_url":"/customers","submit_label":"Save Customer","duplicate":duplicate,"form":{"name":name,"company":company,"phone":phone,"email":email,"address":address},"active_page":"customers"})
+757-        cur=connection.execute("INSERT INTO customers (name,company,phone,email,address,active) VALUES (?,?,?,?,?,1)",(name,company,phone,email,address))
+758-        customer_id=cur.lastrowid
+759-        connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PLG-C{customer_id:05d}",customer_id)); connection.commit()
+760-    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
+761-
+762-@app.get("/customers/{customer_id}/edit", response_class=HTMLResponse)
+763-def edit_customer_form(request: Request,customer_id: int):
+764-    with closing(get_connection()) as connection: customer=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
+765-    if customer is None: raise HTTPException(status_code=404,detail="Customer not found.")
+766-    return templates.TemplateResponse(request=request,name="customer_form.html",context={"title":"Edit Customer","subtitle":customer["customer_number"],"form_action":f"/customers/{customer_id}/edit","cancel_url":f"/customers/{customer_id}","submit_label":"Save Changes","duplicate":None,"form":customer,"active_page":"customers"})
+767-
+768-@app.post("/customers/{customer_id}/edit")
+769-def update_customer(customer_id: int,name: Annotated[str,Form()],company: Annotated[str,Form()]="",phone: Annotated[str,Form()]="",email: Annotated[str,Form()]="",address: Annotated[str,Form()]=""):
+770-    name=name.strip()
+771-    if not name: raise HTTPException(status_code=400,detail="Customer name is required.")
+772-    with closing(get_connection()) as connection:
+773-        connection.execute("UPDATE customers SET name=?,company=?,phone=?,email=?,address=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(name,company.strip(),phone.strip(),email.strip(),address.strip(),customer_id))
+774-        connection.execute("UPDATE jobs SET customer=?,company=?,phone=?,email=?,address=? WHERE customer_id=?",(name,company.strip(),phone.strip(),email.strip(),address.strip(),customer_id)); connection.commit()
+775-    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
+776-
+777-@app.post("/customers/{customer_id}/deactivate")
+778-def deactivate_customer(customer_id: int):
+779-    with closing(get_connection()) as connection: connection.execute("UPDATE customers SET active=0,updated_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,)); connection.commit()
+780-    return RedirectResponse(url="/customers?view=active",status_code=303)
+781-
+782-@app.post("/customers/{customer_id}/reactivate")
+783-def reactivate_customer(customer_id: int):
+784-    with closing(get_connection()) as connection: connection.execute("UPDATE customers SET active=1,updated_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,)); connection.commit()
+785-    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
+786-
+787-@app.get("/customers/{customer_id}", response_class=HTMLResponse)
+788-def customer_account(request: Request, customer_id: int):
+789-    with closing(get_connection()) as connection:
+790-        customer=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
+791-        if customer is None: raise HTTPException(status_code=404,detail="Customer not found.")
+792-        connection.execute("UPDATE customers SET last_viewed_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,))
+793-        jobs=connection.execute("SELECT * FROM jobs WHERE customer_id=? ORDER BY id DESC",(customer_id,)).fetchall()
+794-        machines=connection.execute("SELECT * FROM machines WHERE customer_id=? ORDER BY active DESC, name COLLATE NOCASE",(customer_id,)).fetchall()
+795-        quotes=connection.execute("SELECT quotes.* FROM quotes JOIN jobs ON jobs.id=quotes.job_id WHERE jobs.customer_id=? ORDER BY quotes.id DESC",(customer_id,)).fetchall()
+796:        transactions=connection.execute("SELECT * FROM customer_transactions WHERE customer_id=? ORDER BY transaction_date DESC,id DESC",(customer_id,)).fetchall()
+797:        summary=connection.execute("SELECT COALESCE(SUM(amount),0) AS net_balance,COALESCE(SUM(CASE WHEN transaction_type='PAYMENT' THEN amount ELSE 0 END),0) AS total_payments FROM customer_transactions WHERE customer_id=?",(customer_id,)).fetchone(); connection.commit()
+798-        net=float(summary["net_balance"] or 0); account={"available_credit":max(net,0),"outstanding_balance":max(-net,0),"total_payments":float(summary["total_payments"] or 0)}
+799-    return templates.TemplateResponse(request=request,name="customer_account.html",context={"customer":customer,"machines":machines,"jobs":jobs,"quotes":quotes,"transactions":transactions,"account":account,"active_page":"customers"})
+800-
+801-@app.post("/customers/{customer_id}/transactions/payment")
+802-def record_customer_payment(customer_id: int,amount: Annotated[float,Form()],payment_method: Annotated[str,Form()],reference: Annotated[str,Form()]=""):
+803-    if amount<=0: raise HTTPException(status_code=400,detail="Payment amount must be greater than zero.")
+804:    with closing(get_connection()) as connection: connection.execute("INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,payment_method,reference) VALUES (?,?,'PAYMENT',?,?,?)",(customer_id,date.today().isoformat(),round(float(amount),2),payment_method.strip().upper(),reference.strip())); connection.commit()
+805-    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
+806-
+807-@app.post("/customers/{customer_id}/transactions/refund")
+808-def record_customer_refund(customer_id: int,amount: Annotated[float,Form()],reason: Annotated[str,Form()],reference: Annotated[str,Form()]=""):
+809-    if amount<=0: raise HTTPException(status_code=400,detail="Refund amount must be greater than zero.")
+810:    with closing(get_connection()) as connection: connection.execute("INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,reference,reason) VALUES (?,?,'REFUND',?,?,?)",(customer_id,date.today().isoformat(),-round(float(amount),2),reference.strip(),reason.strip())); connection.commit()
+811-    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
+812-
+813-@app.post("/customers/{customer_id}/transactions/adjustment")
+814-def record_customer_adjustment(customer_id: int,amount: Annotated[float,Form()],reason: Annotated[str,Form()],reference: Annotated[str,Form()]=""):
+815-    if amount==0: raise HTTPException(status_code=400,detail="Adjustment amount cannot be zero.")
+816:    with closing(get_connection()) as connection: connection.execute("INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,reference,reason) VALUES (?,?,'ADJUSTMENT',?,?,?)",(customer_id,date.today().isoformat(),round(float(amount),2),reference.strip(),reason.strip())); connection.commit()
+817-    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
+818-
+819-
+820-@app.get("/jobs", response_class=HTMLResponse)
+821-def list_jobs(request: Request):
+822-    with closing(get_connection()) as connection:
+823-        rows = connection.execute(
+824-            """
+825-            SELECT
+826-                jobs.*,
+827-
+828-                (
+829-                    SELECT COUNT(*)
+830-                    FROM job_parts
+831-                    WHERE job_parts.job_id = jobs.id
+832-                ) AS parts_count,
+833-
+834-                (
+835-                    SELECT COUNT(*)
+836-                    FROM job_parts
+837-                    WHERE job_parts.job_id = jobs.id
+838-                      AND job_parts.verification_status = 'VERIFIED'
+839-                ) AS verified_parts,
+840-
+841-                (
+842-                    SELECT baskets.status
+843-                    FROM baskets
+844-                    WHERE baskets.job_id = jobs.id
+845-                    ORDER BY baskets.id DESC
+846-                    LIMIT 1
+847-                ) AS basket_status,
+848-
+849-                (
+850-                    SELECT COUNT(*)
+851-                    FROM basket_items
+852-                    JOIN baskets
+853-                      ON baskets.id = basket_items.basket_id
+854-                    WHERE baskets.job_id = jobs.id
+855-                      AND basket_items.selected = 1
+856-                ) AS selected_items,
+857-
+858-                (
+859-                    SELECT COUNT(*)
+860-                    FROM basket_items
+861-                    JOIN baskets
+862-                      ON baskets.id = basket_items.basket_id
+863-                    WHERE baskets.job_id = jobs.id
+864-                      AND basket_items.selected = 1
+865-                      AND COALESCE(
+866-                            basket_items.part_status,
+867-                            'RESEARCH'
+868-                          ) = 'RESEARCH'
+869-                ) AS research_items,
+870-
+871-                (
+872-                    SELECT COUNT(*)
+873-                    FROM basket_items
+874-                    JOIN baskets
+875-                      ON baskets.id = basket_items.basket_id
+876-                    WHERE baskets.job_id = jobs.id
+877-                      AND basket_items.selected = 1
+878-                      AND basket_items.part_status = 'QUOTED'
+879-                ) AS quoted_items,
+880-
+881-                (
+882-                    SELECT COUNT(*)
+883-                    FROM basket_items
+884-                    JOIN baskets
+885-                      ON baskets.id = basket_items.basket_id
+886-                    WHERE baskets.job_id = jobs.id
+887-                      AND basket_items.selected = 1
+888-                      AND basket_items.part_status = 'ORDERED'
+889-                ) AS ordered_items,
+890-
+891-                (
+892-                    SELECT COUNT(*)
+893-                    FROM basket_items
+894-                    JOIN baskets
+895-                      ON baskets.id = basket_items.basket_id
+896-                    WHERE baskets.job_id = jobs.id
+897-                      AND basket_items.selected = 1
+898-                      AND basket_items.part_status = 'RECEIVED'
+899-                ) AS received_items,
+900-
+901-                (
+902-                    SELECT customer_requests.id
+903-                    FROM customer_requests
+904-                    WHERE customer_requests.job_id = jobs.id
+905-                    ORDER BY customer_requests.id DESC
+906-                    LIMIT 1
+907-                ) AS customer_request_id,
+908-
+909-                (
+910-                    SELECT COALESCE(
+911-                        NULLIF(TRIM(customer_requests.requested_parts), ''),
+912-                        NULLIF(TRIM(customer_requests.request_text), '')
+913-                    )
+914-                    FROM customer_requests
+915-                    WHERE customer_requests.job_id = jobs.id
+916-                    ORDER BY customer_requests.id DESC
+917-                    LIMIT 1
+918-                ) AS request_description,
+919-
+920-                (
+921-                    SELECT GROUP_CONCAT(
+922-                        basket_items.requested_description,
+923-                        ', '
+924-                    )
+925-                    FROM basket_items
+926-                    JOIN baskets
+927-                      ON baskets.id = basket_items.basket_id
+928-                    WHERE baskets.job_id = jobs.id
+929-                      AND basket_items.selected = 1
+930-                ) AS selected_part_descriptions,
+931-
+932-                (
+933-                    SELECT quotes.id
+934-                    FROM quotes
+935-                    WHERE quotes.job_id = jobs.id
+936-                      AND COALESCE(quotes.is_archived, 0) = 0
+937-                    ORDER BY quotes.id DESC
+938-                    LIMIT 1
+939-                ) AS quote_id,
+940-
+941-                (
+942-                    SELECT quotes.status
+943-                    FROM quotes
+944-                    WHERE quotes.job_id = jobs.id
+945-                      AND COALESCE(quotes.is_archived, 0) = 0
+946-                    ORDER BY quotes.id DESC
+947-                    LIMIT 1
+948-                ) AS quote_status,
+949-
+950-                (
+951-                    SELECT invoices.id
+952-                    FROM invoices
+953-                    WHERE invoices.job_id = jobs.id
+954-                    ORDER BY invoices.id DESC
+955-                    LIMIT 1
+956-                ) AS invoice_id,
+957-
+958-                (
+959-                    SELECT invoices.status
+960-                    FROM invoices
+961-                    WHERE invoices.job_id = jobs.id
+962-                    ORDER BY invoices.id DESC
+963-                    LIMIT 1
+964-                ) AS invoice_status,
+965-
+966-                (
+967-                    SELECT MAX(job_timeline.created_at)
+968-                    FROM job_timeline
+969-                    WHERE job_timeline.job_id = jobs.id
+970-                ) AS last_activity,
+971-
+972-                (
+973-                    SELECT GROUP_CONCAT(
+974-                        basket_items.requested_description,
+975-                        '||'
+976-                    )
+977-                    FROM basket_items
+978-                    JOIN baskets
+979-                      ON baskets.id = basket_items.basket_id
+980-                    WHERE baskets.job_id = jobs.id
+981-                      AND basket_items.selected = 1
+982-                      AND COALESCE(
+983-                            basket_items.part_status,
+984-                            'RESEARCH'
+985-                          ) != 'RECEIVED'
+986-                ) AS outstanding_part_descriptions
+987-
+988-            FROM jobs
+989-            ORDER BY jobs.id DESC
+990-            """
+991-        ).fetchall()
+992-
+993-        jobs = []
+994-
+995-        manufacturer_codes = {
+996-            "CATERPILLAR": "CAT",
+--
+1938-
+1939-    return templates.TemplateResponse(
+1940-        request=request,
+1941-        name="invoices.html",
+1942-        context={
+1943-            "invoices": rows,
+1944-            "view": view,
+1945-            "active_page": "invoices",
+1946-        },
+1947-    )
+1948-
+1949-
+1950-@app.post("/quotes/{quote_id}/convert-to-invoice")
+1951-def convert_quote_to_invoice(quote_id: int):
+1952-    with closing(get_connection()) as connection:
+1953-        quote, quote_items = load_quote(connection, quote_id)
+1954-        existing = connection.execute("SELECT id FROM invoices WHERE quote_id=?",(quote_id,)).fetchone()
+1955-        if existing is not None:
+1956-            return RedirectResponse(url=f"/invoices/{existing['id']}/documents",status_code=303)
+1957-        job = connection.execute("SELECT * FROM jobs WHERE id=?",(quote["job_id"],)).fetchone()
+1958-        invoice_number = next_invoice_number(connection)
+1959-        invoice_date = date.today().isoformat()
+1960-        customer_total = float(quote["customer_total"] or 0)
+1961-        available_credit = 0.0
+1962-        if job["customer_id"]:
+1963:            balance = connection.execute("SELECT COALESCE(SUM(amount),0) AS net_balance FROM customer_transactions WHERE customer_id=?",(job["customer_id"],)).fetchone()
+1964-            available_credit = max(float(balance["net_balance"] or 0),0.0)
+1965:        credit_applied = min(available_credit,customer_total)
+1966:        balance_due = max(customer_total-credit_applied,0.0)
+1967:        status = "PAID" if balance_due == 0 else ("PARTIAL" if credit_applied > 0 else "UNPAID")
+1968:        cur = connection.execute("""INSERT INTO invoices (invoice_number,quote_id,job_id,invoice_date,status,parts_subtotal,shipping_total,customer_total,supplier_total,profit_total,credit_applied,balance_due) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_number,quote_id,quote["job_id"],invoice_date,status,float(quote["parts_subtotal"] or 0),float(quote["shipping_total"] or 0),customer_total,float(quote["supplier_total"] or 0),float(quote["profit_total"] or 0),credit_applied,balance_due))
+1969-        invoice_id = cur.lastrowid
+1970-        for item in quote_items:
+1971-            connection.execute("""INSERT INTO invoice_items (invoice_id,quote_item_id,part_id,source_id,quantity,description,supplier_name,source_type,brand,supplier_part_number,supplier_unit_cost,customer_unit_price,supplier_line_total,customer_line_total,line_profit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_id,item["id"],item["part_id"],item["source_id"],item["quantity"],item["description"],item["supplier_name"],item["source_type"],item["brand"],item["supplier_part_number"],item["supplier_unit_cost"],item["customer_unit_price"],item["supplier_line_total"],item["customer_line_total"],item["line_profit"]))
+1972-        if job["customer_id"]:
+1973:            connection.execute("""INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,reference,reason,job_id,quote_id,invoice_id) VALUES (?,?,'INVOICE',?,?,?,?,?,?)""",(job["customer_id"],invoice_date,-customer_total,invoice_number,f"Invoice created from {quote['quote_number']}",quote["job_id"],quote_id,invoice_id))
+1974-        connection.execute("UPDATE quotes SET is_archived=1,status='CONVERTED' WHERE id=?",(quote_id,))
+1975-        connection.execute("UPDATE jobs SET status='CONFIRMED' WHERE id=?",(quote["job_id"],))
+1976-        connection.commit()
+1977-        invoice, items = load_invoice(connection, invoice_id)
+1978-        generate_invoice_pdfs(invoice, items)
+1979-    return RedirectResponse(url=f"/invoices/{invoice_id}/documents",status_code=303)
+1980-
+1981-
+1982-@app.get("/invoices/{invoice_id}/documents", response_class=HTMLResponse)
+1983-def invoice_documents(request: Request, invoice_id: int):
+1984-    with closing(get_connection()) as connection:
+1985-        invoice, items = load_invoice(connection, invoice_id)
+1986-    paths = invoice_paths(invoice["customer"],invoice["invoice_number"])
+1987-    if not paths["customer"].exists() or not paths["internal"].exists():
+1988-        generate_invoice_pdfs(invoice,items)
+1989-    customer_path = Path("documents")/"Customers"/sanitize_path_name(invoice["customer"])/"Invoices"
+1990-    return templates.TemplateResponse(request=request,name="invoice_documents.html",context={"invoice":invoice,"items":items,"customer_path":str(customer_path),"active_page":"invoices"})
+1991-
+1992-
+1993-@app.get("/invoices/{invoice_id}/customer/pdf")
+1994-def customer_invoice_pdf(invoice_id: int, download: int = 0):
+1995-    with closing(get_connection()) as connection:
+1996-        invoice, items = load_invoice(connection, invoice_id)
+1997-    path = invoice_paths(invoice["customer"],invoice["invoice_number"])["customer"]
+1998-    if not path.exists():
+1999-        generate_invoice_pdfs(invoice,items)
+2000-    return FileResponse(path=path,media_type="application/pdf",filename=path.name,content_disposition_type="attachment" if download else "inline")
+2001-
+2002-
+2003-@app.get("/invoices/{invoice_id}/internal/pdf")
+2004-def internal_invoice_pdf(invoice_id: int, download: int = 0):
+2005-    with closing(get_connection()) as connection:
+2006-        invoice, items = load_invoice(connection, invoice_id)
+2007-    path = invoice_paths(invoice["customer"],invoice["invoice_number"])["internal"]
+2008-    if not path.exists():
+2009-        generate_invoice_pdfs(invoice,items)
+2010-    return FileResponse(path=path,media_type="application/pdf",filename=path.name,content_disposition_type="attachment" if download else "inline")
+2011-
+2012-
+2013-@app.get("/suppliers", response_class=HTMLResponse)
+2014-def list_suppliers(request: Request, view: str = "active"):
+2015-    if view not in {"active","inactive","do_not_use","all"}: view="active"
+2016-    where={"active":"WHERE suppliers.status='ACTIVE'","inactive":"WHERE suppliers.status='INACTIVE'","do_not_use":"WHERE suppliers.status='DO_NOT_USE'"}.get(view,"")
+2017-    with closing(get_connection()) as connection:
+2018-        rows=connection.execute(f"""SELECT suppliers.*, EXISTS(SELECT 1 FROM part_sources WHERE LOWER(TRIM(part_sources.supplier_name))=LOWER(TRIM(suppliers.name))) AS has_history FROM suppliers {where} ORDER BY suppliers.preferred DESC,suppliers.name COLLATE NOCASE""").fetchall()
+2019-        suppliers=[]
+2020-        for row in rows:
+2021-            item=dict(row); item["rating"]=max(1,min(5,int(item.get("rating") or 3))); item["can_delete"]=not bool(item["has_history"]); suppliers.append(item)
+2022-    return templates.TemplateResponse(request=request,name="suppliers.html",context={"suppliers":suppliers,"view":view,"active_page":"suppliers"})
+2023-
+2024-@app.get("/suppliers/new", response_class=HTMLResponse)
+2025-def new_supplier_form(request: Request):
+2026-    return templates.TemplateResponse(request=request,name="supplier_form.html",context={"title":"New Supplier","subtitle":"Add a supplier for sourcing.","form_action":"/suppliers/new","submit_label":"Save Supplier","supplier":{"name":"","website":"","phone":"","email":"","contact_person":"","account_number":"","rating":3,"status":"ACTIVE","preferred":0},"active_page":"suppliers"})
+2027-
+2028-@app.post("/suppliers/new")
+2029-def create_supplier(name: Annotated[str, Form()], website: Annotated[str, Form()] = "", phone: Annotated[str, Form()] = "", email: Annotated[str, Form()] = "", contact_person: Annotated[str, Form()] = "", account_number: Annotated[str, Form()] = "", rating: Annotated[int, Form()] = 3, status: Annotated[str, Form()] = "ACTIVE", preferred: Annotated[int, Form()] = 0):
+2030-    with closing(get_connection()) as connection:
+2031-        cur=connection.execute("INSERT INTO suppliers (name,website,phone,email,contact_person,account_number,rating,status,preferred) VALUES (?,?,?,?,?,?,?,?,?)",(name.strip(),website.strip(),phone.strip(),email.strip(),contact_person.strip(),account_number.strip(),max(1,min(5,int(rating))),status,1 if preferred else 0)); connection.commit()
+2032-    return RedirectResponse(url=f"/suppliers/{cur.lastrowid}/edit",status_code=303)
+2033-
+2034-@app.get("/suppliers/{supplier_id}/edit", response_class=HTMLResponse)
+2035-def edit_supplier_form(request: Request, supplier_id: int):
+2036-    with closing(get_connection()) as connection: s=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+2037-    if s is None: raise HTTPException(status_code=404,detail="Supplier not found.")
+2038-    return templates.TemplateResponse(request=request,name="supplier_form.html",context={"title":"Edit Supplier","subtitle":s["name"],"form_action":f"/suppliers/{supplier_id}/edit","submit_label":"Save Changes","supplier":s,"active_page":"suppliers"})
+2039-
+2040-@app.post("/suppliers/{supplier_id}/edit")
+2041-def update_supplier(supplier_id: int, name: Annotated[str, Form()], website: Annotated[str, Form()] = "", phone: Annotated[str, Form()] = "", email: Annotated[str, Form()] = "", contact_person: Annotated[str, Form()] = "", account_number: Annotated[str, Form()] = "", rating: Annotated[int, Form()] = 3, status: Annotated[str, Form()] = "ACTIVE", preferred: Annotated[int, Form()] = 0):
+2042-    with closing(get_connection()) as connection:
+2043-        old=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+2044-        connection.execute("UPDATE suppliers SET name=?,website=?,phone=?,email=?,contact_person=?,account_number=?,rating=?,status=?,preferred=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(name.strip(),website.strip(),phone.strip(),email.strip(),contact_person.strip(),account_number.strip(),max(1,min(5,int(rating))),status,1 if preferred else 0,supplier_id))
+2045-        if old and old["name"].lower()!=name.strip().lower(): connection.execute("UPDATE part_sources SET supplier_name=? WHERE LOWER(TRIM(supplier_name))=LOWER(TRIM(?))",(name.strip(),old["name"]))
+2046-        connection.commit()
+2047-    return RedirectResponse(url="/suppliers",status_code=303)
+2048-
+2049-@app.post("/suppliers/{supplier_id}/status")
+2050-def supplier_status(supplier_id: int, status: Annotated[str, Form()]):
+2051-    with closing(get_connection()) as connection: connection.execute("UPDATE suppliers SET status=? WHERE id=?",(status,supplier_id)); connection.commit()
+2052-    return RedirectResponse(url="/suppliers",status_code=303)
+2053-
+2054-@app.post("/suppliers/{supplier_id}/delete")
+2055-def supplier_delete(supplier_id: int):
+2056-    with closing(get_connection()) as connection:
+2057-        s=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+2058-        used=connection.execute("SELECT 1 FROM part_sources WHERE LOWER(TRIM(supplier_name))=LOWER(TRIM(?)) LIMIT 1",(s["name"],)).fetchone()
+2059-        if used: raise HTTPException(status_code=400,detail="Supplier has history. Mark it Inactive or Do Not Use.")
+2060-        connection.execute("DELETE FROM suppliers WHERE id=?",(supplier_id,)); connection.commit()
+2061-    return RedirectResponse(url="/suppliers",status_code=303)
+2062-
+2063-
+2064-@app.get("/quotes", response_class=HTMLResponse)
+2065-def list_quotes(request: Request, view: str = "active"):
+2066-    if view not in {"active", "archived", "all"}:
+2067-        view = "active"
+2068-
+2069-    where = {
+2070-        "active": "WHERE COALESCE(quotes.is_archived, 0) = 0",
+2071-        "archived": "WHERE COALESCE(quotes.is_archived, 0) = 1",
+2072-    }.get(view, "")
+2073-
+2074-    with closing(get_connection()) as connection:
+2075-        rows = connection.execute(
+2076-            f"""
+2077-            SELECT
+2078-                quotes.*,
+2079-                jobs.customer_id,
+2080-                jobs.customer,
+2081-                jobs.job_number,
+2082-                jobs.manufacturer,
+2083-                jobs.machine,
+2084-                jobs.pin_serial,
+2085-
+2086-                (
+2087-                    SELECT COUNT(*)
+2088-                    FROM quote_items
+2089-                    WHERE quote_items.quote_id = quotes.id
+2090-                ) AS item_count,
+2091-
+2092-                (
+2093-                    SELECT GROUP_CONCAT(
+2094-                        quote_items.description,
+2095-                        ', '
+2096-                    )
+2097-                    FROM quote_items
+2098-                    WHERE quote_items.quote_id = quotes.id
+2099-                ) AS item_descriptions,
+2100-
+2101-                (
+2102-                    SELECT invoices.id
+2103-                    FROM invoices
+2104-                    WHERE invoices.quote_id = quotes.id
+2105-                    ORDER BY invoices.id DESC
+2106-                    LIMIT 1
+2107-                ) AS invoice_id,
+2108-
+2109-                (
+2110-                    SELECT invoices.invoice_number
+2111-                    FROM invoices
+2112-                    WHERE invoices.quote_id = quotes.id
+2113-                    ORDER BY invoices.id DESC
+2114-                    LIMIT 1
+2115-                ) AS invoice_number,
+2116-
+2117-                (
+2118-                    SELECT invoices.status
+2119-                    FROM invoices
+2120-                    WHERE invoices.quote_id = quotes.id
+2121-                    ORDER BY invoices.id DESC
+2122-                    LIMIT 1
+2123-                ) AS invoice_status
+2124-
+2125-            FROM quotes
+2126-            JOIN jobs
+2127-              ON jobs.id = quotes.job_id
+2128-            {where}
+2129-            ORDER BY quotes.id DESC
+2130-            """
+2131-        ).fetchall()
+2132-
+2133-    return templates.TemplateResponse(
+2134-        request=request,
+2135-        name="quotes.html",
+2136-        context={
+2137-            "quotes": rows,
+2138-            "view": view,
+2139-            "active_page": "quotes",
+2140-        },
+2141-    )
+2142-
+2143-
+2144-@app.post("/quotes/{quote_id}/archive")
+2145-def archive_quote(quote_id: int):
+2146-    with closing(get_connection()) as connection: connection.execute("UPDATE quotes SET is_archived=1 WHERE id=?",(quote_id,)); connection.commit()
+2147-    return RedirectResponse(url="/quotes",status_code=303)
+2148-
+2149-@app.post("/quotes/{quote_id}/restore")
+2150-def restore_quote(quote_id: int):
+2151-    with closing(get_connection()) as connection: connection.execute("UPDATE quotes SET is_archived=0 WHERE id=?",(quote_id,)); connection.commit()
+2152-    return RedirectResponse(url="/quotes?view=archived",status_code=303)
+2153-

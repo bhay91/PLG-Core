@@ -1,4 +1,214 @@
-{% extends "base.html" %}{% block title %}Connectors · PartsLink Global{% endblock %}{% block content %}
-<section class="workspace-heading"><div><p class="eyebrow">SOURCE CONNECTORS</p><h1>Connectors</h1><p>Manage vendor-import source connections.</p></div><a class="button management-new-button" href="/connectors/new">+ New Connector</a></section>
-<section class="panel management-tools"><div class="filter-links"><a class="{% if view=='active' %}active{% endif %}" href="/connectors?view=active">Active</a><a class="{% if view=='archived' %}active{% endif %}" href="/connectors?view=archived">Archived</a><a class="{% if view=='all' %}active{% endif %}" href="/connectors?view=all">All</a></div></section>
-<section class="panel">{% if connectors %}{% for c in connectors %}<article class="management-row"><div><strong>{{ c.display_name }}</strong><small>{{ c.launch_url or 'No launch URL' }}</small></div><div><span class="status-pill">{% if c.is_archived %}Archived{% elif c.is_enabled %}Enabled{% else %}Disabled{% endif %}</span></div><div class="row-actions"><a class="button ghost small" href="/connectors/{{ c.id }}/edit">Edit</a>{% if c.is_archived %}<form method="post" action="/connectors/{{ c.id }}/restore"><button class="button small">Restore</button></form>{% else %}<form method="post" action="/connectors/{{ c.id }}/toggle"><button class="button ghost small">{% if c.is_enabled %}Disable{% else %}Enable{% endif %}</button></form><form method="post" action="/connectors/{{ c.id }}/archive"><button class="button ghost small">Hide</button></form>{% endif %}{% if c.can_delete %}<form method="post" action="/connectors/{{ c.id }}/delete"><button class="button ghost small">Delete</button></form>{% endif %}</div></article>{% endfor %}{% else %}<p>No connectors in this view.</p>{% endif %}</section>{% endblock %}
+{% extends "base.html" %}
+{% block title %}Connectors · PartsLink Global{% endblock %}
+
+{% block content %}
+<div class="workspace-v2">
+
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">SOURCE CONNECTORS</p>
+      <h1>Connectors</h1>
+      <p>Manage supplier and vendor-import source connections.</p>
+    </div>
+
+    <a class="button" href="/connectors/new">
+      + New Connector
+    </a>
+  </section>
+
+  <section class="workspace-toolbar">
+    <label class="workspace-search">
+      <span aria-hidden="true">⌕</span>
+
+      <input
+        id="connector-search"
+        type="search"
+        placeholder="Search connector name or launch URL..."
+      >
+    </label>
+
+    <nav class="workspace-tabs">
+      <a
+        class="{% if view == 'active' %}active{% endif %}"
+        href="/connectors?view=active"
+      >
+        Active
+      </a>
+
+      <a
+        class="{% if view == 'archived' %}active{% endif %}"
+        href="/connectors?view=archived"
+      >
+        Archived
+      </a>
+
+      <a
+        class="{% if view == 'all' %}active{% endif %}"
+        href="/connectors?view=all"
+      >
+        All
+      </a>
+    </nav>
+  </section>
+
+  {% if connectors %}
+  <section class="workspace-row-list">
+
+    {% for connector in connectors %}
+    <article
+      class="workspace-row connector-workspace-row"
+      data-search="
+        {{ connector.display_name }}
+        {{ connector.launch_url }}
+      "
+    >
+      <div class="workspace-row-mark connector-mark">
+        ↔
+      </div>
+
+      <div class="workspace-row-identity">
+        <small>SOURCE CONNECTOR</small>
+
+        <h2>{{ connector.display_name }}</h2>
+
+        <strong>
+          {% if connector.is_archived %}
+            Archived
+          {% elif connector.is_enabled %}
+            Enabled
+          {% else %}
+            Disabled
+          {% endif %}
+        </strong>
+
+        <p>
+          {{ connector.launch_url or "No launch URL configured" }}
+        </p>
+      </div>
+
+      <div class="workspace-row-status">
+        {% if connector.is_archived %}
+        <span class="workspace-status-badge workspace-status-void">
+          Archived
+        </span>
+        {% elif connector.is_enabled %}
+        <span class="workspace-status-badge workspace-status-paid">
+          Enabled
+        </span>
+        {% else %}
+        <span class="workspace-status-badge workspace-status-partial">
+          Disabled
+        </span>
+        {% endif %}
+      </div>
+
+      <div class="workspace-row-action workspace-action-panel">
+        <span>NEXT ACTION</span>
+
+        {% if connector.is_archived %}
+          <strong>Restore Connector</strong>
+        {% elif connector.is_enabled %}
+          <strong>Open or Manage Source</strong>
+        {% else %}
+          <strong>Enable Connector</strong>
+        {% endif %}
+
+        <a
+          class="workspace-btn workspace-btn-primary"
+          href="/connectors/{{ connector.id }}/edit"
+        >
+          Open Connector
+        </a>
+
+        <div class="workspace-btn-row">
+          {% if connector.is_archived %}
+          <form
+            class="workspace-action-form workspace-action-wide"
+            method="post"
+            action="/connectors/{{ connector.id }}/restore"
+          >
+            <button
+              class="workspace-btn workspace-btn-secondary"
+              type="submit"
+            >
+              Restore
+            </button>
+          </form>
+          {% else %}
+          <form
+            class="workspace-action-form"
+            method="post"
+            action="/connectors/{{ connector.id }}/toggle"
+          >
+            <button
+              class="workspace-btn workspace-btn-secondary"
+              type="submit"
+            >
+              {% if connector.is_enabled %}
+                Disable
+              {% else %}
+                Enable
+              {% endif %}
+            </button>
+          </form>
+
+          <form
+            class="workspace-action-form"
+            method="post"
+            action="/connectors/{{ connector.id }}/archive"
+          >
+            <button
+              class="workspace-btn workspace-btn-secondary"
+              type="submit"
+            >
+              Archive
+            </button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+
+  </section>
+
+  <p id="no-connector-results" class="workspace-empty hidden">
+    No connectors match your search.
+  </p>
+  {% else %}
+  <div class="workspace-empty">
+    No connectors are available in this view.
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+(() => {
+  const input = document.getElementById("connector-search");
+  const rows = [...document.querySelectorAll(".connector-workspace-row")];
+  const empty = document.getElementById("no-connector-results");
+
+  if (!input || !rows.length) return;
+
+  input.addEventListener("input", () => {
+    const query = input.value.trim().toLowerCase();
+    let visible = 0;
+
+    rows.forEach((row) => {
+      const match = row.dataset.search
+        .toLowerCase()
+        .includes(query);
+
+      row.hidden = !match;
+
+      if (match) visible += 1;
+    });
+
+    if (empty) {
+      empty.classList.toggle("hidden", visible !== 0);
+    }
+  });
+})();
+</script>
+{% endblock %}

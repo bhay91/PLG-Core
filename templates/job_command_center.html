@@ -18,69 +18,225 @@
   {% set has_parts = basket.totals.selected_items > 0 %}
   {% set quote_ready = basket.status == "COMMITTED" %}
 
-  <section class="cc-card cc-hero">
-    <div>
-      <p class="cc-kicker">{{ job.job_number }} · JOB COMMAND CENTER</p>
-      <h1>{{ job.customer }}</h1>
-      <p class="cc-subtitle">{{ job.manufacturer }} {{ job.machine }}{% if job.pin_serial %} · {{ job.pin_serial }}{% endif %}</p>
-      <div class="cc-meta">
-        <span class="cc-chip">{{ job.status }}</span>
-        <span class="cc-chip">{{ basket.totals.selected_items }} part{% if basket.totals.selected_items != 1 %}s{% endif %} ready</span>
-        {% if request_attachment_count %}<span class="cc-chip">{{ request_attachment_count }} attachment{% if request_attachment_count != 1 %}s{% endif %}</span>{% endif %}
-      </div>
-    </div>
-    <aside class="cc-next">
+  <section class="cc-card cc-command-overview" id="job-overview">
+    <header class="cc-command-overview-head">
       <div>
-        <span>NEXT ACTION · {{ intelligence.health_label|upper }}</span>
-        <strong>{{ intelligence.next_action }}</strong>
+        <p class="cc-kicker">
+          {{ job.job_number }} · JOB COMMAND CENTER
+        </p>
+
+        <h1>{{ job.customer or "Customer not linked" }}</h1>
+
+        <p class="cc-subtitle">
+          {% if job.manufacturer or job.machine %}
+            {{ job.manufacturer }} {{ job.machine }}
+          {% else %}
+            No machine information provided
+          {% endif %}
+
+          {% if job.pin_serial %}
+            · {{ job.pin_serial }}
+          {% endif %}
+        </p>
       </div>
-      {% if intelligence.action_method == "POST" %}
-      <form method="post" action="{{ intelligence.action_url }}"><button class="button full-width" type="submit">{{ intelligence.next_action }} →</button></form>
-      {% elif intelligence.action_key != "COMPLETED" %}
-      <a class="button full-width" href="{{ intelligence.action_url }}">{{ intelligence.next_action }} →</a>
-      {% else %}
-      <a class="button full-width" href="{{ intelligence.action_url }}">Open Invoice →</a>
-      {% endif %}
-    </aside>
+
+      <div class="cc-command-head-meta">
+        <span class="cc-chip">
+          {{ basket.totals.selected_items }}
+          part{% if basket.totals.selected_items != 1 %}s{% endif %}
+          ready
+        </span>
+
+        {% if request_attachment_count %}
+        <span class="cc-chip">
+          {{ request_attachment_count }}
+          attachment{% if request_attachment_count != 1 %}s{% endif %}
+        </span>
+        {% endif %}
+      </div>
+    </header>
+
+    <div class="cc-command-overview-grid">
+      <section class="cc-command-request">
+        <div class="cc-command-section-head">
+          <div>
+            <p class="cc-label">CUSTOMER REQUEST</p>
+            <h2>What the customer needs</h2>
+          </div>
+        </div>
+
+        {% if customer_request %}
+          {% if customer_request.requested_parts %}
+          <div class="cc-request-parts">
+            <strong>Parts Needed</strong>
+
+            <ul>
+              {% for part in customer_request.requested_parts.splitlines() %}
+                {% if part.strip() %}
+                <li>{{ part.strip(" -•\t") }}</li>
+                {% endif %}
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+
+          {% if customer_request.request_text %}
+          <div class="cc-request-message">
+            <strong>Customer Message</strong>
+
+            <div class="cc-request-text">
+              {{ customer_request.request_text }}
+            </div>
+          </div>
+          {% elif not customer_request.requested_parts %}
+          <div class="cc-empty">
+            No request details entered.
+          </div>
+          {% endif %}
+
+          <div class="cc-command-request-footer">
+            <span class="cc-muted">
+              {% if request_attachment_count %}
+                📎 {{ request_attachment_count }}
+                attachment{% if request_attachment_count != 1 %}s{% endif %}
+              {% else %}
+                No attachments
+              {% endif %}
+            </span>
+
+            <a
+              class="button ghost"
+              href="/requests/{{ customer_request.id }}"
+            >
+              Open Original Request
+            </a>
+          </div>
+        {% else %}
+          <div class="cc-empty">
+            This job was not created from a Customer Request.
+          </div>
+        {% endif %}
+      </section>
+
+      <aside class="cc-command-summary">
+        <div class="cc-command-section-head">
+          <div>
+            <p class="cc-label">JOB SUMMARY</p>
+            <h2>Job information</h2>
+          </div>
+
+          <div
+            class="cc-manufacturer-mark"
+            title="{{ job.manufacturer or 'Manufacturer' }}"
+          >
+            {{ (job.manufacturer or "PLG")[:3]|upper }}
+          </div>
+        </div>
+
+        <div class="cc-command-details">
+          <div class="cc-command-detail">
+            <span>Customer</span>
+            <strong>{{ job.customer or "Not linked" }}</strong>
+          </div>
+
+          <div class="cc-command-detail">
+            <span>Location</span>
+            <strong>{{ job.address or "Not provided" }}</strong>
+          </div>
+
+          <div class="cc-command-detail">
+            <span>Machine</span>
+            <strong>
+              {% if job.manufacturer or job.machine %}
+                {{ job.manufacturer }} {{ job.machine }}
+              {% else %}
+                Not provided
+              {% endif %}
+            </strong>
+          </div>
+
+          <div class="cc-command-detail">
+            <span>VIN / PIN / Serial</span>
+            <strong>{{ job.pin_serial or "Not provided" }}</strong>
+          </div>
+        </div>
+
+        <div class="cc-command-action">
+          <span>
+            NEXT ACTION · {{ intelligence.health_label|upper }}
+          </span>
+
+          <strong>{{ intelligence.next_action }}</strong>
+
+          {% if intelligence.blocked_reason %}
+          <p>{{ intelligence.blocked_reason }}</p>
+          {% endif %}
+
+          {% if intelligence.action_method == "POST" %}
+          <form method="post" action="{{ intelligence.action_url }}">
+            <button class="button full-width" type="submit">
+              {{ intelligence.next_action }} →
+            </button>
+          </form>
+          {% elif intelligence.action_key != "COMPLETED" %}
+          <a
+            class="button full-width"
+            href="{{ intelligence.action_url }}"
+          >
+            {{ intelligence.next_action }} →
+          </a>
+          {% else %}
+          <a
+            class="button full-width"
+            href="{{ intelligence.action_url }}"
+          >
+            Open Invoice →
+          </a>
+          {% endif %}
+        </div>
+
+        <div class="cc-command-activity">
+          <span>Last Activity</span>
+
+          <strong>
+            {% if timeline %}
+              {{ timeline[0].created_at }}
+            {% else %}
+              No activity recorded
+            {% endif %}
+          </strong>
+        </div>
+
+        <a
+          class="button ghost full-width"
+          href="/jobs/{{ job.id }}/edit"
+        >
+          Edit Job
+        </a>
+      </aside>
+    </div>
+
+    <nav class="cc-command-progress" aria-label="Job progress">
+      {% for step in intelligence.workflow_steps %}
+        {% if step.url %}
+        <a
+          class="cc-step {{ step.state }}"
+          href="{{ step.url }}"
+        >
+          {{ step.symbol }} {{ step.label }}
+        </a>
+        {% else %}
+        <span class="cc-step {{ step.state }}">
+          {{ step.symbol }} {{ step.label }}
+        </span>
+        {% endif %}
+      {% endfor %}
+    </nav>
   </section>
-
-  <nav class="cc-card cc-progress" aria-label="Job progress">
-    {% for step in intelligence.workflow_steps %}
-      {% if step.url %}
-      <a class="cc-step {{ step.state }}" href="{{ step.url }}">{{ step.symbol }} {{ step.label }}</a>
-      {% else %}
-      <span class="cc-step {{ step.state }}">{{ step.symbol }} {{ step.label }}</span>
-      {% endif %}
-    {% endfor %}
-  </nav>
-
-  <div class="cc-grid">
-    <section class="cc-card cc-request">
-      <p class="cc-label">CUSTOMER REQUEST</p>
-      <h2>Why this job is here</h2>
-      {% if customer_request %}
-        <div class="cc-request-text">{{ customer_request.request_text or "No request details entered." }}</div>
-        <p class="cc-muted">{% if request_attachment_count %}{{ request_attachment_count }} attachment{% if request_attachment_count != 1 %}s{% endif %}{% else %}No attachments{% endif %}</p>
-        <div class="cc-actions"><a class="button ghost" href="/requests/{{ customer_request.id }}">Open Original Request</a></div>
-      {% else %}
-        <div class="cc-empty">This job was not created from a Customer Request.</div>
-      {% endif %}
-    </section>
-
-    <aside class="cc-card cc-job-summary">
-      <p class="cc-label">JOB SUMMARY</p>
-      <div class="cc-summary-line"><span>Customer</span><strong>{{ job.customer }}</strong></div>
-      <div class="cc-summary-line"><span>Vehicle / Machine</span><strong>{{ job.manufacturer }} {{ job.machine }}</strong></div>
-      <div class="cc-summary-line"><span>VIN / PIN / Serial</span><strong>{{ job.pin_serial or "Not provided" }}</strong></div>
-      <div class="cc-summary-line"><span>Status</span><strong>{{ job.status }}</strong></div>
-      <a class="button ghost full-width" href="/jobs/{{ job.id }}/edit">Edit Job</a>
-    </aside>
-  </div>
 
   <section class="cc-card cc-section" id="parts-research">
     <div class="cc-section-head">
-      <div><p class="cc-label">PARTS RESEARCH</p><h2>Find and compare parts</h2><p class="cc-muted">Open a supplier, import its results, or add a part manually.</p></div>
-      <button class="button ghost" type="button" data-dialog-open="manual-vendor-line">＋ Manual Part</button>
+      <div><p class="cc-label">PARTS RESEARCH</p><h2>Find and compare parts</h2><p class="cc-muted">Open an online source or add a quote received directly from another supplier.</p></div>
     </div>
     <div class="cc-research-layout">
       <aside class="cc-tools">
@@ -92,18 +248,202 @@
           <button class="button full-width" type="submit">Open Source</button>
         </form>
         <p class="cc-muted">Complete the supplier cart, then import it with the Firefox extension.</p>
+
+        <div class="cc-tools-divider"></div>
+
+        <button
+          class="button ghost full-width"
+          type="button"
+          data-dialog-open="supplier-quote-dialog"
+        >
+          ＋ Add Supplier Quote
+        </button>
+
+        <p class="cc-muted">
+          Use for Costex, dealer phone quotes, local suppliers,
+          and other manually received pricing.
+        </p>
       </aside>
       <div class="cc-results">
         <div class="cc-section-head"><div><p class="cc-label">RESEARCH RESULTS</p></div><span class="cc-count">{{ basket.totals.all_items }}</span></div>
         {% if vendor_carts %}
           {% for vendor_cart in vendor_carts %}
-          <article class="cc-source">
-            <header class="cc-source-head"><div><small class="cc-muted">SOURCE</small><br><strong>{{ vendor_cart['source'].source_name }}</strong></div><span class="cc-muted">{{ vendor_cart['items']|length }} result{% if vendor_cart['items']|length != 1 %}s{% endif %}</span></header>
+          {% set is_supplier_quote = vendor_cart['source'].source_key == "supplier_quote" %}
+
+          <article
+            class="cc-source {% if is_supplier_quote %}cc-supplier-quote-source{% endif %}"
+          >
+            {% if is_supplier_quote %}
+            <form
+              id="supplier-quote-source-{{ vendor_cart['source'].id }}"
+              class="supplier-quote-bulk-form"
+              method="post"
+              action="/jobs/{{ job.id }}/vendor-carts/{{ vendor_cart['source'].id }}/quote-save-all"
+            ></form>
+            {% endif %}
+
+            <header class="cc-source-head">
+              <div>
+                <small class="cc-muted">SOURCE</small><br>
+                <strong>{{ vendor_cart['source'].source_name }}</strong>
+              </div>
+
+              <div class="cc-source-head-actions">
+                <span class="cc-muted">
+                  {{ vendor_cart['items']|length }}
+                  result{% if vendor_cart['items']|length != 1 %}s{% endif %}
+                </span>
+
+                {% if is_supplier_quote and vendor_cart['items'] %}
+                <button
+                  form="supplier-quote-source-{{ vendor_cart['source'].id }}"
+                  class="button small supplier-quote-save-all"
+                  type="submit"
+                >
+                  Save All Supplier Prices
+                </button>
+
+                <span
+                  class="supplier-quote-save-status"
+                  aria-live="polite"
+                ></span>
+                {% endif %}
+              </div>
+            </header>
+
             {% if vendor_cart['items'] %}
-            <div style="overflow-x:auto"><table class="cc-result-table"><thead><tr><th>Part</th><th>Description</th><th>Type</th><th>Qty</th><th>Cost</th><th>Availability</th><th></th></tr></thead><tbody>
-            {% for item in vendor_cart['items'] %}<tr class="{% if item.selected %}selected{% endif %}"><td><div class="cc-part-title"><strong>{{ item.supplier_part_number or item.manufacturer_part_number or "—" }}</strong><small>{{ item.brand or "" }}</small></div></td><td><div class="cc-part-title"><strong>{{ item.requested_description }}</strong><small>{{ item.lead_time or "No lead time" }}</small></div></td><td><span class="cc-badge">{{ item.source_type }}</span></td><td>{{ item.quantity }}</td><td>{% if item.supplier_unit_cost is not none %}${{ "%.2f"|format(item.supplier_unit_cost) }}{% else %}—{% endif %}</td><td>{{ item.availability or "Not entered" }}</td><td><form method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/toggle"><input type="hidden" name="selected" value="{{ 0 if item.selected else 1 }}"><button class="button small {% if item.selected %}ghost{% endif %}" type="submit">{% if item.selected %}✓ Added to Quote{% else %}+ Add to Quote{% endif %}</button></form></td></tr>{% endfor %}
-            </tbody></table></div>
-            {% else %}<div class="cc-empty">No parts imported from this source.</div>{% endif %}
+            <div style="overflow-x:auto">
+              <table class="cc-result-table">
+                <thead>
+                  <tr>
+                    <th>Part</th>
+                    <th>Description</th>
+                    <th>Type</th>
+                    <th>Qty</th>
+                    <th>Cost</th>
+                    <th>Availability</th>
+                    <th></th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {% for item in vendor_cart['items'] %}
+                  <tr
+                    class="{% if item.selected %}selected{% endif %}"
+                    data-supplier-quote-item="{{ item.id }}"
+                  >
+                    <td>
+                      <div class="cc-part-title">
+                        <strong>
+                          {{ item.supplier_part_number or item.manufacturer_part_number or "—" }}
+                        </strong>
+                        <small>{{ item.brand or "" }}</small>
+                      </div>
+                    </td>
+
+                    <td>
+                      <div class="cc-part-title">
+                        <strong>{{ item.requested_description }}</strong>
+
+                        {% if is_supplier_quote %}
+                        <input
+                          form="supplier-quote-source-{{ vendor_cart['source'].id }}"
+                          type="hidden"
+                          name="item_id"
+                          value="{{ item.id }}"
+                        >
+
+                        <input
+                          form="supplier-quote-source-{{ vendor_cart['source'].id }}"
+                          name="lead_time"
+                          value="{{ item.lead_time or '' }}"
+                          placeholder="Lead time"
+                          class="cc-supplier-quote-small"
+                        >
+                        {% else %}
+                        <small>{{ item.lead_time or "No lead time" }}</small>
+                        {% endif %}
+                      </div>
+                    </td>
+
+                    <td>
+                      <span class="cc-badge">{{ item.source_type }}</span>
+                    </td>
+
+                    <td>{{ item.quantity }}</td>
+
+                    <td>
+                      {% if is_supplier_quote %}
+                      <input
+                        form="supplier-quote-source-{{ vendor_cart['source'].id }}"
+                        type="number"
+                        name="supplier_unit_cost"
+                        value="{% if item.supplier_unit_cost is not none %}{{ '%.2f'|format(item.supplier_unit_cost) }}{% endif %}"
+                        step="0.01"
+                        min="0"
+                        placeholder="Cost"
+                        class="cc-supplier-quote-cost"
+                        data-quote-cost
+                      >
+                      {% elif item.supplier_unit_cost is not none %}
+                      ${{ "%.2f"|format(item.supplier_unit_cost) }}
+                      {% else %}
+                      —
+                      {% endif %}
+                    </td>
+
+                    <td>
+                      {% if is_supplier_quote %}
+                      <input
+                        form="supplier-quote-source-{{ vendor_cart['source'].id }}"
+                        name="availability"
+                        value="{{ item.availability or '' }}"
+                        placeholder="Availability"
+                        class="cc-supplier-quote-availability"
+                      >
+                      {% else %}
+                      {{ item.availability or "Not entered" }}
+                      {% endif %}
+                    </td>
+
+                    <td>
+                      <form
+                        method="post"
+                        action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/toggle"
+                      >
+                        <input
+                          type="hidden"
+                          name="selected"
+                          value="{{ 0 if item.selected else 1 }}"
+                        >
+
+                        <button
+                          class="button small {% if item.selected %}ghost{% endif %}"
+                          type="submit"
+                          data-add-to-quote
+                          {% if is_supplier_quote and item.supplier_unit_cost is none %}
+                          disabled
+                          title="Enter and save the supplier cost first"
+                          {% endif %}
+                        >
+                          {% if item.selected %}
+                          ✓ Added to Quote
+                          {% else %}
+                          + Add to Quote
+                          {% endif %}
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div class="cc-empty">
+              No parts imported from this source.
+            </div>
+            {% endif %}
           </article>
           {% endfor %}
         {% else %}<div class="cc-empty">No research results yet. Open a source or add a manual part.</div>{% endif %}
@@ -114,7 +454,7 @@
   <section class="cc-card cc-section" id="parts-ready">
     <div class="cc-section-head"><div><p class="cc-label">PARTS READY FOR QUOTE</p><h2>Review selected parts</h2><p class="cc-muted">Only selected parts move into the customer quote.</p></div><span class="cc-count">{{ basket.totals.selected_items }}</span></div>
     {% if basket_items %}
-    <div style="overflow-x:auto"><table class="cc-ready-table"><thead><tr><th>Supplier</th><th>Part Number</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Cost</th><th>Markup</th><th>Customer Unit</th><th>Total</th><th></th></tr></thead><tbody>
+    <div style="overflow-x:auto"><table class="cc-ready-table"><thead><tr><th>Supplier</th><th>Part Number</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Cost</th><th>Markup %</th><th>Markup $</th><th>Customer Unit</th><th>Total</th><th></th></tr></thead><tbody>
     {% for item in basket_items %}{% set cost = item.supplier_unit_cost or 0 %}{% if item.markup_percent is not none %}{% set markup = item.markup_percent %}{% set customer_unit = (cost * (1 + markup / 100))|round(2) %}{% elif cost <= 50 %}{% set markup = 40 %}{% set customer_unit = (cost * 1.40)|round(0, 'ceil') %}{% elif cost <= 200 %}{% set markup = 30 %}{% set customer_unit = (cost * 1.30)|round(0, 'ceil') %}{% elif cost <= 500 %}{% set markup = 25 %}{% set customer_unit = (cost * 1.25)|round(0, 'ceil') %}{% else %}{% set markup = 20 %}{% set customer_unit = (cost * 1.20)|round(0, 'ceil') %}{% endif %}
     <tr>
 <td><strong>{{ item.supplier_name or "Manual Vendor" }}</strong></td>
@@ -123,16 +463,43 @@
 <td><span class="cc-badge">{{ item.source_type }}</span></td>
 
 <td>
-<form class="cc-inline-edit-form" method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/update">
-<input type="number" name="quantity" value="{{ item.quantity }}" min="1" required>
+<form id="part-update-{{ item.id }}"
+      class="cc-inline-edit-form"
+      method="post"
+      action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/update"></form>
+<input form="part-update-{{ item.id }}"
+       type="number"
+       name="quantity"
+       value="{{ item.quantity }}"
+       min="1"
+       required>
 </td>
 
 <td>
-<input type="number" name="supplier_unit_cost" value="{{ '%.2f'|format(cost) }}" step="0.01" min="0" required>
+<input form="part-update-{{ item.id }}"
+       type="number"
+       name="supplier_unit_cost"
+       value="{{ '%.2f'|format(cost) }}"
+       step="0.01"
+       min="0"
+       required>
 </td>
 
 <td>
-<input type="number" name="markup_percent" value="{{ markup }}" step="0.01" min="0" required>
+<input form="part-update-{{ item.id }}"
+       type="number"
+       name="markup_percent"
+       value="{{ markup }}"
+       step="0.01"
+       min="0"
+       required>
+</td>
+
+<td>
+{% set markup_amount = customer_unit - cost %}
+<strong class="cc-markup-dollar">
+  +${{ "%.2f"|format(markup_amount) }}
+</strong>
 </td>
 
 <td>
@@ -141,8 +508,9 @@
 
 <td>
 <strong style="color:var(--accent)">${{ "%.2f"|format(customer_unit * item.quantity) }}</strong>
-<button class="button small ghost" type="submit">Save</button>
-</form>
+<button form="part-update-{{ item.id }}"
+        class="button small ghost"
+        type="submit">Save</button>
 </td>
 
 <td>
@@ -156,13 +524,371 @@
     {% else %}<div class="cc-empty"><strong>No parts selected yet.</strong><br>Start by researching parts above.</div>{% endif %}
   </section>
 
+  <section class="cc-card cc-section" id="job-timeline">
+    <div class="cc-section-head">
+      <div>
+        <p class="cc-label">JOB TIMELINE</p>
+        <h2>Automatic activity history</h2>
+        <p class="cc-muted">
+          Important job actions are recorded automatically.
+        </p>
+      </div>
+      <span class="cc-count">{{ timeline|length }}</span>
+    </div>
+
+    {% if timeline %}
+    <div class="cc-timeline">
+      {% for event in timeline %}
+      <article class="cc-timeline-event">
+        <div class="cc-timeline-icon">
+          {{ event.icon or "•" }}
+        </div>
+        <div class="cc-timeline-content">
+          <strong>{{ event.message }}</strong>
+          <time>
+            {{ event.created_at }}
+          </time>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="cc-empty">
+      Timeline activity will appear here automatically.
+    </div>
+    {% endif %}
+  </section>
+
   <section class="cc-card cc-summary">
-    <header class="cc-summary-head"><div><p class="cc-label">QUOTE SUMMARY</p><h2>{% if has_parts %}Ready for review{% else %}Waiting for parts{% endif %}</h2></div>{% if quote_ready %}<form method="post" action="/jobs/{{ job.id }}/generate-quote"><button class="button" type="submit">Create Quote</button></form>{% elif has_parts %}<form method="post" action="/jobs/{{ job.id }}/basket/checkout"><button class="button" type="submit">Review Quote</button></form>{% endif %}</header>
+    <header class="cc-summary-head">
+      <div>
+        <p class="cc-label">QUOTE SUMMARY</p>
+        <h2>
+          {% if has_parts %}
+            Ready to generate
+          {% else %}
+            Waiting for parts
+          {% endif %}
+        </h2>
+      </div>
+
+      {% if has_parts %}
+      <form
+        method="post"
+        action="/jobs/{{ job.id }}/generate-quote"
+      >
+        <button class="button" type="submit">
+          Complete &amp; Generate Quote
+        </button>
+      </form>
+      {% endif %}
+    </header>
     <div class="cc-primary-numbers"><div class="cc-primary-number"><span>Customer Total</span><strong>${{ "%.2f"|format(basket.totals.customer_total) }}</strong></div><div class="cc-primary-number"><span>Estimated Profit</span><strong>${{ "%.2f"|format(basket.totals.estimated_profit) }}</strong></div></div>
     <div class="cc-costs"><div><span>Parts Cost</span><strong>${{ "%.2f"|format(basket.totals.supplier_parts_total) }}</strong></div><div><span>Shipping</span><strong>${{ "%.2f"|format(basket.totals.shipping_total) }}</strong></div><div><span>Total Cost</span><strong>${{ "%.2f"|format(basket.totals.supplier_total) }}</strong></div></div>
   </section>
 </div>
 
-<dialog class="cc-dialog" id="manual-vendor-line"><form method="post" action="/jobs/{{ job.id }}/vendor-carts/manual"><div class="cc-dialog-head"><div><p class="cc-label">MANUAL PART</p><h2>Add a supplier option</h2></div><button type="button" class="cc-remove" data-dialog-close>×</button></div><div class="cc-dialog-grid"><label>Supplier Name<input name="vendor_name" required></label><label>Part Type<select name="source_type"><option value="AFTERMARKET">Aftermarket</option><option value="OEM">OEM</option><option value="REMAN">Remanufactured</option><option value="USED">Used</option></select></label><label class="full">Description<input name="requested_description" required></label><label>Supplier Part Number<input name="supplier_part_number"></label><label>Brand<input name="brand"></label><label>Quantity<input type="number" name="quantity" value="1" min="1"></label><label>Supplier Unit Cost<input type="number" name="supplier_unit_cost" step="0.01" min="0"></label><label>Availability<input name="availability"></label><label>Lead Time<input name="lead_time"></label></div><div class="cc-dialog-actions"><button class="button ghost" type="button" data-dialog-close>Cancel</button><button class="button" type="submit">Add Part</button></div></form></dialog>
-<script>(()=>{document.querySelectorAll('[data-dialog-open]').forEach(b=>b.addEventListener('click',()=>document.getElementById(b.dataset.dialogOpen)?.showModal()));document.querySelectorAll('[data-dialog-close]').forEach(b=>b.addEventListener('click',()=>b.closest('dialog')?.close()));})();</script>
+<dialog class="cc-dialog" id="supplier-quote-dialog">
+  <form
+    method="post"
+    action="/jobs/{{ job.id }}/vendor-carts/clone"
+  >
+    <div class="cc-dialog-head">
+      <div>
+        <p class="cc-label">SUPPLIER QUOTE</p>
+        <h2>Add pricing from another supplier</h2>
+        <p class="cc-muted">
+          PLG will copy the current selected parts. You will only
+          need to enter the supplier's prices.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        class="cc-remove"
+        data-dialog-close
+      >
+        ×
+      </button>
+    </div>
+
+    <div class="cc-dialog-grid">
+      <label class="full">
+        Supplier Name
+        <input
+          name="vendor_name"
+          placeholder="Costex"
+          required
+          autofocus
+        >
+      </label>
+
+      <label class="full">
+        Part Type
+        <select name="source_type">
+          <option value="AFTERMARKET" selected>
+            Aftermarket
+          </option>
+          <option value="OEM">OEM</option>
+          <option value="REMAN">Remanufactured</option>
+          <option value="USED">Used</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="cc-dialog-actions">
+      <button
+        class="button ghost"
+        type="button"
+        data-dialog-close
+      >
+        Cancel
+      </button>
+
+      <button class="button" type="submit">
+        Create Supplier Quote
+      </button>
+    </div>
+  </form>
+</dialog>
+<script>
+(() => {
+  const ASYNC_ACTIONS = [
+    /\/basket\/items\/\d+\/toggle$/,
+    /\/basket\/items\/\d+\/update$/,
+    /\/basket\/items\/\d+\/quantity$/,
+    /\/vendor-carts\/clone$/,
+    /\/vendor-carts\/manual$/,
+    /\/vendor-carts\/items\/\d+\/quote-update$/
+  ];
+
+  function isAsyncCommandCenterForm(form) {
+    if (!(form instanceof HTMLFormElement)) return false;
+    if ((form.method || "get").toLowerCase() !== "post") return false;
+    if (form.target === "_blank") return false;
+
+    const action = new URL(
+      form.action,
+      window.location.origin
+    ).pathname;
+
+    return ASYNC_ACTIONS.some((pattern) => pattern.test(action));
+  }
+
+  async function replaceCommandCenter(response) {
+    if (!response.ok) {
+      let message = `Action failed (${response.status})`;
+
+      try {
+        const contentType =
+          response.headers.get("content-type") || "";
+
+        if (contentType.includes("application/json")) {
+          const result = await response.json();
+          message = result.detail || result.message || message;
+        } else {
+          const body = await response.text();
+          if (body.trim()) message = body;
+        }
+      } catch (_) {}
+
+      throw new Error(message);
+    }
+
+    const html = await response.text();
+    const parsed = new DOMParser().parseFromString(
+      html,
+      "text/html"
+    );
+
+    const currentMain = document.querySelector("main");
+    const incomingMain = parsed.querySelector("main");
+
+    if (!currentMain || !incomingMain) {
+      throw new Error(
+        "PLG could not refresh the Command Center section."
+      );
+    }
+
+    const scrollPosition = window.scrollY;
+
+    currentMain.replaceWith(incomingMain);
+
+    requestAnimationFrame(() => {
+      window.scrollTo({
+        top: scrollPosition,
+        behavior: "instant"
+      });
+    });
+  }
+
+  async function submitBackgroundForm(form, submitter) {
+    const formData = new FormData(form);
+
+    if (
+      submitter &&
+      submitter.name &&
+      !formData.has(submitter.name)
+    ) {
+      formData.append(
+        submitter.name,
+        submitter.value || ""
+      );
+    }
+
+    const originalText = submitter?.textContent || "";
+
+    if (submitter) {
+      submitter.disabled = true;
+      submitter.textContent = "Working...";
+    }
+
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        body: formData,
+        headers: {
+          "X-Requested-With": "XMLHttpRequest"
+        }
+      });
+
+      await replaceCommandCenter(response);
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "The action could not be completed.");
+
+      if (submitter?.isConnected) {
+        submitter.disabled = false;
+        submitter.textContent = originalText;
+      }
+    }
+  }
+
+  async function saveSupplierQuote(form) {
+    const sourceCard = form.closest(".cc-source");
+    const saveButton = sourceCard?.querySelector(
+      ".supplier-quote-save-all"
+    );
+    const status = sourceCard?.querySelector(
+      ".supplier-quote-save-status"
+    );
+
+    if (saveButton) {
+      saveButton.disabled = true;
+      saveButton.textContent = "Saving...";
+    }
+
+    if (status) {
+      status.textContent = "";
+      status.classList.remove("error");
+    }
+
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        body: new FormData(form),
+        headers: {
+          "X-Requested-With": "XMLHttpRequest"
+        }
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.ok) {
+        throw new Error(
+          result.detail ||
+          result.message ||
+          "Could not save supplier quote."
+        );
+      }
+
+      const savedItems = new Set(
+        (result.saved_items || []).map(String)
+      );
+
+      sourceCard
+        ?.querySelectorAll("[data-supplier-quote-item]")
+        .forEach((row) => {
+          if (!savedItems.has(row.dataset.supplierQuoteItem)) {
+            return;
+          }
+
+          const costInput = row.querySelector(
+            "[data-quote-cost]"
+          );
+          const addButton = row.querySelector(
+            "[data-add-to-quote]"
+          );
+
+          if (
+            addButton &&
+            costInput &&
+            costInput.value.trim() !== ""
+          ) {
+            addButton.disabled = false;
+            addButton.removeAttribute("title");
+          }
+        });
+
+      if (status) {
+        status.textContent = "✓ Supplier quote saved";
+      }
+    } catch (error) {
+      if (status) {
+        status.textContent =
+          error.message || "Save failed.";
+        status.classList.add("error");
+      }
+    } finally {
+      if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.textContent =
+          "Save All Supplier Prices";
+      }
+    }
+  }
+
+  document.addEventListener("click", (event) => {
+    const openButton = event.target.closest(
+      "[data-dialog-open]"
+    );
+
+    if (openButton) {
+      document
+        .getElementById(openButton.dataset.dialogOpen)
+        ?.showModal();
+      return;
+    }
+
+    const closeButton = event.target.closest(
+      "[data-dialog-close]"
+    );
+
+    if (closeButton) {
+      closeButton.closest("dialog")?.close();
+    }
+  });
+
+  document.addEventListener("submit", async (event) => {
+    const form = event.target;
+
+    if (!(form instanceof HTMLFormElement)) return;
+
+    if (form.classList.contains("supplier-quote-bulk-form")) {
+      event.preventDefault();
+      await saveSupplierQuote(form);
+      return;
+    }
+
+    if (!isAsyncCommandCenterForm(form)) return;
+
+    event.preventDefault();
+
+    await submitBackgroundForm(
+      form,
+      event.submitter
+    );
+  });
+})();
+</script>
 {% endblock %}

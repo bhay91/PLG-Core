@@ -1,52 +1,261 @@
 {% extends "base.html" %}
 {% block title %}Customers · PartsLink Global{% endblock %}
+
 {% block content %}
-<section class="workspace-heading">
-  <div><p class="eyebrow">CUSTOMERS</p><h1>Customer Accounts</h1><p>Search, add, edit, deactivate, and reactivate customer records.</p></div>
-  <a class="button customer-new-button" href="/customers/new">+ New Customer</a>
-</section>
-<section class="panel customer-tools-panel">
-  <div class="customer-tools-row">
-    <label class="customer-search-label"><span>Search Customers</span><input id="customer-search" type="search" placeholder="Name, company, phone, email, or customer number"></label>
-    <div class="customer-filter-links">
-      <a class="{% if view == 'active' %}active{% endif %}" href="/customers?view=active">Active</a>
-      <a class="{% if view == 'inactive' %}active{% endif %}" href="/customers?view=inactive">Inactive</a>
-      <a class="{% if view == 'all' %}active{% endif %}" href="/customers?view=all">All</a>
+<div class="workspace-v2">
+
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">CUSTOMER WORKSPACE</p>
+      <h1>Customers</h1>
+      <p>Manage customer records, balances, jobs and history.</p>
     </div>
-  </div>
-</section>
-{% if recent_customers %}
-<section class="panel recent-customers-panel">
-  <div class="panel-heading"><div><p class="eyebrow">RECENT CUSTOMERS</p><h2>Recently Opened</h2></div></div>
-  <div class="recent-customer-grid">
-    {% for customer in recent_customers %}
-    <a href="/customers/{{ customer.id }}" class="recent-customer-card"><strong>{{ customer.name }}</strong><span>{{ customer.customer_number }}{% if customer.company %} · {{ customer.company }}{% endif %}</span></a>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
-<section class="panel">
-  <div class="panel-heading"><div><p class="eyebrow">{{ view|upper }} CUSTOMERS</p><h2>Customer List</h2></div></div>
-  {% if customers %}
-  <div class="customer-record-list" id="customer-list">
-    {% for customer in customers %}
-    <article class="customer-management-row" data-search="{{ customer.customer_number }} {{ customer.name }} {{ customer.company }} {{ customer.phone }} {{ customer.email }}">
-      <a class="customer-management-main" href="/customers/{{ customer.id }}">
-        <div><strong>{{ customer.name }}</strong><span>{{ customer.customer_number }}{% if customer.company %} · {{ customer.company }}{% endif %}</span><small>{{ customer.phone or customer.email or "No contact information" }}</small></div>
-        <div class="customer-list-metrics"><span>{{ customer.jobs_count }} jobs</span><span>{{ customer.quotes_count }} quotes</span><span>Credit ${{ "%.2f"|format(customer.available_credit) }}</span><span>Outstanding ${{ "%.2f"|format(customer.outstanding_balance) }}</span></div>
+
+    <a class="button" href="/customers/new">
+      + New Customer
+    </a>
+  </section>
+
+  <section class="workspace-toolbar">
+    <label class="workspace-search">
+      <span aria-hidden="true">⌕</span>
+
+      <input
+        id="customer-search"
+        type="search"
+        placeholder="Search name, company, phone, email or customer number..."
+      >
+    </label>
+
+    <nav class="workspace-tabs">
+      <a
+        class="{% if view == 'active' %}active{% endif %}"
+        href="/customers?view=active"
+      >
+        Active
       </a>
-      <div class="customer-row-actions">
-        <a class="button ghost small" href="/customers/{{ customer.id }}/edit">Edit</a>
-        {% if customer.active %}<form method="post" action="/customers/{{ customer.id }}/deactivate"><button class="button ghost small" type="submit">Deactivate</button></form>
-        {% else %}<form method="post" action="/customers/{{ customer.id }}/reactivate"><button class="button small" type="submit">Reactivate</button></form>{% endif %}
+
+      <a
+        class="{% if view == 'inactive' %}active{% endif %}"
+        href="/customers?view=inactive"
+      >
+        Inactive
+      </a>
+
+      <a
+        class="{% if view == 'all' %}active{% endif %}"
+        href="/customers?view=all"
+      >
+        All
+      </a>
+    </nav>
+  </section>
+
+  {% if recent_customers %}
+  <section class="workspace-compact-section">
+    <div class="workspace-section-heading">
+      <div>
+        <p class="eyebrow">RECENT</p>
+        <h2>Recently Opened</h2>
+      </div>
+    </div>
+
+    <div class="workspace-recent-grid">
+      {% for customer in recent_customers %}
+      <a
+        class="workspace-recent-card"
+        href="/customers/{{ customer.id }}"
+      >
+        <strong>{{ customer.name }}</strong>
+
+        <span>
+          {{ customer.customer_number }}
+          {% if customer.company %}
+            · {{ customer.company }}
+          {% endif %}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if customers %}
+  <section class="workspace-row-list">
+
+    {% for customer in customers %}
+    <article
+      class="workspace-row customer-workspace-row"
+      data-search="
+        {{ customer.customer_number }}
+        {{ customer.name }}
+        {{ customer.company }}
+        {{ customer.phone }}
+        {{ customer.email }}
+        {{ customer.address }}
+      "
+    >
+      <div class="workspace-row-mark customer-mark">
+        {{ (customer.name or "C")[:2]|upper }}
+      </div>
+
+      <div class="workspace-row-identity">
+        <small>{{ customer.customer_number }}</small>
+
+        <h2>{{ customer.name }}</h2>
+
+        <strong>
+          {% if customer.company %}
+            {{ customer.company }}
+          {% else %}
+            Individual Customer
+          {% endif %}
+        </strong>
+
+        <p>
+          {% if customer.phone %}
+            {{ customer.phone }}
+          {% elif customer.email %}
+            {{ customer.email }}
+          {% else %}
+            No contact information
+          {% endif %}
+
+          {% if customer.address %}
+            · {{ customer.address }}
+          {% endif %}
+        </p>
+      </div>
+
+      <div class="workspace-row-status customer-metrics">
+        <div class="workspace-metric-pair">
+          <div>
+            <span>Jobs</span>
+            <strong>{{ customer.jobs_count or 0 }}</strong>
+          </div>
+
+          <div>
+            <span>Quotes</span>
+            <strong>{{ customer.quotes_count or 0 }}</strong>
+          </div>
+        </div>
+
+        {% if customer.outstanding_balance > 0 %}
+        <div class="workspace-balance">
+          <span>Outstanding</span>
+          <strong>
+            ${{ "%.2f"|format(customer.outstanding_balance) }}
+          </strong>
+        </div>
+        {% elif customer.available_credit > 0 %}
+        <div class="workspace-balance">
+          <span>Available Credit</span>
+          <strong>
+            ${{ "%.2f"|format(customer.available_credit) }}
+          </strong>
+        </div>
+        {% else %}
+        <div class="workspace-row-meta">
+          Account balanced
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="workspace-row-action workspace-action-panel">
+        <span>NEXT ACTION</span>
+
+        {% if customer.active %}
+          <strong>Open Customer Account</strong>
+        {% else %}
+          <strong>Review Inactive Customer</strong>
+        {% endif %}
+
+        <a
+          class="workspace-btn workspace-btn-primary"
+          href="/customers/{{ customer.id }}"
+        >
+          Open Customer
+        </a>
+
+        <div class="workspace-btn-row">
+          <a
+            class="workspace-btn workspace-btn-secondary"
+            href="/customers/{{ customer.id }}/edit"
+          >
+            Edit
+          </a>
+
+          {% if customer.active %}
+          <form
+            class="workspace-action-form"
+            method="post"
+            action="/customers/{{ customer.id }}/deactivate"
+          >
+            <button
+              class="workspace-btn workspace-btn-secondary"
+              type="submit"
+            >
+              Deactivate
+            </button>
+          </form>
+          {% else %}
+          <form
+            class="workspace-action-form"
+            method="post"
+            action="/customers/{{ customer.id }}/reactivate"
+          >
+            <button
+              class="workspace-btn workspace-btn-secondary"
+              type="submit"
+            >
+              Reactivate
+            </button>
+          </form>
+          {% endif %}
+        </div>
       </div>
     </article>
     {% endfor %}
+
+  </section>
+
+  <p id="no-customer-results" class="workspace-empty hidden">
+    No customers match your search.
+  </p>
+  {% else %}
+  <div class="workspace-empty">
+    No customers are available in this view.
   </div>
-  <p id="no-customer-results" class="hidden">No customers match your search.</p>
-  {% else %}<p>No customers are available in this view.</p>{% endif %}
-</section>
+  {% endif %}
+
+</div>
+
 <script>
-(() => { const input=document.getElementById('customer-search'); const rows=[...document.querySelectorAll('.customer-management-row')]; const empty=document.getElementById('no-customer-results'); if(!input||!rows.length)return; input.addEventListener('input',()=>{const q=input.value.trim().toLowerCase(); let visible=0; rows.forEach(row=>{const match=row.dataset.search.toLowerCase().includes(q); row.hidden=!match; if(match)visible++;}); if(empty)empty.classList.toggle('hidden',visible!==0);});})();
+(() => {
+  const input = document.getElementById("customer-search");
+  const rows = [...document.querySelectorAll(".customer-workspace-row")];
+  const empty = document.getElementById("no-customer-results");
+
+  if (!input || !rows.length) return;
+
+  input.addEventListener("input", () => {
+    const query = input.value.trim().toLowerCase();
+    let visible = 0;
+
+    rows.forEach((row) => {
+      const match = row.dataset.search
+        .toLowerCase()
+        .includes(query);
+
+      row.hidden = !match;
+
+      if (match) visible += 1;
+    });
+
+    if (empty) {
+      empty.classList.toggle("hidden", visible !== 0);
+    }
+  });
+})();
 </script>
 {% endblock %}

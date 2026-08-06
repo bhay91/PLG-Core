@@ -120,6 +120,7 @@ def new_request_form(request: Request):
             "form_action": "/requests/new",
             "cancel_url": "/requests",
             "record": {},
+            "registry_types": REGISTRY_TYPES,
         },
     )
 
@@ -132,33 +133,905 @@ async def create_request(
     phone: str = Form(""),
     email: str = Form(""),
     location: str = Form(""),
+    registry_type: str = Form("other"),
+    manufacturer: str = Form(""),
+    model: str = Form(""),
+    year: str = Form(""),
+    identifier: str = Form(""),
+    requested_parts: str = Form(""),
     reminder_date: str = Form(""),
     attachments: list[UploadFile] = File(default=[]),
 ):
-    values = [request_text, individual_name, company_name, phone, email, location, reminder_date]
-    request_text, individual_name, company_name, phone, email, location, reminder_date = [
-        (value or "").strip() for value in values
+    registry_type = (registry_type or "other").strip().lower()
+    if registry_type not in REGISTRY_TYPES:
+        registry_type = "other"
+
+    values = [
+        request_text,
+        individual_name,
+        company_name,
+        phone,
+        email,
+        location,
+        manufacturer,
+        model,
+        year,
+        identifier,
+        requested_parts,
+        reminder_date,
     ]
-    if not any((request_text, individual_name, company_name, phone, email, attachments)):
-        raise HTTPException(status_code=400, detail="Add a message, attachment, or contact detail.")
+
+    (
+        request_text,
+        individual_name,
+        company_name,
+        phone,
+        email,
+        location,
+        manufacturer,
+        model,
+        year,
+        identifier,
+        requested_parts,
+        reminder_date,
+    ) = [(value or "").strip() for value in values]
+
+    if not any(
+        (
+            request_text,
+            individual_name,
+            company_name,
+            phone,
+            email,
+            manufacturer,
+            model,
+            identifier,
+            requested_parts,
+            attachments,
+        )
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Add request, customer, machine, part, "
+                "or attachment information."
+            ),
+        )
+
     with closing(get_connection()) as connection:
         cursor = connection.execute(
             """
             INSERT INTO customer_requests (
-                request_number, request_text, individual_name, company_name,
-                phone, email, location, reminder_date, status
-            ) VALUES ('', ?, ?, ?, ?, ?, ?, NULLIF(?, ''), 'NEW')
+                request_number,
+                request_text,
+                individual_name,
+                company_name,
+                phone,
+                email,
+                location,
+                registry_type,
+                manufacturer,
+                model,
+                year,
+                identifier,
+                requested_parts,
+                reminder_date,
+                status
+            )
+            VALUES (
+                '',
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?,
+                NULLIF(?, ''),
+                'NEW'
+            )
             """,
-            (request_text, individual_name, company_name, phone, email, location, reminder_date),
+            (
+                request_text,
+                individual_name,
+                company_name,
+                phone,
+                email,
+                location,
+                registry_type,
+                manufacturer,
+                model,
+                year,
+                identifier,
+                requested_parts,
+                reminder_date,
+            ),
         )
+
         request_id = cursor.lastrowid
+
         connection.execute(
-            "UPDATE customer_requests SET request_number = ? WHERE id = ?",
+            """
+            UPDATE customer_requests
+            SET request_number = ?
+            WHERE id = ?
+            """,
             (f"PLG-R{request_id:05d}", request_id),
         )
-        await _save_attachments(connection, request_id, attachments)
+
+        await _save_attachments(
+            connection,
+            request_id,
+            attachments,
+        )
+
         connection.commit()
-    return RedirectResponse(url=f"/requests/{request_id}", status_code=303)
+
+    return RedirectResponse(
+        url=f"/requests/{request_id}",
+        status_code=303,
+    )
+
+
+
+def _normalize_match(value: str) -> str:
+    return re.sub(
+        r"[^a-z0-9]+",
+        "",
+        str(value or "").strip().lower(),
+    )
+
+
+def _normalize_phone(value: str) -> str:
+    return re.sub(r"\D+", "", str(value or ""))
+
+
+def _smart_intake_registry_type(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+
+    aliases = {
+        "heavy equipment": "machine",
+        "equipment": "machine",
+        "backhoe": "machine",
+        "excavator": "machine",
+        "loader": "machine",
+        "car": "vehicle",
+        "truck": "vehicle",
+        "automobile": "vehicle",
+        "outboard": "marine",
+        "boat": "marine",
+        "genset": "generator",
+    }
+
+    normalized = aliases.get(normalized, normalized)
+
+    if normalized not in REGISTRY_TYPES:
+        return "other"
+
+    return normalized
+
+
+def _parse_smart_intake(raw_text: str) -> dict[str, str]:
+    raw_text = str(raw_text or "").strip()
+
+    result = {
+        "individual_name": "",
+        "company_name": "",
+        "phone": "",
+        "email": "",
+        "location": "",
+        "registry_type": "other",
+        "manufacturer": "",
+        "model": "",
+        "year": "",
+        "identifier": "",
+        "requested_parts": "",
+        "request_text": "",
+    }
+
+    label_map = {
+        "customer": "individual_name",
+        "customer name": "individual_name",
+        "individual": "individual_name",
+        "individual name": "individual_name",
+        "name": "individual_name",
+        "company": "company_name",
+        "company name": "company_name",
+        "phone": "phone",
+        "telephone": "phone",
+        "mobile": "phone",
+        "email": "email",
+        "location": "location",
+        "island": "location",
+        "shipping location": "location",
+        "shipping destination": "location",
+        "registry type": "registry_type",
+        "equipment type": "registry_type",
+        "type": "registry_type",
+        "manufacturer": "manufacturer",
+        "make": "manufacturer",
+        "model": "model",
+        "year": "year",
+        "identifier": "identifier",
+        "vin": "identifier",
+        "pin": "identifier",
+        "serial": "identifier",
+        "serial number": "identifier",
+        "engine serial": "identifier",
+        "esn": "identifier",
+        "customer message": "request_text",
+        "message": "request_text",
+        "notes": "request_text",
+    }
+
+    parts_labels = {
+        "requested parts",
+        "parts requested",
+        "parts needed",
+        "need",
+        "needs",
+        "parts",
+    }
+
+    lines = raw_text.splitlines()
+    parts: list[str] = []
+    notes: list[str] = []
+    capture_parts = False
+    capture_notes = False
+
+    for raw_line in lines:
+        line = raw_line.strip()
+
+        if not line:
+            continue
+
+        match = re.match(
+            r"^([A-Za-z][A-Za-z /_-]*?)\s*:\s*(.*)$",
+            line,
+        )
+
+        if match:
+            label = re.sub(
+                r"\s+",
+                " ",
+                match.group(1).strip().lower(),
+            )
+            value = match.group(2).strip()
+
+            capture_parts = label in parts_labels
+            capture_notes = label in {
+                "customer message",
+                "message",
+                "notes",
+            }
+
+            if capture_parts:
+                if value:
+                    parts.append(value)
+                continue
+
+            field = label_map.get(label)
+
+            if field:
+                if field == "registry_type":
+                    result[field] = _smart_intake_registry_type(
+                        value
+                    )
+                elif field == "request_text":
+                    if value:
+                        notes.append(value)
+                else:
+                    result[field] = value
+
+                continue
+
+            capture_parts = False
+            capture_notes = False
+
+        if capture_parts:
+            cleaned = line.strip(" -•\t")
+            if cleaned:
+                parts.append(cleaned)
+            continue
+
+        if capture_notes:
+            notes.append(line)
+
+    result["requested_parts"] = "\n".join(parts)
+    result["request_text"] = "\n".join(notes)
+
+    return result
+
+
+def _find_existing_customer(connection, parsed: dict[str, str]):
+    phone = _normalize_phone(parsed.get("phone", ""))
+    email = parsed.get("email", "").strip().lower()
+    name = parsed.get("individual_name", "").strip()
+    company = parsed.get("company_name", "").strip()
+
+    if phone:
+        rows = connection.execute(
+            """
+            SELECT *
+            FROM customers
+            WHERE active = 1
+              AND TRIM(COALESCE(phone, '')) != ''
+            ORDER BY id
+            """
+        ).fetchall()
+
+        for row in rows:
+            if _normalize_phone(row["phone"]) == phone:
+                return row
+
+    if email:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM customers
+            WHERE active = 1
+              AND LOWER(TRIM(COALESCE(email, ''))) = ?
+            ORDER BY id
+            LIMIT 1
+            """,
+            (email,),
+        ).fetchone()
+
+        if row is not None:
+            return row
+
+    if name or company:
+        rows = connection.execute(
+            """
+            SELECT *
+            FROM customers
+            WHERE active = 1
+            ORDER BY id
+            """
+        ).fetchall()
+
+        wanted_name = _normalize_match(name)
+        wanted_company = _normalize_match(company)
+
+        for row in rows:
+            row_name = _normalize_match(row["name"])
+            row_company = _normalize_match(row["company"])
+
+            name_matches = (
+                bool(wanted_name)
+                and row_name == wanted_name
+            )
+
+            company_matches = (
+                bool(wanted_company)
+                and row_company == wanted_company
+            )
+
+            if name_matches or company_matches:
+                return row
+
+    return None
+
+
+def _find_existing_location(
+    connection,
+    customer_id: int,
+    location: str,
+):
+    wanted = _normalize_match(location)
+
+    if not wanted:
+        return None
+
+    rows = connection.execute(
+        """
+        SELECT *
+        FROM customer_locations
+        WHERE customer_id = ?
+          AND active = 1
+        ORDER BY id
+        """,
+        (customer_id,),
+    ).fetchall()
+
+    for row in rows:
+        if (
+            _normalize_match(row["location_name"]) == wanted
+            or _normalize_match(row["address"]) == wanted
+        ):
+            return row
+
+    return None
+
+
+def _find_existing_machine(
+    connection,
+    customer_id: int,
+    parsed: dict[str, str],
+):
+    identifier = _normalize_match(
+        parsed.get("identifier", "")
+    )
+
+    if identifier:
+        rows = connection.execute(
+            """
+            SELECT *
+            FROM machines
+            WHERE customer_id = ?
+              AND active = 1
+              AND TRIM(COALESCE(vin_pin_serial, '')) != ''
+            ORDER BY id
+            """,
+            (customer_id,),
+        ).fetchall()
+
+        for row in rows:
+            if (
+                _normalize_match(row["vin_pin_serial"])
+                == identifier
+            ):
+                return row
+
+    manufacturer = _normalize_match(
+        parsed.get("manufacturer", "")
+    )
+    model = _normalize_match(parsed.get("model", ""))
+    year = _normalize_match(parsed.get("year", ""))
+
+    if manufacturer and model:
+        rows = connection.execute(
+            """
+            SELECT *
+            FROM machines
+            WHERE customer_id = ?
+              AND active = 1
+            ORDER BY id
+            """,
+            (customer_id,),
+        ).fetchall()
+
+        for row in rows:
+            same_manufacturer = (
+                _normalize_match(row["manufacturer"])
+                == manufacturer
+            )
+            same_model = (
+                _normalize_match(row["model"] or row["name"])
+                == model
+            )
+            same_year = (
+                not year
+                or not _normalize_match(row["year"])
+                or _normalize_match(row["year"]) == year
+            )
+
+            if same_manufacturer and same_model and same_year:
+                return row
+
+    return None
+
+
+@router.get("/smart-intake", response_class=HTMLResponse)
+def smart_intake_form(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="smart_intake.html",
+        context={
+            "active_page": "requests",
+            "raw_text": "",
+            "parsed": None,
+            "customer_match": None,
+            "location_match": None,
+            "machine_match": None,
+            "registry_types": REGISTRY_TYPES,
+        },
+    )
+
+
+@router.post("/smart-intake/analyze", response_class=HTMLResponse)
+def analyze_smart_intake(
+    request: Request,
+    raw_text: str = Form(...),
+):
+    parsed = _parse_smart_intake(raw_text)
+
+    with closing(get_connection()) as connection:
+        customer_match = _find_existing_customer(
+            connection,
+            parsed,
+        )
+
+        location_match = None
+        machine_match = None
+
+        if customer_match is not None:
+            location_match = _find_existing_location(
+                connection,
+                customer_match["id"],
+                parsed.get("location", ""),
+            )
+
+            machine_match = _find_existing_machine(
+                connection,
+                customer_match["id"],
+                parsed,
+            )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="smart_intake.html",
+        context={
+            "active_page": "requests",
+            "raw_text": raw_text,
+            "parsed": parsed,
+            "customer_match": customer_match,
+            "location_match": location_match,
+            "machine_match": machine_match,
+            "registry_types": REGISTRY_TYPES,
+        },
+    )
+
+
+@router.post("/smart-intake/create")
+def create_from_smart_intake(
+    raw_text: str = Form(""),
+    individual_name: str = Form(""),
+    company_name: str = Form(""),
+    phone: str = Form(""),
+    email: str = Form(""),
+    location: str = Form(""),
+    registry_type: str = Form("other"),
+    manufacturer: str = Form(""),
+    model: str = Form(""),
+    year: str = Form(""),
+    identifier: str = Form(""),
+    requested_parts: str = Form(""),
+    request_text: str = Form(""),
+):
+    parsed = {
+        "individual_name": individual_name.strip(),
+        "company_name": company_name.strip(),
+        "phone": phone.strip(),
+        "email": email.strip(),
+        "location": location.strip(),
+        "registry_type": _smart_intake_registry_type(
+            registry_type
+        ),
+        "manufacturer": manufacturer.strip(),
+        "model": model.strip(),
+        "year": year.strip(),
+        "identifier": identifier.strip(),
+        "requested_parts": requested_parts.strip(),
+        "request_text": request_text.strip(),
+    }
+
+    if not (
+        parsed["individual_name"]
+        or parsed["company_name"]
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Customer name or company is required.",
+        )
+
+    with closing(get_connection()) as connection:
+        customer = _find_existing_customer(
+            connection,
+            parsed,
+        )
+
+        if customer is None:
+            display_name = (
+                parsed["individual_name"]
+                or parsed["company_name"]
+            )
+
+            cursor = connection.execute(
+                """
+                INSERT INTO customers (
+                    name,
+                    company,
+                    phone,
+                    email,
+                    address
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    display_name,
+                    parsed["company_name"],
+                    parsed["phone"],
+                    parsed["email"],
+                    parsed["location"],
+                ),
+            )
+
+            customer_id = cursor.lastrowid
+
+            connection.execute(
+                """
+                UPDATE customers
+                SET customer_number = ?
+                WHERE id = ?
+                """,
+                (
+                    f"PLG-C{customer_id:05d}",
+                    customer_id,
+                ),
+            )
+
+            customer = connection.execute(
+                "SELECT * FROM customers WHERE id = ?",
+                (customer_id,),
+            ).fetchone()
+        else:
+            customer_id = customer["id"]
+
+        customer_location = _find_existing_location(
+            connection,
+            customer_id,
+            parsed["location"],
+        )
+
+        if (
+            customer_location is None
+            and parsed["location"]
+        ):
+            cursor = connection.execute(
+                """
+                INSERT INTO customer_locations (
+                    customer_id,
+                    location_name,
+                    address,
+                    phone,
+                    email
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    customer_id,
+                    parsed["location"],
+                    parsed["location"],
+                    parsed["phone"],
+                    parsed["email"],
+                ),
+            )
+
+            customer_location_id = cursor.lastrowid
+        elif customer_location is not None:
+            customer_location_id = customer_location["id"]
+        else:
+            customer_location_id = None
+
+        machine = _find_existing_machine(
+            connection,
+            customer_id,
+            parsed,
+        )
+
+        if machine is None:
+            machine_name = " ".join(
+                value
+                for value in (
+                    parsed["manufacturer"],
+                    parsed["model"],
+                )
+                if value
+            ).strip()
+
+            if not machine_name:
+                machine_name = (
+                    parsed["identifier"]
+                    or "Registry Item"
+                )
+
+            cursor = connection.execute(
+                """
+                INSERT INTO machines (
+                    customer_id,
+                    customer_location_id,
+                    registry_type,
+                    name,
+                    manufacturer,
+                    model,
+                    year,
+                    vin_pin_serial,
+                    notes
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    customer_id,
+                    customer_location_id,
+                    parsed["registry_type"],
+                    machine_name,
+                    parsed["manufacturer"],
+                    parsed["model"],
+                    parsed["year"],
+                    parsed["identifier"],
+                    "Created through Smart Intake",
+                ),
+            )
+
+            machine_id = cursor.lastrowid
+
+            connection.execute(
+                """
+                UPDATE machines
+                SET machine_number = ?
+                WHERE id = ?
+                """,
+                (
+                    f"PLG-M{machine_id:05d}",
+                    machine_id,
+                ),
+            )
+        else:
+            machine_id = machine["id"]
+
+            if (
+                customer_location_id
+                and not machine["customer_location_id"]
+            ):
+                connection.execute(
+                    """
+                    UPDATE machines
+                    SET customer_location_id = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (
+                        customer_location_id,
+                        machine_id,
+                    ),
+                )
+
+        cursor = connection.execute(
+            """
+            INSERT INTO customer_requests (
+                request_number,
+                request_text,
+                individual_name,
+                company_name,
+                phone,
+                email,
+                location,
+                registry_type,
+                manufacturer,
+                model,
+                year,
+                identifier,
+                requested_parts,
+                customer_id,
+                customer_location_id,
+                machine_id,
+                status
+            )
+            VALUES (
+                '',
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?,
+                'NEW'
+            )
+            """,
+            (
+                parsed["request_text"] or raw_text.strip(),
+                parsed["individual_name"],
+                parsed["company_name"],
+                parsed["phone"],
+                parsed["email"],
+                parsed["location"],
+                parsed["registry_type"],
+                parsed["manufacturer"],
+                parsed["model"],
+                parsed["year"],
+                parsed["identifier"],
+                parsed["requested_parts"],
+                customer_id,
+                customer_location_id,
+                machine_id,
+            ),
+        )
+
+        request_id = cursor.lastrowid
+
+        connection.execute(
+            """
+            UPDATE customer_requests
+            SET request_number = ?
+            WHERE id = ?
+            """,
+            (
+                f"PLG-R{request_id:05d}",
+                request_id,
+            ),
+        )
+
+        job_number = next_job_number(connection)
+
+        cursor = connection.execute(
+            """
+            INSERT INTO jobs (
+                job_number,
+                created_date,
+                customer_id,
+                machine_id,
+                customer,
+                company,
+                phone,
+                email,
+                address,
+                manufacturer,
+                machine,
+                pin_serial,
+                status,
+                notes
+            )
+            VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                'REQUESTED',
+                ?
+            )
+            """,
+            (
+                job_number,
+                date.today().isoformat(),
+                customer_id,
+                machine_id,
+                customer["name"],
+                customer["company"] or "",
+                parsed["phone"] or customer["phone"] or "",
+                parsed["email"] or customer["email"] or "",
+                parsed["location"] or customer["address"] or "",
+                parsed["manufacturer"],
+                parsed["model"],
+                parsed["identifier"],
+                (
+                    f"Created from PLG-R{request_id:05d}"
+                    + (
+                        f"\n\n{parsed['request_text']}"
+                        if parsed["request_text"]
+                        else ""
+                    )
+                ),
+            ),
+        )
+
+        job_id = cursor.lastrowid
+
+        parts = [
+            line.strip(" -•\t")
+            for line in parsed["requested_parts"].splitlines()
+            if line.strip(" -•\t")
+        ]
+
+        for part in parts:
+            connection.execute(
+                """
+                INSERT INTO job_parts (
+                    job_id,
+                    requested_description,
+                    quantity
+                )
+                VALUES (?, ?, 1)
+                """,
+                (job_id, part),
+            )
+
+        connection.execute(
+            """
+            UPDATE customer_requests
+            SET job_id = ?,
+                status = 'COMPLETED',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (job_id, request_id),
+        )
+
+        connection.commit()
+
+    return RedirectResponse(
+        url=f"/jobs/{job_id}/basket",
+        status_code=303,
+    )
 
 
 @router.get("/{request_id}", response_class=HTMLResponse)
@@ -224,6 +1097,7 @@ def edit_request_form(request: Request, request_id: int):
             "form_action": f"/requests/{request_id}/edit",
             "cancel_url": f"/requests/{request_id}",
             "record": record,
+            "registry_types": REGISTRY_TYPES,
         },
     )
 
@@ -237,33 +1111,108 @@ async def update_request(
     phone: str = Form(""),
     email: str = Form(""),
     location: str = Form(""),
+    registry_type: str = Form("other"),
+    manufacturer: str = Form(""),
+    model: str = Form(""),
+    year: str = Form(""),
+    identifier: str = Form(""),
+    requested_parts: str = Form(""),
     reminder_date: str = Form(""),
     status: str = Form("NEW"),
     attachments: list[UploadFile] = File(default=[]),
 ):
-    status = status.upper().strip()
+    status = (status or "NEW").strip().upper()
     if status not in ALLOWED_STATUSES:
         status = "NEW"
-    values = [request_text, individual_name, company_name, phone, email, location, reminder_date]
-    request_text, individual_name, company_name, phone, email, location, reminder_date = [
-        (value or "").strip() for value in values
+
+    registry_type = (registry_type or "other").strip().lower()
+    if registry_type not in REGISTRY_TYPES:
+        registry_type = "other"
+
+    values = [
+        request_text,
+        individual_name,
+        company_name,
+        phone,
+        email,
+        location,
+        manufacturer,
+        model,
+        year,
+        identifier,
+        requested_parts,
+        reminder_date,
     ]
+
+    (
+        request_text,
+        individual_name,
+        company_name,
+        phone,
+        email,
+        location,
+        manufacturer,
+        model,
+        year,
+        identifier,
+        requested_parts,
+        reminder_date,
+    ) = [(value or "").strip() for value in values]
+
     with closing(get_connection()) as connection:
         _get_request_or_404(connection, request_id)
+
         connection.execute(
             """
             UPDATE customer_requests
-            SET request_text = ?, individual_name = ?, company_name = ?,
-                phone = ?, email = ?, location = ?, reminder_date = NULLIF(?, ''),
-                status = ?, updated_at = CURRENT_TIMESTAMP
+            SET request_text = ?,
+                individual_name = ?,
+                company_name = ?,
+                phone = ?,
+                email = ?,
+                location = ?,
+                registry_type = ?,
+                manufacturer = ?,
+                model = ?,
+                year = ?,
+                identifier = ?,
+                requested_parts = ?,
+                reminder_date = NULLIF(?, ''),
+                status = ?,
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
-            (request_text, individual_name, company_name, phone, email, location,
-             reminder_date, status, request_id),
+            (
+                request_text,
+                individual_name,
+                company_name,
+                phone,
+                email,
+                location,
+                registry_type,
+                manufacturer,
+                model,
+                year,
+                identifier,
+                requested_parts,
+                reminder_date,
+                status,
+                request_id,
+            ),
         )
-        await _save_attachments(connection, request_id, attachments)
+
+        await _save_attachments(
+            connection,
+            request_id,
+            attachments,
+        )
+
         connection.commit()
-    return RedirectResponse(url=f"/requests/{request_id}", status_code=303)
+
+    return RedirectResponse(
+        url=f"/requests/{request_id}",
+        status_code=303,
+    )
 
 
 @router.post("/{request_id}/prepare")

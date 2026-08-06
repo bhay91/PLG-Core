@@ -1,0 +1,341 @@
+./templates/job_detail.html:152:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./templates/job_detail.html:163:    Select one supplier source for every part before generating the quote.
+./templates/job_detail.html:283:          <article class="source-option {% if source.selected_for_quote %}selected{% endif %}">
+./templates/job_detail.html:286:                {% if source.selected_for_quote %}●{% else %}○{% endif %}
+./templates/job_detail.html:292:                  {% if source.selected_for_quote %}<span class="selected-label">SELECTED</span>{% endif %}
+./templates/basket.html:18:    <form method="post" action="/jobs/{{ job.id }}/generate-quote"><button class="button" type="submit">Create Quote →</button></form>
+./templates/basket.html:98:  <div class="quote-command-heading"><div><p class="eyebrow">QUOTE SUMMARY</p><h2>{% if basket.totals.selected_items %}Ready for review{% else %}Waiting for parts{% endif %}</h2></div>{% if basket.totals.selected_items %}{% if basket.status == "COMMITTED" %}<form method="post" action="/jobs/{{ job.id }}/generate-quote"><button class="button" type="submit">Create Quote</button></form>{% else %}<form method="post" action="/jobs/{{ job.id }}/basket/checkout"><button class="button" type="submit">Review Quote</button></form>{% endif %}{% endif %}</div>
+./templates/job_command_center.html:563:    <header class="cc-summary-head"><div><p class="cc-label">QUOTE SUMMARY</p><h2>{% if has_parts %}Ready for review{% else %}Waiting for parts{% endif %}</h2></div>{% if quote_ready %}<form method="post" action="/jobs/{{ job.id }}/generate-quote"><button class="button" type="submit">Create Quote</button></form>{% elif has_parts %}<form method="post" action="/jobs/{{ job.id }}/basket/checkout"><button class="button" type="submit">Review Quote</button></form>{% endif %}</header>
+./plg_core/basket/service.py:392:                    selected_for_quote, source_url
+./plg_core/documents/quote_pdf.py:575:def generate_quote_pdfs(quote, items: Iterable) -> dict[str, str]:
+./plg_core/documents/__init__.py:1:from .quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
+./plg_core/jobs/engine.py:289:                    f"/jobs/{job_id}/generate-quote",
+./PLG-Core-1.0-Alpha-1-Scaffold/legacy_app.py:97:                selected_for_quote INTEGER NOT NULL DEFAULT 0,
+./PLG-Core-1.0-Alpha-1-Scaffold/legacy_app.py:155:            "CREATE INDEX IF NOT EXISTS idx_part_sources_selected ON part_sources(part_id, selected_for_quote)"
+./PLG-Core-1.0-Alpha-1-Scaffold/legacy_app.py:552:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./PLG-Core-1.0-Alpha-1-Scaffold/legacy_app.py:578:            if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
+./PLG-Core-1.0-Alpha-1-Scaffold/legacy_app.py:872:@app.post("/jobs/{job_id}/generate-quote")
+./PLG-Core-1.0-Alpha-1-Scaffold/legacy_app.py:873:def generate_quote(job_id: int):
+./PLG-Core-1.0-Alpha-1-Scaffold/legacy_app.py:899:               AND part_sources.selected_for_quote = 1
+./PLG-Core-1.0-Alpha-1-Scaffold/legacy_app.py:920:                detail="Select one supplier source for every part first.",
+./PLG-Core-1.0-Alpha-1-Scaffold/legacy_app.py:1340:            "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
+./PLG-Core-1.0-Alpha-1-Scaffold/legacy_app.py:1344:            "UPDATE part_sources SET selected_for_quote = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+./PLG-Core-1.0-Alpha-1-Scaffold/legacy_app.py:1376:            "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
+./PLG-Core-1.0-Alpha-1-Scaffold/legacy_app.py:1383:        if source["selected_for_quote"]:
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.9-Supplier-Selection/payload/app.py:93:                selected_for_quote INTEGER NOT NULL DEFAULT 0,
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.9-Supplier-Selection/payload/app.py:137:            "CREATE INDEX IF NOT EXISTS idx_part_sources_selected ON part_sources(part_id, selected_for_quote)"
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.9-Supplier-Selection/payload/app.py:383:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.9-Supplier-Selection/payload/app.py:394:            if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.9-Supplier-Selection/payload/app.py:729:            "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.9-Supplier-Selection/payload/app.py:733:            "UPDATE part_sources SET selected_for_quote = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.9-Supplier-Selection/payload/app.py:765:            "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.9-Supplier-Selection/payload/app.py:772:        if source["selected_for_quote"]:
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.9-Supplier-Selection/payload/templates/job_detail.html:147:          <article class="source-option {% if source.selected_for_quote %}selected{% endif %}">
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.9-Supplier-Selection/payload/templates/job_detail.html:150:                {% if source.selected_for_quote %}●{% else %}○{% endif %}
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.9-Supplier-Selection/payload/templates/job_detail.html:156:                  {% if source.selected_for_quote %}<span class="selected-label">SELECTED</span>{% endif %}
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.10-Supplier-Lists/payload/app.py:93:                selected_for_quote INTEGER NOT NULL DEFAULT 0,
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.10-Supplier-Lists/payload/app.py:144:            "CREATE INDEX IF NOT EXISTS idx_part_sources_selected ON part_sources(part_id, selected_for_quote)"
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.10-Supplier-Lists/payload/app.py:399:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.10-Supplier-Lists/payload/app.py:425:            if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.10-Supplier-Lists/payload/app.py:769:            "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.10-Supplier-Lists/payload/app.py:773:            "UPDATE part_sources SET selected_for_quote = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.10-Supplier-Lists/payload/app.py:805:            "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.10-Supplier-Lists/payload/app.py:812:        if source["selected_for_quote"]:
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.10-Supplier-Lists/payload/templates/job_detail.html:147:          <article class="source-option {% if source.selected_for_quote %}selected{% endif %}">
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.10-Supplier-Lists/payload/templates/job_detail.html:150:                {% if source.selected_for_quote %}●{% else %}○{% endif %}
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.10-Supplier-Lists/payload/templates/job_detail.html:156:                  {% if source.selected_for_quote %}<span class="selected-label">SELECTED</span>{% endif %}
+./PLG-Core-1.0-Alpha-1-Scaffold/templates/job_detail.html:125:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./PLG-Core-1.0-Alpha-1-Scaffold/templates/job_detail.html:136:    Select one supplier source for every part before generating the quote.
+./PLG-Core-1.0-Alpha-1-Scaffold/templates/job_detail.html:275:          <article class="source-option {% if source.selected_for_quote %}selected{% endif %}">
+./PLG-Core-1.0-Alpha-1-Scaffold/templates/job_detail.html:278:                {% if source.selected_for_quote %}●{% else %}○{% endif %}
+./PLG-Core-1.0-Alpha-1-Scaffold/templates/job_detail.html:284:                  {% if source.selected_for_quote %}<span class="selected-label">SELECTED</span>{% endif %}
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.15-Quote-Engine/install_v015.py:39:if '@app.post("/jobs/{job_id}/generate-quote")' not in app:
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.15-Quote-Engine/install_v015.py:43:    app = app.replace(anchor, '\ndef next_quote_number(connection: sqlite3.Connection) -> str:\n    current_year = date.today().year\n    prefix = f"PLG-Q-{current_year}-"\n\n    row = connection.execute(\n        """\n        SELECT quote_number\n        FROM quotes\n        WHERE quote_number LIKE ?\n        ORDER BY id DESC\n        LIMIT 1\n        """,\n        (f"{prefix}%",),\n    ).fetchone()\n\n    if row is None:\n        sequence = 1\n    else:\n        try:\n            sequence = int(row["quote_number"].split("-")[-1]) + 1\n        except (ValueError, IndexError):\n            sequence = 1\n\n    return f"{prefix}{sequence:03d}"\n\n\ndef calculate_customer_unit_price(cost: float) -> float:\n    if cost <= 50:\n        markup = 0.40\n    elif cost <= 200:\n        markup = 0.30\n    elif cost <= 500:\n        markup = 0.25\n    else:\n        markup = 0.20\n\n    return float(math.ceil(cost * (1 + markup)))\n\n\n@app.post("/jobs/{job_id}/generate-quote")\ndef generate_quote(job_id: int):\n    with closing(get_connection()) as connection:\n        job = connection.execute(\n            "SELECT * FROM jobs WHERE id = ?",\n            (job_id,),\n        ).fetchone()\n\n        if job is None:\n            raise HTTPException(status_code=404, detail="Job not found.")\n\n        selected = connection.execute(\n            """\n            SELECT\n                job_parts.id AS part_id,\n                job_parts.requested_description,\n                job_parts.oem_description,\n                job_parts.quantity,\n                part_sources.id AS source_id,\n                part_sources.supplier_name,\n                part_sources.source_type,\n                part_sources.brand,\n                part_sources.supplier_part_number,\n                part_sources.supplier_cost\n            FROM job_parts\n            JOIN part_sources\n                ON part_sources.part_id = job_parts.id\n               AND part_sources.selected_for_quote = 1\n            WHERE job_parts.job_id = ?\n            ORDER BY job_parts.id\n            """,\n            (job_id,),\n        ).fetchall()\n\n        total_parts = connection.execute(\n            "SELECT COUNT(*) AS count FROM job_parts WHERE job_id = ?",\n            (job_id,),\n        ).fetchone()["count"]\n\n        if total_parts == 0:\n            raise HTTPException(\n                status_code=400,\n                detail="Add at least one part before generating a quote.",\n            )\n\n        if len(selected) != total_parts:\n            raise HTTPException(\n                status_code=400,\n                detail="Select one supplier source for every part first.",\n            )\n\n        quote_number = next_quote_number(connection)\n        quote_date = date.today().isoformat()\n\n        shipping_rows = connection.execute(\n            """\n            SELECT source_name, shipping_total\n            FROM source_cart_imports\n            WHERE id IN (\n                SELECT MAX(id)\n                FROM source_cart_imports\n                WHERE job_id = ?\n                GROUP BY LOWER(TRIM(source_name))\n            )\n            """,\n            (job_id,),\n        ).fetchall()\n\n        selected_suppliers = {\n            str(row["supplier_name"] or "").strip().lower()\n            for row in selected\n        }\n\n        shipping_total = sum(\n            float(row["shipping_total"] or 0)\n            for row in shipping_rows\n            if str(row["source_name"] or "").strip().lower()\n            in selected_suppliers\n        )\n\n        parts_subtotal = 0.0\n        supplier_parts_total = 0.0\n        item_rows = []\n\n        for row in selected:\n            quantity = max(1, int(row["quantity"] or 1))\n            supplier_unit_cost = float(row["supplier_cost"] or 0)\n            customer_unit_price = calculate_customer_unit_price(\n                supplier_unit_cost\n            )\n            supplier_line_total = supplier_unit_cost * quantity\n            customer_line_total = customer_unit_price * quantity\n            line_profit = customer_line_total - supplier_line_total\n\n            description = (\n                str(row["requested_description"] or "").strip()\n                or str(row["oem_description"] or "").strip()\n                or "Part"\n            )\n\n            supplier_parts_total += supplier_line_total\n            parts_subtotal += customer_line_total\n\n            item_rows.append(\n                (\n                    row["part_id"],\n                    row["source_id"],\n                    quantity,\n                    description,\n                    row["supplier_name"],\n                    row["source_type"],\n                    row["brand"] or "",\n                    row["supplier_part_number"] or "",\n                    supplier_unit_cost,\n                    customer_unit_price,\n                    supplier_line_total,\n                    customer_line_total,\n                    line_profit,\n                )\n            )\n\n        customer_total = parts_subtotal + shipping_total\n        supplier_total = supplier_parts_total + shipping_total\n        profit_total = customer_total - supplier_total\n\n        cursor = connection.execute(\n            """\n            INSERT INTO quotes (\n                quote_number,\n                job_id,\n                quote_date,\n                status,\n                parts_subtotal,\n                shipping_total,\n                customer_total,\n                supplier_total,\n                profit_total\n            )\n            VALUES (?, ?, ?, \'DRAFT\', ?, ?, ?, ?, ?)\n            """,\n            (\n                quote_number,\n                job_id,\n                quote_date,\n                parts_subtotal,\n                shipping_total,\n                customer_total,\n                supplier_total,\n                profit_total,\n            ),\n        )\n        quote_id = cursor.lastrowid\n\n        for item in item_rows:\n            connection.execute(\n                """\n                INSERT INTO quote_items (\n                    quote_id,\n                    part_id,\n                    source_id,\n                    quantity,\n                    description,\n                    supplier_name,\n                    source_type,\n                    brand,\n                    supplier_part_number,\n                    supplier_unit_cost,\n                    customer_unit_price,\n                    supplier_line_total,\n                    customer_line_total,\n                    line_profit\n                )\n                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n                """,\n                (quote_id, *item),\n            )\n\n        connection.execute(\n            "UPDATE jobs SET status = \'QUOTED\' WHERE id = ?",\n            (job_id,),\n        )\n        connection.commit()\n\n    return RedirectResponse(\n        url=f"/quotes/{quote_id}/customer",\n        status_code=303,\n    )\n\n\ndef load_quote(connection: sqlite3.Connection, quote_id: int):\n    quote = connection.execute(\n        """\n        SELECT\n            quotes.*,\n            jobs.job_number,\n            jobs.customer,\n            jobs.company,\n            jobs.phone,\n            jobs.email,\n            jobs.manufacturer,\n            jobs.machine,\n            jobs.pin_serial\n        FROM quotes\n        JOIN jobs ON jobs.id = quotes.job_id\n        WHERE quotes.id = ?\n        """,\n        (quote_id,),\n    ).fetchone()\n\n    if quote is None:\n        raise HTTPException(status_code=404, detail="Quote not found.")\n\n    items = connection.execute(\n        """\n        SELECT *\n        FROM quote_items\n        WHERE quote_id = ?\n        ORDER BY id\n        """,\n        (quote_id,),\n    ).fetchall()\n\n    return quote, items\n\n\n@app.get("/quotes/{quote_id}/customer", response_class=HTMLResponse)\ndef customer_quote(request: Request, quote_id: int):\n    with closing(get_connection()) as connection:\n        quote, items = load_quote(connection, quote_id)\n\n    return templates.TemplateResponse(\n        request=request,\n        name="quote_customer.html",\n        context={\n            "quote": quote,\n            "items": items,\n            "active_page": "quotes",\n        },\n    )\n\n\n@app.get("/quotes/{quote_id}/internal", response_class=HTMLResponse)\ndef internal_quote(request: Request, quote_id: int):\n    with closing(get_connection()) as connection:\n        quote, items = load_quote(connection, quote_id)\n\n    return templates.TemplateResponse(\n        request=request,\n        name="quote_internal.html",\n        context={\n            "quote": quote,\n            "items": items,\n            "active_page": "quotes",\n        },\n    )\n\n\n' + "\n" + anchor, 1)
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.15-Quote-Engine/install_v015.py:52:    job = job.replace(marker, '\n<section class="panel quote-actions-panel">\n  <div class="panel-heading">\n    <div>\n      <p class="eyebrow">QUOTE</p>\n      <h2>Generate customer quote</h2>\n    </div>\n  </div>\n\n  {% if ready_for_quote %}\n  <p>\n    All {{ selected_count }} part source{{ "" if selected_count == 1 else "s" }}\n    selected.\n  </p>\n\n  <form method="post" action="/jobs/{{ job.id }}/generate-quote">\n    <button\n      class="button"\n      type="submit"\n      onclick="return confirm(\'Generate the quote using the currently selected supplier for every part?\');"\n    >\n      Generate Quote\n    </button>\n  </form>\n  {% else %}\n  <p class="muted">\n    Select one supplier source for every part before generating the quote.\n  </p>\n  {% endif %}\n</section>\n' + "\n" + marker, 1)
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.11-SIS-Cart-Import/payload/app.py:93:                selected_for_quote INTEGER NOT NULL DEFAULT 0,
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.11-SIS-Cart-Import/payload/app.py:151:            "CREATE INDEX IF NOT EXISTS idx_part_sources_selected ON part_sources(part_id, selected_for_quote)"
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.11-SIS-Cart-Import/payload/app.py:406:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.11-SIS-Cart-Import/payload/app.py:432:            if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.11-SIS-Cart-Import/payload/app.py:776:            "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.11-SIS-Cart-Import/payload/app.py:780:            "UPDATE part_sources SET selected_for_quote = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.11-SIS-Cart-Import/payload/app.py:812:            "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.11-SIS-Cart-Import/payload/app.py:819:        if source["selected_for_quote"]:
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.11-SIS-Cart-Import/payload/templates/job_detail.html:152:          <article class="source-option {% if source.selected_for_quote %}selected{% endif %}">
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.11-SIS-Cart-Import/payload/templates/job_detail.html:155:                {% if source.selected_for_quote %}●{% else %}○{% endif %}
+./PLG-Core-1.0-Alpha-1-Scaffold/PLG-Core-v0.11-SIS-Cart-Import/payload/templates/job_detail.html:161:                  {% if source.selected_for_quote %}<span class="selected-label">SELECTED</span>{% endif %}
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:4:from plg_core.documents.quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:99:                selected_for_quote INTEGER NOT NULL DEFAULT 0,
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:172:            "CREATE INDEX IF NOT EXISTS idx_part_sources_selected ON part_sources(part_id, selected_for_quote)"
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:763:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:789:            if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:1083:@app.post("/jobs/{job_id}/generate-quote")
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:1084:def generate_quote(job_id: int):
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:1110:               AND part_sources.selected_for_quote = 1
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:1131:                detail="Select one supplier source for every part first.",
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:1267:        generate_quote_pdfs(quote, pdf_items)
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:1484:        generate_quote_pdfs(quote,items)
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:1495:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:1504:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:1750:            "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:1754:            "UPDATE part_sources SET selected_for_quote = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:1786:            "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/legacy_app.py:1793:        if source["selected_for_quote"]:
+./archive/PLG-Core (1)/PLG-Core/templates/job_detail.html:152:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/templates/job_detail.html:163:    Select one supplier source for every part before generating the quote.
+./archive/PLG-Core (1)/PLG-Core/templates/job_detail.html:283:          <article class="source-option {% if source.selected_for_quote %}selected{% endif %}">
+./archive/PLG-Core (1)/PLG-Core/templates/job_detail.html:286:                {% if source.selected_for_quote %}●{% else %}○{% endif %}
+./archive/PLG-Core (1)/PLG-Core/templates/job_detail.html:292:                  {% if source.selected_for_quote %}<span class="selected-label">SELECTED</span>{% endif %}
+./archive/PLG-Core (1)/PLG-Core/templates/basket.html:229:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/templates/basket.html:270:    <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/plg_core/basket/service.py:392:                    selected_for_quote, source_url
+./archive/PLG-Core (1)/PLG-Core/plg_core/documents/quote_pdf.py:575:def generate_quote_pdfs(quote, items: Iterable) -> dict[str, str]:
+./archive/PLG-Core (1)/PLG-Core/plg_core/documents/__init__.py:1:from .quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
+./archive/PLG-Core (1)/PLG-Core/backup-sprint-1-20260802-141912/templates/job_detail.html:125:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-sprint-1-20260802-141912/templates/job_detail.html:136:    Select one supplier source for every part before generating the quote.
+./archive/PLG-Core (1)/PLG-Core/backup-sprint-1-20260802-141912/templates/job_detail.html:275:          <article class="source-option {% if source.selected_for_quote %}selected{% endif %}">
+./archive/PLG-Core (1)/PLG-Core/backup-sprint-1-20260802-141912/templates/job_detail.html:278:                {% if source.selected_for_quote %}●{% else %}○{% endif %}
+./archive/PLG-Core (1)/PLG-Core/backup-sprint-1-20260802-141912/templates/job_detail.html:284:                  {% if source.selected_for_quote %}<span class="selected-label">SELECTED</span>{% endif %}
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003A.2-20260802-153818/templates/job_detail.html:126:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003A.2-20260802-153818/templates/job_detail.html:137:    Select one supplier source for every part before generating the quote.
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003A.2-20260802-153818/templates/job_detail.html:276:          <article class="source-option {% if source.selected_for_quote %}selected{% endif %}">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003A.2-20260802-153818/templates/job_detail.html:279:                {% if source.selected_for_quote %}●{% else %}○{% endif %}
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003A.2-20260802-153818/templates/job_detail.html:285:                  {% if source.selected_for_quote %}<span class="selected-label">SELECTED</span>{% endif %}
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B-20260802-154804/templates/job_detail.html:126:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B-20260802-154804/templates/job_detail.html:137:    Select one supplier source for every part before generating the quote.
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B-20260802-154804/templates/job_detail.html:267:          <article class="source-option {% if source.selected_for_quote %}selected{% endif %}">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B-20260802-154804/templates/job_detail.html:270:                {% if source.selected_for_quote %}●{% else %}○{% endif %}
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B-20260802-154804/templates/job_detail.html:276:                  {% if source.selected_for_quote %}<span class="selected-label">SELECTED</span>{% endif %}
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B-20260802-154953/templates/job_detail.html:126:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B-20260802-154953/templates/job_detail.html:137:    Select one supplier source for every part before generating the quote.
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B-20260802-154953/templates/job_detail.html:267:          <article class="source-option {% if source.selected_for_quote %}selected{% endif %}">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B-20260802-154953/templates/job_detail.html:270:                {% if source.selected_for_quote %}●{% else %}○{% endif %}
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B-20260802-154953/templates/job_detail.html:276:                  {% if source.selected_for_quote %}<span class="selected-label">SELECTED</span>{% endif %}
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B.2-20260802-155814/templates/job_detail.html:154:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B.2-20260802-155814/templates/job_detail.html:165:    Select one supplier source for every part before generating the quote.
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B.2-20260802-155814/templates/job_detail.html:281:          <article class="source-option {% if source.selected_for_quote %}selected{% endif %}">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B.2-20260802-155814/templates/job_detail.html:284:                {% if source.selected_for_quote %}●{% else %}○{% endif %}
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B.2-20260802-155814/templates/job_detail.html:290:                  {% if source.selected_for_quote %}<span class="selected-label">SELECTED</span>{% endif %}
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B.4-20260802-161053/templates/job_detail.html:152:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B.4-20260802-161053/templates/job_detail.html:163:    Select one supplier source for every part before generating the quote.
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B.4-20260802-161053/templates/job_detail.html:279:          <article class="source-option {% if source.selected_for_quote %}selected{% endif %}">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B.4-20260802-161053/templates/job_detail.html:282:                {% if source.selected_for_quote %}●{% else %}○{% endif %}
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0003B.4-20260802-161053/templates/job_detail.html:288:                  {% if source.selected_for_quote %}<span class="selected-label">SELECTED</span>{% endif %}
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004C-20260802-172909/plg_core/basket/routes.py:97:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004C-20260802-172909/plg_core/basket/routes.py:102:        selected_count = sum(1 for part in parts if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], [])))
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004C-20260802-172909/plg_core/basket/service.py:384:                    selected_for_quote, source_url
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004C-20260802-172909/templates/basket.html:81:    <p>{% if ready_for_quote %}Every requested part has a selected source.{% else %}Select one supplier source for every requested part.{% endif %}</p></div>
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004C-20260802-172909/templates/basket.html:85:      <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004C-20260802-172909/templates/basket.html:125:            <article class="legacy-supplier-option {% if source.selected_for_quote %}selected{% endif %}">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004C-20260802-172909/templates/basket.html:126:              <div><div class="source-title-row"><strong>{{ source.supplier_name }}</strong><span class="source-type">{{ source.source_type }}</span>{% if source.selected_for_quote %}<span class="selected-label">SELECTED</span>{% endif %}</div>
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004C-20260802-172909/templates/basket.html:130:              <form method="post" action="/parts/{{ part.id }}/sources/{{ source.id }}/select"><button class="button {% if not source.selected_for_quote %}ghost{% endif %} small" type="submit">{% if source.selected_for_quote %}Selected{% else %}Select Source{% endif %}</button></form>
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004D-20260802-174907/legacy_app.py:97:                selected_for_quote INTEGER NOT NULL DEFAULT 0,
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004D-20260802-174907/legacy_app.py:155:            "CREATE INDEX IF NOT EXISTS idx_part_sources_selected ON part_sources(part_id, selected_for_quote)"
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004D-20260802-174907/legacy_app.py:552:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004D-20260802-174907/legacy_app.py:578:            if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004D-20260802-174907/legacy_app.py:872:@app.post("/jobs/{job_id}/generate-quote")
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004D-20260802-174907/legacy_app.py:873:def generate_quote(job_id: int):
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004D-20260802-174907/legacy_app.py:899:               AND part_sources.selected_for_quote = 1
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004D-20260802-174907/legacy_app.py:920:                detail="Select one supplier source for every part first.",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004D-20260802-174907/legacy_app.py:1340:            "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004D-20260802-174907/legacy_app.py:1344:            "UPDATE part_sources SET selected_for_quote = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004D-20260802-174907/legacy_app.py:1376:            "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004D-20260802-174907/legacy_app.py:1383:        if source["selected_for_quote"]:
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004E-20260802-183109/templates/basket.html:224:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004E-20260802-183109/templates/basket.html:265:    <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004E.1-20260802-183604/templates/basket.html:229:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004E.1-20260802-183604/templates/basket.html:270:    <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004F-20260802-184339/templates/basket.html:229:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004F-20260802-184339/templates/basket.html:270:    <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004F.1-20260802-184545/templates/basket.html:229:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004F.1-20260802-184545/templates/basket.html:270:    <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004F.2-20260802-194338/templates/basket.html:229:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004F.2-20260802-194338/templates/basket.html:270:    <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004G-20260802-210704/plg_core/basket/service.py:384:                    selected_for_quote, source_url
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004G-20260802-210704/templates/basket.html:229:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004G-20260802-210704/templates/basket.html:270:    <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004G-20260802-211500/plg_core/basket/service.py:392:                    selected_for_quote, source_url
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004G-20260802-211500/templates/basket.html:229:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004G-20260802-211500/templates/basket.html:270:    <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004G.1-20260802-212025/templates/basket.html:229:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0004G.1-20260802-212025/templates/basket.html:270:    <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0005A-20260802-225623/legacy_app.py:97:                selected_for_quote INTEGER NOT NULL DEFAULT 0,
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0005A-20260802-225623/legacy_app.py:155:            "CREATE INDEX IF NOT EXISTS idx_part_sources_selected ON part_sources(part_id, selected_for_quote)"
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0005A-20260802-225623/legacy_app.py:552:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0005A-20260802-225623/legacy_app.py:578:            if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0005A-20260802-225623/legacy_app.py:872:@app.post("/jobs/{job_id}/generate-quote")
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0005A-20260802-225623/legacy_app.py:873:def generate_quote(job_id: int):
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0005A-20260802-225623/legacy_app.py:899:               AND part_sources.selected_for_quote = 1
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0005A-20260802-225623/legacy_app.py:920:                detail="Select one supplier source for every part first.",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0005A-20260802-225623/legacy_app.py:1340:            "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0005A-20260802-225623/legacy_app.py:1344:            "UPDATE part_sources SET selected_for_quote = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0005A-20260802-225623/legacy_app.py:1376:            "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0005A-20260802-225623/legacy_app.py:1383:        if source["selected_for_quote"]:
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0005B-20260802-234510/plg_core/documents/quote_pdf.py:107:def generate_quote_pdfs(quote, items):
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:4:from plg_core.documents.quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:98:                selected_for_quote INTEGER NOT NULL DEFAULT 0,
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:156:            "CREATE INDEX IF NOT EXISTS idx_part_sources_selected ON part_sources(part_id, selected_for_quote)"
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:553:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:579:            if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:873:@app.post("/jobs/{job_id}/generate-quote")
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:874:def generate_quote(job_id: int):
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:900:               AND part_sources.selected_for_quote = 1
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:921:                detail="Select one supplier source for every part first.",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:1057:        generate_quote_pdfs(quote, pdf_items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:1108:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:1118:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:1127:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:1373:            "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:1377:            "UPDATE part_sources SET selected_for_quote = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:1409:            "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006A-20260803-001608/legacy_app.py:1416:        if source["selected_for_quote"]:
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:4:from plg_core.documents.quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:98:                selected_for_quote INTEGER NOT NULL DEFAULT 0,
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:156:            "CREATE INDEX IF NOT EXISTS idx_part_sources_selected ON part_sources(part_id, selected_for_quote)"
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:586:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:612:            if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:906:@app.post("/jobs/{job_id}/generate-quote")
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:907:def generate_quote(job_id: int):
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:933:               AND part_sources.selected_for_quote = 1
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:954:                detail="Select one supplier source for every part first.",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:1090:        generate_quote_pdfs(quote, pdf_items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:1141:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:1151:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:1160:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:1406:            "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:1410:            "UPDATE part_sources SET selected_for_quote = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:1442:            "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006B-20260803-003421/legacy_app.py:1449:        if source["selected_for_quote"]:
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:4:from plg_core.documents.quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:98:                selected_for_quote INTEGER NOT NULL DEFAULT 0,
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:156:            "CREATE INDEX IF NOT EXISTS idx_part_sources_selected ON part_sources(part_id, selected_for_quote)"
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:787:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:813:            if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:1107:@app.post("/jobs/{job_id}/generate-quote")
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:1108:def generate_quote(job_id: int):
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:1134:               AND part_sources.selected_for_quote = 1
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:1155:                detail="Select one supplier source for every part first.",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:1291:        generate_quote_pdfs(quote, pdf_items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:1342:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:1352:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:1361:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:1607:            "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:1611:            "UPDATE part_sources SET selected_for_quote = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:1643:            "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0006C-20260803-005942/legacy_app.py:1650:        if source["selected_for_quote"]:
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:4:from plg_core.documents.quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:98:                selected_for_quote INTEGER NOT NULL DEFAULT 0,
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:156:            "CREATE INDEX IF NOT EXISTS idx_part_sources_selected ON part_sources(part_id, selected_for_quote)"
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:690:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:716:            if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:1010:@app.post("/jobs/{job_id}/generate-quote")
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:1011:def generate_quote(job_id: int):
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:1037:               AND part_sources.selected_for_quote = 1
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:1058:                detail="Select one supplier source for every part first.",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:1194:        generate_quote_pdfs(quote, pdf_items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:1245:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:1255:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:1264:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:1510:            "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:1514:            "UPDATE part_sources SET selected_for_quote = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:1546:            "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007A-20260803-012559/legacy_app.py:1553:        if source["selected_for_quote"]:
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:4:from plg_core.documents.quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:98:                selected_for_quote INTEGER NOT NULL DEFAULT 0,
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:156:            "CREATE INDEX IF NOT EXISTS idx_part_sources_selected ON part_sources(part_id, selected_for_quote)"
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:690:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:716:            if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1010:@app.post("/jobs/{job_id}/generate-quote")
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1011:def generate_quote(job_id: int):
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1037:               AND part_sources.selected_for_quote = 1
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1058:                detail="Select one supplier source for every part first.",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1194:        generate_quote_pdfs(quote, pdf_items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1247:                SUM(CASE WHEN part_sources.selected_for_quote=1 THEN 1 ELSE 0 END) AS selected_lines,
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1251:                        WHEN part_sources.selected_for_quote=1
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1270:                SUM(CASE WHEN selected_for_quote=1 THEN 1 ELSE 0 END) AS selected_total
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1281:            WHERE part_sources.selected_for_quote=1
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1334:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1344:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1353:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1599:            "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1603:            "UPDATE part_sources SET selected_for_quote = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1635:            "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-020358/legacy_app.py:1642:        if source["selected_for_quote"]:
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:4:from plg_core.documents.quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:98:                selected_for_quote INTEGER NOT NULL DEFAULT 0,
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:156:            "CREATE INDEX IF NOT EXISTS idx_part_sources_selected ON part_sources(part_id, selected_for_quote)"
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:690:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:716:            if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1010:@app.post("/jobs/{job_id}/generate-quote")
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1011:def generate_quote(job_id: int):
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1037:               AND part_sources.selected_for_quote = 1
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1058:                detail="Select one supplier source for every part first.",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1194:        generate_quote_pdfs(quote, pdf_items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1247:                SUM(CASE WHEN part_sources.selected_for_quote=1 THEN 1 ELSE 0 END) AS selected_lines,
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1251:                        WHEN part_sources.selected_for_quote=1
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1270:                SUM(CASE WHEN selected_for_quote=1 THEN 1 ELSE 0 END) AS selected_total
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1281:            WHERE part_sources.selected_for_quote=1
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1334:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1344:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1353:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1599:            "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1603:            "UPDATE part_sources SET selected_for_quote = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1635:            "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0007B-20260803-021045/legacy_app.py:1642:        if source["selected_for_quote"]:
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:4:from plg_core.documents.quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:98:                selected_for_quote INTEGER NOT NULL DEFAULT 0,
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:171:            "CREATE INDEX IF NOT EXISTS idx_part_sources_selected ON part_sources(part_id, selected_for_quote)"
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:713:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:739:            if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:1033:@app.post("/jobs/{job_id}/generate-quote")
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:1034:def generate_quote(job_id: int):
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:1060:               AND part_sources.selected_for_quote = 1
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:1081:                detail="Select one supplier source for every part first.",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:1217:        generate_quote_pdfs(quote, pdf_items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:1338:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:1348:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:1357:        generate_quote_pdfs(quote, items)
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:1603:            "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:1607:            "UPDATE part_sources SET selected_for_quote = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:1639:            "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
+./archive/PLG-Core (1)/PLG-Core/backup-commit-0009-20260803-031141/legacy_app.py:1646:        if source["selected_for_quote"]:
+./releases/commits/PLG-Core-Commit-0004B.1-Restore-Sourcing-Details/install_commit_0004B_1.py:41:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./releases/commits/PLG-Core-Commit-0004B.1-Restore-Sourcing-Details/install_commit_0004B_1.py:46:        selected_count = sum(1 for part in parts if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], [])))
+./releases/commits/PLG-Core-Commit-0004B.1-Restore-Sourcing-Details/payload/templates/insert.html:21:    <p>{% if ready_for_quote %}Every requested part has a selected source.{% else %}Select one supplier source for every requested part.{% endif %}</p></div>
+./releases/commits/PLG-Core-Commit-0004B.1-Restore-Sourcing-Details/payload/templates/insert.html:25:      <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./releases/commits/PLG-Core-Commit-0004B.1-Restore-Sourcing-Details/payload/templates/insert.html:65:            <article class="legacy-supplier-option {% if source.selected_for_quote %}selected{% endif %}">
+./releases/commits/PLG-Core-Commit-0004B.1-Restore-Sourcing-Details/payload/templates/insert.html:66:              <div><div class="source-title-row"><strong>{{ source.supplier_name }}</strong><span class="source-type">{{ source.source_type }}</span>{% if source.selected_for_quote %}<span class="selected-label">SELECTED</span>{% endif %}</div>
+./releases/commits/PLG-Core-Commit-0004B.1-Restore-Sourcing-Details/payload/templates/insert.html:70:              <form method="post" action="/parts/{{ part.id }}/sources/{{ source.id }}/select"><button class="button {% if not source.selected_for_quote %}ghost{% endif %} small" type="submit">{% if source.selected_for_quote %}Selected{% else %}Select Source{% endif %}</button></form>
+./releases/commits/PLG-Core-Commit-0004D-Streamlined-Job-to-Quote-Flow/payload/templates/basket.html:224:  <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./releases/commits/PLG-Core-Commit-0004D-Streamlined-Job-to-Quote-Flow/payload/templates/basket.html:265:    <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+./releases/commits/PLG-Core-Commit-0005A-Professional-Quote-PDFs/payload/plg_core/documents/__init__.py:1:from .quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
+./releases/commits/PLG-Core-Commit-0005A-Professional-Quote-PDFs/payload/plg_core/documents/quote_pdf.py:107:def generate_quote_pdfs(quote, items):
+./releases/commits/PLG-Core-Commit-0005A-Professional-Quote-PDFs/install_commit_0005A.py:68:    import_line = "from plg_core.documents.quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name"
+./releases/commits/PLG-Core-Commit-0005A-Professional-Quote-PDFs/install_commit_0005A.py:86:        "        generate_quote_pdfs(quote, pdf_items)\n\n"
+./releases/commits/PLG-Core-Commit-0005A-Professional-Quote-PDFs/install_commit_0005A.py:109:        generate_quote_pdfs(quote, items)
+./releases/commits/PLG-Core-Commit-0005A-Professional-Quote-PDFs/install_commit_0005A.py:119:        generate_quote_pdfs(quote, items)
+./releases/commits/PLG-Core-Commit-0005A-Professional-Quote-PDFs/install_commit_0005A.py:128:        generate_quote_pdfs(quote, items)
+./releases/commits/PLG-Core-Commit-0005A-Professional-Quote-PDFs/install_commit_0005A.py:153:            "from legacy_app import get_connection,load_quote; from plg_core.documents.quote_pdf import generate_quote_pdfs; c=get_connection(); r=c.execute('SELECT id FROM quotes ORDER BY id DESC LIMIT 1').fetchone(); assert r; q,i=load_quote(c,r['id']); p=generate_quote_pdfs(q,i); from pathlib import Path; assert Path(p['customer']).exists() and Path(p['internal']).exists(); c.close()",
+./releases/commits/PLG-Core-Commit-0005B-Corporate-Quote-Standard/install_commit_0005B.py:47:                "from plg_core.documents.quote_pdf import generate_quote_pdfs; "
+./releases/commits/PLG-Core-Commit-0005B-Corporate-Quote-Standard/install_commit_0005B.py:50:                "[generate_quote_pdfs(*load_quote(conn,qid)) for qid in ids]; "
+./releases/commits/PLG-Core-Commit-0005B-Corporate-Quote-Standard/payload/plg_core/documents/quote_pdf.py:575:def generate_quote_pdfs(quote, items: Iterable) -> dict[str, str]:
+./releases/commits/PLG-Core-Commit-0007A-Quotes-Suppliers-Navigation/install_commit_0007A.py:47:    supplier_route = '@app.get("/suppliers", response_class=HTMLResponse)\ndef list_suppliers(request: Request):\n    with closing(get_connection()) as connection:\n        supplier_rows = connection.execute(\n            """\n            SELECT\n                part_sources.supplier_name AS name,\n                COUNT(part_sources.id) AS source_lines,\n                SUM(CASE WHEN part_sources.selected_for_quote=1 THEN 1 ELSE 0 END) AS selected_lines,\n                COUNT(DISTINCT job_parts.job_id) AS jobs_count,\n                COALESCE(SUM(\n                    CASE\n                        WHEN part_sources.selected_for_quote=1\n                        THEN part_sources.supplier_cost * job_parts.quantity\n                        ELSE 0\n                    END\n                ), 0) AS quoted_spend,\n                MAX(part_sources.updated_at) AS last_used\n            FROM part_sources\n            JOIN job_parts ON job_parts.id=part_sources.part_id\n            WHERE TRIM(COALESCE(part_sources.supplier_name, \'\')) != \'\'\n            GROUP BY LOWER(TRIM(part_sources.supplier_name))\n            ORDER BY part_sources.supplier_name COLLATE NOCASE\n            """\n        ).fetchall()\n\n        summary_row = connection.execute(\n            """\n            SELECT\n                COUNT(DISTINCT LOWER(TRIM(supplier_name))) AS suppliers_total,\n                COUNT(id) AS parts_total,\n                SUM(CASE WHEN selected_for_quote=1 THEN 1 ELSE 0 END) AS selected_total\n            FROM part_sources\n            WHERE TRIM(COALESCE(supplier_name, \'\')) != \'\'\n            """\n        ).fetchone()\n\n        spend_row = connection.execute(\n            """\n            SELECT COALESCE(SUM(part_sources.supplier_cost * job_parts.quantity), 0) AS spend_total\n            FROM part_sources\n            JOIN job_parts ON job_parts.id=part_sources.part_id\n            WHERE part_sources.selected_for_quote=1\n            """\n        ).fetchone()\n\n        summary = {\n            "suppliers_total": int(summary_row["suppliers_total"] or 0),\n            "parts_total": int(summary_row["parts_total"] or 0),\n            "selected_total": int(summary_row["selected_total"] or 0),\n            "spend_total": float(spend_row["spend_total"] or 0),\n        }\n\n    return templates.TemplateResponse(\n        request=request,\n        name="suppliers.html",\n        context={\n            "suppliers": supplier_rows,\n            "summary": summary,\n            "active_page": "suppliers",\n        },\n    )\n\n\n'
+./releases/commits/PLG-Core-Commit-0009-Invoice-Foundation/install_commit_0009.py:29:    qimp='from plg_core.documents.quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name'
+./releases/commits/PLG-Core-Commit-0009-Invoice-Foundation/install_commit_0009.py:60:    for old,new in [('generate_quote_pdfs','generate_invoice_pdfs'),('quote_paths','invoice_paths'),('quote_number','invoice_number'),('quote_date','invoice_date'),('"Quotes"','"Invoices"'),("'Quotes'","'Invoices'"),('QUOTE','INVOICE'),('Quote','Invoice'),('quote','invoice')]: pdf=pdf.replace(old,new)
+./releases/sprints/PLG-Core-Sprint-1-Integration-Build/payload/plg_core/basket/service.py:384:                    selected_for_quote, source_url
+./legacy_app.py:4:from plg_core.documents.quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
+./legacy_app.py:100:                selected_for_quote INTEGER NOT NULL DEFAULT 0,
+./legacy_app.py:173:            "CREATE INDEX IF NOT EXISTS idx_part_sources_selected ON part_sources(part_id, selected_for_quote)"
+./legacy_app.py:1147:            ORDER BY part_sources.part_id, part_sources.selected_for_quote DESC, part_sources.id
+./legacy_app.py:1173:            if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
+./legacy_app.py:1467:@app.post("/jobs/{job_id}/generate-quote")
+./legacy_app.py:1468:def generate_quote(job_id: int):
+./legacy_app.py:1494:               AND part_sources.selected_for_quote = 1
+./legacy_app.py:1515:                detail="Select one supplier source for every part first.",
+./legacy_app.py:1651:        generate_quote_pdfs(quote, pdf_items)
+./legacy_app.py:1868:        generate_quote_pdfs(quote,items)
+./legacy_app.py:1879:        generate_quote_pdfs(quote, items)
+./legacy_app.py:1888:        generate_quote_pdfs(quote, items)
+./legacy_app.py:2134:            "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
+./legacy_app.py:2138:            "UPDATE part_sources SET selected_for_quote = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+./legacy_app.py:2170:            "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
+./legacy_app.py:2177:        if source["selected_for_quote"]:

@@ -146,7 +146,7 @@ def update_item(item_id: int, payload: BasketItemUpdate):
     allowed = {
         "requested_description", "manufacturer_part_number",
         "supplier_part_number", "supplier_name", "source_type",
-        "brand", "quantity", "supplier_unit_cost", "markup_percent", "availability",
+        "brand", "quantity", "supplier_unit_cost", "markup_percent", "part_status", "availability",
         "lead_time", "selected", "confidence", "source_url",
     }
 

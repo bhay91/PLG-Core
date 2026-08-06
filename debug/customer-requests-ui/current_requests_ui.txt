@@ -1,0 +1,1337 @@
+===== REQUEST LIST TEMPLATE =====
+{% extends "base.html" %}
+{% block title %}Customer Requests · PartsLink Global{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/customer_requests.css">
+
+<section class="workspace-heading request-page-heading">
+  <div>
+    <p class="eyebrow">DAILY WORK</p>
+    <h1>Customer Requests</h1>
+    <p>Record inquiries now and complete the missing information later.</p>
+  </div>
+  <a class="button" href="/requests/new">＋ New Request</a>
+</section>
+
+<section class="panel request-queue-panel">
+  <form class="request-toolbar" method="get" action="/requests">
+    <label class="request-search">
+      <span aria-hidden="true">⌕</span>
+      <input name="q" value="{{ q }}" placeholder="Search requests">
+    </label>
+
+    <div class="request-filters" role="group" aria-label="Filter customer requests">
+      {% for value, label in [('ALL','All'),('NEW','New'),('WAITING','Waiting'),('READY','Ready'),('COMPLETED','Completed')] %}
+      <button type="submit" name="status" value="{{ value }}" class="request-filter {% if status == value %}active{% endif %}">{{ label }}</button>
+      {% endfor %}
+    </div>
+  </form>
+
+  {% if requests %}
+  <div class="request-list">
+    {% for item in requests %}
+    <a class="request-card" href="/requests/{{ item.id }}">
+      <div class="request-card-content">
+        <div class="request-card-topline">
+          <span class="request-status status-{{ item.status|lower }}">{{ item.status }}</span>
+          <span class="request-number">{{ item.request_number }}</span>
+        </div>
+
+        <h2 class="request-customer">{{ item.company_name or item.individual_name or item.phone or 'Unknown Customer' }}</h2>
+        <p class="request-summary">{{ (item.request_text or 'Attachment only')[:180] }}{% if item.request_text and item.request_text|length > 180 %}…{% endif %}</p>
+
+        <div class="request-card-meta">
+          {% if item.reminder_date %}
+          <span class="request-meta-item {% if item.reminder_date <= today and item.status != 'COMPLETED' %}reminder-due{% endif %}">
+            <span aria-hidden="true">◷</span> Reminder {{ item.reminder_date }}
+          </span>
+          {% endif %}
+          {% if item.attachment_count %}
+          <span class="request-meta-item"><span aria-hidden="true">⌕</span> {{ item.attachment_count }} attachment{% if item.attachment_count != 1 %}s{% endif %}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="request-card-open">
+        <span>Open Request</span>
+        <span aria-hidden="true">→</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state request-empty-state">
+    <div class="empty-state-icon" aria-hidden="true">▤</div>
+    <h2>No customer requests found</h2>
+    <p>Save a message, screenshot, phone inquiry, or reminder here so it does not get forgotten.</p>
+    <a class="button" href="/requests/new">＋ New Request</a>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+===== REQUEST DETAIL TEMPLATE =====
+{% extends "base.html" %}
+{% block title %}{{ record.request_number }} · PartsLink Global{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/customer_requests.css">
+
+<section class="workspace-heading request-detail-heading">
+  <div>
+    <p class="eyebrow">CUSTOMER REQUEST</p>
+    <h1>{{ record.company_name or record.individual_name or record.phone or 'Waiting for contact information' }}</h1>
+    <p>{{ record.request_number }}</p>
+  </div>
+  <div class="page-actions">
+    <a class="button ghost" href="/requests">Back to Requests</a>
+    <a class="button" href="/requests/{{ record.id }}/edit">Edit Request</a>
+  </div>
+</section>
+
+<div class="request-detail-grid">
+  <section class="panel request-main-panel">
+    <div class="panel-heading request-panel-heading">
+      <div><p class="eyebrow">REQUEST</p><h2>Customer Request</h2></div>
+      <span class="request-status status-{{ record.status|lower }}">{{ record.status }}</span>
+    </div>
+    <div class="request-message">{{ record.request_text or 'No message entered.' }}</div>
+  </section>
+
+  <section class="panel request-contact-panel">
+    <p class="eyebrow">CONTACT</p>
+    <h2>Quick Contact</h2>
+    <dl class="detail-list">
+      <dt>Individual</dt><dd>{{ record.individual_name or '—' }}</dd>
+      <dt>Company</dt><dd>{{ record.company_name or '—' }}</dd>
+      <dt>Phone</dt><dd>{{ record.phone or '—' }}</dd>
+      <dt>Email</dt><dd>{{ record.email or '—' }}</dd>
+      <dt>Location</dt><dd>{{ record.location or '—' }}</dd>
+      <dt>Reminder</dt><dd class="{% if record.reminder_date and record.reminder_date <= today and record.status != 'COMPLETED' %}reminder-due{% endif %}">{{ record.reminder_date or '—' }}</dd>
+    </dl>
+  </section>
+</div>
+
+<section class="panel request-files-panel">
+  <div class="panel-heading request-panel-heading">
+    <div><p class="eyebrow">FILES</p><h2>Photos / Screenshots</h2></div>
+    {% if attachments %}<span class="attachment-count">{{ attachments|length }} file{% if attachments|length != 1 %}s{% endif %}</span>{% endif %}
+  </div>
+  {% if attachments %}
+  <div class="attachment-list">
+    {% for file in attachments %}
+    <div class="attachment-row">
+      <a class="attachment-link" href="/requests/{{ record.id }}/attachments/{{ file.id }}">
+        <span class="attachment-icon" aria-hidden="true">▧</span><span>{{ file.original_filename }}</span>
+      </a>
+      <form method="post" action="/requests/{{ record.id }}/attachments/{{ file.id }}/delete" onsubmit="return confirm('Delete this attachment?')">
+        <button class="link-button danger" type="submit">Delete</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}<p class="muted-copy">No files uploaded.</p>{% endif %}
+</section>
+
+<section class="panel job-ready-panel" id="next-steps">
+  <div class="panel-heading request-panel-heading">
+    <div><p class="eyebrow">NEXT STEPS</p><h2>Get Job Ready</h2><p class="muted-copy">Use the information once. PLG carries it into the customer, Registry, and Job.</p></div>
+  </div>
+
+  <form method="post" action="/requests/{{ record.id }}/prepare" class="job-ready-details">
+    <div class="two-column">
+      <label>What are we working on?
+        <select name="registry_type">
+          {% for value, label in registry_types.items() %}<option value="{{ value }}" {% if record.registry_type == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Year<input name="year" value="{{ record.year or '' }}"></label>
+    </div>
+    <div class="two-column">
+      <label>Manufacturer<input name="manufacturer" value="{{ record.manufacturer or '' }}" placeholder="CAT, Honda, Cummins..."></label>
+      <label>Model<input name="model" value="{{ record.model or '' }}" placeholder="420D, CR-V, N14..."></label>
+    </div>
+    <label>VIN / PIN / Serial<input name="identifier" value="{{ record.identifier or '' }}"></label>
+    <label>Parts Needed
+      <textarea name="requested_parts" rows="4" placeholder="Enter one requested part per line">{{ record.requested_parts or '' }}</textarea>
+    </label>
+    <div class="form-actions"><button class="button ghost" type="submit">Save Job Details</button></div>
+  </form>
+
+  <div class="job-ready-steps">
+    <article class="job-ready-step {% if customer %}complete{% endif %}">
+      <div class="step-number">1</div>
+      <div class="step-content">
+        <h3>Customer</h3>
+        {% if customer %}
+          <p class="step-success">✓ Linked: {{ customer.company or customer.name }}{% if customer.company and customer.name %} — {{ customer.name }}{% endif %}</p>
+          <a class="text-link" href="/customers/{{ customer.id }}">Open Customer</a>
+        {% else %}
+          <p>Create from the contact above, or link an existing customer.</p>
+          <div class="step-actions">
+            <form method="post" action="/requests/{{ record.id }}/customer/create"><button class="button" type="submit">Create Customer</button></form>
+            <form method="post" action="/requests/{{ record.id }}/customer/link" class="inline-link-form">
+              <select name="customer_id" required><option value="">Link existing...</option>{% for item in customers %}<option value="{{ item.id }}">{{ item.company or item.name }}{% if item.company and item.name %} — {{ item.name }}{% endif %}</option>{% endfor %}</select>
+              <button class="button ghost" type="submit">Link</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+    </article>
+
+    <article class="job-ready-step {% if machine %}complete{% endif %}">
+      <div class="step-number">2</div>
+      <div class="step-content">
+        <h3>Registry</h3>
+        {% if machine %}
+          <p class="step-success">✓ Linked: {{ machine.manufacturer }} {{ machine.model or machine.name }}{% if machine.vin_pin_serial %} — {{ machine.vin_pin_serial }}{% endif %}</p>
+          <a class="text-link" href="/machines/{{ machine.id }}">Open Registry Item</a>
+        {% elif not customer %}
+          <p class="step-muted">Create or link the customer first.</p>
+        {% else %}
+          <p>Register the item above, or link one already saved for this customer.</p>
+          <div class="step-actions">
+            <form method="post" action="/requests/{{ record.id }}/registry/create"><button class="button" type="submit">Register Item</button></form>
+            {% if machines %}
+            <form method="post" action="/requests/{{ record.id }}/registry/link" class="inline-link-form">
+              <select name="machine_id" required><option value="">Link existing...</option>{% for item in machines %}<option value="{{ item.id }}">{{ item.manufacturer }} {{ item.model or item.name }}{% if item.vin_pin_serial %} — {{ item.vin_pin_serial }}{% endif %}</option>{% endfor %}</select>
+              <button class="button ghost" type="submit">Link</button>
+            </form>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    </article>
+
+    <article class="job-ready-step {% if job %}complete{% endif %}">
+      <div class="step-number">3</div>
+      <div class="step-content">
+        <h3>Job</h3>
+        {% if job %}
+          <p class="step-success">✓ Created: {{ job.job_number }}</p>
+          <a class="button" href="/jobs/{{ job.id }}/basket">Open Job</a>
+        {% elif not customer %}
+          <p class="step-muted">Create or link the customer first.</p>
+        {% else %}
+          <p>Create the Job with the linked customer, Registry item, request message, and parts needed.</p>
+          <form method="post" action="/requests/{{ record.id }}/job/create"><button class="button" type="submit">Create Job</button></form>
+        {% endif %}
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="panel request-status-panel">
+  <div class="panel-heading request-panel-heading"><div><p class="eyebrow">STATUS</p><h2>Request Status</h2></div></div>
+  <form method="post" action="/requests/{{ record.id }}/status" class="status-actions">
+    <button name="status" value="NEW" class="status-action {% if record.status == 'NEW' %}active{% endif %}">New</button>
+    <button name="status" value="WAITING" class="status-action {% if record.status == 'WAITING' %}active{% endif %}">Waiting</button>
+    <button name="status" value="READY" class="status-action {% if record.status == 'READY' %}active{% endif %}">Ready</button>
+    <button name="status" value="COMPLETED" class="status-action {% if record.status == 'COMPLETED' %}active{% endif %}">Completed</button>
+  </form>
+</section>
+
+<section class="danger-zone">
+  <form method="post" action="/requests/{{ record.id }}/delete" onsubmit="return confirm('Delete this customer request and its attachments?')">
+    <button class="button danger" type="submit">Delete Request</button>
+  </form>
+</section>
+{% endblock %}
+
+===== REQUEST FORM TEMPLATE =====
+{% extends "base.html" %}
+{% block title %}{{ title }} · PartsLink Global{% endblock %}
+<link rel="stylesheet" href="/static/customer_requests.css">
+
+{% block content %}
+<section class="workspace-heading">
+  <div>
+    <p class="eyebrow">CUSTOMER REQUESTS</p>
+    <h1>{{ title }}</h1>
+    <p>
+      Enter the information once. PLG carries it into the customer,
+      Registry item, Job, Quote, and Invoice.
+    </p>
+  </div>
+</section>
+
+<form
+  method="post"
+  action="{{ form_action }}"
+  enctype="multipart/form-data"
+  class="panel form-grid request-form request-form-v2"
+>
+  <section class="form-section full request-v2-section">
+    <div class="request-v2-heading">
+      <p class="eyebrow">CUSTOMER</p>
+      <h2>Who is requesting the parts?</h2>
+    </div>
+
+    <div class="two-column">
+      <label>
+        Individual Name
+        <input name="individual_name"
+               value="{{ record.individual_name or '' }}">
+      </label>
+
+      <label>
+        Company Name
+        <input name="company_name"
+               value="{{ record.company_name or '' }}">
+      </label>
+    </div>
+
+    <div class="two-column">
+      <label>
+        Phone
+        <input name="phone"
+               value="{{ record.phone or '' }}">
+      </label>
+
+      <label>
+        Email
+        <input type="email"
+               name="email"
+               value="{{ record.email or '' }}">
+      </label>
+    </div>
+
+    <label>
+      Location / Shipping Destination
+      <input name="location"
+             value="{{ record.location or '' }}">
+    </label>
+  </section>
+
+  <section class="form-section full request-v2-section">
+    <div class="request-v2-heading">
+      <p class="eyebrow">MACHINE / VEHICLE / ENGINE</p>
+      <h2>What are we sourcing parts for?</h2>
+    </div>
+
+    <div class="two-column">
+      <label>
+        Registry Type
+        <select name="registry_type">
+          {% for value, label in registry_types.items() %}
+          <option value="{{ value }}"
+            {% if (record.registry_type or 'other') == value %}selected{% endif %}>
+            {{ label }}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        Year
+        <input name="year"
+               value="{{ record.year or '' }}">
+      </label>
+    </div>
+
+    <div class="two-column">
+      <label>
+        Manufacturer
+        <input name="manufacturer"
+               value="{{ record.manufacturer or '' }}">
+      </label>
+
+      <label>
+        Model
+        <input name="model"
+               value="{{ record.model or '' }}">
+      </label>
+    </div>
+
+    <label>
+      VIN / PIN / Engine Serial / Identifier
+      <input name="identifier"
+             value="{{ record.identifier or '' }}">
+    </label>
+  </section>
+
+  <section class="form-section full request-v2-section">
+    <div class="request-v2-heading">
+      <p class="eyebrow">REQUESTED PARTS</p>
+      <h2>What does the customer need?</h2>
+    </div>
+
+    <label>
+      Parts Needed
+      <textarea name="requested_parts"
+                rows="6"
+                placeholder="Enter one requested part per line">{{ record.requested_parts or '' }}</textarea>
+    </label>
+  </section>
+
+  <section class="form-section full request-v2-section">
+    <div class="request-v2-heading">
+      <p class="eyebrow">CUSTOMER MESSAGE</p>
+      <h2>Original request or additional details</h2>
+    </div>
+
+    <label>
+      Customer Request
+      <textarea name="request_text"
+                rows="6"
+                placeholder="Paste the customer's WhatsApp message, email, or notes here...">{{ record.request_text or '' }}</textarea>
+    </label>
+  </section>
+
+  <section class="form-section full request-v2-section">
+    <div class="request-v2-heading">
+      <p class="eyebrow">ATTACHMENTS</p>
+      <h2>Photos, screenshots, or documents</h2>
+    </div>
+
+    <label>
+      Files
+      <input type="file"
+             name="attachments"
+             multiple
+             accept="image/*,.pdf">
+    </label>
+  </section>
+
+  <details class="form-section full request-optional"
+    {% if record.reminder_date %}open{% endif %}>
+    <summary>Reminder (optional)</summary>
+
+    <label>
+      Reminder Date
+      <input type="date"
+             name="reminder_date"
+             value="{{ record.reminder_date or '' }}">
+    </label>
+  </details>
+
+  {% if record.id %}
+  <div class="form-section full">
+    <label>
+      Status
+      <select name="status">
+        <option value="NEW"
+          {% if record.status == 'NEW' %}selected{% endif %}>
+          New
+        </option>
+        <option value="WAITING"
+          {% if record.status == 'WAITING' %}selected{% endif %}>
+          Waiting
+        </option>
+        <option value="READY"
+          {% if record.status == 'READY' %}selected{% endif %}>
+          Ready
+        </option>
+        <option value="COMPLETED"
+          {% if record.status == 'COMPLETED' %}selected{% endif %}>
+          Completed
+        </option>
+      </select>
+    </label>
+  </div>
+  {% endif %}
+
+  <div class="form-actions full">
+    <a class="button ghost" href="{{ cancel_url }}">Cancel</a>
+
+    <button class="button" type="submit">
+      {% if record.id %}
+        Save Request Changes
+      {% else %}
+        Save Customer Request
+      {% endif %}
+    </button>
+  </div>
+</form>
+{% endblock %}
+
+===== SMART INTAKE TEMPLATE =====
+{% extends "base.html" %}
+{% block title %}Smart Intake · PartsLink Global{% endblock %}
+<link rel="stylesheet" href="/static/customer_requests.css">
+
+{% block content %}
+<section class="workspace-heading">
+  <div>
+    <p class="eyebrow">CUSTOMER REQUESTS</p>
+    <h1>Smart Intake</h1>
+    <p>
+      Paste the information once. PLG extracts, matches, saves,
+      and creates the job.
+    </p>
+  </div>
+</section>
+
+<section class="panel smart-intake-panel">
+  <form
+    method="post"
+    action="/requests/smart-intake/analyze"
+    class="smart-intake-paste"
+  >
+    <label>
+      Paste Customer Request
+      <textarea
+        name="raw_text"
+        rows="16"
+        required
+        placeholder="Customer: Marcus Rolle&#10;Phone: 242-555-0198&#10;Location: George Town, Exuma&#10;Registry Type: Heavy Equipment&#10;Manufacturer: Caterpillar&#10;Model: 420D Backhoe Loader&#10;Identifier: FDP12345&#10;&#10;Requested Parts:&#10;Water pump&#10;Upper radiator hose"
+      >{{ raw_text or "" }}</textarea>
+    </label>
+
+    <div class="form-actions">
+      <a class="button ghost" href="/requests">Cancel</a>
+      <button class="button" type="submit">
+        Analyze Request
+      </button>
+    </div>
+  </form>
+</section>
+
+{% if parsed %}
+<form
+  method="post"
+  action="/requests/smart-intake/create"
+  class="smart-intake-review"
+>
+  <input type="hidden" name="raw_text" value="{{ raw_text }}">
+
+  <section class="panel smart-intake-match-grid">
+    <article class="smart-match-card">
+      <p class="eyebrow">CUSTOMER</p>
+
+      {% if customer_match %}
+      <div class="smart-match-state matched">
+        ✓ Existing customer
+      </div>
+      <h2>{{ customer_match.name }}</h2>
+      <p>{{ customer_match.phone or "No phone saved" }}</p>
+      {% else %}
+      <div class="smart-match-state new">
+        ＋ New customer
+      </div>
+      <h2>{{ parsed.individual_name or parsed.company_name or "Missing customer" }}</h2>
+      {% endif %}
+    </article>
+
+    <article class="smart-match-card">
+      <p class="eyebrow">LOCATION</p>
+
+      {% if location_match %}
+      <div class="smart-match-state matched">
+        ✓ Existing location
+      </div>
+      <h2>{{ location_match.location_name }}</h2>
+      {% elif parsed.location %}
+      <div class="smart-match-state new">
+        ＋ New location
+      </div>
+      <h2>{{ parsed.location }}</h2>
+      <p>Will be saved under this customer.</p>
+      {% else %}
+      <div class="smart-match-state review">
+        Location not provided
+      </div>
+      {% endif %}
+    </article>
+
+    <article class="smart-match-card">
+      <p class="eyebrow">REGISTRY</p>
+
+      {% if machine_match %}
+      <div class="smart-match-state matched">
+        ✓ Existing machine
+      </div>
+      <h2>
+        {{ machine_match.manufacturer }}
+        {{ machine_match.model or machine_match.name }}
+      </h2>
+      <p>{{ machine_match.vin_pin_serial or "No identifier" }}</p>
+      {% else %}
+      <div class="smart-match-state new">
+        ＋ New machine
+      </div>
+      <h2>{{ parsed.manufacturer }} {{ parsed.model }}</h2>
+      <p>{{ parsed.identifier or "No identifier" }}</p>
+      {% endif %}
+    </article>
+  </section>
+
+  <section class="panel smart-intake-fields">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">REVIEW</p>
+        <h2>Parsed information</h2>
+        <p>Edit only if something was interpreted incorrectly.</p>
+      </div>
+    </div>
+
+    <div class="two-column">
+      <label>
+        Customer
+        <input
+          name="individual_name"
+          value="{{ parsed.individual_name }}"
+        >
+      </label>
+
+      <label>
+        Company
+        <input
+          name="company_name"
+          value="{{ parsed.company_name }}"
+        >
+      </label>
+    </div>
+
+    <div class="two-column">
+      <label>
+        Phone
+        <input name="phone" value="{{ parsed.phone }}">
+      </label>
+
+      <label>
+        Email
+        <input
+          type="email"
+          name="email"
+          value="{{ parsed.email }}"
+        >
+      </label>
+    </div>
+
+    <label>
+      Location
+      <input name="location" value="{{ parsed.location }}">
+    </label>
+
+    <div class="two-column">
+      <label>
+        Registry Type
+        <select name="registry_type">
+          {% for value, label in registry_types.items() %}
+          <option
+            value="{{ value }}"
+            {% if parsed.registry_type == value %}selected{% endif %}
+          >
+            {{ label }}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        Year
+        <input name="year" value="{{ parsed.year }}">
+      </label>
+    </div>
+
+    <div class="two-column">
+      <label>
+        Manufacturer
+        <input
+          name="manufacturer"
+          value="{{ parsed.manufacturer }}"
+        >
+      </label>
+
+      <label>
+        Model
+        <input name="model" value="{{ parsed.model }}">
+      </label>
+    </div>
+
+    <label>
+      VIN / PIN / Serial
+      <input
+        name="identifier"
+        value="{{ parsed.identifier }}"
+      >
+    </label>
+
+    <label>
+      Requested Parts
+      <textarea name="requested_parts" rows="7">{{ parsed.requested_parts }}</textarea>
+    </label>
+
+    <label>
+      Customer Message / Notes
+      <textarea name="request_text" rows="5">{{ parsed.request_text }}</textarea>
+    </label>
+
+    <div class="form-actions">
+      <button class="button" type="submit">
+        Create Request and Job
+      </button>
+    </div>
+  </section>
+</form>
+{% endif %}
+{% endblock %}
+
+===== REQUEST ROUTES =====
+from __future__ import annotations
+
+from contextlib import closing
+from datetime import date
+from pathlib import Path
+import re
+import shutil
+import uuid
+
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+
+from legacy_app import BASE_DIR, get_connection, next_job_number, templates
+
+router = APIRouter(prefix="/requests", tags=["customer-requests"])
+UPLOAD_ROOT = BASE_DIR / "uploads" / "requests"
+ALLOWED_STATUSES = {"NEW", "WAITING", "READY", "COMPLETED"}
+REGISTRY_TYPES = {
+    "vehicle": "Vehicle",
+    "machine": "Machine",
+    "engine": "Engine",
+    "marine": "Marine",
+    "generator": "Generator",
+    "trailer": "Trailer",
+    "component": "Component / Assembly",
+    "other": "Other",
+}
+
+
+def _safe_filename(name: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(name).name).strip("._")
+    return cleaned or "attachment"
+
+
+def _get_request_or_404(connection, request_id: int):
+    record = connection.execute(
+        "SELECT * FROM customer_requests WHERE id = ?", (request_id,)
+    ).fetchone()
+    if record is None:
+        raise HTTPException(status_code=404, detail="Customer request not found.")
+    return record
+
+
+def _customer_display_name(record) -> str:
+    return (record["individual_name"] or record["company_name"] or "").strip()
+
+
+def _registry_display_name(record) -> str:
+    display = " ".join(
+        part for part in ((record["manufacturer"] or "").strip(), (record["model"] or "").strip())
+        if part
+    ).strip()
+    return display or (record["identifier"] or "").strip() or "Registry Item"
+
+
+@router.get("", response_class=HTMLResponse)
+def list_requests(request: Request, q: str = "", status: str = "ALL"):
+    status = status.upper().strip()
+    if status not in ALLOWED_STATUSES | {"ALL"}:
+        status = "ALL"
+    q = q.strip()
+    where = []
+    params: list[object] = []
+    if status != "ALL":
+        where.append("r.status = ?")
+        params.append(status)
+    if q:
+        where.append(
+            """(
+                LOWER(COALESCE(r.request_text, '')) LIKE ? OR
+                LOWER(COALESCE(r.individual_name, '')) LIKE ? OR
+                LOWER(COALESCE(r.company_name, '')) LIKE ? OR
+                LOWER(COALESCE(r.phone, '')) LIKE ? OR
+                LOWER(COALESCE(r.email, '')) LIKE ? OR
+                LOWER(COALESCE(r.manufacturer, '')) LIKE ? OR
+                LOWER(COALESCE(r.model, '')) LIKE ? OR
+                LOWER(COALESCE(r.identifier, '')) LIKE ?
+            )"""
+        )
+        needle = f"%{q.lower()}%"
+        params.extend([needle] * 8)
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    with closing(get_connection()) as connection:
+        rows = connection.execute(
+            f"""
+            SELECT r.*, COUNT(a.id) AS attachment_count
+            FROM customer_requests r
+            LEFT JOIN customer_request_attachments a ON a.request_id = r.id
+            {where_sql}
+            GROUP BY r.id
+            ORDER BY
+                CASE WHEN r.reminder_date IS NOT NULL AND r.reminder_date != '' THEN 0 ELSE 1 END,
+                r.reminder_date ASC,
+                r.updated_at DESC,
+                r.id DESC
+            """,
+            params,
+        ).fetchall()
+    return templates.TemplateResponse(
+        request=request,
+        name="requests.html",
+        context={
+            "requests": rows,
+            "q": q,
+            "status": status,
+            "active_page": "requests",
+            "today": date.today().isoformat(),
+        },
+    )
+
+
+@router.get("/new", response_class=HTMLResponse)
+def new_request_form(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="request_form.html",
+        context={
+            "active_page": "requests",
+            "title": "New Request",
+            "form_action": "/requests/new",
+            "cancel_url": "/requests",
+            "record": {},
+            "registry_types": REGISTRY_TYPES,
+        },
+    )
+
+
+@router.post("/new")
+async def create_request(
+    request_text: str = Form(""),
+    individual_name: str = Form(""),
+    company_name: str = Form(""),
+    phone: str = Form(""),
+    email: str = Form(""),
+    location: str = Form(""),
+    registry_type: str = Form("other"),
+    manufacturer: str = Form(""),
+    model: str = Form(""),
+    year: str = Form(""),
+    identifier: str = Form(""),
+    requested_parts: str = Form(""),
+    reminder_date: str = Form(""),
+    attachments: list[UploadFile] = File(default=[]),
+):
+    registry_type = (registry_type or "other").strip().lower()
+    if registry_type not in REGISTRY_TYPES:
+        registry_type = "other"
+
+    values = [
+        request_text,
+        individual_name,
+        company_name,
+        phone,
+        email,
+        location,
+        manufacturer,
+        model,
+        year,
+        identifier,
+        requested_parts,
+        reminder_date,
+    ]
+
+    (
+        request_text,
+        individual_name,
+        company_name,
+        phone,
+        email,
+        location,
+        manufacturer,
+        model,
+        year,
+        identifier,
+        requested_parts,
+        reminder_date,
+    ) = [(value or "").strip() for value in values]
+
+    if not any(
+        (
+            request_text,
+            individual_name,
+            company_name,
+            phone,
+            email,
+            manufacturer,
+            model,
+            identifier,
+            requested_parts,
+            attachments,
+        )
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Add request, customer, machine, part, "
+                "or attachment information."
+            ),
+        )
+
+    with closing(get_connection()) as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO customer_requests (
+                request_number,
+                request_text,
+                individual_name,
+                company_name,
+                phone,
+                email,
+                location,
+                registry_type,
+                manufacturer,
+                model,
+                year,
+                identifier,
+                requested_parts,
+                reminder_date,
+                status
+            )
+            VALUES (
+                '',
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?,
+                NULLIF(?, ''),
+                'NEW'
+            )
+            """,
+            (
+                request_text,
+                individual_name,
+                company_name,
+                phone,
+                email,
+                location,
+                registry_type,
+                manufacturer,
+                model,
+                year,
+                identifier,
+                requested_parts,
+                reminder_date,
+            ),
+        )
+
+        request_id = cursor.lastrowid
+
+        connection.execute(
+            """
+            UPDATE customer_requests
+            SET request_number = ?
+            WHERE id = ?
+            """,
+            (f"PLG-R{request_id:05d}", request_id),
+        )
+
+        await _save_attachments(
+            connection,
+            request_id,
+            attachments,
+        )
+
+        connection.commit()
+
+    return RedirectResponse(
+        url=f"/requests/{request_id}",
+        status_code=303,
+    )
+
+
+
+def _normalize_match(value: str) -> str:
+    return re.sub(
+        r"[^a-z0-9]+",
+        "",
+        str(value or "").strip().lower(),
+    )
+
+
+def _normalize_phone(value: str) -> str:
+    return re.sub(r"\D+", "", str(value or ""))
+
+
+def _smart_intake_registry_type(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+
+    aliases = {
+        "heavy equipment": "machine",
+        "equipment": "machine",
+        "backhoe": "machine",
+        "excavator": "machine",
+        "loader": "machine",
+        "car": "vehicle",
+        "truck": "vehicle",
+        "automobile": "vehicle",
+        "outboard": "marine",
+        "boat": "marine",
+        "genset": "generator",
+    }
+
+    normalized = aliases.get(normalized, normalized)
+
+    if normalized not in REGISTRY_TYPES:
+        return "other"
+
+    return normalized
+
+
+def _parse_smart_intake(raw_text: str) -> dict[str, str]:
+    raw_text = str(raw_text or "").strip()
+
+    result = {
+        "individual_name": "",
+        "company_name": "",
+        "phone": "",
+        "email": "",
+        "location": "",
+        "registry_type": "other",
+        "manufacturer": "",
+        "model": "",
+        "year": "",
+        "identifier": "",
+        "requested_parts": "",
+        "request_text": "",
+    }
+
+    label_map = {
+        "customer": "individual_name",
+        "customer name": "individual_name",
+        "individual": "individual_name",
+        "individual name": "individual_name",
+        "name": "individual_name",
+        "company": "company_name",
+        "company name": "company_name",
+        "phone": "phone",
+        "telephone": "phone",
+        "mobile": "phone",
+        "email": "email",
+        "location": "location",
+        "island": "location",
+        "shipping location": "location",
+        "shipping destination": "location",
+        "registry type": "registry_type",
+        "equipment type": "registry_type",
+        "type": "registry_type",
+        "manufacturer": "manufacturer",
+        "make": "manufacturer",
+        "model": "model",
+        "year": "year",
+        "identifier": "identifier",
+        "vin": "identifier",
+        "pin": "identifier",
+        "serial": "identifier",
+        "serial number": "identifier",
+        "engine serial": "identifier",
+        "esn": "identifier",
+        "customer message": "request_text",
+        "message": "request_text",
+        "notes": "request_text",
+    }
+
+    parts_labels = {
+        "requested parts",
+        "parts requested",
+        "parts needed",
+        "need",
+        "needs",
+        "parts",
+    }
+
+    lines = raw_text.splitlines()
+    parts: list[str] = []
+    notes: list[str] = []
+    capture_parts = False
+    capture_notes = False
+
+    for raw_line in lines:
+        line = raw_line.strip()
+
+        if not line:
+            continue
+
+        match = re.match(
+            r"^([A-Za-z][A-Za-z /_-]*?)\s*:\s*(.*)$",
+            line,
+        )
+
+        if match:
+            label = re.sub(
+                r"\s+",
+                " ",
+                match.group(1).strip().lower(),
+            )
+            value = match.group(2).strip()
+
+            capture_parts = label in parts_labels
+            capture_notes = label in {
+                "customer message",
+                "message",
+                "notes",
+            }
+
+            if capture_parts:
+                if value:
+                    parts.append(value)
+                continue
+
+            field = label_map.get(label)
+
+            if field:
+                if field == "registry_type":
+                    result[field] = _smart_intake_registry_type(
+                        value
+                    )
+                elif field == "request_text":
+                    if value:
+                        notes.append(value)
+                else:
+                    result[field] = value
+
+                continue
+
+            capture_parts = False
+            capture_notes = False
+
+        if capture_parts:
+            cleaned = line.strip(" -•\t")
+            if cleaned:
+                parts.append(cleaned)
+            continue
+
+        if capture_notes:
+            notes.append(line)
+
+    result["requested_parts"] = "\n".join(parts)
+    result["request_text"] = "\n".join(notes)
+
+    return result
+
+
+def _find_existing_customer(connection, parsed: dict[str, str]):
+    phone = _normalize_phone(parsed.get("phone", ""))
+    email = parsed.get("email", "").strip().lower()
+    name = parsed.get("individual_name", "").strip()
+    company = parsed.get("company_name", "").strip()
+
+    if phone:
+        rows = connection.execute(
+            """
+            SELECT *
+            FROM customers
+            WHERE active = 1
+              AND TRIM(COALESCE(phone, '')) != ''
+            ORDER BY id
+            """
+        ).fetchall()
+
+        for row in rows:
+            if _normalize_phone(row["phone"]) == phone:
+                return row
+
+    if email:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM customers
+            WHERE active = 1
+              AND LOWER(TRIM(COALESCE(email, ''))) = ?
+            ORDER BY id
+            LIMIT 1
+            """,
+            (email,),
+        ).fetchone()
+
+        if row is not None:
+            return row
+
+    if name or company:
+        rows = connection.execute(
+            """
+            SELECT *
+            FROM customers
+            WHERE active = 1
+            ORDER BY id
+            """
+        ).fetchall()
+
+        wanted_name = _normalize_match(name)
+        wanted_company = _normalize_match(company)
+
+        for row in rows:
+            row_name = _normalize_match(row["name"])
+            row_company = _normalize_match(row["company"])
+
+            name_matches = (
+                bool(wanted_name)
+                and row_name == wanted_name
+            )
+
+            company_matches = (
+                bool(wanted_company)
+                and row_company == wanted_company
+            )
+
+            if name_matches or company_matches:
+                return row
+
+    return None
+
+
+def _find_existing_location(
+    connection,
+    customer_id: int,
+    location: str,
+):
+    wanted = _normalize_match(location)
+
+    if not wanted:
+        return None
+
+
+===== REQUEST CSS =====
+.request-page-heading,.request-detail-heading{margin-bottom:1.25rem}
+.request-queue-panel{padding:1.25rem}
+.request-toolbar{display:grid;grid-template-columns:minmax(280px,1fr) auto;gap:1rem;align-items:center;margin-bottom:1.25rem}
+.request-search{display:flex;align-items:center;gap:.65rem;min-height:44px;padding:0 .9rem;border:1px solid #d4deea;border-radius:10px;background:#fff;color:#789}
+.request-search:focus-within{border-color:#0b63ce;box-shadow:0 0 0 3px rgba(11,99,206,.1)}
+.request-search input{width:100%;border:0!important;outline:0;background:transparent;padding:.75rem 0!important;box-shadow:none!important}
+.request-filters{display:flex;gap:.45rem;flex-wrap:wrap;justify-content:flex-end}
+.request-filter{border:1px solid #d6dfeb;background:#f7f9fc;color:#43536a;border-radius:999px;padding:.55rem .85rem;font-weight:700;cursor:pointer;transition:.15s ease}
+.request-filter:hover{border-color:#8eb5e7;background:#eef5ff;color:#0b63ce}
+.request-filter.active{border-color:#0b63ce;background:#0b63ce;color:#fff;box-shadow:0 4px 12px rgba(11,99,206,.18)}
+.request-list{display:grid;gap:.85rem}
+.request-card{display:flex;align-items:stretch;justify-content:space-between;gap:1.2rem;padding:1.15rem 1.2rem;border:1px solid #dbe3ed;border-radius:14px;text-decoration:none;color:inherit;background:#fff;box-shadow:0 3px 12px rgba(26,53,89,.045);transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease}
+.request-card:hover{transform:translateY(-1px);border-color:#9ebfe9;box-shadow:0 8px 22px rgba(26,53,89,.09)}
+.request-card-content{min-width:0;flex:1}
+.request-card-topline{display:flex;align-items:center;gap:.75rem;margin-bottom:.55rem}
+.request-status{display:inline-flex;align-items:center;width:max-content;font-size:.69rem;font-weight:800;letter-spacing:.07em;padding:.32rem .58rem;border-radius:999px;background:#e9ecef;text-transform:uppercase}
+.status-new{background:#dbeafe;color:#1e40af}.status-waiting{background:#fef3c7;color:#92400e}.status-ready{background:#dcfce7;color:#166534}.status-completed{background:#e5e7eb;color:#374151}
+.request-number{font-size:.78rem;font-weight:700;color:#8090a5}
+.request-customer{font-size:1.05rem;line-height:1.25;margin:0 0 .35rem;color:#102844}
+.request-summary{max-width:850px;margin:0;color:#596b82;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.request-card-meta{display:flex;gap:1rem;flex-wrap:wrap;margin-top:.8rem;color:#728298;font-size:.82rem}
+.request-meta-item{display:inline-flex;align-items:center;gap:.35rem}
+.reminder-due{color:#b42318!important;font-weight:800}
+.request-card-open{display:flex;align-items:center;gap:.55rem;align-self:center;padding-left:1rem;color:#0b63ce;font-size:.84rem;font-weight:800;white-space:nowrap}
+.request-empty-state{text-align:center;padding:4rem 1.5rem}
+.request-empty-state .empty-state-icon{display:grid;place-items:center;width:52px;height:52px;margin:0 auto 1rem;border-radius:14px;background:#eaf3ff;color:#0b63ce;font-size:1.45rem}
+.request-empty-state h2{margin-bottom:.45rem}.request-empty-state p{max-width:560px;margin:0 auto 1.25rem;color:#687a91;line-height:1.6}
+.request-detail-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(280px,1fr);gap:1rem;margin-bottom:1rem}
+.request-main-panel,.request-contact-panel,.request-files-panel,.request-status-panel{padding:1.25rem}
+.request-panel-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1rem}
+.request-panel-heading h2,.request-contact-panel h2{margin-top:0}
+.request-message{white-space:pre-wrap;line-height:1.7;color:#30445f;font-size:.98rem;background:#f8fafc;border:1px solid #e5ebf2;border-radius:10px;padding:1rem;min-height:110px}
+.detail-list{display:grid;grid-template-columns:92px minmax(0,1fr);gap:.7rem 1rem;margin-bottom:0}
+.detail-list dt{font-weight:800;color:#62748b}.detail-list dd{margin:0;color:#203750;overflow-wrap:anywhere}
+.attachment-count{display:inline-flex;align-items:center;padding:.35rem .6rem;border-radius:999px;background:#edf3fa;color:#526980;font-size:.76rem;font-weight:800}
+.attachment-list{display:grid;gap:.6rem}
+.attachment-row{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.8rem .9rem;border:1px solid #dfe6ee;border-radius:10px;background:#fbfcfe}
+.attachment-link{display:flex;align-items:center;gap:.65rem;min-width:0;color:#124b88;font-weight:700;text-decoration:none}.attachment-link:hover{text-decoration:underline}.attachment-icon{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;border-radius:8px;background:#e9f3ff;color:#0b63ce}.attachment-link span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.link-button{border:0;background:none;text-decoration:underline;cursor:pointer}.danger,.link-button.danger{color:#b42318}.muted-copy{color:#718197}
+.status-actions{display:flex;gap:.6rem;flex-wrap:wrap}
+.status-action{border:1px solid #d6dfeb;background:#fff;color:#43536a;border-radius:9px;padding:.65rem .95rem;font-weight:800;cursor:pointer}.status-action:hover{border-color:#8eb5e7;color:#0b63ce}.status-action.active{border-color:#0b63ce;background:#edf5ff;color:#0b63ce;box-shadow:inset 0 0 0 1px #0b63ce}
+.danger-zone{display:flex;justify-content:flex-end;margin-top:1rem}.button.danger{background:#fff;border:1px solid #e6b8b8;color:#b42318}.button.danger:hover{background:#fff2f2;border-color:#d98f8f}
+.request-optional summary{cursor:pointer;font-weight:700;margin-bottom:1rem}
+@media(max-width:900px){.request-toolbar{grid-template-columns:1fr}.request-filters{justify-content:flex-start}.request-card-open span:first-child{display:none}.request-detail-grid{grid-template-columns:1fr}}
+@media(max-width:640px){.request-card{flex-direction:column}.request-card-open{align-self:flex-start;padding-left:0}.request-card-meta{gap:.55rem 1rem}.request-filters{overflow-x:auto;flex-wrap:nowrap;padding-bottom:.2rem}.request-filter{white-space:nowrap}.request-toolbar{margin-bottom:1rem}}
+.job-ready-panel{padding:1.25rem;margin-top:1rem}.job-ready-details{padding:1rem;border:1px solid #dfe7f0;border-radius:12px;background:#f8fafc;margin-bottom:1.2rem}.job-ready-details label{display:grid;gap:.4rem;font-weight:700;color:#314760}.job-ready-details input,.job-ready-details select,.job-ready-details textarea,.inline-link-form select{width:100%;border:1px solid #d5dfeb;border-radius:9px;padding:.72rem .8rem;background:#fff;color:#203750}.job-ready-details textarea{resize:vertical}.job-ready-steps{display:grid;gap:.75rem}.job-ready-step{display:grid;grid-template-columns:38px minmax(0,1fr);gap:.9rem;padding:1rem;border:1px solid #dfe6ee;border-radius:12px;background:#fff}.job-ready-step.complete{border-color:#b7dfc3;background:#f7fcf8}.step-number{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:#eaf3ff;color:#0b63ce;font-weight:900}.job-ready-step.complete .step-number{background:#dcfce7;color:#166534}.step-content h3{margin:0 0 .25rem;color:#18324f}.step-content p{margin:.2rem 0 .7rem;color:#61738a}.step-success{color:#166534!important;font-weight:800}.step-muted{color:#8795a8!important}.step-actions{display:flex;gap:.65rem;align-items:center;flex-wrap:wrap}.inline-link-form{display:flex;gap:.5rem;align-items:center;min-width:min(100%,420px)}.inline-link-form select{min-width:220px}.text-link{color:#0b63ce;font-weight:800;text-decoration:none}.text-link:hover{text-decoration:underline}@media(max-width:640px){.inline-link-form{flex-direction:column;align-items:stretch}.inline-link-form select{min-width:0}.step-actions{align-items:stretch}.step-actions form{width:100%}.step-actions .button{width:100%}.job-ready-step{grid-template-columns:32px minmax(0,1fr)}}
+
+/* PLG CUSTOMER REQUEST FORM V2 */
+.request-form-v2 {
+  gap: 22px;
+}
+
+.request-v2-section {
+  padding: 22px;
+  border: 1px solid #e2e7ef;
+  border-radius: 15px;
+  background: #ffffff;
+}
+
+.request-v2-heading {
+  margin-bottom: 18px;
+}
+
+.request-v2-heading h2 {
+  margin: 4px 0 0;
+  color: #172033;
+  font-size: 1.1rem;
+}
+
+.request-v2-section textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+/* PLG SMART INTAKE V1 */
+.smart-intake-panel,
+.smart-intake-review {
+  margin-bottom: 22px;
+}
+
+.smart-intake-paste textarea {
+  min-height: 330px;
+  resize: vertical;
+}
+
+.smart-intake-match-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding: 20px;
+}
+
+.smart-match-card {
+  padding: 19px;
+  border: 1px solid #e1e6ee;
+  border-radius: 14px;
+  background: #f9fbfd;
+}
+
+.smart-match-card h2 {
+  margin: 10px 0 4px;
+  color: #172033;
+  font-size: 1.05rem;
+}
+
+.smart-match-card p {
+  margin-bottom: 0;
+}
+
+.smart-match-state {
+  display: inline-flex;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.smart-match-state.matched {
+  background: #eaf7f0;
+  color: #277652;
+}
+
+.smart-match-state.new {
+  background: #edf4ff;
+  color: #315f9b;
+}
+
+.smart-match-state.review {
+  background: #fff4dc;
+  color: #8a611b;
+}
+
+.smart-intake-fields {
+  padding: 22px;
+}
+
+.smart-intake-fields textarea {
+  resize: vertical;
+}
+
+@media (max-width: 850px) {
+  .smart-intake-match-grid {
+    grid-template-columns: 1fr;
+  }
+}

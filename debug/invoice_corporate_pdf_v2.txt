@@ -1,0 +1,457 @@
+===== DOCUMENT SETUP =====
+147-
+148-
+149-def _page_footer(canvas, doc, title, number):
+150-    canvas.saveState()
+151-    width, _ = LETTER
+152-    canvas.setStrokeColor(NAVY)
+153-    canvas.setLineWidth(0.8)
+154-    canvas.line(0.43 * inch, 0.47 * inch, width - 0.43 * inch, 0.47 * inch)
+155-    canvas.setFont("Helvetica", 6.5)
+156-    canvas.setFillColor(MUTED)
+157-    canvas.drawString(0.44 * inch, 0.28 * inch, "PLG Corporate Document Standard v1.0")
+158-    canvas.drawRightString(width - 0.44 * inch, 0.28 * inch, f"{title} {number} | Page {doc.page}")
+159-    canvas.restoreState()
+160-
+161-
+162:def _document(path: Path, invoice, title: str):
+163-    doc = BaseDocTemplate(
+164-        str(path), pagesize=LETTER,
+165-        leftMargin=0.43 * inch, rightMargin=0.43 * inch,
+166-        topMargin=0.38 * inch, bottomMargin=0.63 * inch,
+167-        title=f"{title} {_value(invoice, 'invoice_number')}",
+168-        author="PartsLink Global",
+169-    )
+170-    frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="main")
+171-    doc.addPageTemplates([
+172-        PageTemplate(
+173-            id="corporate",
+174-            frames=[frame],
+175-            onPage=lambda canvas, d: _page_footer(
+176-                canvas, d, title, str(_value(invoice, "invoice_number"))
+177-            ),
+178-        )
+179-    ])
+180-    return doc
+181-
+182-
+183-
+184-def _invoice_status_details(invoice):
+185-    status = str(
+186-        _value(invoice, "status", "UNPAID") or "UNPAID"
+187-    ).strip().upper()
+188-
+189-    if status == "PAID":
+190-        return {
+191-            "label": "PAID IN FULL",
+192-            "color": colors.HexColor("#1F7A4F"),
+193-        }
+194-
+195-    if status == "PARTIAL":
+196-        return {
+197-            "label": "PARTIALLY PAID",
+198-            "color": colors.HexColor("#B26A00"),
+199-        }
+200-
+201-    if status == "VOID":
+202-        return {
+203-            "label": "VOID",
+204-            "color": colors.HexColor("#A53945"),
+205-        }
+206-
+207-    return {
+208-        "label": "UNPAID",
+209-        "color": colors.HexColor("#A53945"),
+210-    }
+211-
+212-def _header(invoice, internal: bool):
+213-    s = _styles()
+214-    logo = _logo()
+215-    logo_flow = []
+216-    if logo:
+217-        try:
+218-            logo_flow.append(Image(str(logo), width=1.28 * inch, height=0.63 * inch))
+219-        except Exception:
+220-            pass
+221-    if not logo_flow:
+222-        logo_flow.append(Paragraph("PLG", ParagraphStyle(
+223-            "FallbackLogo", parent=s["brand"], fontSize=30, leading=31
+224-        )))
+225-
+226-    business = [
+227-        Paragraph("PARTSLINK GLOBAL", s["brand"]),
+228-        Paragraph("Worldwide Parts Sourcing &amp; Logistics", s["tagline"]),
+229-        Spacer(1, 3),
+230-        Paragraph("2033 W McNab Rd Ste S, Pompano Beach, FL 33069", s["contact"]),
+231-        Paragraph("USA: +1 (561) 978-4452 &nbsp; | &nbsp; Jamaica: +1 (876) 429-0046", s["contact"]),
+232-        Paragraph("partslinkglobal@icloud.com", s["contact"]),
+233-    ]
+234-
+235-    title = "INTERNAL INVOICE" if internal else "INVOICE"
+236-    status_details = _invoice_status_details(invoice)
+237-    invoice_status = str(
+238-        _value(invoice, "status", "UNPAID") or "UNPAID"
+239-    ).strip().upper()
+240-
+241-    meta_rows = [
+242-        ["Invoice No.", str(_value(invoice, "invoice_number"))],
+243-        ["Date", _date_text(_value(invoice, "invoice_date"))],
+244-    ]
+245-
+246-    if invoice_status == "PAID":
+247-        paid_date = _value(invoice, "paid_date", "")
+248-
+249-        if paid_date:
+250-            meta_rows.append([
+251-                "Paid Date",
+252-                _date_text(paid_date),
+253-            ])
+254-    else:
+255-        meta_rows.append([
+256-            "Valid Until",
+257-            _valid_until(_value(invoice, "invoice_date")),
+258-        ])
+259-
+260-    meta_rows.append([
+261-        "Status",
+262-        Paragraph(
+263-            status_details["label"],
+264-            ParagraphStyle(
+265-                "InvoiceStatusDisplay",
+266-                parent=s["small"],
+267-                fontName="Helvetica-Bold",
+268-                fontSize=7.7,
+269-                textColor=status_details["color"],
+270-                alignment=TA_RIGHT,
+271-            ),
+272-        ),
+
+===== PAGE FOOTER =====
+139-            "PLGCenterBrand", parent=base["Normal"], fontName="Helvetica-Bold",
+140-            fontSize=9, leading=11, alignment=TA_CENTER, textColor=NAVY,
+141-        ),
+142-        "center_tag": ParagraphStyle(
+143-            "PLGCenterTag", parent=base["Normal"], fontName="Helvetica-Oblique",
+144-            fontSize=6.8, leading=8, alignment=TA_CENTER, textColor=MUTED,
+145-        ),
+146-    }
+147-
+148-
+149:def _page_footer(canvas, doc, title, number):
+150-    canvas.saveState()
+151-    width, _ = LETTER
+152-    canvas.setStrokeColor(NAVY)
+153-    canvas.setLineWidth(0.8)
+154-    canvas.line(0.43 * inch, 0.47 * inch, width - 0.43 * inch, 0.47 * inch)
+155-    canvas.setFont("Helvetica", 6.5)
+156-    canvas.setFillColor(MUTED)
+157-    canvas.drawString(0.44 * inch, 0.28 * inch, "PLG Corporate Document Standard v1.0")
+158-    canvas.drawRightString(width - 0.44 * inch, 0.28 * inch, f"{title} {number} | Page {doc.page}")
+159-    canvas.restoreState()
+160-
+161-
+162-def _document(path: Path, invoice, title: str):
+163-    doc = BaseDocTemplate(
+164-        str(path), pagesize=LETTER,
+165-        leftMargin=0.43 * inch, rightMargin=0.43 * inch,
+166-        topMargin=0.38 * inch, bottomMargin=0.63 * inch,
+167-        title=f"{title} {_value(invoice, 'invoice_number')}",
+168-        author="PartsLink Global",
+169-    )
+170-    frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="main")
+171-    doc.addPageTemplates([
+172-        PageTemplate(
+173-            id="corporate",
+174-            frames=[frame],
+175-            onPage=lambda canvas, d: _page_footer(
+176-                canvas, d, title, str(_value(invoice, "invoice_number"))
+177-            ),
+178-        )
+179-    ])
+180-    return doc
+181-
+182-
+183-
+184-def _invoice_status_details(invoice):
+185-    status = str(
+186-        _value(invoice, "status", "UNPAID") or "UNPAID"
+187-    ).strip().upper()
+188-
+189-    if status == "PAID":
+190-        return {
+191-            "label": "PAID IN FULL",
+192-            "color": colors.HexColor("#1F7A4F"),
+193-        }
+194-
+195-    if status == "PARTIAL":
+196-        return {
+197-            "label": "PARTIALLY PAID",
+198-            "color": colors.HexColor("#B26A00"),
+199-        }
+200-
+201-    if status == "VOID":
+202-        return {
+203-            "label": "VOID",
+204-            "color": colors.HexColor("#A53945"),
+205-        }
+206-
+207-    return {
+208-        "label": "UNPAID",
+209-        "color": colors.HexColor("#A53945"),
+210-    }
+211-
+212-def _header(invoice, internal: bool):
+213-    s = _styles()
+214-    logo = _logo()
+215-    logo_flow = []
+216-    if logo:
+217-        try:
+218-            logo_flow.append(Image(str(logo), width=1.28 * inch, height=0.63 * inch))
+219-        except Exception:
+220-            pass
+221-    if not logo_flow:
+222-        logo_flow.append(Paragraph("PLG", ParagraphStyle(
+223-            "FallbackLogo", parent=s["brand"], fontSize=30, leading=31
+224-        )))
+225-
+226-    business = [
+227-        Paragraph("PARTSLINK GLOBAL", s["brand"]),
+228-        Paragraph("Worldwide Parts Sourcing &amp; Logistics", s["tagline"]),
+229-        Spacer(1, 3),
+230-        Paragraph("2033 W McNab Rd Ste S, Pompano Beach, FL 33069", s["contact"]),
+231-        Paragraph("USA: +1 (561) 978-4452 &nbsp; | &nbsp; Jamaica: +1 (876) 429-0046", s["contact"]),
+232-        Paragraph("partslinkglobal@icloud.com", s["contact"]),
+233-    ]
+234-
+235-    title = "INTERNAL INVOICE" if internal else "INVOICE"
+236-    status_details = _invoice_status_details(invoice)
+237-    invoice_status = str(
+238-        _value(invoice, "status", "UNPAID") or "UNPAID"
+239-    ).strip().upper()
+240-
+241-    meta_rows = [
+242-        ["Invoice No.", str(_value(invoice, "invoice_number"))],
+243-        ["Date", _date_text(_value(invoice, "invoice_date"))],
+244-    ]
+245-
+246-    if invoice_status == "PAID":
+247-        paid_date = _value(invoice, "paid_date", "")
+248-
+249-        if paid_date:
+
+===== BOTTOM BLOCKS =====
+603-    ]))
+604-
+605-    if paid:
+606-        table.setStyle(TableStyle([
+607-            ("SPAN", (0, final_row), (1, final_row)),
+608-            ("ALIGN", (0, final_row), (1, final_row), "CENTER"),
+609-        ]))
+610-
+611-    return table
+612-
+613:def _bottom_blocks(invoice, internal):
+614-    payment = _payment_box()
+615-    totals = _totals_box(invoice, internal)
+616-    table = Table([[payment, totals]], colWidths=[4.52*inch,2.92*inch])
+617-    table.setStyle(TableStyle([
+618-        ("VALIGN", (0,0), (-1,-1), "TOP"),
+619-        ("LEFTPADDING", (0,0), (-1,-1), 0),
+620-        ("RIGHTPADDING", (0,0), (-1,-1), 0),
+621-        ("LEFTPADDING", (1,0), (1,0), 8),
+622-    ]))
+623-    return table
+624-
+625-
+626-def _footer_blocks():
+627-    s = _styles()
+628-    left = [
+629-        Paragraph("PARTS IDENTIFICATION", s["footer_heading"]),
+630-        Spacer(1, 4),
+631-        Paragraph(
+632-            "Parts are supplied based on the vehicle or equipment information provided "
+633-            "by the customer. Please verify compatibility before installation.",
+634-            s["footer"],
+635-        ),
+636-    ]
+637-    center = [
+638-        Paragraph("THANK YOU FOR CHOOSING", s["footer_heading"]),
+639-        Paragraph("PARTSLINK GLOBAL", s["center_brand"]),
+640-        Paragraph("Worldwide Parts Sourcing &amp; Logistics", s["center_tag"]),
+641-    ]
+642-    right = [
+643-        Paragraph("WARRANTY INFORMATION", s["footer_heading"]),
+644-        Spacer(1, 4),
+645-        Paragraph(
+646-            "Manufacturer warranty applies where provided by the original supplier.",
+647-            s["footer"],
+648-        ),
+649-    ]
+650-    table = Table([[left, center, right]], colWidths=[2.48*inch,2.48*inch,2.48*inch])
+651-    table.setStyle(TableStyle([
+652-        ("VALIGN", (0,0), (-1,-1), "TOP"),
+653-        ("LINEABOVE", (0,0), (-1,0), 0.8, NAVY),
+654-        ("LEFTPADDING", (0,0), (-1,-1), 12),
+655-        ("RIGHTPADDING", (0,0), (-1,-1), 12),
+656-        ("TOPPADDING", (0,0), (-1,-1), 5),
+657-        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+658-    ]))
+659-    return table
+660-
+661-
+662-def _invoice_notice(internal):
+663-    s = _styles()
+664-    text = (
+665-        "INTERNAL USE ONLY - Supplier pricing and profit are confidential."
+666-        if internal else
+667-        "Invoice valid for 30 days. Pricing and availability are subject to confirmation."
+668-    )
+669-    return Table([[Paragraph(text, ParagraphStyle(
+670-        "Notice", parent=s["small"], alignment=TA_CENTER,
+671-        textColor=NAVY if not internal else colors.HexColor("#9B2C2C"),
+672-        fontName="Helvetica-Bold"
+673-    ))]], colWidths=[7.44*inch], style=[
+674-        ("BACKGROUND", (0,0), (-1,-1), PALE_BLUE if not internal else colors.HexColor("#FFF1F1")),
+675-        ("BOX", (0,0), (-1,-1), 0.5, LINE),
+676-        ("LEFTPADDING", (0,0), (-1,-1), 8),
+677-        ("RIGHTPADDING", (0,0), (-1,-1), 8),
+678-        ("TOPPADDING", (0,0), (-1,-1), 5),
+679-        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+680-    ])
+681-
+682-
+683-def build_invoice_pdf(invoice, items: Iterable, path: Path, internal: bool):
+684-    items = list(items)
+685-    path.parent.mkdir(parents=True, exist_ok=True)
+686-    title = "INTERNAL INVOICE" if internal else "INVOICE"
+687-    doc = _document(path, invoice, title)
+688-
+689-    story = [
+690-        _header(invoice, internal),
+691-        Spacer(1, 9),
+692-        Table([[""]], colWidths=[7.44*inch], style=[
+693-            ("LINEBELOW", (0,0), (-1,-1), 1.1, NAVY),
+694-            ("TOPPADDING", (0,0), (-1,-1), 0),
+695-            ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+696-        ]),
+697-        Spacer(1, 10),
+698-        _information(invoice),
+699-        Spacer(1, 10),
+700-        _section_bar("PARTS & SERVICES" if not internal else "INTERNAL COST & PROFIT DETAIL"),
+701-        _internal_items(items) if internal else _customer_items(items),
+702-        Spacer(1, 10),
+703-        _invoice_notice(internal),
+704-        Spacer(1, 10),
+705-        _bottom_blocks(invoice, internal),
+706-        Spacer(1, 4),
+707-        _footer_blocks(),
+708-    ]
+709-    doc.build(story)
+710-
+711-
+712-def generate_invoice_pdfs(invoice, items: Iterable) -> dict[str, str]:
+713-    items = list(items)
+
+===== FOOTER BLOCKS =====
+616-    table = Table([[payment, totals]], colWidths=[4.52*inch,2.92*inch])
+617-    table.setStyle(TableStyle([
+618-        ("VALIGN", (0,0), (-1,-1), "TOP"),
+619-        ("LEFTPADDING", (0,0), (-1,-1), 0),
+620-        ("RIGHTPADDING", (0,0), (-1,-1), 0),
+621-        ("LEFTPADDING", (1,0), (1,0), 8),
+622-    ]))
+623-    return table
+624-
+625-
+626:def _footer_blocks():
+627-    s = _styles()
+628-    left = [
+629-        Paragraph("PARTS IDENTIFICATION", s["footer_heading"]),
+630-        Spacer(1, 4),
+631-        Paragraph(
+632-            "Parts are supplied based on the vehicle or equipment information provided "
+633-            "by the customer. Please verify compatibility before installation.",
+634-            s["footer"],
+635-        ),
+636-    ]
+637-    center = [
+638-        Paragraph("THANK YOU FOR CHOOSING", s["footer_heading"]),
+639-        Paragraph("PARTSLINK GLOBAL", s["center_brand"]),
+640-        Paragraph("Worldwide Parts Sourcing &amp; Logistics", s["center_tag"]),
+641-    ]
+642-    right = [
+643-        Paragraph("WARRANTY INFORMATION", s["footer_heading"]),
+644-        Spacer(1, 4),
+645-        Paragraph(
+646-            "Manufacturer warranty applies where provided by the original supplier.",
+647-            s["footer"],
+648-        ),
+649-    ]
+650-    table = Table([[left, center, right]], colWidths=[2.48*inch,2.48*inch,2.48*inch])
+651-    table.setStyle(TableStyle([
+652-        ("VALIGN", (0,0), (-1,-1), "TOP"),
+653-        ("LINEABOVE", (0,0), (-1,0), 0.8, NAVY),
+654-        ("LEFTPADDING", (0,0), (-1,-1), 12),
+655-        ("RIGHTPADDING", (0,0), (-1,-1), 12),
+656-        ("TOPPADDING", (0,0), (-1,-1), 5),
+657-        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+658-    ]))
+659-    return table
+660-
+661-
+662-def _invoice_notice(internal):
+663-    s = _styles()
+664-    text = (
+665-        "INTERNAL USE ONLY - Supplier pricing and profit are confidential."
+666-        if internal else
+667-        "Invoice valid for 30 days. Pricing and availability are subject to confirmation."
+668-    )
+669-    return Table([[Paragraph(text, ParagraphStyle(
+670-        "Notice", parent=s["small"], alignment=TA_CENTER,
+671-        textColor=NAVY if not internal else colors.HexColor("#9B2C2C"),
+672-        fontName="Helvetica-Bold"
+673-    ))]], colWidths=[7.44*inch], style=[
+674-        ("BACKGROUND", (0,0), (-1,-1), PALE_BLUE if not internal else colors.HexColor("#FFF1F1")),
+675-        ("BOX", (0,0), (-1,-1), 0.5, LINE),
+676-        ("LEFTPADDING", (0,0), (-1,-1), 8),
+677-        ("RIGHTPADDING", (0,0), (-1,-1), 8),
+678-        ("TOPPADDING", (0,0), (-1,-1), 5),
+679-        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+680-    ])
+681-
+682-
+683-def build_invoice_pdf(invoice, items: Iterable, path: Path, internal: bool):
+684-    items = list(items)
+685-    path.parent.mkdir(parents=True, exist_ok=True)
+686-    title = "INTERNAL INVOICE" if internal else "INVOICE"
+687-    doc = _document(path, invoice, title)
+688-
+689-    story = [
+690-        _header(invoice, internal),
+691-        Spacer(1, 9),
+692-        Table([[""]], colWidths=[7.44*inch], style=[
+693-            ("LINEBELOW", (0,0), (-1,-1), 1.1, NAVY),
+694-            ("TOPPADDING", (0,0), (-1,-1), 0),
+695-            ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+696-        ]),
+697-        Spacer(1, 10),
+698-        _information(invoice),
+699-        Spacer(1, 10),
+700-        _section_bar("PARTS & SERVICES" if not internal else "INTERNAL COST & PROFIT DETAIL"),
+701-        _internal_items(items) if internal else _customer_items(items),
+702-        Spacer(1, 10),
+703-        _invoice_notice(internal),
+704-        Spacer(1, 10),
+705-        _bottom_blocks(invoice, internal),
+706-        Spacer(1, 4),
+707-        _footer_blocks(),
+708-    ]
+709-    doc.build(story)
+710-
+711-
+712-def generate_invoice_pdfs(invoice, items: Iterable) -> dict[str, str]:
+713-    items = list(items)
+714-    paths = invoice_paths(_value(invoice, "customer"), _value(invoice, "invoice_number"))
+715-    build_invoice_pdf(invoice, items, paths["customer"], internal=False)
+716-    build_invoice_pdf(invoice, items, paths["internal"], internal=True)
+717-    return {key: str(value) for key, value in paths.items()}

@@ -1,4 +1,216 @@
-{% extends "base.html" %}{% block title %}Quotes · PartsLink Global{% endblock %}{% block content %}
-<section class="workspace-heading"><div><p class="eyebrow">QUOTES</p><h1>Quote Register</h1><p>Open, archive, and restore quotes.</p></div><a class="button management-new-button" href="/jobs/new">Create Job</a></section>
-<section class="panel management-tools"><div class="filter-links"><a class="{% if view=='active' %}active{% endif %}" href="/quotes?view=active">Active</a><a class="{% if view=='archived' %}active{% endif %}" href="/quotes?view=archived">Archived</a><a class="{% if view=='all' %}active{% endif %}" href="/quotes?view=all">All</a></div></section>
-<section class="panel">{% if quotes %}<div class="records-table-wrap"><table class="records-table"><thead><tr><th>Quote</th><th>Customer</th><th>Job</th><th>Date</th><th>Status</th><th>Total</th><th>Actions</th></tr></thead><tbody>{% for q in quotes %}<tr><td><a href="/quotes/{{ q.id }}/documents">{{ q.quote_number }}</a></td><td>{{ q.customer }}</td><td>{{ q.job_number }}</td><td>{{ q.quote_date }}</td><td>{{ q.status }}</td><td>${{ "%.2f"|format(q.customer_total) }}</td><td><div class="inline-actions"><a class="button ghost small" href="/quotes/{{ q.id }}/customer/pdf" target="_blank">Customer</a><a class="button ghost small" href="/quotes/{{ q.id }}/internal/pdf" target="_blank">Internal</a>{% if q.is_archived %}<form method="post" action="/quotes/{{ q.id }}/restore"><button class="button small">Restore</button></form>{% else %}<form method="post" action="/quotes/{{ q.id }}/archive"><button class="button ghost small">Archive</button></form>{% endif %}</div></td></tr>{% endfor %}</tbody></table></div>{% else %}<p>No quotes in this view.</p>{% endif %}</section>{% endblock %}
+{% extends "base.html" %}
+{% block title %}Quotes · PartsLink Global{% endblock %}
+
+{% block content %}
+<div class="workspace-v2">
+
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">QUOTE WORKSPACE</p>
+      <h1>Quotes</h1>
+      <p>Review customer quotes and continue the sale.</p>
+    </div>
+  </section>
+
+  <section class="workspace-toolbar">
+    <label class="workspace-search">
+      <span aria-hidden="true">⌕</span>
+      <input
+        id="quote-search"
+        type="search"
+        placeholder="Search customer, quote, job, machine, PIN or part..."
+      >
+    </label>
+
+    <nav class="workspace-tabs">
+      <a
+        class="{% if view == 'active' %}active{% endif %}"
+        href="/quotes?view=active"
+      >
+        Active
+      </a>
+
+      <a
+        class="{% if view == 'archived' %}active{% endif %}"
+        href="/quotes?view=archived"
+      >
+        Archived
+      </a>
+
+      <a
+        class="{% if view == 'all' %}active{% endif %}"
+        href="/quotes?view=all"
+      >
+        All
+      </a>
+    </nav>
+  </section>
+
+  {% if quotes %}
+  <section class="workspace-row-list" id="quote-list">
+
+    {% for quote in quotes %}
+    <article
+      class="workspace-row quote-row"
+      data-search="
+        {{ quote.quote_number }}
+        {{ quote.customer }}
+        {{ quote.job_number }}
+        {{ quote.manufacturer }}
+        {{ quote.machine }}
+        {{ quote.pin_serial }}
+        {{ quote.item_descriptions }}
+        {{ quote.status }}
+      "
+    >
+      <div class="workspace-row-mark quote-mark">
+        {{ (quote.manufacturer or "PLG")[:3]|upper }}
+      </div>
+
+      <div class="workspace-row-identity">
+        <small>
+          {{ quote.quote_number }}
+          · {{ quote.quote_date }}
+        </small>
+
+        <h2>{{ quote.customer }}</h2>
+
+        <strong>
+          {% if quote.manufacturer or quote.machine %}
+            {{ quote.manufacturer }} {{ quote.machine }}
+          {% else %}
+            No machine linked
+          {% endif %}
+
+          {% if quote.pin_serial %}
+            <span>· {{ quote.pin_serial }}</span>
+          {% endif %}
+        </strong>
+
+        <p>
+          {{ quote.item_descriptions or "No item description available" }}
+        </p>
+      </div>
+
+      <div class="workspace-row-status">
+        <div class="workspace-status-line">
+          <span
+            class="workspace-status-badge
+                   workspace-status-{{ quote.status|lower }}"
+          >
+            {{ quote.status }}
+          </span>
+
+          <strong>
+            ${{ "%.2f"|format(quote.customer_total or 0) }}
+          </strong>
+        </div>
+
+        <div class="workspace-row-meta">
+          {{ quote.item_count or 0 }}
+          item{% if quote.item_count != 1 %}s{% endif %}
+        </div>
+      </div>
+
+      <div class="workspace-row-action workspace-action-panel">
+        <span>NEXT ACTION</span>
+
+        {% if quote.invoice_id %}
+          <strong>Invoice Created</strong>
+
+          <a
+            class="workspace-btn workspace-btn-primary"
+            href="/invoices/{{ quote.invoice_id }}/documents"
+          >
+            Open Invoice
+          </a>
+        {% elif quote.is_archived %}
+          <strong>Restore Quote</strong>
+
+          <form
+            method="post"
+            action="/quotes/{{ quote.id }}/restore"
+            class="workspace-action-form"
+          >
+            <button
+              class="workspace-btn workspace-btn-primary"
+              type="submit"
+            >
+              Restore Quote
+            </button>
+          </form>
+        {% else %}
+          <strong>Customer Accepted</strong>
+
+          <a
+            class="workspace-btn workspace-btn-primary"
+            href="/quotes/{{ quote.id }}/documents"
+          >
+            Open Quote
+          </a>
+        {% endif %}
+
+        <div class="workspace-btn-row">
+          <a
+            class="workspace-btn workspace-btn-secondary"
+            target="_blank"
+            href="/quotes/{{ quote.id }}/customer/pdf"
+          >
+            Customer PDF
+          </a>
+
+          <a
+            class="workspace-btn workspace-btn-secondary"
+            target="_blank"
+            href="/quotes/{{ quote.id }}/internal/pdf"
+          >
+            Internal PDF
+          </a>
+        </div>
+      </div>
+    </div>
+    </article>
+    {% endfor %}
+
+  </section>
+
+  <p id="no-quote-results" class="workspace-empty hidden">
+    No quotes match your search.
+  </p>
+  {% else %}
+  <div class="workspace-empty">
+    No quotes are available in this view.
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+(() => {
+  const input = document.getElementById("quote-search");
+  const rows = [...document.querySelectorAll(".quote-row")];
+  const empty = document.getElementById("no-quote-results");
+
+  if (!input || !rows.length) return;
+
+  input.addEventListener("input", () => {
+    const query = input.value.trim().toLowerCase();
+    let visible = 0;
+
+    rows.forEach((row) => {
+      const matches = row.dataset.search
+        .toLowerCase()
+        .includes(query);
+
+      row.hidden = !matches;
+
+      if (matches) visible += 1;
+    });
+
+    if (empty) {
+      empty.classList.toggle("hidden", visible !== 0);
+    }
+  });
+})();
+</script>
+{% endblock %}

@@ -13,6 +13,7 @@ class BasketItemCreate(BaseModel):
     quantity: int = Field(default=1, ge=1)
     supplier_unit_cost: float | None = Field(default=None, ge=0)
     markup_percent: float | None = Field(default=None, ge=0)
+    part_status: str | None = None
     availability: str = ""
     lead_time: str = ""
     selected: bool = True
@@ -29,6 +30,8 @@ class BasketItemUpdate(BaseModel):
     brand: str | None = None
     quantity: int | None = Field(default=None, ge=1)
     supplier_unit_cost: float | None = Field(default=None, ge=0)
+    markup_percent: float | None = Field(default=None, ge=0)
+    part_status: str | None = None
     availability: str | None = None
     lead_time: str | None = None
     selected: bool | None = None

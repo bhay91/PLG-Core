@@ -1,186 +1,271 @@
 {% extends "base.html" %}
 {% block title %}Jobs · PartsLink Global{% endblock %}
-{% block content %}
-{% set ns = namespace(requested=0, researching=0, verified=0) %}
-{% for job in jobs %}
-  {% if job.status == "REQUESTED" %}
-    {% set ns.requested = ns.requested + 1 %}
-  {% elif job.status == "RESEARCHING" %}
-    {% set ns.researching = ns.researching + 1 %}
-  {% elif job.status == "VERIFIED" %}
-    {% set ns.verified = ns.verified + 1 %}
-  {% endif %}
-{% endfor %}
 
-<section class="workspace-heading">
+{% block content %}
+<section class="workspace-heading smart-jobs-heading">
   <div>
-    <p class="eyebrow">JOB REGISTER</p>
+    <p class="eyebrow">JOB WORKSPACE</p>
     <h1>Jobs</h1>
-    <p>Manage customer requests, equipment identification, sourcing progress, and quotations.</p>
+    <p>Find the job that needs attention and continue the work.</p>
   </div>
+
   <a class="button" href="/jobs/new">＋ New Job</a>
 </section>
 
-<section class="jobs-summary-grid">
-  <article class="summary-card">
-    <div class="summary-card-icon blue">▣</div>
-    <div>
-      <span>Total Jobs</span>
-      <strong>{{ jobs|length }}</strong>
-      <small>All customer requests</small>
-    </div>
-  </article>
-  <article class="summary-card">
-    <div class="summary-card-icon amber">◷</div>
-    <div>
-      <span>Requested</span>
-      <strong>{{ ns.requested }}</strong>
-      <small>Waiting to be sourced</small>
-    </div>
-  </article>
-  <article class="summary-card">
-    <div class="summary-card-icon violet">⌕</div>
-    <div>
-      <span>Researching</span>
-      <strong>{{ ns.researching }}</strong>
-      <small>Parts being identified</small>
-    </div>
-  </article>
-  <article class="summary-card">
-    <div class="summary-card-icon green">✓</div>
-    <div>
-      <span>Verified</span>
-      <strong>{{ ns.verified }}</strong>
-      <small>Ready for sourcing or quote</small>
-    </div>
-  </article>
-</section>
-
-<section class="panel jobs-register-panel">
-  <div class="jobs-toolbar">
-    <div>
-      <p class="eyebrow">ALL JOBS</p>
-      <h2>{{ jobs|length }} job{% if jobs|length != 1 %}s{% endif %}</h2>
-    </div>
-
-    <div class="jobs-filter-controls">
-      <label class="jobs-search">
-        <span aria-hidden="true">⌕</span>
-        <input id="job-search" type="search" placeholder="Search job, customer, machine, VIN...">
-      </label>
-
-      <label class="jobs-status-filter">
-        <span>Status</span>
-        <select id="job-status-filter">
-          <option value="">All Statuses</option>
-          <option value="REQUESTED">Requested</option>
-          <option value="RESEARCHING">Researching</option>
-          <option value="VERIFIED">Verified</option>
-          <option value="QUOTED">Quoted</option>
-          <option value="CONFIRMED">Confirmed</option>
-          <option value="ORDERED">Ordered</option>
-          <option value="RECEIVED">Received</option>
-          <option value="DELIVERED">Delivered</option>
-          <option value="VOID">Void</option>
-        </select>
-      </label>
-    </div>
-  </div>
-
-  {% if jobs %}
-  <div class="jobs-list" id="jobs-list">
-    <div class="jobs-list-header" aria-hidden="true">
-      <span>Job</span>
-      <span>Customer</span>
-      <span>Machine / Vehicle</span>
-      <span>VIN / PIN / Serial</span>
-      <span>Next Action</span>
-      <span>Status</span>
-      <span></span>
-    </div>
-
-    {% for job in jobs %}
-    <a
-      class="job-register-row"
-      href="/jobs/{{ job.id }}/basket"
-      data-search="{{ job.job_number }} {{ job.customer }} {{ job.company or '' }} {{ job.manufacturer }} {{ job.machine }} {{ job.pin_serial or '' }}"
-      data-status="{{ job.status }}"
+<section class="smart-jobs-toolbar">
+  <label class="smart-jobs-search">
+    <span aria-hidden="true">⌕</span>
+    <input
+      id="job-search"
+      type="search"
+      placeholder="Search customer, machine, serial, job, or part..."
     >
-      <div class="job-register-number">
-        <strong>{{ job.job_number }}</strong>
-        <small>{{ job.created_date }}</small>
-      </div>
+  </label>
 
-      <div class="job-register-customer">
-        <strong>{{ job.customer }}</strong>
-        <small>{{ job.company or "Individual Customer" }}</small>
-      </div>
+  <label class="smart-jobs-control">
+    <span>Stage</span>
+    <select id="job-stage-filter">
+      <option value="">All Stages</option>
+      <option value="URGENT">🔥 Needs Attention</option>
+      <option value="RESEARCH">🔍 Research</option>
+      <option value="READY">📝 Ready to Quote</option>
+      <option value="WAITING">⏳ Waiting</option>
+      <option value="APPROVED">👍 Approved</option>
+      <option value="PAID">💰 Paid</option>
+      <option value="COMPLETED">✅ Completed</option>
+    </select>
+  </label>
 
-      <div class="job-register-machine">
-        <strong>{{ job.manufacturer }} {{ job.machine }}</strong>
-        <small>Equipment / vehicle</small>
-      </div>
-
-      <div class="job-register-serial">
-        <strong>{{ job.pin_serial or "Not Provided" }}</strong>
-        <small>Identification reference</small>
-      </div>
-
-      <div class="job-register-progress">
-        <strong>{{ job.intelligence.next_action }}</strong>
-        <small>{{ job.intelligence.health_label }} · {{ job.intelligence.workflow_stage|title }}</small>
-      </div>
-
-      <div>
-        <span class="status status-{{ job.status|lower }}">{{ job.status }}</span>
-      </div>
-
-      <div class="job-register-arrow">→</div>
-    </a>
-    {% endfor %}
-  </div>
-
-  <div class="jobs-no-results" id="jobs-no-results" hidden>
-    <h3>No matching jobs</h3>
-    <p>Change the search text or status filter.</p>
-  </div>
-  {% else %}
-  <div class="empty">
-    <h3>No jobs have been created</h3>
-    <p>Create the first PartsLink Global sourcing job.</p>
-    <a class="button" href="/jobs/new">Create Job</a>
-  </div>
-  {% endif %}
+  <label class="smart-jobs-control">
+    <span>Sort</span>
+    <select id="job-sort">
+      <option value="priority">Priority</option>
+      <option value="updated">Recently Updated</option>
+      <option value="customer">Customer</option>
+      <option value="job-number">Job Number</option>
+      <option value="stage">Stage</option>
+    </select>
+  </label>
 </section>
+
+{% if jobs %}
+<section class="smart-job-row-list" id="smart-job-grid">
+  {% for job in jobs %}
+  <a
+    class="smart-job-row stage-{{ job.stage_key|lower }}"
+    href="/jobs/{{ job.id }}/basket"
+    data-search="
+      {{ job.job_number }}
+      {{ job.customer }}
+      {{ job.company or '' }}
+      {{ job.manufacturer }}
+      {{ job.machine }}
+      {{ job.pin_serial or '' }}
+      {{ job.job_description }}
+      {{ job.intelligence.workflow_label }}
+      {{ job.intelligence.next_action }}
+    "
+    data-stage="{{ job.stage_key }}"
+    data-rank="{{ job.priority_rank }}"
+    data-updated="{{ job.last_activity_display }}"
+    data-customer="{{ job.customer|lower }}"
+    data-job-number="{{ job.job_number|lower }}"
+  >
+    <span class="smart-job-row-rail"></span>
+
+    <div class="smart-job-row-main">
+      <div class="smart-job-row-manufacturer">
+        {{ job.manufacturer_code }}
+      </div>
+
+      <div class="smart-job-row-identity">
+        <div class="smart-job-row-topline">
+          <span class="smart-job-row-number">
+            {{ job.job_number }}
+          </span>
+
+          <span class="smart-job-row-stage">
+            {{ job.stage_icon }} {{ job.intelligence.workflow_label }}
+          </span>
+        </div>
+
+        <h2>{{ job.customer or "Customer not linked" }}</h2>
+
+        <p class="smart-job-row-machine">
+          {% if job.manufacturer or job.machine %}
+            {{ job.manufacturer }} {{ job.machine }}
+          {% else %}
+            No machine linked
+          {% endif %}
+
+          {% if job.pin_serial %}
+            <span>· {{ job.pin_serial }}</span>
+          {% endif %}
+        </p>
+
+        <p class="smart-job-row-description">
+          {{ job.job_description }}
+        </p>
+      </div>
+    </div>
+
+    <div class="smart-job-row-workflow">
+      <div class="smart-job-row-progress">
+        <div class="smart-job-row-progress-track">
+          <span style="width: {{ job.intelligence.progress_percent }}%"></span>
+        </div>
+
+        <div class="smart-job-row-progress-meta">
+          <strong>{{ job.intelligence.workflow_label }}</strong>
+          <span>{{ job.intelligence.progress_percent }}%</span>
+        </div>
+      </div>
+
+      {% if job.parts_progress.total %}
+      <div class="smart-job-row-parts">
+        {% if job.parts_progress.research %}
+          <span title="Parts in research">
+            🔍 {{ job.parts_progress.research }} Research
+          </span>
+        {% endif %}
+
+        {% if job.parts_progress.quoted %}
+          <span title="Quoted parts">
+            📝 {{ job.parts_progress.quoted }} Quoted
+          </span>
+        {% endif %}
+
+        {% if job.parts_progress.ordered %}
+          <span title="Ordered parts">
+            🛒 {{ job.parts_progress.ordered }} Ordered
+          </span>
+        {% endif %}
+
+        {% if job.parts_progress.received %}
+          <span title="Received parts">
+            📦 {{ job.parts_progress.received }} Received
+          </span>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="smart-job-row-action">
+      <span>Next Action</span>
+      <strong>{{ job.intelligence.next_action }}</strong>
+
+      <div class="smart-job-row-updated">
+        Updated: {{ job.last_activity_display }}
+      </div>
+    </div>
+
+    <div class="smart-job-row-open">
+      <span>Open Job</span>
+      <strong>→</strong>
+    </div>
+  </a>
+  {% endfor %}
+</section>
+
+<div class="jobs-no-results" id="jobs-no-results" hidden>
+  <h3>No matching jobs</h3>
+  <p>Change the search text, stage, or sort option.</p>
+</div>
+
+{% else %}
+<section class="empty">
+  <h3>No jobs have been created</h3>
+  <p>Create the first PartsLink Global sourcing job.</p>
+  <a class="button" href="/jobs/new">Create Job</a>
+</section>
+{% endif %}
 
 <script>
 (() => {
   const search = document.getElementById("job-search");
-  const status = document.getElementById("job-status-filter");
-  const rows = Array.from(document.querySelectorAll(".job-register-row"));
+  const stage = document.getElementById("job-stage-filter");
+  const sort = document.getElementById("job-sort");
+  const list = document.getElementById("smart-job-grid");
   const noResults = document.getElementById("jobs-no-results");
 
-  if (!search || !status || rows.length === 0) return;
+  if (!list) return;
 
-  const filterJobs = () => {
-    const query = search.value.trim().toLowerCase();
-    const selectedStatus = status.value;
+  const rows = Array.from(
+    list.querySelectorAll(".smart-job-row")
+  );
+
+  const applyFilters = () => {
+    const query = (search?.value || "")
+      .trim()
+      .toLowerCase();
+
+    const selectedStage = stage?.value || "";
     let visible = 0;
 
     rows.forEach((row) => {
-      const matchesSearch = !query || row.dataset.search.toLowerCase().includes(query);
-      const matchesStatus = !selectedStatus || row.dataset.status === selectedStatus;
-      const show = matchesSearch && matchesStatus;
+      const matchesSearch =
+        !query ||
+        row.dataset.search.toLowerCase().includes(query);
+
+      const matchesStage =
+        !selectedStage ||
+        row.dataset.stage === selectedStage;
+
+      const show = matchesSearch && matchesStage;
 
       row.hidden = !show;
+
       if (show) visible += 1;
     });
 
-    if (noResults) noResults.hidden = visible !== 0;
+    if (noResults) {
+      noResults.hidden = visible !== 0;
+    }
   };
 
-  search.addEventListener("input", filterJobs);
-  status.addEventListener("change", filterJobs);
+  const applySort = () => {
+    const mode = sort?.value || "priority";
+
+    const sorted = [...rows].sort((a, b) => {
+      if (mode === "updated") {
+        return (b.dataset.updated || "")
+          .localeCompare(a.dataset.updated || "");
+      }
+
+      if (mode === "customer") {
+        return (a.dataset.customer || "")
+          .localeCompare(b.dataset.customer || "");
+      }
+
+      if (mode === "job-number") {
+        return (a.dataset.jobNumber || "")
+          .localeCompare(b.dataset.jobNumber || "");
+      }
+
+      if (mode === "stage") {
+        return (a.dataset.stage || "")
+          .localeCompare(b.dataset.stage || "");
+      }
+
+      return (
+        Number(a.dataset.rank || 999) -
+        Number(b.dataset.rank || 999)
+      );
+    });
+
+    sorted.forEach((row) => list.appendChild(row));
+  };
+
+  search?.addEventListener("input", applyFilters);
+  stage?.addEventListener("change", applyFilters);
+
+  sort?.addEventListener("change", () => {
+    applySort();
+    applyFilters();
+  });
+
+  applySort();
+  applyFilters();
 })();
 </script>
 {% endblock %}

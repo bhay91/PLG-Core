@@ -1,8 +1,376 @@
 {% extends "base.html" %}
-{% block title %}Invoice Documents · {{ invoice.invoice_number }}{% endblock %}
+{% block title %}Invoice · {{ invoice.invoice_number }}{% endblock %}
+
 {% block content %}
-<section class="workspace-heading"><div><p class="eyebrow">INVOICE CREATED</p><h1>{{ invoice.invoice_number }}</h1><p>{{ invoice.customer }} · {{ invoice.manufacturer }} {{ invoice.machine }}</p></div><div class="workspace-heading-actions"><a class="button ghost" href="/quotes/{{ invoice.quote_id }}/documents">Source Quote</a><a class="button ghost" href="/invoices">Invoice Register</a></div></section>
-<section class="job-summary-grid customer-summary-grid"><article class="context-card"><span>Invoice Total</span><strong>${{ "%.2f"|format(invoice.customer_total) }}</strong><small>Customer total</small></article><article class="context-card"><span>Credit Applied</span><strong>${{ "%.2f"|format(invoice.credit_applied) }}</strong><small>Existing account credit</small></article><article class="context-card"><span>Balance Due</span><strong>${{ "%.2f"|format(invoice.balance_due) }}</strong><small>Remaining amount</small></article><article class="context-card"><span>Status</span><strong>{{ invoice.status }}</strong><small>{{ invoice.invoice_date }}</small></article></section>
-<section class="document-card-grid"><article class="panel document-output-card"><div><p class="eyebrow">CUSTOMER COPY</p><h2>Customer Invoice PDF</h2><p>Customer-facing invoice with final selling prices only.</p></div><div class="document-output-actions"><a class="button ghost" target="_blank" href="/invoices/{{ invoice.id }}/customer/pdf">Open PDF</a><a class="button" href="/invoices/{{ invoice.id }}/customer/pdf?download=1">Download</a></div></article><article class="panel document-output-card"><div><p class="eyebrow">INTERNAL COPY</p><h2>Internal Accounting PDF</h2><p>Supplier cost, customer price, line profit, and net profit.</p></div><div class="document-output-actions"><a class="button ghost" target="_blank" href="/invoices/{{ invoice.id }}/internal/pdf">Open PDF</a><a class="button" href="/invoices/{{ invoice.id }}/internal/pdf?download=1">Download</a></div></article></section>
-<section class="panel document-location-card"><p class="eyebrow">LOCAL STORAGE</p><h2>Saved Under Customer Folder</h2><p><code>{{ customer_path }}</code></p></section>
+<div class="invoice-payment-center">
+
+  <section class="workspace-heading invoice-center-heading">
+    <div>
+      <p class="eyebrow">INVOICE &amp; PAYMENT</p>
+
+      <div class="invoice-center-title">
+        <h1>{{ invoice.invoice_number }}</h1>
+
+        <span
+          class="workspace-status-badge
+                 workspace-status-{{ invoice.status|lower }}"
+        >
+          {{ invoice.status }}
+        </span>
+      </div>
+
+      <p>
+        {{ invoice.customer }}
+        · {{ invoice.manufacturer }} {{ invoice.machine }}
+      </p>
+    </div>
+
+    <div class="invoice-center-heading-actions">
+      <a
+        class="button ghost"
+        href="/invoices"
+      >
+        Back to Invoices
+      </a>
+
+      <a
+        class="button ghost"
+        href="/jobs/{{ invoice.job_id }}/basket"
+      >
+        Open Job
+      </a>
+    </div>
+  </section>
+
+  <section class="panel invoice-center-identity">
+    <div class="invoice-center-identity-grid">
+      <div>
+        <span>Customer</span>
+        <strong>{{ invoice.customer }}</strong>
+
+        {% if invoice.company %}
+        <small>{{ invoice.company }}</small>
+        {% endif %}
+      </div>
+
+      <div>
+        <span>Location</span>
+        <strong>{{ invoice.address or "Not provided" }}</strong>
+      </div>
+
+      <div>
+        <span>Machine</span>
+        <strong>
+          {{ invoice.manufacturer }}
+          {{ invoice.machine }}
+        </strong>
+
+        {% if invoice.pin_serial %}
+        <small>{{ invoice.pin_serial }}</small>
+        {% endif %}
+      </div>
+
+      <div>
+        <span>Job</span>
+        <strong>{{ invoice.job_number }}</strong>
+      </div>
+
+      <div>
+        <span>Invoice Date</span>
+        <strong>{{ invoice.invoice_date }}</strong>
+      </div>
+
+      <div>
+        <span>Payment Status</span>
+        <strong>{{ invoice.status }}</strong>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel invoice-center-items">
+    <div class="invoice-center-section-heading">
+      <div>
+        <p class="eyebrow">INVOICE ITEMS</p>
+        <h2>What the customer is paying for</h2>
+      </div>
+
+      <span class="invoice-item-count">
+        {{ items|length }}
+        item{% if items|length != 1 %}s{% endif %}
+      </span>
+    </div>
+
+    {% if items %}
+    <div class="invoice-center-table-wrap">
+      <table class="invoice-center-table">
+        <thead>
+          <tr>
+            <th>Qty</th>
+            <th>Part Number</th>
+            <th>Description</th>
+            <th>Unit Price</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td>{{ item.quantity }}</td>
+
+            <td>
+              <strong>
+                {{ item.supplier_part_number or "—" }}
+              </strong>
+            </td>
+
+            <td>{{ item.description }}</td>
+
+            <td>
+              ${{ "%.2f"|format(item.customer_unit_price or 0) }}
+            </td>
+
+            <td>
+              <strong>
+                ${{ "%.2f"|format(item.customer_line_total or 0) }}
+              </strong>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    {% if invoice.status == "PAID" %}
+    <div class="invoice-parts-order-action">
+      <div>
+        <span>PARTS PURCHASING</span>
+        <strong>Ready to prepare the supplier buying list</strong>
+      </div>
+
+      {% if parts_order_sheet_exists %}
+      <a
+        class="workspace-btn invoice-parts-order-button"
+        target="_blank"
+        href="/invoices/{{ invoice.id }}/parts-order-sheet/pdf?v={{ invoice.status }}-{{ invoice.invoice_date }}"
+      >
+        Open Parts Order Sheet
+      </a>
+      {% else %}
+      <form
+        method="post"
+        action="/invoices/{{ invoice.id }}/parts-order-sheet"
+        target="_blank"
+        class="invoice-parts-order-form"
+      >
+        <button
+          class="workspace-btn invoice-parts-order-button"
+          type="submit"
+        >
+          Create Parts Order Sheet
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="invoice-center-lower-grid">
+
+    <div class="invoice-center-left">
+
+      <section class="panel invoice-document-panel">
+        <div class="invoice-center-section-heading">
+          <div>
+            <p class="eyebrow">DOCUMENTS</p>
+            <h2>Invoice PDFs</h2>
+          </div>
+        </div>
+
+        <div class="invoice-document-buttons">
+          <a
+            class="workspace-btn"
+            target="_blank"
+            href="/invoices/{{ invoice.id }}/customer/pdf?v={{ invoice.status }}-{{ invoice.balance_due }}-{{ invoice.paid_date or invoice.invoice_date }}"
+          >
+            Customer PDF
+          </a>
+
+          <a
+            class="workspace-btn"
+            target="_blank"
+            href="/invoices/{{ invoice.id }}/internal/pdf?v={{ invoice.status }}-{{ invoice.balance_due }}-{{ invoice.paid_date or invoice.invoice_date }}"
+          >
+            Internal PDF
+          </a>
+        </div>
+      </section>
+
+      {% if payments %}
+      <section class="panel invoice-payment-history">
+        <div class="invoice-center-section-heading">
+          <div>
+            <p class="eyebrow">PAYMENT HISTORY</p>
+            <h2>Payments received</h2>
+          </div>
+        </div>
+
+        <div class="invoice-payment-list">
+          {% for payment in payments %}
+          <article class="invoice-payment-record">
+            <div>
+              <strong>
+                ${{ "%.2f"|format(payment.amount or 0) }}
+              </strong>
+
+              <span>
+                {{ payment.payment_method.replace("_", " ").title() }}
+              </span>
+            </div>
+
+            <div>
+              <strong>{{ payment.transaction_date }}</strong>
+
+              <span>
+                {{ payment.reference or "No reference" }}
+              </span>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
+    </div>
+
+    <aside class="panel invoice-payment-panel">
+      <p class="eyebrow">PAYMENT SUMMARY</p>
+
+      <div class="invoice-money-summary">
+        <div>
+          <span>Invoice Total</span>
+          <strong>
+            ${{ "%.2f"|format(invoice.customer_total or 0) }}
+          </strong>
+        </div>
+
+        {% if invoice.credit_applied %}
+        <div>
+          <span>Credit Applied</span>
+          <strong>
+            ${{ "%.2f"|format(invoice.credit_applied or 0) }}
+          </strong>
+        </div>
+        {% endif %}
+
+        {% if payment_total %}
+        <div>
+          <span>Payments Received</span>
+          <strong>
+            ${{ "%.2f"|format(payment_total or 0) }}
+          </strong>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="invoice-balance-due">
+        <span>Balance Due</span>
+
+        <strong>
+          ${{ "%.2f"|format(invoice.balance_due or 0) }}
+        </strong>
+      </div>
+
+      {% if invoice.status == "PAID" %}
+      <div class="invoice-paid-state">
+        <span class="invoice-paid-check">✓</span>
+
+        <div>
+          <strong>Payment Complete</strong>
+          <p>This invoice is fully paid.</p>
+        </div>
+      </div>
+
+
+      {% elif invoice.status == "VOID" %}
+      <div class="invoice-void-state">
+        <strong>Invoice Void</strong>
+        <p>This invoice cannot receive payment.</p>
+      </div>
+
+      {% else %}
+      <form
+        method="post"
+        action="/invoices/{{ invoice.id }}/payments"
+        class="invoice-payment-form"
+      >
+        <div class="invoice-payment-form-heading">
+          <h2>Receive Payment</h2>
+          <p>
+            Enter the payment received from the customer.
+          </p>
+        </div>
+
+        <label>
+          <span>Amount Received</span>
+
+          <input
+            type="number"
+            name="amount"
+            value="{{ '%.2f'|format(invoice.balance_due or 0) }}"
+            min="0.01"
+            max="{{ '%.2f'|format(invoice.balance_due or 0) }}"
+            step="0.01"
+            required
+          >
+        </label>
+
+        <label>
+          <span>Payment Method</span>
+
+          <select name="payment_method" required>
+            <option value="">Select method...</option>
+            <option value="CASH">Cash</option>
+            <option value="BANK TRANSFER">Bank Transfer</option>
+            <option value="ZELLE">Zelle</option>
+            <option value="CARD">Card</option>
+            <option value="CHEQUE">Cheque</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Reference</span>
+
+          <input
+            name="reference"
+            placeholder="Optional receipt or transfer reference"
+          >
+        </label>
+
+        <label>
+          <span>Payment Date</span>
+
+          <input
+            type="date"
+            name="payment_date"
+            value="{{ today }}"
+            required
+          >
+        </label>
+
+        <button
+          class="workspace-btn workspace-btn-primary invoice-confirm-payment"
+          type="submit"
+        >
+          Confirm Payment
+        </button>
+      </form>
+      {% endif %}
+    </aside>
+
+  </section>
+
+</div>
 {% endblock %}

@@ -1,7 +1,275 @@
 {% extends "base.html" %}
-{% block title %}Quote Documents · {{ quote.quote_number }}{% endblock %}
+{% block title %}Quote Review · {{ quote.quote_number }}{% endblock %}
+
 {% block content %}
-<section class="workspace-heading"><div><p class="eyebrow">QUOTE GENERATED</p><h1>{{ quote.quote_number }}</h1><p>{{ quote.customer }} · {{ quote.manufacturer }} {{ quote.machine }}</p></div><div class="workspace-heading-actions"><a class="button ghost" href="/jobs/{{ quote.job_id }}/basket">Back to Job</a>{% if invoice %}<a class="button" href="/invoices/{{ invoice.id }}/documents">Open {{ invoice.invoice_number }}</a>{% else %}<form method="post" action="/quotes/{{ quote.id }}/convert-to-invoice"><button class="button" type="submit">Create Invoice</button></form>{% endif %}</div></section>
-<section class="document-card-grid"><article class="panel document-output-card"><div><p class="eyebrow">CUSTOMER COPY</p><h2>Customer Quote PDF</h2><p>Customer-facing quote with selling prices only.</p></div><div class="document-output-actions"><a class="button ghost" target="_blank" href="/quotes/{{ quote.id }}/customer/pdf">Open PDF</a><a class="button" href="/quotes/{{ quote.id }}/customer/pdf?download=1">Download</a></div></article><article class="panel document-output-card"><div><p class="eyebrow">INTERNAL COPY</p><h2>Internal Quote PDF</h2><p>Vendor cost, customer price, line profit, and net profit.</p></div><div class="document-output-actions"><a class="button ghost" target="_blank" href="/quotes/{{ quote.id }}/internal/pdf">Open PDF</a><a class="button" href="/quotes/{{ quote.id }}/internal/pdf?download=1">Download</a></div></article></section>
-<section class="panel document-location-card"><p class="eyebrow">LOCAL STORAGE</p><h2>Saved Under Customer Folder</h2><p><code>{{ customer_path }}</code></p></section>
+<div class="quote-review-shell">
+
+  <section class="quote-review-heading">
+    <div>
+      <p class="eyebrow">CUSTOMER QUOTE</p>
+
+      <div class="quote-review-title-row">
+        <h1>{{ quote.quote_number }}</h1>
+
+        <span class="quote-status-badge quote-status-{{ quote.status|lower }}">
+          {{ quote.status or "DRAFT" }}
+        </span>
+      </div>
+
+      <p class="quote-review-subtitle">
+        Review what was quoted before continuing to the invoice.
+      </p>
+    </div>
+
+    <div class="quote-review-heading-actions">
+      <a
+        class="button ghost"
+        href="/jobs/{{ quote.job_id }}/basket"
+      >
+        Back to Job
+      </a>
+
+      {% if invoice %}
+      <a
+        class="button"
+        href="/invoices/{{ invoice.id }}/documents"
+      >
+        Open {{ invoice.invoice_number }}
+      </a>
+      {% else %}
+      <form
+        method="post"
+        action="/quotes/{{ quote.id }}/convert-to-invoice"
+      >
+        <button class="button" type="submit">
+          Customer Accepted — Create Invoice
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="panel quote-review-identity">
+    <div class="quote-review-identity-grid">
+      <div>
+        <span>Customer</span>
+        <strong>{{ quote.customer or "Not provided" }}</strong>
+
+        {% if quote.company %}
+        <small>{{ quote.company }}</small>
+        {% endif %}
+      </div>
+
+      <div>
+        <span>Location</span>
+        <strong>{{ quote.address or "Not provided" }}</strong>
+      </div>
+
+      <div>
+        <span>Machine</span>
+        <strong>
+          {% if quote.manufacturer or quote.machine %}
+            {{ quote.manufacturer }} {{ quote.machine }}
+          {% else %}
+            Not provided
+          {% endif %}
+        </strong>
+      </div>
+
+      <div>
+        <span>VIN / PIN / Serial</span>
+        <strong>{{ quote.pin_serial or "Not provided" }}</strong>
+      </div>
+
+      <div>
+        <span>Job</span>
+        <strong>{{ quote.job_number }}</strong>
+      </div>
+
+      <div>
+        <span>Quote Date</span>
+        <strong>{{ quote.quote_date }}</strong>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel quote-review-items">
+    <header class="quote-review-section-head">
+      <div>
+        <p class="eyebrow">ITEMS QUOTED</p>
+        <h2>Parts included in this quote</h2>
+      </div>
+
+      <span class="quote-item-count">
+        {{ items|length }}
+        item{% if items|length != 1 %}s{% endif %}
+      </span>
+    </header>
+
+    {% if items %}
+    <div class="quote-review-table-wrap">
+      <table class="quote-review-table">
+        <thead>
+          <tr>
+            <th>Qty</th>
+            <th>Part Number</th>
+            <th>Description</th>
+            <th>Type</th>
+            <th>Customer Unit</th>
+            <th>Line Total</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td>{{ item.quantity }}</td>
+
+            <td>
+              <strong>
+                {{ item.supplier_part_number or "—" }}
+              </strong>
+            </td>
+
+            <td>{{ item.description }}</td>
+
+            <td>
+              <span class="quote-type-badge">
+                {{ item.source_type or "PART" }}
+              </span>
+            </td>
+
+            <td>
+              ${{ "%.2f"|format(item.customer_unit_price or 0) }}
+            </td>
+
+            <td>
+              <strong>
+                ${{ "%.2f"|format(item.customer_line_total or 0) }}
+              </strong>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      No quote items were found.
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="quote-review-lower-grid">
+    <article class="panel quote-review-documents">
+      <header class="quote-review-section-head">
+        <div>
+          <p class="eyebrow">DOCUMENTS</p>
+          <h2>Quote PDFs</h2>
+        </div>
+      </header>
+
+      <div class="quote-document-row">
+        <div>
+          <strong>Customer Quote</strong>
+          <p>Selling prices only. This is the copy sent to the customer.</p>
+        </div>
+
+        <div class="quote-document-actions">
+          <a
+            class="button ghost"
+            target="_blank"
+            href="/quotes/{{ quote.id }}/customer/pdf"
+          >
+            Open PDF
+          </a>
+
+          <a
+            class="button"
+            href="/quotes/{{ quote.id }}/customer/pdf?download=1"
+          >
+            Download
+          </a>
+        </div>
+      </div>
+
+      <div class="quote-document-row">
+        <div>
+          <strong>Internal Quote</strong>
+          <p>
+            Supplier cost, selling price, line profit and total profit.
+          </p>
+        </div>
+
+        <div class="quote-document-actions">
+          <a
+            class="button ghost"
+            target="_blank"
+            href="/quotes/{{ quote.id }}/internal/pdf"
+          >
+            Open PDF
+          </a>
+
+          <a
+            class="button"
+            href="/quotes/{{ quote.id }}/internal/pdf?download=1"
+          >
+            Download
+          </a>
+        </div>
+      </div>
+    </article>
+
+    <aside class="panel quote-review-total-card">
+      <p class="eyebrow">QUOTE TOTAL</p>
+
+      <div class="quote-total-main">
+        <span>Customer Total</span>
+        <strong>
+          ${{ "%.2f"|format(quote.customer_total or 0) }}
+        </strong>
+      </div>
+
+      <div class="quote-total-breakdown">
+        <div>
+          <span>Parts</span>
+          <strong>
+            ${{ "%.2f"|format(quote.parts_subtotal or 0) }}
+          </strong>
+        </div>
+
+        <div>
+          <span>Shipping</span>
+          <strong>
+            ${{ "%.2f"|format(quote.shipping_total or 0) }}
+          </strong>
+        </div>
+      </div>
+
+      {% if invoice %}
+      <a
+        class="button full-width"
+        href="/invoices/{{ invoice.id }}/documents"
+      >
+        Open {{ invoice.invoice_number }}
+      </a>
+      {% else %}
+      <form
+        method="post"
+        action="/quotes/{{ quote.id }}/convert-to-invoice"
+      >
+        <button class="button full-width" type="submit">
+          Customer Accepted — Create Invoice
+        </button>
+      </form>
+
+      <p class="quote-next-step-note">
+        Use this after the customer approves the quote. Payment will be
+        recorded on the invoice.
+      </p>
+      {% endif %}
+    </aside>
+  </section>
+
+</div>
 {% endblock %}
