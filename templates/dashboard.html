@@ -16,25 +16,82 @@
     </a>
   </section>
 
-  <section class="workspace-stat-strip">
-    <a href="/jobs">
-      <span>Needs Attention</span>
-      <strong>{{ stats.needs_attention or 0 }}</strong>
+  <section class="dashboard-priority-grid" aria-label="Current workload summary">
+    <a class="dashboard-priority-card priority-attention" href="/jobs">
+      <span class="dashboard-priority-icon" aria-hidden="true">!</span>
+
+      <span class="dashboard-priority-content">
+        <strong>{{ stats.needs_attention or 0 }}</strong>
+        <span>Needs Attention</span>
+        <small>Jobs requiring your next action</small>
+      </span>
+
+      <span class="dashboard-priority-arrow" aria-hidden="true">→</span>
     </a>
 
-    <a href="/quotes">
-      <span>Active Quotes</span>
-      <strong>{{ stats.active_quotes or 0 }}</strong>
+    <a class="dashboard-priority-card priority-quotes" href="/quotes">
+      <span class="dashboard-priority-icon" aria-hidden="true">＄</span>
+
+      <span class="dashboard-priority-content">
+        <strong>{{ stats.active_quotes or 0 }}</strong>
+        <span>Active Quotes</span>
+        <small>Quotes currently open</small>
+      </span>
+
+      <span class="dashboard-priority-arrow" aria-hidden="true">→</span>
     </a>
 
-    <a href="/invoices">
-      <span>Waiting for Payment</span>
-      <strong>{{ stats.waiting_payment or 0 }}</strong>
+    <a class="dashboard-priority-card priority-payment" href="/invoices">
+      <span class="dashboard-priority-icon" aria-hidden="true">$</span>
+
+      <span class="dashboard-priority-content">
+        <strong>{{ stats.waiting_payment or 0 }}</strong>
+        <span>Waiting for Payment</span>
+        <small>Unpaid or partially paid invoices</small>
+      </span>
+
+      <span class="dashboard-priority-arrow" aria-hidden="true">→</span>
     </a>
 
-    <a href="/invoices?view=paid">
-      <span>Ready to Order</span>
-      <strong>{{ stats.ready_to_order or 0 }}</strong>
+    <a class="dashboard-priority-card priority-order" href="/invoices?view=paid">
+      <span class="dashboard-priority-icon" aria-hidden="true">▣</span>
+
+      <span class="dashboard-priority-content">
+        <strong>{{ stats.ready_to_order or 0 }}</strong>
+        <span>Ready to Order</span>
+        <small>Paid jobs ready for purchasing</small>
+      </span>
+
+      <span class="dashboard-priority-arrow" aria-hidden="true">→</span>
+    </a>
+  </section>
+
+  <section class="dashboard-financial-grid">
+    <a class="dashboard-financial-card" href="/invoices?view=paid">
+      <span class="dashboard-financial-label">Payments Today</span>
+      <strong>${{ "%.2f"|format(financial.payments_today or 0) }}</strong>
+      <small>
+        {{ financial.payment_transactions_today or 0 }}
+        transaction{% if financial.payment_transactions_today != 1 %}s{% endif %}
+      </small>
+    </a>
+
+    <a class="dashboard-financial-card" href="/invoices?view=paid">
+      <span class="dashboard-financial-label">Payments This Week</span>
+      <strong>${{ "%.2f"|format(financial.payments_this_week or 0) }}</strong>
+      <small>Cash received since Monday</small>
+    </a>
+
+    <a class="dashboard-financial-card" href="/invoices">
+      <span class="dashboard-financial-label">Outstanding Balance</span>
+      <strong>${{ "%.2f"|format(financial.outstanding_balance or 0) }}</strong>
+      <small>Unpaid and partially paid invoices</small>
+    </a>
+
+    <a class="dashboard-financial-card" href="/invoices?view=paid">
+      <span class="dashboard-financial-label">Invoices Paid Today</span>
+      <strong>{{ financial.invoices_paid_today or 0 }}</strong>
+      <small>Invoices fully settled today</small>
     </a>
   </section>
 

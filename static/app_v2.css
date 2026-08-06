@@ -1509,3 +1509,242 @@ tbody tr:last-child td {
     border-top: 1px solid var(--plg-line);
   }
 }
+
+
+/* =========================================================
+   PLG ALPHA 8.2 — DASHBOARD FINANCIAL SNAPSHOT
+   ========================================================= */
+
+.dashboard-financial-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 26px;
+}
+
+.dashboard-financial-card {
+  display: grid;
+  gap: 7px;
+  min-height: 132px;
+  padding: 18px;
+  border: 1px solid var(--plg-line);
+  border-radius: var(--plg-radius-lg);
+  background: var(--plg-surface);
+  box-shadow: var(--plg-shadow);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.dashboard-financial-card:hover {
+  transform: translateY(-1px);
+  border-color: #b8cce2;
+  box-shadow: var(--plg-shadow-hover);
+}
+
+.dashboard-financial-label {
+  color: var(--plg-muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dashboard-financial-card strong {
+  color: var(--plg-navy-strong);
+  font-size: clamp(1.45rem, 2.2vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-financial-card small {
+  color: var(--plg-muted);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 1050px) {
+  .dashboard-financial-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .dashboard-financial-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-financial-card {
+    min-height: 112px;
+  }
+}
+
+
+/* =========================================================
+   PLG ALPHA 8.2 — DASHBOARD PRIORITY KPI CARDS
+   ========================================================= */
+
+.dashboard-priority-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 13px;
+  margin: 0 0 25px;
+}
+
+.dashboard-priority-card {
+  --priority-color: var(--plg-blue);
+  --priority-soft: var(--plg-blue-soft);
+
+  position: relative;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 13px;
+  min-height: 145px;
+  padding: 20px 17px;
+  overflow: hidden;
+
+  border: 1px solid var(--plg-line);
+  border-top: 4px solid var(--priority-color);
+  border-radius: var(--plg-radius-lg);
+  background: var(--plg-surface);
+  box-shadow: var(--plg-shadow);
+
+  color: inherit;
+  text-decoration: none;
+
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.dashboard-priority-card::after {
+  content: "";
+  position: absolute;
+  top: -48px;
+  right: -48px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: var(--priority-soft);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.dashboard-priority-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(
+    in srgb,
+    var(--priority-color) 38%,
+    var(--plg-line)
+  );
+  box-shadow: var(--plg-shadow-hover);
+}
+
+.dashboard-priority-icon {
+  position: relative;
+  z-index: 1;
+
+  display: grid;
+  place-items: center;
+
+  width: 46px;
+  height: 46px;
+
+  border-radius: 13px;
+  background: var(--priority-soft);
+  color: var(--priority-color);
+
+  font-size: 1.35rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.dashboard-priority-content {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-width: 0;
+}
+
+.dashboard-priority-content strong {
+  color: var(--plg-navy-strong);
+  font-size: clamp(2.25rem, 3vw, 2.8rem) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.055em;
+  line-height: 0.95;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-priority-content > span {
+  margin-top: 9px;
+  color: var(--plg-ink);
+  font-size: 0.94rem;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.dashboard-priority-content small {
+  margin-top: 5px;
+  color: var(--plg-muted);
+  font-size: 0.7rem;
+  line-height: 1.38;
+}
+
+.dashboard-priority-arrow {
+  position: relative;
+  z-index: 1;
+  align-self: center;
+
+  color: var(--priority-color);
+  font-size: 1.05rem;
+  font-weight: 900;
+
+  transition: transform 0.16s ease;
+}
+
+.dashboard-priority-card:hover .dashboard-priority-arrow {
+  transform: translateX(3px);
+}
+
+.priority-attention {
+  --priority-color: #b42318;
+  --priority-soft: #fff0ef;
+}
+
+.priority-quotes {
+  --priority-color: #1267d6;
+  --priority-soft: #edf5ff;
+}
+
+.priority-payment {
+  --priority-color: #a86412;
+  --priority-soft: #fff4df;
+}
+
+.priority-order {
+  --priority-color: #237a52;
+  --priority-soft: #eaf7f0;
+}
+
+@media (max-width: 1150px) {
+  .dashboard-priority-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
+  .dashboard-priority-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-priority-card {
+    min-height: 125px;
+  }
+}
