@@ -1701,20 +1701,14 @@ def generate_quote(job_id: int):
             (job_id,),
         )
 
-        connection.execute(
-            """
-            INSERT INTO job_timeline (
-                job_id,
-                event_type,
-                icon,
-                message
-            )
-            VALUES (?, 'QUOTE_CREATED', '📝', ?)
-            """,
-            (
-                job_id,
-                f"Customer quote {quote_number} created",
-            ),
+        from plg_core.timeline import log_job_event
+
+        log_job_event(
+            connection,
+            job_id=job_id,
+            event_type="QUOTE_GENERATED",
+            icon="📝",
+            message=f"Quote {quote_number} generated",
         )
 
         connection.commit()
@@ -2467,6 +2461,98 @@ def archive_quote(quote_id: int):
 def restore_quote(quote_id: int):
     with closing(get_connection()) as connection: connection.execute("UPDATE quotes SET is_archived=0 WHERE id=?",(quote_id,)); connection.commit()
     return RedirectResponse(url="/quotes?view=archived",status_code=303)
+
+
+@app.post("/quotes/{quote_id}/decision")
+def update_quote_decision(
+    quote_id: int,
+    decision: str = Form(...),
+):
+    from plg_core.timeline import log_job_event
+
+    valid_decisions = {
+        "APPROVED",
+        "REVISION_REQUIRED",
+        "REJECTED",
+    }
+
+    normalized = decision.strip().upper()
+
+    if normalized not in valid_decisions:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid quote decision.",
+        )
+
+    with closing(get_connection()) as connection:
+        quote = connection.execute(
+            """
+            SELECT id, quote_number, job_id, status
+            FROM quotes
+            WHERE id = ?
+            """,
+            (quote_id,),
+        ).fetchone()
+
+        if quote is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Quote not found.",
+            )
+
+        connection.execute(
+            """
+            UPDATE quotes
+            SET status = ?
+            WHERE id = ?
+            """,
+            (normalized, quote_id),
+        )
+
+        if normalized == "APPROVED":
+            event_type = "QUOTE_APPROVED"
+            icon = "✅"
+            message = f"Quote {quote['quote_number']} approved"
+            job_status = "CONFIRMED"
+
+        elif normalized == "REVISION_REQUIRED":
+            event_type = "QUOTE_REVISION_REQUIRED"
+            icon = "↺"
+            message = (
+                f"Changes requested for quote "
+                f"{quote['quote_number']}"
+            )
+            job_status = "QUOTED"
+
+        else:
+            event_type = "QUOTE_REJECTED"
+            icon = "✕"
+            message = f"Quote {quote['quote_number']} rejected"
+            job_status = "QUOTED"
+
+        connection.execute(
+            """
+            UPDATE jobs
+            SET status = ?
+            WHERE id = ?
+            """,
+            (job_status, quote["job_id"]),
+        )
+
+        log_job_event(
+            connection,
+            job_id=int(quote["job_id"]),
+            event_type=event_type,
+            icon=icon,
+            message=message,
+        )
+
+        connection.commit()
+
+    return RedirectResponse(
+        url=f"/quotes/{quote_id}/documents",
+        status_code=303,
+    )
 
 
 @app.get("/quotes/{quote_id}/documents", response_class=HTMLResponse)

@@ -234,6 +234,127 @@ def update_item(item_id: int, payload: BasketItemUpdate):
         return serialize_basket(connection, basket)
 
 
+
+def advance_part_workflow(
+    job_id: int,
+    item_id: int,
+    action: str,
+):
+    """Advance one selected part through ordering and receiving."""
+
+    normalized_action = str(action or "").strip().upper()
+
+    transitions = {
+        "ORDER": {
+            "from": "QUOTED",
+            "to": "ORDERED",
+            "event_type": "PART_ORDERED",
+            "icon": "🛒",
+            "verb": "ordered",
+        },
+        "RECEIVE": {
+            "from": "ORDERED",
+            "to": "RECEIVED",
+            "event_type": "PART_RECEIVED",
+            "icon": "📦",
+            "verb": "received",
+        },
+    }
+
+    transition = transitions.get(normalized_action)
+
+    if transition is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid part workflow action.",
+        )
+
+    with closing(get_connection()) as connection:
+        item = connection.execute(
+            """
+            SELECT
+                basket_items.*,
+                baskets.job_id
+            FROM basket_items
+            JOIN baskets
+              ON baskets.id = basket_items.basket_id
+            WHERE basket_items.id = ?
+              AND baskets.job_id = ?
+            """,
+            (item_id, job_id),
+        ).fetchone()
+
+        if item is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Basket item not found for this job.",
+            )
+
+        current_status = (
+            item["part_status"] or "RESEARCH"
+        ).strip().upper()
+
+        required_status = transition["from"]
+
+        if current_status != required_status:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Part must be {required_status.title()} "
+                    f"before it can be {transition['verb']}."
+                ),
+            )
+
+        new_status = transition["to"]
+
+        connection.execute(
+            """
+            UPDATE basket_items
+            SET part_status = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (new_status, item_id),
+        )
+
+        description = (
+            item["requested_description"]
+            or "Unnamed part"
+        ).strip()
+
+        supplier = (
+            item["supplier_name"]
+            or "supplier"
+        ).strip()
+
+        if normalized_action == "ORDER":
+            message = (
+                f"{description} ordered from {supplier}"
+            )
+        else:
+            message = f"{description} received"
+
+        log_job_event(
+            connection,
+            job_id=job_id,
+            event_type=transition["event_type"],
+            icon=transition["icon"],
+            message=message,
+        )
+
+        connection.commit()
+
+        basket = connection.execute(
+            """
+            SELECT *
+            FROM baskets
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+
+        return serialize_basket(connection, basket)
+
 def delete_item(item_id: int):
     with closing(get_connection()) as connection:
         item = connection.execute(

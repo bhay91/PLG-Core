@@ -12,6 +12,7 @@ from plg_core.jobs.engine import JobEngine
 from plg_core.timeline import log_job_event
 from plg_core.basket.service import (
     add_item,
+    advance_part_workflow,
     clear_basket,
     commit_basket,
     delete_item,
@@ -868,6 +869,26 @@ def update_item_quantity(
         status_code=303,
     )
 
+@router.post(
+    "/jobs/{job_id}/basket/items/{item_id}/workflow"
+)
+def advance_part_workflow_form(
+    job_id: int,
+    item_id: int,
+    action: Annotated[str, Form()],
+):
+    advance_part_workflow(
+        job_id=job_id,
+        item_id=item_id,
+        action=action,
+    )
+
+    return RedirectResponse(
+        url=f"/jobs/{job_id}/basket#parts-ready",
+        status_code=303,
+    )
+
+
 @router.post("/jobs/{job_id}/basket/items/{item_id}/delete")
 def delete_item_form(job_id: int, item_id: int):
     delete_item(item_id)
@@ -1043,7 +1064,7 @@ def update_basket_item_form(
     quantity: int = Form(...),
     supplier_unit_cost: float = Form(...),
     markup_percent: float = Form(...),
-    part_status: str = Form("QUOTED"),
+    part_status: str = Form(""),
 ):
     valid_statuses = {
         "RESEARCH",
@@ -1051,9 +1072,7 @@ def update_basket_item_form(
         "ORDERED",
         "RECEIVED",
     }
-    new_status = part_status.strip().upper()
-    if new_status not in valid_statuses:
-        new_status = "RESEARCH"
+    requested_status = part_status.strip().upper()
 
     with closing(get_connection()) as connection:
         old_item = connection.execute(
@@ -1074,6 +1093,20 @@ def update_basket_item_form(
     old_status = (
         old_item["part_status"] or "RESEARCH"
     ).strip().upper()
+
+    new_status = (
+        requested_status
+        if requested_status in valid_statuses
+        else old_status
+    )
+
+    # Pricing a researched part means it is ready for the
+    # customer quote. The user does not need to change status.
+    if (
+        old_status == "RESEARCH"
+        and supplier_unit_cost > 0
+    ):
+        new_status = "QUOTED"
 
     update_item(
         item_id,

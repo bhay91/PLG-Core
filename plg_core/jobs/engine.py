@@ -136,11 +136,6 @@ class JobEngine:
 
         outstanding_count = max(selected_items - received_items, 0)
 
-        has_request = (
-            customer_request is not None
-            or bool(_value(job, "customer_request_id"))
-        )
-
         has_customer = (
             bool(customer_id)
             or _present(_value(job, "customer"))
@@ -150,6 +145,23 @@ class JobEngine:
         has_registry = bool(machine_id) or any(
             _present(_value(job, field))
             for field in ("manufacturer", "machine", "pin_serial")
+        )
+
+        has_linked_request = (
+            customer_request is not None
+            or bool(_value(job, "customer_request_id"))
+        )
+
+        # PLG supports two valid job entry paths:
+        #
+        # 1. A Job created from a Customer Request.
+        # 2. A manually created Job with customer and registry data.
+        #
+        # Manual Jobs must not remain permanently blocked at the
+        # Customer Request stage.
+        has_request = (
+            has_linked_request
+            or (has_customer and has_registry)
         )
 
         has_parts = selected_items > 0
@@ -290,6 +302,31 @@ class JobEngine:
                     "POST",
                 )
                 blocked_reason = "The job is ready for a customer quote."
+
+        elif has_quote and quote_status == "REVISION_REQUIRED":
+            stage = "READY_TO_QUOTE"
+            action = (
+                "Revise Quote",
+                "REVISE_QUOTE",
+                f"/jobs/{job_id}/basket",
+                "GET",
+            )
+            blocked_reason = (
+                "The customer requested changes to the quote."
+            )
+
+        elif has_quote and quote_status == "REJECTED":
+            stage = "READY_TO_QUOTE"
+            action = (
+                "Review Rejected Quote",
+                "REVIEW_REJECTED_QUOTE",
+                f"/jobs/{job_id}/basket",
+                "GET",
+            )
+            blocked_reason = (
+                "The customer rejected the quote. Review pricing "
+                "or close the job."
+            )
 
         elif has_quote and not quote_approved:
             stage = "WAITING_CUSTOMER"

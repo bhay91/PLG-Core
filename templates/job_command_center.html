@@ -531,28 +531,24 @@
 </td>
 
 <td>
-<select
-  form="part-update-{{ item.id }}"
-  name="part_status"
-  class="part-order-status"
+{% set current_status = item.part_status or "RESEARCH" %}
+
+<span
+  class="part-workflow-badge
+    part-workflow-{{ current_status|lower }}"
 >
-  <option value="RESEARCH"
-    {% if item.part_status == "RESEARCH" %}selected{% endif %}>
-    Research
-  </option>
-  <option value="QUOTED"
-    {% if item.part_status == "QUOTED" %}selected{% endif %}>
-    Quoted
-  </option>
-  <option value="ORDERED"
-    {% if item.part_status == "ORDERED" %}selected{% endif %}>
-    Ordered
-  </option>
-  <option value="RECEIVED"
-    {% if item.part_status == "RECEIVED" %}selected{% endif %}>
-    Received
-  </option>
-</select>
+  {% if current_status == "RESEARCH" %}
+    🔍 Research
+  {% elif current_status == "QUOTED" %}
+    ✓ Ready for Quote
+  {% elif current_status == "ORDERED" %}
+    🛒 Ordered
+  {% elif current_status == "RECEIVED" %}
+    📦 Received
+  {% else %}
+    {{ current_status }}
+  {% endif %}
+</span>
 </td>
 
 <td>
@@ -570,17 +566,48 @@
 
   <button
     form="part-update-{{ item.id }}"
-    class="button small"
+    class="button small ghost"
     type="submit"
   >
     Save
   </button>
+
+  {% if current_status == "QUOTED" %}
+  <form
+    method="post"
+    action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/workflow"
+  >
+    <input type="hidden" name="action" value="ORDER">
+
+    <button class="button small" type="submit">
+      Order Part
+    </button>
+  </form>
+
+  {% elif current_status == "ORDERED" %}
+  <form
+    method="post"
+    action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/workflow"
+  >
+    <input type="hidden" name="action" value="RECEIVE">
+
+    <button class="button small" type="submit">
+      Receive Part
+    </button>
+  </form>
+
+  {% elif current_status == "RECEIVED" %}
+  <span class="part-workflow-complete">
+    ✓ Complete
+  </span>
+  {% endif %}
 
   <form
     method="post"
     action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/toggle"
   >
     <input type="hidden" name="selected" value="0">
+
     <button
       class="cc-remove"
       type="submit"

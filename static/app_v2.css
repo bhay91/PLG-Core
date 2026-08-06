@@ -2178,3 +2178,124 @@ tbody tr:last-child td {
 .part-order-actions form {
   margin: 0;
 }
+
+
+/* PLG Alpha 8.6 — Customer Decision Center */
+
+.quote-decision-center {
+  display: grid;
+  gap: 17px;
+}
+
+.quote-decision-result {
+  padding: 15px 17px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.quote-decision-result strong {
+  display: block;
+  color: var(--ink-strong);
+}
+
+.quote-decision-result p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.quote-decision-result.approved {
+  border-color: #a7dfbe;
+  background: #ecf9f1;
+}
+
+.quote-decision-result.revision {
+  border-color: #f0d38f;
+  background: #fff8e8;
+}
+
+.quote-decision-result.rejected {
+  border-color: #efb4b4;
+  background: #fff1f1;
+}
+
+.quote-decision-result.waiting {
+  background: #f6f8fb;
+}
+
+.quote-decision-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.quote-decision-actions form {
+  margin: 0;
+}
+
+.button.danger {
+  border-color: #d84b4b;
+  background: #fff;
+  color: #b42323;
+}
+
+.button.danger:hover {
+  background: #fff1f1;
+}
+
+@media (max-width: 720px) {
+  .quote-decision-actions {
+    display: grid;
+  }
+
+  .quote-decision-actions .button {
+    width: 100%;
+  }
+}
+
+
+/* PLG Alpha 8.6 — Action-Driven Part Workflow */
+
+.part-workflow-badge {
+  display: inline-flex;
+  align-items: center;
+  min-width: 112px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f5f7fa;
+  color: var(--ink-strong);
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.part-workflow-research {
+  background: #f5f7fa;
+  color: #667085;
+}
+
+.part-workflow-quoted {
+  border-color: #a7dfbe;
+  background: #ecf9f1;
+  color: #168648;
+}
+
+.part-workflow-ordered {
+  border-color: #f0d38f;
+  background: #fff8e8;
+  color: #946200;
+}
+
+.part-workflow-received {
+  border-color: #bfd6f4;
+  background: #edf5ff;
+  color: #1267d6;
+}
+
+.part-workflow-complete {
+  color: #168648;
+  font-size: 0.75rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
