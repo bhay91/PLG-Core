@@ -1971,6 +1971,15 @@ def invoice_documents(request: Request, invoice_id: int):
         invoice["invoice_number"],
     )
 
+    from plg_core.documents.invoice_pdf import (
+        paid_invoice_paths,
+    )
+
+    paid_paths = paid_invoice_paths(
+        invoice["customer"],
+        invoice["invoice_number"],
+    )
+
     if (
         not paths["customer"].exists()
         or not paths["internal"].exists()
@@ -1985,6 +1994,12 @@ def invoice_documents(request: Request, invoice_id: int):
             "items": items,
             "payments": payments,
             "payment_total": payment_total,
+            "paid_customer_invoice_exists": (
+                paid_paths["customer"].exists()
+            ),
+            "paid_internal_invoice_exists": (
+                paid_paths["internal"].exists()
+            ),
             "today": date.today().isoformat(),
             "parts_order_sheet_exists": parts_order_sheet_path(
                 invoice
@@ -2155,14 +2170,93 @@ def receive_invoice_payment(
             invoice_id,
         )
 
-        generate_invoice_pdfs(
-            updated_invoice,
-            updated_items,
-        )
+        if new_status == "PAID":
+            from plg_core.documents.invoice_pdf import (
+                generate_paid_invoice_pdfs,
+            )
+
+            generate_paid_invoice_pdfs(
+                updated_invoice,
+                updated_items,
+            )
 
     return RedirectResponse(
         url=f"/invoices/{invoice_id}/documents",
         status_code=303,
+    )
+
+
+@app.get("/invoices/{invoice_id}/customer/paid-pdf")
+def paid_customer_invoice_pdf(
+    invoice_id: int,
+    download: int = 0,
+):
+    from plg_core.documents.invoice_pdf import (
+        generate_paid_invoice_pdfs,
+        paid_invoice_paths,
+    )
+
+    with closing(get_connection()) as connection:
+        invoice, items = load_invoice(connection, invoice_id)
+
+    if str(invoice["status"] or "").upper() != "PAID":
+        raise HTTPException(
+            status_code=400,
+            detail="The invoice has not been paid.",
+        )
+
+    path = paid_invoice_paths(
+        invoice["customer"],
+        invoice["invoice_number"],
+    )["customer"]
+
+    if not path.exists():
+        generate_paid_invoice_pdfs(invoice, items)
+
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type=(
+            "attachment" if download else "inline"
+        ),
+    )
+
+
+@app.get("/invoices/{invoice_id}/internal/paid-pdf")
+def paid_internal_invoice_pdf(
+    invoice_id: int,
+    download: int = 0,
+):
+    from plg_core.documents.invoice_pdf import (
+        generate_paid_invoice_pdfs,
+        paid_invoice_paths,
+    )
+
+    with closing(get_connection()) as connection:
+        invoice, items = load_invoice(connection, invoice_id)
+
+    if str(invoice["status"] or "").upper() != "PAID":
+        raise HTTPException(
+            status_code=400,
+            detail="The invoice has not been paid.",
+        )
+
+    path = paid_invoice_paths(
+        invoice["customer"],
+        invoice["invoice_number"],
+    )["internal"]
+
+    if not path.exists():
+        generate_paid_invoice_pdfs(invoice, items)
+
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type=(
+            "attachment" if download else "inline"
+        ),
     )
 
 

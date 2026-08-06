@@ -74,6 +74,31 @@ def invoice_paths(customer: str, invoice_number: str) -> dict[str, Path]:
     }
 
 
+def paid_invoice_paths(
+    customer: str,
+    invoice_number: str,
+) -> dict[str, Path]:
+    """Return separate paths for paid invoice copies."""
+
+    root = (
+        DOCUMENT_ROOT
+        / sanitize_path_name(customer)
+        / "Invoices"
+    )
+    customer_dir = root / "Customer"
+    internal_dir = root / "Internal"
+
+    customer_dir.mkdir(parents=True, exist_ok=True)
+    internal_dir.mkdir(parents=True, exist_ok=True)
+
+    safe = sanitize_path_name(invoice_number)
+
+    return {
+        "customer": customer_dir / f"{safe}-PAID.pdf",
+        "internal": internal_dir / f"{safe}-Internal-PAID.pdf",
+    }
+
+
 def _value(row, key, default=""):
     try:
         value = row[key]
@@ -859,6 +884,48 @@ def build_invoice_pdf(
     ]
 
     doc.build(story)
+
+def generate_paid_invoice_pdfs(
+    invoice,
+    items: Iterable,
+) -> dict[str, str]:
+    """Generate separate paid customer and internal invoice copies."""
+
+    status = str(
+        _value(invoice, "status", "") or ""
+    ).strip().upper()
+
+    if status != "PAID":
+        raise ValueError(
+            "Paid invoice PDFs require invoice status PAID."
+        )
+
+    items = list(items)
+
+    paths = paid_invoice_paths(
+        _value(invoice, "customer"),
+        _value(invoice, "invoice_number"),
+    )
+
+    build_invoice_pdf(
+        invoice,
+        items,
+        paths["customer"],
+        internal=False,
+    )
+
+    build_invoice_pdf(
+        invoice,
+        items,
+        paths["internal"],
+        internal=True,
+    )
+
+    return {
+        key: str(value)
+        for key, value in paths.items()
+    }
+
 
 def generate_invoice_pdfs(invoice, items: Iterable) -> dict[str, str]:
     items = list(items)
