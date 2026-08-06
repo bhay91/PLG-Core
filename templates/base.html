@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b63ce">
   <title>{% block title %}PartsLink Global{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='/app.css') }}">
-  <link rel="stylesheet" href="/static/app_v2.css?v=alpha7-v3">
+  <link rel="stylesheet" href="/static/app_v2.css?v=alpha8-1-v1">
 </head>
 <body>
   <aside class="sidebar">
@@ -42,7 +42,7 @@
         <span class="nav-icon" aria-hidden="true">♙</span><span>Customers</span>
       </a>
       <a class="{% if active_page == 'machines' %}active{% endif %}" href="/machines">
-        <span class="nav-icon" aria-hidden="true">▱</span><span>Registry</span>
+        <span class="nav-icon" aria-hidden="true">▱</span><span>Machine Registry</span>
       </a>
       <a class="{% if active_page == 'suppliers' %}active{% endif %}" href="/suppliers">
         <span class="nav-icon" aria-hidden="true">▰</span><span>Suppliers</span>
@@ -71,10 +71,7 @@
       </div>
 
       <div class="topbar-tools">
-        <label class="global-search" aria-label="Search">
-          <span aria-hidden="true">⌕</span>
-          <input type="search" placeholder="Search jobs, parts, suppliers..." disabled>
-        </label>
+        
 
         <div class="user-chip">
           <span class="user-avatar" aria-hidden="true">B</span>

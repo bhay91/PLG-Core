@@ -1433,3 +1433,79 @@ tbody tr:last-child td {
     padding: 15px !important;
   }
 }
+
+
+/* =========================================================
+   PLG ALPHA 8.1 — WORKFLOW POLISH V1
+   ========================================================= */
+
+/* Top bar remains balanced without the unfinished search box. */
+.topbar-tools {
+  justify-content: flex-end;
+}
+
+/* Dashboard has one clear action instead of two competing links. */
+.dashboard-action-row {
+  grid-template-columns:
+    minmax(48px, auto)
+    minmax(0, 1.7fr)
+    minmax(145px, 0.55fr)
+    minmax(220px, 0.72fr) !important;
+}
+
+.dashboard-next-action {
+  border-right: 0 !important;
+}
+
+.dashboard-next-action .workspace-primary-link {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  margin-top: 8px;
+}
+
+/* Jobs rows are already clickable; the arrow alone is sufficient. */
+.smart-job-row-open {
+  min-width: 36px;
+  justify-content: center;
+}
+
+.smart-job-row-open strong {
+  color: var(--plg-blue);
+  font-size: 1.05rem;
+  transition: transform 0.15s ease;
+}
+
+.smart-job-row:hover .smart-job-row-open strong {
+  transform: translateX(3px);
+}
+
+/* Prevent the longer Machine Registry label from feeling cramped. */
+.sidebar-nav a {
+  gap: 10px;
+}
+
+@media (max-width: 1050px) {
+  .dashboard-action-row {
+    grid-template-columns:
+      minmax(48px, auto)
+      minmax(0, 1fr)
+      minmax(200px, 0.7fr) !important;
+  }
+
+  .dashboard-action-row .workspace-row-status {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-action-row {
+    grid-template-columns: 44px minmax(0, 1fr) !important;
+  }
+
+  .dashboard-next-action {
+    grid-column: 1 / -1;
+    padding-top: 14px;
+    border-top: 1px solid var(--plg-line);
+  }
+}

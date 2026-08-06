@@ -12,7 +12,7 @@
     </div>
 
     <a class="button" href="/requests/smart-intake">
-      + New Request
+      ＋ New Request
     </a>
   </section>
 
@@ -51,7 +51,30 @@
   <section class="workspace-row-list dashboard-work-list">
 
     {% for job in recent_jobs %}
-    <article class="workspace-row">
+
+      {% if job.invoice_id and job.invoice_status == "PAID" %}
+        {% set next_label = "Create Parts Order Sheet" %}
+        {% set next_button = "Open Paid Invoice" %}
+        {% set next_url = "/invoices/" ~ job.invoice_id ~ "/documents" %}
+      {% elif job.invoice_id %}
+        {% set next_label = "Receive Payment" %}
+        {% set next_button = "Open & Receive Payment" %}
+        {% set next_url = "/invoices/" ~ job.invoice_id ~ "/documents" %}
+      {% elif job.quote_id %}
+        {% set next_label = "Review Customer Quote" %}
+        {% set next_button = "Open Quote" %}
+        {% set next_url = "/quotes/" ~ job.quote_id ~ "/documents" %}
+      {% elif job.selected_items %}
+        {% set next_label = "Generate Quote" %}
+        {% set next_button = "Continue to Quote" %}
+        {% set next_url = "/jobs/" ~ job.id ~ "/basket" %}
+      {% else %}
+        {% set next_label = "Research Parts" %}
+        {% set next_button = "Open Job" %}
+        {% set next_url = "/jobs/" ~ job.id ~ "/basket" %}
+      {% endif %}
+
+    <article class="workspace-row dashboard-action-row">
       <div class="workspace-row-mark">
         {{ (job.manufacturer or "PLG")[:3]|upper }}
       </div>
@@ -94,32 +117,15 @@
         </div>
       </div>
 
-      <div class="workspace-row-action">
+      <div class="workspace-row-action dashboard-next-action">
         <span>NEXT ACTION</span>
-
-        {% if job.invoice_id and job.invoice_status == "PAID" %}
-          <strong>Create Parts Order Sheet</strong>
-        {% elif job.invoice_id %}
-          <strong>Receive Payment</strong>
-        {% elif job.quote_id %}
-          <strong>Review Customer Quote</strong>
-        {% elif job.selected_items %}
-          <strong>Generate Quote</strong>
-        {% else %}
-          <strong>Research Parts</strong>
-        {% endif %}
+        <strong>{{ next_label }}</strong>
 
         <a
           class="workspace-primary-link"
-          href="/jobs/{{ job.id }}/basket"
+          href="{{ next_url }}"
         >
-          Continue Job →
-        </a>
-      </div>
-
-      <div class="workspace-row-open">
-        <a href="/jobs/{{ job.id }}/basket">
-          Open Job
+          {{ next_button }} →
         </a>
       </div>
     </article>
@@ -130,6 +136,7 @@
   <div class="workspace-empty">
     <strong>No jobs yet.</strong>
     <p>Create a customer request to begin.</p>
+    <a class="button" href="/requests/smart-intake">＋ New Request</a>
   </div>
   {% endif %}
 
