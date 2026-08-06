@@ -43,3 +43,4 @@ data/*.db-wal
 # Customer request uploads
 uploads/requests/*
 !uploads/requests/.gitkeep
+debug/
