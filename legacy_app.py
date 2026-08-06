@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from plg_core.jobs.engine import JobEngine
+from plg_core.dashboard.service import get_dashboard_data
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -539,118 +540,13 @@ def startup() -> None:
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
     with closing(get_connection()) as connection:
-        recent_jobs = connection.execute(
-            """
-            SELECT
-                jobs.*,
-
-                (
-                    SELECT COUNT(*)
-                    FROM basket_items
-                    JOIN baskets
-                      ON baskets.id = basket_items.basket_id
-                    WHERE baskets.job_id = jobs.id
-                      AND basket_items.selected = 1
-                ) AS selected_items,
-
-                (
-                    SELECT GROUP_CONCAT(
-                        basket_items.requested_description,
-                        ', '
-                    )
-                    FROM basket_items
-                    JOIN baskets
-                      ON baskets.id = basket_items.basket_id
-                    WHERE baskets.job_id = jobs.id
-                      AND basket_items.selected = 1
-                ) AS selected_descriptions,
-
-                (
-                    SELECT quotes.id
-                    FROM quotes
-                    WHERE quotes.job_id = jobs.id
-                      AND COALESCE(quotes.is_archived, 0) = 0
-                    ORDER BY quotes.id DESC
-                    LIMIT 1
-                ) AS quote_id,
-
-                (
-                    SELECT quotes.quote_number
-                    FROM quotes
-                    WHERE quotes.job_id = jobs.id
-                    ORDER BY quotes.id DESC
-                    LIMIT 1
-                ) AS quote_number,
-
-                (
-                    SELECT invoices.id
-                    FROM invoices
-                    WHERE invoices.job_id = jobs.id
-                    ORDER BY invoices.id DESC
-                    LIMIT 1
-                ) AS invoice_id,
-
-                (
-                    SELECT invoices.status
-                    FROM invoices
-                    WHERE invoices.job_id = jobs.id
-                    ORDER BY invoices.id DESC
-                    LIMIT 1
-                ) AS invoice_status,
-
-                (
-                    SELECT invoices.balance_due
-                    FROM invoices
-                    WHERE invoices.job_id = jobs.id
-                    ORDER BY invoices.id DESC
-                    LIMIT 1
-                ) AS balance_due
-
-            FROM jobs
-            ORDER BY jobs.id DESC
-            LIMIT 10
-            """
-        ).fetchall()
-
-        dashboard_stats = connection.execute(
-            """
-            SELECT
-                (
-                    SELECT COUNT(*)
-                    FROM jobs
-                    WHERE status IN (
-                        'REQUESTED',
-                        'RESEARCHING',
-                        'VERIFIED'
-                    )
-                ) AS needs_attention,
-
-                (
-                    SELECT COUNT(*)
-                    FROM quotes
-                    WHERE COALESCE(is_archived, 0) = 0
-                ) AS active_quotes,
-
-                (
-                    SELECT COUNT(*)
-                    FROM invoices
-                    WHERE status IN ('UNPAID', 'PARTIAL')
-                ) AS waiting_payment,
-
-                (
-                    SELECT COUNT(*)
-                    FROM invoices
-                    WHERE status = 'PAID'
-                ) AS ready_to_order
-            """
-        ).fetchone()
+        dashboard_data = get_dashboard_data(connection)
 
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
         context={
-            "recent_jobs": recent_jobs,
-            "stats": dashboard_stats,
+            **dashboard_data,
             "active_page": "dashboard",
         },
     )
