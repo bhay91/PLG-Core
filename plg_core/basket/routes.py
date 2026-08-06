@@ -967,7 +967,7 @@ def update_revenue_adjustments(
         connection.commit()
 
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket#revenue-adjustments",
+        url=f"/jobs/{job_id}/basket?saved=1#revenue-adjustments",
         status_code=303,
     )
 

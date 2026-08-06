@@ -1941,3 +1941,32 @@ tbody tr:last-child td {
     width: 100%;
   }
 }
+
+.revenue-save-confirmation {
+  margin-bottom: 14px;
+  padding: 12px 15px;
+  border: 1px solid #a7dfbe;
+  border-radius: 11px;
+  background: #ecf9f1;
+  color: #187548;
+  font-size: 0.78rem;
+  font-weight: 800;
+  animation: revenue-confirmation-hide 0.35s ease 4s forwards;
+}
+
+@keyframes revenue-confirmation-hide {
+  to {
+    height: 0;
+    margin: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-width: 0;
+    opacity: 0;
+    overflow: hidden;
+  }
+}
+
+.revenue-adjustment-status.sourcing-active {
+  background: #edf5ff;
+  color: #1267d6;
+}

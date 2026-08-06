@@ -159,3 +159,11 @@ Descriptions are optional.
 - [ ] Business Intelligence reports charges separately.
 - [ ] End-to-end tests pass.
 - [ ] Release history updated.
+
+## Approved UI Polish
+
+- Section heading displays `Additional Charges`.
+- Active Service Charge badge displays `🟢 Service Charge Added`.
+- Active Sourcing Fee badge displays `🔵 Sourcing Fee Added`.
+- A temporary success confirmation appears after saving.
+- A small Quote Summary revenue indicator will be added when charge calculations are integrated.

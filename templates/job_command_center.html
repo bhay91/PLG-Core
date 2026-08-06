@@ -566,7 +566,7 @@
     <div class="cc-section-head revenue-adjustments-heading">
       <div>
         <p class="cc-label">REVENUE ADJUSTMENTS</p>
-        <h2>Additional business value</h2>
+        <h2>Additional Charges</h2>
         <p class="cc-muted">
           Record professional services and sourcing expertise before
           preparing the customer quote.
@@ -579,6 +579,12 @@
       </span>
       {% endif %}
     </div>
+
+    {% if request.query_params.get("saved") == "1" %}
+    <div class="revenue-save-confirmation" role="status">
+      ✓ Additional Charges saved successfully.
+    </div>
+    {% endif %}
 
     <form
       class="revenue-adjustments-form"
@@ -607,7 +613,7 @@
 
           {% if (job.service_charge or 0) > 0 %}
           <span class="revenue-adjustment-status active">
-            Added
+            🟢 Service Charge Added
           </span>
           {% else %}
           <span class="revenue-adjustment-status">
@@ -674,8 +680,8 @@
           </div>
 
           {% if (job.sourcing_fee or 0) > 0 %}
-          <span class="revenue-adjustment-status active">
-            Added
+          <span class="revenue-adjustment-status active sourcing-active">
+            🔵 Sourcing Fee Added
           </span>
           {% else %}
           <span class="revenue-adjustment-status">
