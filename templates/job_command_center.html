@@ -162,15 +162,35 @@
         </div>
 
         <div class="cc-command-action">
-          <span>
-            NEXT ACTION · {{ intelligence.health_label|upper }}
-          </span>
+          <div class="cc-status-heading">
+            <div>
+              <span>
+                CURRENT STATUS · {{ intelligence.health_label|upper }}
+              </span>
 
-          <strong>{{ intelligence.next_action }}</strong>
+              <strong>{{ intelligence.workflow_label }}</strong>
+            </div>
 
-          {% if intelligence.blocked_reason %}
-          <p>{{ intelligence.blocked_reason }}</p>
-          {% endif %}
+            <b>{{ intelligence.progress_percent }}%</b>
+          </div>
+
+          <div
+            class="cc-status-progress"
+            aria-label="Job progress: {{ intelligence.progress_percent }}%"
+          >
+            <span
+              style="width: {{ intelligence.progress_percent }}%"
+            ></span>
+          </div>
+
+          <div class="cc-next-action">
+            <span>NEXT ACTION</span>
+            <strong>{{ intelligence.next_action }}</strong>
+
+            {% if intelligence.blocked_reason %}
+            <p>{{ intelligence.blocked_reason }}</p>
+            {% endif %}
+          </div>
 
           {% if intelligence.action_method == "POST" %}
           <form method="post" action="{{ intelligence.action_url }}">
@@ -454,7 +474,7 @@
   <section class="cc-card cc-section" id="parts-ready">
     <div class="cc-section-head"><div><p class="cc-label">PARTS READY FOR QUOTE</p><h2>Review selected parts</h2><p class="cc-muted">Only selected parts move into the customer quote.</p></div><span class="cc-count">{{ basket.totals.selected_items }}</span></div>
     {% if basket_items %}
-    <div style="overflow-x:auto"><table class="cc-ready-table"><thead><tr><th>Supplier</th><th>Part Number</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Cost</th><th>Markup %</th><th>Markup $</th><th>Customer Unit</th><th>Total</th><th></th></tr></thead><tbody>
+    <div style="overflow-x:auto"><table class="cc-ready-table"><thead><tr><th>Supplier</th><th>Part Number</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Cost</th><th>Markup %</th><th>Markup $</th><th>Customer Unit</th><th>Total</th><th>Status</th><th>Actions</th></tr></thead><tbody>
     {% for item in basket_items %}{% set cost = item.supplier_unit_cost or 0 %}{% if item.markup_percent is not none %}{% set markup = item.markup_percent %}{% set customer_unit = (cost * (1 + markup / 100))|round(2) %}{% elif cost <= 50 %}{% set markup = 40 %}{% set customer_unit = (cost * 1.40)|round(0, 'ceil') %}{% elif cost <= 200 %}{% set markup = 30 %}{% set customer_unit = (cost * 1.30)|round(0, 'ceil') %}{% elif cost <= 500 %}{% set markup = 25 %}{% set customer_unit = (cost * 1.25)|round(0, 'ceil') %}{% else %}{% set markup = 20 %}{% set customer_unit = (cost * 1.20)|round(0, 'ceil') %}{% endif %}
     <tr>
 <td><strong>{{ item.supplier_name or "Manual Vendor" }}</strong></td>
@@ -508,16 +528,68 @@
 
 <td>
 <strong style="color:var(--accent)">${{ "%.2f"|format(customer_unit * item.quantity) }}</strong>
-<button form="part-update-{{ item.id }}"
-        class="button small ghost"
-        type="submit">Save</button>
 </td>
 
 <td>
-<form method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/toggle">
-<input type="hidden" name="selected" value="0">
-<button class="cc-remove" type="submit">×</button>
-</form>
+<select
+  form="part-update-{{ item.id }}"
+  name="part_status"
+  class="part-order-status"
+>
+  <option value="RESEARCH"
+    {% if item.part_status == "RESEARCH" %}selected{% endif %}>
+    Research
+  </option>
+  <option value="QUOTED"
+    {% if item.part_status == "QUOTED" %}selected{% endif %}>
+    Quoted
+  </option>
+  <option value="ORDERED"
+    {% if item.part_status == "ORDERED" %}selected{% endif %}>
+    Ordered
+  </option>
+  <option value="RECEIVED"
+    {% if item.part_status == "RECEIVED" %}selected{% endif %}>
+    Received
+  </option>
+</select>
+</td>
+
+<td>
+<div class="part-order-actions">
+  {% if item.source_url %}
+  <a
+    class="button small ghost"
+    href="{{ item.source_url }}"
+    target="_blank"
+    rel="noopener"
+  >
+    Open Supplier
+  </a>
+  {% endif %}
+
+  <button
+    form="part-update-{{ item.id }}"
+    class="button small"
+    type="submit"
+  >
+    Save
+  </button>
+
+  <form
+    method="post"
+    action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/toggle"
+  >
+    <input type="hidden" name="selected" value="0">
+    <button
+      class="cc-remove"
+      type="submit"
+      title="Remove from quote"
+    >
+      ×
+    </button>
+  </form>
+</div>
 </td>
 </tr>
     {% endfor %}</tbody></table></div>

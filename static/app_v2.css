@@ -2089,3 +2089,92 @@ tbody tr:last-child td {
     width: 100%;
   }
 }
+
+
+/* =========================================================
+   PLG ALPHA 8.5 — JOB STATUS PRESENTATION
+   ========================================================= */
+
+.cc-status-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.cc-status-heading > div {
+  display: grid;
+  gap: 5px;
+}
+
+.cc-status-heading > span,
+.cc-status-heading div > span,
+.cc-next-action > span {
+  font-size: 0.65rem;
+  font-weight: 850;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.cc-status-heading strong {
+  font-size: 1.35rem;
+}
+
+.cc-status-heading b {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 0.75rem;
+}
+
+.cc-status-progress {
+  height: 7px;
+  margin: 14px 0 17px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.17);
+}
+
+.cc-status-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #ffffff;
+}
+
+.cc-next-action {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.cc-next-action strong {
+  font-size: 1.05rem;
+}
+
+.cc-next-action p {
+  margin: 0;
+  line-height: 1.45;
+  opacity: 0.78;
+}
+
+
+/* PLG Alpha 8.5 — Parts Ordering Controls */
+
+.part-order-status {
+  min-width: 112px;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.part-order-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.part-order-actions form {
+  margin: 0;
+}
