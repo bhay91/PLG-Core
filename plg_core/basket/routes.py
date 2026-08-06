@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from legacy_app import get_connection, templates
 from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
 from plg_core.jobs.engine import JobEngine
+from plg_core.timeline import log_job_event
 from plg_core.basket.service import (
     add_item,
     clear_basket,
@@ -937,7 +938,14 @@ def update_revenue_adjustments(
 
     with closing(get_connection()) as connection:
         job = connection.execute(
-            "SELECT id FROM jobs WHERE id = ?",
+            """
+            SELECT
+                id,
+                service_charge,
+                sourcing_fee
+            FROM jobs
+            WHERE id = ?
+            """,
             (job_id,),
         ).fetchone()
 
@@ -964,6 +972,44 @@ def update_revenue_adjustments(
                 job_id,
             ),
         )
+
+        old_service_charge = round(float(job["service_charge"] or 0), 2)
+        old_sourcing_fee = round(float(job["sourcing_fee"] or 0), 2)
+
+        if old_service_charge != parsed_service_charge:
+            if parsed_service_charge > 0:
+                service_message = (
+                    f"Service Charge updated to "
+                    f"${parsed_service_charge:,.2f}"
+                )
+            else:
+                service_message = "Service Charge removed"
+
+            log_job_event(
+                connection,
+                job_id=job_id,
+                event_type="SERVICE_CHARGE_UPDATED",
+                icon="💼",
+                message=service_message,
+            )
+
+        if old_sourcing_fee != parsed_sourcing_fee:
+            if parsed_sourcing_fee > 0:
+                sourcing_message = (
+                    f"Sourcing Fee updated to "
+                    f"${parsed_sourcing_fee:,.2f}"
+                )
+            else:
+                sourcing_message = "Sourcing Fee removed"
+
+            log_job_event(
+                connection,
+                job_id=job_id,
+                event_type="SOURCING_FEE_UPDATED",
+                icon="🔎",
+                message=sourcing_message,
+            )
+
         connection.commit()
 
     return RedirectResponse(
@@ -1065,22 +1111,12 @@ def update_basket_item_form(
         )
 
         with closing(get_connection()) as connection:
-            connection.execute(
-                """
-                INSERT INTO job_timeline (
-                    job_id,
-                    event_type,
-                    icon,
-                    message
-                )
-                VALUES (?, ?, ?, ?)
-                """,
-                (
-                    job_id,
-                    "PART_STATUS_CHANGED",
-                    status_icons[new_status],
-                    message,
-                ),
+            log_job_event(
+                connection,
+                job_id=job_id,
+                event_type="PART_STATUS_CHANGED",
+                icon=status_icons[new_status],
+                message=message,
             )
             connection.commit()
 

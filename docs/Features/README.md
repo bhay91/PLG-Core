@@ -24,3 +24,5 @@ Every major feature receives a dedicated specification before implementation.
 - [Revenue Adjustments](Revenue-Adjustments.md)
 
 - [Developer Startup Tool](Developer-Startup-Tool.md)
+
+- [Automatic Timeline](Automatic-Timeline.md)
