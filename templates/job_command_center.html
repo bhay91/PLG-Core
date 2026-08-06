@@ -472,7 +472,45 @@
   </section>
 
   <section class="cc-card cc-section" id="parts-ready">
-    <div class="cc-section-head"><div><p class="cc-label">PARTS READY FOR QUOTE</p><h2>Review selected parts</h2><p class="cc-muted">Only selected parts move into the customer quote.</p></div><span class="cc-count">{{ basket.totals.selected_items }}</span></div>
+    <div class="cc-section-head"><div><p class="cc-label">PARTS READY FOR QUOTE</p><h2>Review selected parts</h2><p class="cc-muted">Only selected parts move into the customer quote.</p></div><div class="parts-ready-head-actions">
+  <span class="cc-count">{{ basket.totals.selected_items }}</span>
+
+  {% set quoted_count = basket_items
+      |selectattr("part_status", "equalto", "QUOTED")
+      |list
+      |length %}
+
+  {% set ordered_count = basket_items
+      |selectattr("part_status", "equalto", "ORDERED")
+      |list
+      |length %}
+
+  {% if quoted_count > 0 %}
+  <form
+    method="post"
+    action="/jobs/{{ job.id }}/basket/workflow"
+  >
+    <input type="hidden" name="action" value="ORDER_ALL">
+
+    <button class="button small" type="submit">
+      Order All Ready Parts
+    </button>
+  </form>
+  {% endif %}
+
+  {% if ordered_count > 0 %}
+  <form
+    method="post"
+    action="/jobs/{{ job.id }}/basket/workflow"
+  >
+    <input type="hidden" name="action" value="RECEIVE_ALL">
+
+    <button class="button small" type="submit">
+      Receive All Ordered Parts
+    </button>
+  </form>
+  {% endif %}
+</div></div>
     {% if basket_items %}
     <div style="overflow-x:auto"><table class="cc-ready-table"><thead><tr><th>Supplier</th><th>Part Number</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Cost</th><th>Markup %</th><th>Markup $</th><th>Customer Unit</th><th>Total</th><th>Status</th><th>Actions</th></tr></thead><tbody>
     {% for item in basket_items %}{% set cost = item.supplier_unit_cost or 0 %}{% if item.markup_percent is not none %}{% set markup = item.markup_percent %}{% set customer_unit = (cost * (1 + markup / 100))|round(2) %}{% elif cost <= 50 %}{% set markup = 40 %}{% set customer_unit = (cost * 1.40)|round(0, 'ceil') %}{% elif cost <= 200 %}{% set markup = 30 %}{% set customer_unit = (cost * 1.30)|round(0, 'ceil') %}{% elif cost <= 500 %}{% set markup = 25 %}{% set customer_unit = (cost * 1.25)|round(0, 'ceil') %}{% else %}{% set markup = 20 %}{% set customer_unit = (cost * 1.20)|round(0, 'ceil') %}{% endif %}

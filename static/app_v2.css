@@ -2299,3 +2299,30 @@ tbody tr:last-child td {
   font-weight: 850;
   white-space: nowrap;
 }
+
+
+/* PLG Alpha 8.6 — Batch Part Workflow */
+
+.parts-ready-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.parts-ready-head-actions form {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .parts-ready-head-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .parts-ready-head-actions form,
+  .parts-ready-head-actions .button {
+    width: 100%;
+  }
+}

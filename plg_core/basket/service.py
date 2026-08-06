@@ -355,6 +355,111 @@ def advance_part_workflow(
 
         return serialize_basket(connection, basket)
 
+
+def advance_all_parts_workflow(
+    job_id: int,
+    action: str,
+):
+    """Advance every eligible selected part for one Job."""
+
+    normalized_action = str(action or "").strip().upper()
+
+    transitions = {
+        "ORDER_ALL": {
+            "from": "QUOTED",
+            "to": "ORDERED",
+            "event_type": "PARTS_ORDERED",
+            "icon": "🛒",
+            "verb": "ordered",
+        },
+        "RECEIVE_ALL": {
+            "from": "ORDERED",
+            "to": "RECEIVED",
+            "event_type": "PARTS_RECEIVED",
+            "icon": "📦",
+            "verb": "received",
+        },
+    }
+
+    transition = transitions.get(normalized_action)
+
+    if transition is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid batch part workflow action.",
+        )
+
+    with closing(get_connection()) as connection:
+        items = connection.execute(
+            """
+            SELECT
+                basket_items.id,
+                basket_items.requested_description
+            FROM basket_items
+            JOIN baskets
+              ON baskets.id = basket_items.basket_id
+            WHERE baskets.job_id = ?
+              AND basket_items.selected = 1
+              AND UPPER(
+                    COALESCE(
+                        basket_items.part_status,
+                        'RESEARCH'
+                    )
+                  ) = ?
+            ORDER BY basket_items.id
+            """,
+            (job_id, transition["from"]),
+        ).fetchall()
+
+        if not items:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"No selected parts are ready to be "
+                    f"{transition['verb']}."
+                ),
+            )
+
+        item_ids = [int(item["id"]) for item in items]
+        placeholders = ",".join("?" for _ in item_ids)
+
+        connection.execute(
+            f"""
+            UPDATE basket_items
+            SET part_status = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id IN ({placeholders})
+            """,
+            (transition["to"], *item_ids),
+        )
+
+        count = len(item_ids)
+
+        log_job_event(
+            connection,
+            job_id=job_id,
+            event_type=transition["event_type"],
+            icon=transition["icon"],
+            message=(
+                f"{count} selected "
+                f"part{'s' if count != 1 else ''} "
+                f"{transition['verb']}"
+            ),
+        )
+
+        connection.commit()
+
+        basket = connection.execute(
+            """
+            SELECT *
+            FROM baskets
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+
+        return serialize_basket(connection, basket)
+
 def delete_item(item_id: int):
     with closing(get_connection()) as connection:
         item = connection.execute(

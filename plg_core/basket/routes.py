@@ -12,6 +12,7 @@ from plg_core.jobs.engine import JobEngine
 from plg_core.timeline import log_job_event
 from plg_core.basket.service import (
     add_item,
+    advance_all_parts_workflow,
     advance_part_workflow,
     clear_basket,
     commit_basket,
@@ -868,6 +869,22 @@ def update_item_quantity(
         url=f"/jobs/{job_id}/basket",
         status_code=303,
     )
+
+@router.post("/jobs/{job_id}/basket/workflow")
+def advance_all_parts_workflow_form(
+    job_id: int,
+    action: Annotated[str, Form()],
+):
+    advance_all_parts_workflow(
+        job_id=job_id,
+        action=action,
+    )
+
+    return RedirectResponse(
+        url=f"/jobs/{job_id}/basket#parts-ready",
+        status_code=303,
+    )
+
 
 @router.post(
     "/jobs/{job_id}/basket/items/{item_id}/workflow"
