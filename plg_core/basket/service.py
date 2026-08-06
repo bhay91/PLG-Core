@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from legacy_app import get_connection
+from plg_core.timeline import log_job_event
 from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
 
 
@@ -131,6 +132,20 @@ def add_item(job_id: int, payload: BasketItemCreate):
             "UPDATE baskets SET status='OPEN', updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (basket["id"],),
         )
+
+        description = (
+            payload.requested_description.strip()
+            or "Unnamed part"
+        )
+
+        log_job_event(
+            connection,
+            job_id=job_id,
+            event_type="PART_ADDED",
+            icon="➕",
+            message=f"Part added: {description}",
+        )
+
         connection.commit()
         basket = connection.execute(
             "SELECT * FROM baskets WHERE id=?", (basket["id"],)
@@ -152,7 +167,16 @@ def update_item(item_id: int, payload: BasketItemUpdate):
 
     with closing(get_connection()) as connection:
         item = connection.execute(
-            "SELECT * FROM basket_items WHERE id=?", (item_id,)
+            """
+            SELECT
+                basket_items.*,
+                baskets.job_id
+            FROM basket_items
+            JOIN baskets
+              ON baskets.id = basket_items.basket_id
+            WHERE basket_items.id = ?
+            """,
+            (item_id,),
         ).fetchone()
         if item is None:
             raise HTTPException(status_code=404, detail="Basket item not found.")
@@ -175,6 +199,34 @@ def update_item(item_id: int, payload: BasketItemUpdate):
             f"UPDATE basket_items SET {', '.join(assignments)} WHERE id=?",
             values,
         )
+
+        if "selected" in updates:
+            old_selected = bool(item["selected"])
+            new_selected = bool(updates["selected"])
+
+            if old_selected != new_selected:
+                description = (
+                    item["requested_description"]
+                    or "Unnamed part"
+                ).strip()
+
+                if new_selected:
+                    log_job_event(
+                        connection,
+                        job_id=int(item["job_id"]),
+                        event_type="PART_SELECTED",
+                        icon="✅",
+                        message=f"Part added to quote: {description}",
+                    )
+                else:
+                    log_job_event(
+                        connection,
+                        job_id=int(item["job_id"]),
+                        event_type="PART_UNSELECTED",
+                        icon="↩️",
+                        message=f"Part removed from quote: {description}",
+                    )
+
         connection.commit()
         basket = connection.execute(
             "SELECT * FROM baskets WHERE id=?", (item["basket_id"],)
@@ -185,11 +237,42 @@ def update_item(item_id: int, payload: BasketItemUpdate):
 def delete_item(item_id: int):
     with closing(get_connection()) as connection:
         item = connection.execute(
-            "SELECT * FROM basket_items WHERE id=?", (item_id,)
+            """
+            SELECT
+                basket_items.*,
+                baskets.job_id
+            FROM basket_items
+            JOIN baskets
+              ON baskets.id = basket_items.basket_id
+            WHERE basket_items.id = ?
+            """,
+            (item_id,),
         ).fetchone()
+
         if item is None:
-            raise HTTPException(status_code=404, detail="Basket item not found.")
-        connection.execute("DELETE FROM basket_items WHERE id=?", (item_id,))
+            raise HTTPException(
+                status_code=404,
+                detail="Basket item not found.",
+            )
+
+        description = (
+            item["requested_description"]
+            or "Unnamed part"
+        ).strip()
+
+        connection.execute(
+            "DELETE FROM basket_items WHERE id=?",
+            (item_id,),
+        )
+
+        log_job_event(
+            connection,
+            job_id=int(item["job_id"]),
+            event_type="PART_REMOVED",
+            icon="🗑️",
+            message=f"Part removed: {description}",
+        )
+
         connection.commit()
         basket = connection.execute(
             "SELECT * FROM baskets WHERE id=?", (item["basket_id"],)
