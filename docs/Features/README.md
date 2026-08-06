@@ -22,3 +22,5 @@ Every major feature receives a dedicated specification before implementation.
 ## Current Specifications
 
 - [Revenue Adjustments](Revenue-Adjustments.md)
+
+- [Developer Startup Tool](Developer-Startup-Tool.md)

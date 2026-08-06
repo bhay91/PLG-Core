@@ -886,6 +886,92 @@ def clear_form(job_id: int):
 
 
 
+@router.post("/jobs/{job_id}/revenue-adjustments")
+def update_revenue_adjustments(
+    job_id: int,
+    service_charge: Annotated[str, Form()] = "0",
+    service_charge_description: Annotated[str, Form()] = "",
+    sourcing_fee: Annotated[str, Form()] = "0",
+    sourcing_fee_description: Annotated[str, Form()] = "",
+):
+    """Save optional job-level Service Charge and Sourcing Fee values."""
+
+    def parse_amount(raw_value: str, label: str) -> float:
+        value = (raw_value or "").strip()
+
+        if value == "":
+            return 0.0
+
+        try:
+            amount = round(float(value), 2)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{label} must be a valid number.",
+            ) from error
+
+        if amount < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{label} cannot be negative.",
+            )
+
+        return amount
+
+    parsed_service_charge = parse_amount(
+        service_charge,
+        "Service Charge",
+    )
+    parsed_sourcing_fee = parse_amount(
+        sourcing_fee,
+        "Sourcing Fee",
+    )
+
+    if 0 < parsed_service_charge < 150:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Service Charge must be $0 or at least $150.00."
+            ),
+        )
+
+    with closing(get_connection()) as connection:
+        job = connection.execute(
+            "SELECT id FROM jobs WHERE id = ?",
+            (job_id,),
+        ).fetchone()
+
+        if job is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Job not found.",
+            )
+
+        connection.execute(
+            """
+            UPDATE jobs
+            SET service_charge = ?,
+                service_charge_description = ?,
+                sourcing_fee = ?,
+                sourcing_fee_description = ?
+            WHERE id = ?
+            """,
+            (
+                parsed_service_charge,
+                service_charge_description.strip(),
+                parsed_sourcing_fee,
+                sourcing_fee_description.strip(),
+                job_id,
+            ),
+        )
+        connection.commit()
+
+    return RedirectResponse(
+        url=f"/jobs/{job_id}/basket#revenue-adjustments",
+        status_code=303,
+    )
+
+
 @router.post("/jobs/{job_id}/basket/checkout")
 def checkout_basket(job_id: int):
     commit_basket(job_id)

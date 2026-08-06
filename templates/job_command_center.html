@@ -559,6 +559,184 @@
     {% endif %}
   </section>
 
+  <section
+    class="cc-card cc-section revenue-adjustments-section"
+    id="revenue-adjustments"
+  >
+    <div class="cc-section-head revenue-adjustments-heading">
+      <div>
+        <p class="cc-label">REVENUE ADJUSTMENTS</p>
+        <h2>Additional business value</h2>
+        <p class="cc-muted">
+          Record professional services and sourcing expertise before
+          preparing the customer quote.
+        </p>
+      </div>
+
+      {% if (job.service_charge or 0) > 0 or (job.sourcing_fee or 0) > 0 %}
+      <span class="revenue-adjustments-saved">
+        ✓ Saved
+      </span>
+      {% endif %}
+    </div>
+
+    <form
+      class="revenue-adjustments-form"
+      method="post"
+      action="/jobs/{{ job.id }}/revenue-adjustments"
+    >
+      <article class="revenue-adjustment-card">
+        <header class="revenue-adjustment-card-heading">
+          <div>
+            <span
+              class="revenue-adjustment-icon"
+              aria-hidden="true"
+            >
+              ＋
+            </span>
+
+            <div>
+              <h3>Service Charge</h3>
+              <p>
+                Use for additional work such as inspection,
+                programming, coordination, or delivery to a
+                shipping agent.
+              </p>
+            </div>
+          </div>
+
+          {% if (job.service_charge or 0) > 0 %}
+          <span class="revenue-adjustment-status active">
+            Added
+          </span>
+          {% else %}
+          <span class="revenue-adjustment-status">
+            Not added
+          </span>
+          {% endif %}
+        </header>
+
+        <div class="revenue-adjustment-fields">
+          <label>
+            <span>Amount</span>
+
+            <div class="money-input">
+              <span aria-hidden="true">$</span>
+
+              <input
+                type="number"
+                name="service_charge"
+                value="{{ '%.2f'|format(job.service_charge or 0) }}"
+                min="0"
+                step="0.01"
+                inputmode="decimal"
+              >
+            </div>
+
+            <small>
+              Enter $0 when unused. Minimum $150 when added.
+            </small>
+          </label>
+
+          <label>
+            <span>Description</span>
+
+            <input
+              name="service_charge_description"
+              value="{{ job.service_charge_description or '' }}"
+              placeholder="Example: Inspect equipment and deliver to shipping agent"
+            >
+
+            <small>
+              Optional explanation of the additional work performed.
+            </small>
+          </label>
+        </div>
+      </article>
+
+      <article class="revenue-adjustment-card">
+        <header class="revenue-adjustment-card-heading">
+          <div>
+            <span
+              class="revenue-adjustment-icon sourcing"
+              aria-hidden="true"
+            >
+              ⌕
+            </span>
+
+            <div>
+              <h3>Sourcing Fee</h3>
+              <p>
+                Use for supplier research, cross-referencing,
+                verification, or difficult sourcing.
+              </p>
+            </div>
+          </div>
+
+          {% if (job.sourcing_fee or 0) > 0 %}
+          <span class="revenue-adjustment-status active">
+            Added
+          </span>
+          {% else %}
+          <span class="revenue-adjustment-status">
+            Not added
+          </span>
+          {% endif %}
+        </header>
+
+        <div class="revenue-adjustment-fields">
+          <label>
+            <span>Amount</span>
+
+            <div class="money-input">
+              <span aria-hidden="true">$</span>
+
+              <input
+                type="number"
+                name="sourcing_fee"
+                value="{{ '%.2f'|format(job.sourcing_fee or 0) }}"
+                min="0"
+                step="0.01"
+                inputmode="decimal"
+              >
+            </div>
+
+            <small>
+              Optional and fully editable.
+            </small>
+          </label>
+
+          <label>
+            <span>Description</span>
+
+            <input
+              name="sourcing_fee_description"
+              value="{{ job.sourcing_fee_description or '' }}"
+              placeholder="Example: Multiple OEM suppliers and cross-reference research"
+            >
+
+            <small>
+              Optional explanation of the sourcing effort.
+            </small>
+          </label>
+        </div>
+      </article>
+
+      <footer class="revenue-adjustments-actions">
+        <div>
+          <strong>Saved directly to this Job</strong>
+          <span>
+            Quote and Invoice totals are unchanged during this milestone.
+          </span>
+        </div>
+
+        <button class="button" type="submit">
+          Save Revenue Adjustments
+        </button>
+      </footer>
+    </form>
+  </section>
+
   <section class="cc-card cc-summary">
     <header class="cc-summary-head">
       <div>

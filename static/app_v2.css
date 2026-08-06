@@ -1748,3 +1748,196 @@ tbody tr:last-child td {
     min-height: 125px;
   }
 }
+
+
+/* =========================================================
+   PLG ALPHA 8.3 — REVENUE ADJUSTMENTS
+   ========================================================= */
+
+.revenue-adjustments-section {
+  scroll-margin-top: 105px;
+}
+
+.revenue-adjustments-heading {
+  align-items: flex-start;
+}
+
+.revenue-adjustments-saved {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--plg-success-soft, #eaf7f0);
+  color: var(--plg-success, #237a52);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.revenue-adjustments-form {
+  display: grid;
+  gap: 14px;
+}
+
+.revenue-adjustment-card {
+  padding: 19px;
+  border: 1px solid var(--plg-line);
+  border-radius: var(--plg-radius-lg);
+  background: var(--plg-surface);
+  box-shadow: var(--plg-shadow);
+}
+
+.revenue-adjustment-card-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.revenue-adjustment-card-heading > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  min-width: 0;
+}
+
+.revenue-adjustment-card-heading h3 {
+  margin: 0;
+  color: var(--plg-navy-strong);
+  font-size: 1.04rem;
+  font-weight: 800;
+}
+
+.revenue-adjustment-card-heading p {
+  max-width: 760px;
+  margin: 5px 0 0;
+  color: var(--plg-muted);
+  font-size: 0.79rem;
+  line-height: 1.5;
+}
+
+.revenue-adjustment-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #fff4df;
+  color: #a86412;
+  font-size: 1.2rem;
+  font-weight: 900;
+}
+
+.revenue-adjustment-icon.sourcing {
+  background: #edf5ff;
+  color: #1267d6;
+}
+
+.revenue-adjustment-status {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #f2f4f7;
+  color: #667085;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.revenue-adjustment-status.active {
+  background: var(--plg-success-soft, #eaf7f0);
+  color: var(--plg-success, #237a52);
+}
+
+.revenue-adjustment-fields {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.36fr) minmax(280px, 1fr);
+  gap: 14px;
+  margin-top: 17px;
+}
+
+.revenue-adjustment-fields label {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  margin: 0;
+}
+
+.revenue-adjustment-fields label > span {
+  color: var(--plg-text);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.revenue-adjustment-fields input {
+  margin: 0 !important;
+}
+
+.revenue-adjustment-fields small {
+  color: var(--plg-muted);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.money-input {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.money-input > span {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--plg-line-strong);
+  border-right: 0;
+  border-radius: 10px 0 0 10px;
+  background: #f7f9fc;
+  color: var(--plg-muted);
+  font-weight: 800;
+}
+
+.money-input input {
+  border-radius: 0 10px 10px 0 !important;
+}
+
+.revenue-adjustments-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 17px 19px;
+  border: 1px solid #cfe0f2;
+  border-radius: var(--plg-radius-lg);
+  background: #f7fbff;
+}
+
+.revenue-adjustments-actions > div {
+  display: grid;
+  gap: 3px;
+}
+
+.revenue-adjustments-actions strong {
+  color: var(--plg-navy-strong);
+  font-size: 0.81rem;
+}
+
+.revenue-adjustments-actions span {
+  color: var(--plg-muted);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 760px) {
+  .revenue-adjustment-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .revenue-adjustment-card-heading,
+  .revenue-adjustments-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .revenue-adjustments-actions .button {
+    width: 100%;
+  }
+}

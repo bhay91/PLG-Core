@@ -52,3 +52,11 @@ The first UI milestone must:
 ## Current Stable Commit
 
 `c99ad17` — PLG Alpha 8.3 job revenue adjustments foundation
+
+## Developer Safety Tool
+
+Before continuing Revenue Adjustments polish, build the read-only Developer Startup Tool.
+
+Official command: `python3 -m plg_core.devtools.startup`
+
+The tool must report documentation health, the current sprint, Git status, branch synchronization, and whether a checkpoint is required.
