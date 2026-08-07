@@ -55,3 +55,14 @@ The `docs/` directory is the authoritative source of truth for PLG development.
 Business Benefit:
 
 Future development can resume accurately without rediscovering past decisions.
+
+## Pinpoint Sourcing Co. Rebrand Decision
+
+- Customer-facing business name: Pinpoint Sourcing Co.
+- Short brand mark: PPS.
+- Preferred brand colors: blue, white, and black.
+- Preferred logo direction: clean target/location-pin concept representing precision, sourcing, and direction.
+- PLG-Core remains the internal software/repository name for now.
+- Existing PLG record numbers should not be changed automatically.
+- A later implementation decision will determine whether new customer, machine, opportunity, job, quote, and invoice numbers switch from PLG prefixes to PPS prefixes.
+- Rebranding should be handled as a controlled customer-facing change so existing operational history is preserved.
