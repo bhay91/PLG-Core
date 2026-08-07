@@ -27,6 +27,39 @@ from plg_core.basket.service import (
 router = APIRouter(tags=["basket"])
 
 
+@router.get("/opportunities/new", response_class=HTMLResponse)
+def new_opportunity_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="opportunity_new.html",
+        context={},
+    )
+
+
+@router.post("/opportunities")
+def create_opportunity(title: Annotated[str, Form()], request_text: Annotated[str, Form()] = "", follow_up_date: Annotated[str, Form()] = "", estimated_value: Annotated[str, Form()] = "", notes: Annotated[str, Form()] = ""):
+    with closing(get_connection()) as connection:
+        cursor = connection.execute("INSERT INTO opportunities (title, request_text, follow_up_date, estimated_value, notes) VALUES (?, ?, NULLIF(?, ''), ?, ?)", (title, request_text, follow_up_date, float(estimated_value or 0), notes))
+        opportunity_id = cursor.lastrowid
+        connection.execute("UPDATE opportunities SET opportunity_number = 'OPP-' || strftime('%Y','now') || '-' || printf('%03d', id) WHERE id = ?", (opportunity_id,))
+        connection.commit()
+    return RedirectResponse(url="/opportunities", status_code=303)
+
+
+@router.get("/opportunities", response_class=HTMLResponse)
+def opportunities_page(request: Request):
+    with closing(get_connection()) as connection:
+        opportunities = connection.execute(
+            "SELECT * FROM opportunities ORDER BY created_at DESC"
+        ).fetchall()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="opportunities.html",
+        context={"opportunities": opportunities},
+    )
+
+
 @router.get("/api/baskets/{job_id}")
 def read_basket(job_id: int):
     return get_basket(job_id)

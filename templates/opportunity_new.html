@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}New Opportunity{% endblock %}
+{% block content %}
+<h1>New Opportunity</h1>
+
+<form method="post" action="/opportunities">
+  <label>Title</label><br>
+  <input type="text" name="title" required><br><br>
+
+  <label>Request</label><br>
+  <textarea name="request_text" rows="5"></textarea><br><br>
+
+  <label>Follow Up Date</label><br>
+  <input type="date" name="follow_up_date"><br><br>
+
+  <label>Estimated Value</label><br>
+  <input type="number" step="0.01" name="estimated_value"><br><br>
+
+  <label>Notes</label><br>
+  <textarea name="notes" rows="4"></textarea><br><br>
+
+  <button class="button" type="submit">Create Opportunity</button>
+</form>
+{% endblock %}
