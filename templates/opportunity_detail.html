@@ -19,6 +19,52 @@
 
 <a class="button" href="/opportunities">Back to Opportunities</a>
 <hr>
+<h2>Research</h2>
+{% for item in research %}
+<p><strong>{{ item.part_description }}</strong> — {{ item.oem_part_number or item.alternate_part_number or "No part number" }}{% if item.source_url %} — <a href="{{ item.source_url }}" target="_blank">Source</a>{% endif %}</p>
+{% else %}
+<p>No research added yet.</p>
+{% endfor %}
+
+<hr>
+<h2>Add Research</h2>
+<form method="post" action="/opportunities/{{ opportunity.id }}/research">
+  <label>Machine</label><br>
+  <select name="opportunity_machine_id">
+    <option value="">General / Not tied to one machine</option>
+    {% for machine in machines %}
+    <option value="{{ machine.id }}">{{ machine.manufacturer }} {{ machine.model }} — {{ machine.vin_pin_serial }}</option>
+    {% endfor %}
+  </select><br><br>
+
+  <label>Part Description</label><br>
+  <input type="text" name="part_description" required><br><br>
+
+  <label>OEM Part Number</label><br>
+  <input type="text" name="oem_part_number"><br><br>
+
+  <label>Alternate Part Number</label><br>
+  <input type="text" name="alternate_part_number"><br><br>
+
+  <label>Supplier</label><br>
+  <input type="text" name="supplier_name"><br><br>
+
+  <label>Source URL</label><br>
+  <input type="url" name="source_url"><br><br>
+
+  <label>Source Type</label><br>
+  <input type="text" name="source_type"><br><br>
+
+  <label>Confidence</label><br>
+  <input type="number" step="0.01" min="0" max="1" name="confidence"><br><br>
+
+  <label>Notes</label><br>
+  <textarea name="notes" rows="3"></textarea><br><br>
+
+  <button class="button" type="submit">Add Research</button>
+</form>
+
+<hr>
 <h2>Add Machine</h2>
 
 <form method="post" action="/opportunities/{{ opportunity.id }}/machines">

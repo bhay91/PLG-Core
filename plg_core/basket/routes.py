@@ -71,6 +71,10 @@ def opportunity_detail_page(request: Request, opportunity_id: int):
             "SELECT * FROM opportunity_machines WHERE opportunity_id = ? ORDER BY id",
             (opportunity_id,),
         ).fetchall()
+        research = connection.execute(
+            "SELECT * FROM opportunity_research WHERE opportunity_id = ? ORDER BY id DESC",
+            (opportunity_id,),
+        ).fetchall()
 
     if opportunity is None:
         raise HTTPException(status_code=404, detail="Opportunity not found")
@@ -78,7 +82,7 @@ def opportunity_detail_page(request: Request, opportunity_id: int):
     return templates.TemplateResponse(
         request=request,
         name="opportunity_detail.html",
-        context={"opportunity": opportunity, "machines": machines},
+        context={"opportunity": opportunity, "machines": machines, "research": research},
     )
 
 
@@ -89,6 +93,17 @@ def add_opportunity_machine(opportunity_id: int, manufacturer: Annotated[str, Fo
         if opportunity is None:
             raise HTTPException(status_code=404, detail="Opportunity not found")
         connection.execute("INSERT INTO opportunity_machines (opportunity_id, manufacturer, model, vin_pin_serial, engine, notes) VALUES (?, ?, ?, ?, ?, ?)", (opportunity_id, manufacturer, model, vin_pin_serial, engine, notes))
+        connection.commit()
+    return RedirectResponse(url=f"/opportunities/{opportunity_id}", status_code=303)
+
+
+@router.post("/opportunities/{opportunity_id}/research")
+def add_opportunity_research(opportunity_id: int, opportunity_machine_id: Annotated[str, Form()] = "", part_description: Annotated[str, Form()] = "", oem_part_number: Annotated[str, Form()] = "", alternate_part_number: Annotated[str, Form()] = "", supplier_name: Annotated[str, Form()] = "", source_url: Annotated[str, Form()] = "", source_type: Annotated[str, Form()] = "", confidence: Annotated[str, Form()] = "", notes: Annotated[str, Form()] = ""):
+    with closing(get_connection()) as connection:
+        opportunity = connection.execute("SELECT id FROM opportunities WHERE id = ?", (opportunity_id,)).fetchone()
+        if opportunity is None:
+            raise HTTPException(status_code=404, detail="Opportunity not found")
+        connection.execute("INSERT INTO opportunity_research (opportunity_id, opportunity_machine_id, part_description, oem_part_number, alternate_part_number, supplier_name, source_url, source_type, confidence, notes) VALUES (?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, NULLIF(?, ''), ?)", (opportunity_id, opportunity_machine_id, part_description, oem_part_number, alternate_part_number, supplier_name, source_url, source_type, confidence, notes))
         connection.commit()
     return RedirectResponse(url=f"/opportunities/{opportunity_id}", status_code=303)
 
