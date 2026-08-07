@@ -179,7 +179,7 @@ def _migration_0002_machine_registry(connection: sqlite3.Connection) -> None:
             machine_id = cursor.lastrowid
             connection.execute(
                 "UPDATE machines SET machine_number = ? WHERE id = ?",
-                (f"PLG-M{machine_id:05d}", machine_id),
+                (f"PPS-M-{machine_id:04d}", machine_id),
             )
         else:
             machine_id = machine["id"]

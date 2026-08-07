@@ -161,7 +161,7 @@ def create_machine(
         machine_id = cursor.lastrowid
         connection.execute(
             "UPDATE machines SET machine_number = ? WHERE id = ?",
-            (f"PLG-M{machine_id:05d}", machine_id),
+            (f"PPS-M-{machine_id:04d}", machine_id),
         )
         connection.commit()
     return RedirectResponse(url=f"/machines/{machine_id}", status_code=303)

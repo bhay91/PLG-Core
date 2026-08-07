@@ -365,7 +365,7 @@ def initialize_database() -> None:
             if row is None:
                 cur=connection.execute("INSERT INTO customers (name,company,phone,email,address) VALUES (?,?,?,?,?)",(name,old_job["company"] or "",old_job["phone"] or "",old_job["email"] or "",old_job["address"] or ""))
                 customer_id=cur.lastrowid
-                connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PLG-C{customer_id:05d}",customer_id))
+                connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PPS-C-{customer_id:04d}",customer_id))
             else:
                 customer_id=row["id"]
             connection.execute("UPDATE jobs SET customer_id=? WHERE id=?",(customer_id,old_job["id"]))
@@ -507,8 +507,7 @@ def initialize_database() -> None:
 
 
 def next_job_number(connection: sqlite3.Connection) -> str:
-    current_year = date.today().year
-    prefix = f"PLG-J-{current_year}-"
+    prefix = "PPS-J-"
 
     row = connection.execute(
         """
@@ -529,7 +528,7 @@ def next_job_number(connection: sqlite3.Connection) -> str:
         except (ValueError, IndexError):
             sequence = 1
 
-    return f"{prefix}{sequence:03d}"
+    return f"{prefix}{sequence:04d}"
 
 
 @app.on_event("startup")
@@ -587,7 +586,7 @@ def create_job(
                 raise HTTPException(status_code=400,detail="Customer is required.")
             cur=connection.execute("INSERT INTO customers (name,company,phone,email,address) VALUES (?,?,?,?,?)",(name,company.strip(),phone.strip(),email.strip(),address.strip()))
             customer_id=cur.lastrowid
-            connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PLG-C{customer_id:05d}",customer_id))
+            connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PPS-C-{customer_id:04d}",customer_id))
             customer_row=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
         selected_machine = None
         if machine_id:
@@ -607,7 +606,7 @@ def create_job(
                 (customer_row["id"], display_name, manufacturer.strip(), machine.strip(), pin_serial.strip()),
             )
             machine_id = machine_cursor.lastrowid
-            connection.execute("UPDATE machines SET machine_number=? WHERE id=?", (f"PLG-M{machine_id:05d}", machine_id))
+            connection.execute("UPDATE machines SET machine_number=? WHERE id=?", (f"PPS-M-{machine_id:04d}", machine_id))
         job_number=next_job_number(connection)
         cur=connection.execute("""
             INSERT INTO jobs (job_number,created_date,customer_id,machine_id,customer,company,phone,email,address,manufacturer,machine,pin_serial,status,notes)
@@ -657,7 +656,7 @@ def create_customer(request: Request,name: Annotated[str,Form()],company: Annota
             return templates.TemplateResponse(request=request,name="customer_form.html",context={"title":"New Customer","subtitle":"Review the possible duplicate.","form_action":"/customers/new","cancel_url":"/customers","submit_label":"Save Customer","duplicate":duplicate,"form":{"name":name,"company":company,"phone":phone,"email":email,"address":address},"active_page":"customers"})
         cur=connection.execute("INSERT INTO customers (name,company,phone,email,address,active) VALUES (?,?,?,?,?,1)",(name,company,phone,email,address))
         customer_id=cur.lastrowid
-        connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PLG-C{customer_id:05d}",customer_id)); connection.commit()
+        connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PPS-C-{customer_id:04d}",customer_id)); connection.commit()
     return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
 
 @app.get("/customers/{customer_id}/edit", response_class=HTMLResponse)
@@ -1405,8 +1404,7 @@ def delete_job_part(part_id: int):
 
 
 def next_quote_number(connection: sqlite3.Connection) -> str:
-    current_year = date.today().year
-    prefix = f"PLG-Q-{current_year}-"
+    prefix = "PPS-Q-"
 
     row = connection.execute(
         """
@@ -1427,7 +1425,7 @@ def next_quote_number(connection: sqlite3.Connection) -> str:
         except (ValueError, IndexError):
             sequence = 1
 
-    return f"{prefix}{sequence:03d}"
+    return f"{prefix}{sequence:04d}"
 
 
 def calculate_customer_unit_price(cost: float) -> float:
@@ -1764,9 +1762,8 @@ def load_quote(connection: sqlite3.Connection, quote_id: int):
 
 
 def next_invoice_number(connection: sqlite3.Connection) -> str:
-    current_year = date.today().year
-    prefix = f"PLG-{current_year}-"
-    row = connection.execute("SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY id DESC LIMIT 1",(f"{prefix}%",)).fetchone()
+    prefix = "PPS-INV-"
+    row = connection.execute("SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY id DESC LIMIT 1", (f"{prefix}%",)).fetchone()
     if row is None:
         sequence = 1
     else:
@@ -1774,7 +1771,7 @@ def next_invoice_number(connection: sqlite3.Connection) -> str:
             sequence = int(row["invoice_number"].split("-")[-1]) + 1
         except (ValueError, IndexError):
             sequence = 1
-    return f"{prefix}{sequence:03d}"
+    return f"{prefix}{sequence:04d}"
 
 
 def load_invoice(

@@ -51,7 +51,7 @@ def create_opportunity(customer_id: Annotated[int, Form()], title: Annotated[str
     with closing(get_connection()) as connection:
         cursor = connection.execute("INSERT INTO opportunities (customer_id, title, request_text, follow_up_date, estimated_value, notes) VALUES (?, ?, ?, NULLIF(?, ''), ?, ?)", (customer_id, title, request_text, follow_up_date, float(estimated_value or 0), notes))
         opportunity_id = cursor.lastrowid
-        connection.execute("UPDATE opportunities SET opportunity_number = 'OPP-' || strftime('%Y','now') || '-' || printf('%03d', id) WHERE id = ?", (opportunity_id,))
+        connection.execute("UPDATE opportunities SET opportunity_number = 'PPS-OPP-' || printf('%04d', id) WHERE id = ?", (opportunity_id,))
         connection.commit()
     return RedirectResponse(url="/opportunities", status_code=303)
 
@@ -62,7 +62,7 @@ async def import_opportunity(request: Request):
     with closing(get_connection()) as connection:
         cursor = connection.execute("INSERT INTO opportunities (customer_id, title, request_text, follow_up_date, estimated_value, notes) VALUES (?, ?, ?, NULLIF(?, ''), ?, ?)", (payload.get("customer_id"), payload.get("title", ""), payload.get("request_text", ""), payload.get("follow_up_date", ""), float(payload.get("estimated_value") or 0), payload.get("notes", "")))
         opportunity_id = cursor.lastrowid
-        connection.execute("UPDATE opportunities SET opportunity_number = 'OPP-' || strftime('%Y','now') || '-' || printf('%03d', id) WHERE id = ?", (opportunity_id,))
+        connection.execute("UPDATE opportunities SET opportunity_number = 'PPS-OPP-' || printf('%04d', id) WHERE id = ?", (opportunity_id,))
         machine_ids = []
         for machine in payload.get("machines") or []:
             cursor = connection.execute("INSERT INTO opportunity_machines (opportunity_id, manufacturer, model, vin_pin_serial, engine, notes) VALUES (?, ?, ?, ?, ?, ?)", (opportunity_id, machine.get("manufacturer", ""), machine.get("model", ""), machine.get("vin_pin_serial", ""), machine.get("engine", ""), machine.get("notes", "")))
@@ -183,7 +183,7 @@ def convert_opportunity_to_job(opportunity_id: int, opportunity_machine_id: Anno
                 display_name = " ".join(part for part in ((machine["manufacturer"] or "").strip(), (machine["model"] or "").strip()) if part).strip() or (machine["vin_pin_serial"] or "").strip()
                 machine_cursor = connection.execute("INSERT INTO machines (customer_id,name,manufacturer,model,vin_pin_serial,engine,notes) VALUES (?,?,?,?,?,?,?)", (customer["id"], display_name, (machine["manufacturer"] or "").strip(), (machine["model"] or "").strip(), (machine["vin_pin_serial"] or "").strip(), (machine["engine"] or "").strip(), machine["notes"] or ""))
                 machine_id = machine_cursor.lastrowid
-                connection.execute("UPDATE machines SET machine_number=? WHERE id=?", (f"PLG-M{machine_id:05d}", machine_id))
+                connection.execute("UPDATE machines SET machine_number=? WHERE id=?", (f"PPS-M-{machine_id:04d}", machine_id))
                 connection.execute("UPDATE opportunity_machines SET machine_id=? WHERE id=?", (machine_id, machine["id"]))
         job_number = next_job_number(connection)
         cursor = connection.execute("INSERT INTO jobs (job_number, created_date, customer_id, machine_id, customer, company, phone, email, address, manufacturer, machine, pin_serial, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REQUESTED', ?)", (job_number, date.today().isoformat(), customer["id"], machine_id, customer["name"], customer["company"] or "", customer["phone"] or "", customer["email"] or "", customer["address"] or "", machine["manufacturer"] if machine else "", machine["model"] if machine else "", machine["vin_pin_serial"] if machine else "", opportunity["notes"] or opportunity["request_text"] or ""))

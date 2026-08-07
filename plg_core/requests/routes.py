@@ -751,7 +751,7 @@ def create_from_smart_intake(
                 WHERE id = ?
                 """,
                 (
-                    f"PLG-C{customer_id:05d}",
+                    f"PPS-C-{customer_id:04d}",
                     customer_id,
                 ),
             )
@@ -858,7 +858,7 @@ def create_from_smart_intake(
                 WHERE id = ?
                 """,
                 (
-                    f"PLG-M{machine_id:05d}",
+                    f"PPS-M-{machine_id:04d}",
                     machine_id,
                 ),
             )
@@ -1289,7 +1289,7 @@ def create_customer_from_request(request_id: int):
             customer_id = cursor.lastrowid
             connection.execute(
                 "UPDATE customers SET customer_number = ? WHERE id = ?",
-                (f"PLG-C{customer_id:05d}", customer_id),
+                (f"PPS-C-{customer_id:04d}", customer_id),
             )
         connection.execute(
             "UPDATE customer_requests SET customer_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -1340,7 +1340,7 @@ def create_registry_from_request(request_id: int):
         machine_id = cursor.lastrowid
         connection.execute(
             "UPDATE machines SET machine_number = ? WHERE id = ?",
-            (f"PLG-M{machine_id:05d}", machine_id),
+            (f"PPS-M-{machine_id:04d}", machine_id),
         )
         connection.execute(
             "UPDATE customer_requests SET machine_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
