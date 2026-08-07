@@ -387,6 +387,32 @@ def _migration_0007_smart_intake_locations(
         ).fetchall()
     }
 
+def _migration_0008_job_revenue_adjustments(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add optional job-level Service Charge and Sourcing Fee fields."""
+
+    job_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(jobs)"
+        ).fetchall()
+    }
+
+    additions = {
+        "service_charge": "REAL NOT NULL DEFAULT 0",
+        "service_charge_description": "TEXT NOT NULL DEFAULT ''",
+        "sourcing_fee": "REAL NOT NULL DEFAULT 0",
+        "sourcing_fee_description": "TEXT NOT NULL DEFAULT ''",
+    }
+
+    for name, definition in additions.items():
+        if name not in job_columns:
+            connection.execute(
+                f"ALTER TABLE jobs ADD COLUMN {name} {definition}"
+            )
+
+
     if "customer_location_id" not in request_columns:
         connection.execute(
             """
@@ -481,3 +507,78 @@ def run_migrations() -> None:
             )
 
         connection.commit()
+def _migration_0009_opportunities(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add Opportunity tracking, machines, research, and follow-up data."""
+
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS opportunities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            opportunity_number TEXT UNIQUE,
+            customer_id INTEGER,
+            title TEXT NOT NULL DEFAULT '',
+            request_text TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'OPEN',
+            follow_up_date TEXT,
+            estimated_value REAL NOT NULL DEFAULT 0,
+            notes TEXT NOT NULL DEFAULT '',
+            converted_job_id INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES customers(id),
+            FOREIGN KEY (converted_job_id) REFERENCES jobs(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS opportunity_machines (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            opportunity_id INTEGER NOT NULL,
+            machine_id INTEGER,
+            manufacturer TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            vin_pin_serial TEXT NOT NULL DEFAULT '',
+            engine TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (opportunity_id)
+                REFERENCES opportunities(id) ON DELETE CASCADE,
+            FOREIGN KEY (machine_id)
+                REFERENCES machines(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS opportunity_research (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            opportunity_id INTEGER NOT NULL,
+            opportunity_machine_id INTEGER,
+            part_description TEXT NOT NULL DEFAULT '',
+            oem_part_number TEXT NOT NULL DEFAULT '',
+            alternate_part_number TEXT NOT NULL DEFAULT '',
+            supplier_name TEXT NOT NULL DEFAULT '',
+            source_url TEXT NOT NULL DEFAULT '',
+            source_type TEXT NOT NULL DEFAULT '',
+            confidence REAL,
+            research_status TEXT NOT NULL DEFAULT 'CANDIDATE',
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (opportunity_id)
+                REFERENCES opportunities(id) ON DELETE CASCADE,
+            FOREIGN KEY (opportunity_machine_id)
+                REFERENCES opportunity_machines(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_opportunities_customer
+            ON opportunities(customer_id);
+
+        CREATE INDEX IF NOT EXISTS idx_opportunities_follow_up
+            ON opportunities(follow_up_date);
+
+        CREATE INDEX IF NOT EXISTS idx_opportunity_machines_opportunity
+            ON opportunity_machines(opportunity_id);
+
+        CREATE INDEX IF NOT EXISTS idx_opportunity_research_opportunity
+            ON opportunity_research(opportunity_id);
+        """
+    )
+MIGRATIONS.append(("0009_opportunities", _migration_0009_opportunities))
