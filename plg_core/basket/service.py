@@ -235,6 +235,46 @@ def update_item(item_id: int, payload: BasketItemUpdate):
 
 
 
+def _require_paid_invoice_for_order(
+    connection,
+    job_id: int,
+) -> None:
+    """Prevent purchasing before the customer invoice is paid."""
+
+    invoice = connection.execute(
+        """
+        SELECT id, invoice_number, status, balance_due
+        FROM invoices
+        WHERE job_id = ?
+          AND UPPER(COALESCE(status, '')) != 'VOID'
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (job_id,),
+    ).fetchone()
+
+    if invoice is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Parts cannot be ordered because this job "
+                "does not have an invoice yet."
+            ),
+        )
+
+    status = str(invoice["status"] or "").strip().upper()
+    balance_due = round(float(invoice["balance_due"] or 0), 2)
+
+    if status != "PAID" or balance_due > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Parts cannot be ordered until "
+                f"{invoice['invoice_number']} is paid in full."
+            ),
+        )
+
+
 def advance_part_workflow(
     job_id: int,
     item_id: int,
@@ -270,6 +310,12 @@ def advance_part_workflow(
         )
 
     with closing(get_connection()) as connection:
+        if normalized_action == "ORDER":
+            _require_paid_invoice_for_order(
+                connection,
+                job_id,
+            )
+
         item = connection.execute(
             """
             SELECT
@@ -390,6 +436,12 @@ def advance_all_parts_workflow(
         )
 
     with closing(get_connection()) as connection:
+        if normalized_action == "ORDER_ALL":
+            _require_paid_invoice_for_order(
+                connection,
+                job_id,
+            )
+
         items = connection.execute(
             """
             SELECT
