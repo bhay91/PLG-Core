@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ opportunity.opportunity_number }}{% endblock %}
+{% block content %}
+<h1>{{ opportunity.opportunity_number }}</h1>
+<h2>{{ opportunity.title }}</h2>
+
+<p><strong>Status:</strong> {{ opportunity.status }}</p>
+<p><strong>Request:</strong> {{ opportunity.request_text or "-" }}</p>
+<p><strong>Follow Up:</strong> {{ opportunity.follow_up_date or "-" }}</p>
+<p><strong>Estimated Value:</strong> ${{ "%.2f"|format(opportunity.estimated_value or 0) }}</p>
+
+<h2>Machines</h2>
+
+{% for machine in machines %}
+<p>{{ machine.manufacturer }} {{ machine.model }} — {{ machine.vin_pin_serial }}</p>
+{% else %}
+<p>No machines added yet.</p>
+{% endfor %}
+
+<a class="button" href="/opportunities">Back to Opportunities</a>
+<hr>
+<h2>Add Machine</h2>
+
+<form method="post" action="/opportunities/{{ opportunity.id }}/machines">
+  <label>Manufacturer</label><br>
+  <input type="text" name="manufacturer"><br><br>
+
+  <label>Model</label><br>
+  <input type="text" name="model"><br><br>
+
+  <label>VIN / PIN / Serial</label><br>
+  <input type="text" name="vin_pin_serial"><br><br>
+
+  <label>Engine</label><br>
+  <input type="text" name="engine"><br><br>
+
+  <label>Notes</label><br>
+  <textarea name="notes" rows="3"></textarea><br><br>
+
+  <button class="button" type="submit">Add Machine</button>
+</form>
+{% endblock %}

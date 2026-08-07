@@ -18,7 +18,7 @@
 <tbody>
 {% for opportunity in opportunities %}
 <tr>
-<td>{{ opportunity.opportunity_number or opportunity.id }}</td>
+<td><a href="/opportunities/{{ opportunity.id }}">{{ opportunity.opportunity_number or opportunity.id }}</a></td>
 <td>{{ opportunity.title }}</td>
 <td>{{ opportunity.status }}</td>
 <td>{{ opportunity.follow_up_date or "-" }}</td>

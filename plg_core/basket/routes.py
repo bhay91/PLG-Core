@@ -60,6 +60,39 @@ def opportunities_page(request: Request):
     )
 
 
+@router.get("/opportunities/{opportunity_id}", response_class=HTMLResponse)
+def opportunity_detail_page(request: Request, opportunity_id: int):
+    with closing(get_connection()) as connection:
+        opportunity = connection.execute(
+            "SELECT * FROM opportunities WHERE id = ?",
+            (opportunity_id,),
+        ).fetchone()
+        machines = connection.execute(
+            "SELECT * FROM opportunity_machines WHERE opportunity_id = ? ORDER BY id",
+            (opportunity_id,),
+        ).fetchall()
+
+    if opportunity is None:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+
+    return templates.TemplateResponse(
+        request=request,
+        name="opportunity_detail.html",
+        context={"opportunity": opportunity, "machines": machines},
+    )
+
+
+@router.post("/opportunities/{opportunity_id}/machines")
+def add_opportunity_machine(opportunity_id: int, manufacturer: Annotated[str, Form()] = "", model: Annotated[str, Form()] = "", vin_pin_serial: Annotated[str, Form()] = "", engine: Annotated[str, Form()] = "", notes: Annotated[str, Form()] = ""):
+    with closing(get_connection()) as connection:
+        opportunity = connection.execute("SELECT id FROM opportunities WHERE id = ?", (opportunity_id,)).fetchone()
+        if opportunity is None:
+            raise HTTPException(status_code=404, detail="Opportunity not found")
+        connection.execute("INSERT INTO opportunity_machines (opportunity_id, manufacturer, model, vin_pin_serial, engine, notes) VALUES (?, ?, ?, ?, ?, ?)", (opportunity_id, manufacturer, model, vin_pin_serial, engine, notes))
+        connection.commit()
+    return RedirectResponse(url=f"/opportunities/{opportunity_id}", status_code=303)
+
+
 @router.get("/api/baskets/{job_id}")
 def read_basket(job_id: int):
     return get_basket(job_id)
