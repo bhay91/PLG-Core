@@ -7,6 +7,18 @@
 <p><strong>Status:</strong> {{ opportunity.status }}</p>
 <p><strong>Request:</strong> {{ opportunity.request_text or "-" }}</p>
 <p><strong>Follow Up:</strong> {{ opportunity.follow_up_date or "-" }}</p>
+<form method="post" action="/opportunities/{{ opportunity.id }}/follow-up">
+  <label>Status</label>
+  <select name="status">
+    <option value="OPEN">Open</option>
+    <option value="FOLLOW_UP">Follow Up</option>
+    <option value="CLOSED_LOST">Closed Lost</option>
+    <option value="ARCHIVED">Archived</option>
+  </select>
+  <label>Follow Up Date</label>
+  <input type="date" name="follow_up_date" value="{{ opportunity.follow_up_date or '' }}">
+  <button class="button small" type="submit">Update</button>
+</form>
 <p><strong>Estimated Value:</strong> ${{ "%.2f"|format(opportunity.estimated_value or 0) }}</p>
 
 <h2>Machines</h2>

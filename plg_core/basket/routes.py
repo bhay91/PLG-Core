@@ -108,6 +108,17 @@ def add_opportunity_research(opportunity_id: int, opportunity_machine_id: Annota
     return RedirectResponse(url=f"/opportunities/{opportunity_id}", status_code=303)
 
 
+@router.post("/opportunities/{opportunity_id}/follow-up")
+def update_opportunity_follow_up(opportunity_id: int, status: Annotated[str, Form()], follow_up_date: Annotated[str, Form()] = ""):
+    with closing(get_connection()) as connection:
+        opportunity = connection.execute("SELECT id FROM opportunities WHERE id = ?", (opportunity_id,)).fetchone()
+        if opportunity is None:
+            raise HTTPException(status_code=404, detail="Opportunity not found")
+        connection.execute("UPDATE opportunities SET status = ?, follow_up_date = NULLIF(?, ''), updated_at = CURRENT_TIMESTAMP WHERE id = ?", (status, follow_up_date, opportunity_id))
+        connection.commit()
+    return RedirectResponse(url=f"/opportunities/{opportunity_id}", status_code=303)
+
+
 @router.get("/api/baskets/{job_id}")
 def read_basket(job_id: int):
     return get_basket(job_id)
