@@ -95,7 +95,16 @@ def opportunities_page(request: Request):
 def opportunity_detail_page(request: Request, opportunity_id: int):
     with closing(get_connection()) as connection:
         opportunity = connection.execute(
-            "SELECT * FROM opportunities WHERE id = ?",
+            """
+            SELECT opportunities.*,
+                   customers.name AS customer_name,
+                   customers.customer_number AS customer_number,
+                   jobs.job_number AS converted_job_number
+            FROM opportunities
+            LEFT JOIN customers ON customers.id = opportunities.customer_id
+            LEFT JOIN jobs ON jobs.id = opportunities.converted_job_id
+            WHERE opportunities.id = ?
+            """,
             (opportunity_id,),
         ).fetchone()
         machines = connection.execute(

@@ -5,6 +5,8 @@
 <h2>{{ opportunity.title }}</h2>
 
 <p><strong>Status:</strong> {{ opportunity.status }}</p>
+<p><strong>Customer:</strong> {{ opportunity.customer_number or "-" }} — {{ opportunity.customer_name or "-" }}</p>
+{% if opportunity.converted_job_id %}<p><strong>Converted Job:</strong> <a href="/jobs/{{ opportunity.converted_job_id }}/basket">{{ opportunity.converted_job_number }}</a></p>{% endif %}
 <p><strong>Request:</strong> {{ opportunity.request_text or "-" }}</p>
 <p><strong>Follow Up:</strong> {{ opportunity.follow_up_date or "-" }}</p>
 <form method="post" action="/opportunities/{{ opportunity.id }}/follow-up">
