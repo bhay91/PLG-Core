@@ -57,8 +57,14 @@ async def import_opportunity(request: Request):
         for machine in payload.get("machines") or []:
             cursor = connection.execute("INSERT INTO opportunity_machines (opportunity_id, manufacturer, model, vin_pin_serial, engine, notes) VALUES (?, ?, ?, ?, ?, ?)", (opportunity_id, machine.get("manufacturer", ""), machine.get("model", ""), machine.get("vin_pin_serial", ""), machine.get("engine", ""), machine.get("notes", "")))
             machine_ids.append(cursor.lastrowid)
+        research_saved = 0
+        for item in payload.get("research") or []:
+            machine_index = item.get("machine_index")
+            machine_id = machine_ids[machine_index] if isinstance(machine_index, int) and 0 <= machine_index < len(machine_ids) else None
+            connection.execute("INSERT INTO opportunity_research (opportunity_id, opportunity_machine_id, part_description, oem_part_number, alternate_part_number, supplier_name, source_url, source_type, confidence, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (opportunity_id, machine_id, item.get("part_description", ""), item.get("oem_part_number", ""), item.get("alternate_part_number", ""), item.get("supplier_name", ""), item.get("source_url", ""), item.get("source_type", "chatgpt"), item.get("confidence"), item.get("notes", "")))
+            research_saved += 1
         connection.commit()
-    return {"status": "created", "opportunity_id": opportunity_id, "machine_ids": machine_ids}
+    return {"status": "created", "opportunity_id": opportunity_id, "machine_ids": machine_ids, "research_saved": research_saved}
 
 
 @router.get("/opportunities", response_class=HTMLResponse)
