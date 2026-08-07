@@ -177,6 +177,18 @@ async def import_sis_cart(request: Request):
     return import_cart(int(payload.get("job_id")), normalized)
 
 
+@router.post("/api/opportunities/{opportunity_id}/research")
+async def import_opportunity_research(request: Request, opportunity_id: int):
+    payload = await request.json()
+    with closing(get_connection()) as connection:
+        opportunity = connection.execute("SELECT id FROM opportunities WHERE id = ?", (opportunity_id,)).fetchone()
+        if opportunity is None:
+            raise HTTPException(status_code=404, detail="Opportunity not found")
+        connection.execute("INSERT INTO opportunity_research (opportunity_id, opportunity_machine_id, part_description, oem_part_number, alternate_part_number, supplier_name, source_url, source_type, confidence, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (opportunity_id, payload.get("opportunity_machine_id"), payload.get("part_description", ""), payload.get("oem_part_number", ""), payload.get("alternate_part_number", ""), payload.get("supplier_name", ""), payload.get("source_url", ""), payload.get("source_type", "chatgpt"), payload.get("confidence"), payload.get("notes", "")))
+        connection.commit()
+    return {"status": "saved", "opportunity_id": opportunity_id}
+
+
 @router.get("/jobs/{job_id}/basket", response_class=HTMLResponse)
 def basket_page(request: Request, job_id: int):
     basket = get_basket(job_id)
