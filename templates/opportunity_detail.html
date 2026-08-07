@@ -29,6 +29,18 @@
 <p>No machines added yet.</p>
 {% endfor %}
 
+<h2>Convert to Job</h2>
+<form method="post" action="/opportunities/{{ opportunity.id }}/convert">
+  <label>Primary Machine</label><br>
+  <select name="opportunity_machine_id">
+    <option value="">No machine</option>
+    {% for machine in machines %}
+    <option value="{{ machine.id }}">{{ machine.manufacturer }} {{ machine.model }} — {{ machine.vin_pin_serial }}</option>
+    {% endfor %}
+  </select><br><br>
+  <button class="button" type="submit">Convert to Job</button>
+</form>
+
 <a class="button" href="/opportunities">Back to Opportunities</a>
 <hr>
 <h2>Research</h2>

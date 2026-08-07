@@ -4,6 +4,14 @@
 <h1>New Opportunity</h1>
 
 <form method="post" action="/opportunities">
+  <label>Customer</label><br>
+  <select name="customer_id" required>
+    <option value="">Select Customer</option>
+    {% for customer in customers %}
+    <option value="{{ customer.id }}">{{ customer.customer_number }} — {{ customer.name }}</option>
+    {% endfor %}
+  </select><br><br>
+
   <label>Title</label><br>
   <input type="text" name="title" required><br><br>
 

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from contextlib import closing
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from legacy_app import get_connection, templates
+from legacy_app import get_connection, next_job_number, templates
 from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
 from plg_core.jobs.engine import JobEngine
 from plg_core.timeline import log_job_event
@@ -27,19 +28,28 @@ from plg_core.basket.service import (
 router = APIRouter(tags=["basket"])
 
 
+def normalize_source_url(value):
+    url = str(value or "").strip()
+    if url.startswith("[") and "](" in url and url.endswith(")"):
+        url = url.split("](", 1)[1][:-1].strip()
+    return url
+
+
 @router.get("/opportunities/new", response_class=HTMLResponse)
 def new_opportunity_page(request: Request):
+    with closing(get_connection()) as connection:
+        customers = connection.execute("SELECT id, customer_number, name FROM customers WHERE active=1 ORDER BY name").fetchall()
     return templates.TemplateResponse(
         request=request,
         name="opportunity_new.html",
-        context={},
+        context={"customers": customers},
     )
 
 
 @router.post("/opportunities")
-def create_opportunity(title: Annotated[str, Form()], request_text: Annotated[str, Form()] = "", follow_up_date: Annotated[str, Form()] = "", estimated_value: Annotated[str, Form()] = "", notes: Annotated[str, Form()] = ""):
+def create_opportunity(customer_id: Annotated[int, Form()], title: Annotated[str, Form()], request_text: Annotated[str, Form()] = "", follow_up_date: Annotated[str, Form()] = "", estimated_value: Annotated[str, Form()] = "", notes: Annotated[str, Form()] = ""):
     with closing(get_connection()) as connection:
-        cursor = connection.execute("INSERT INTO opportunities (title, request_text, follow_up_date, estimated_value, notes) VALUES (?, ?, NULLIF(?, ''), ?, ?)", (title, request_text, follow_up_date, float(estimated_value or 0), notes))
+        cursor = connection.execute("INSERT INTO opportunities (customer_id, title, request_text, follow_up_date, estimated_value, notes) VALUES (?, ?, ?, NULLIF(?, ''), ?, ?)", (customer_id, title, request_text, follow_up_date, float(estimated_value or 0), notes))
         opportunity_id = cursor.lastrowid
         connection.execute("UPDATE opportunities SET opportunity_number = 'OPP-' || strftime('%Y','now') || '-' || printf('%03d', id) WHERE id = ?", (opportunity_id,))
         connection.commit()
@@ -50,7 +60,7 @@ def create_opportunity(title: Annotated[str, Form()], request_text: Annotated[st
 async def import_opportunity(request: Request):
     payload = await request.json()
     with closing(get_connection()) as connection:
-        cursor = connection.execute("INSERT INTO opportunities (title, request_text, follow_up_date, estimated_value, notes) VALUES (?, ?, NULLIF(?, ''), ?, ?)", (payload.get("title", ""), payload.get("request_text", ""), payload.get("follow_up_date", ""), float(payload.get("estimated_value") or 0), payload.get("notes", "")))
+        cursor = connection.execute("INSERT INTO opportunities (customer_id, title, request_text, follow_up_date, estimated_value, notes) VALUES (?, ?, ?, NULLIF(?, ''), ?, ?)", (payload.get("customer_id"), payload.get("title", ""), payload.get("request_text", ""), payload.get("follow_up_date", ""), float(payload.get("estimated_value") or 0), payload.get("notes", "")))
         opportunity_id = cursor.lastrowid
         connection.execute("UPDATE opportunities SET opportunity_number = 'OPP-' || strftime('%Y','now') || '-' || printf('%03d', id) WHERE id = ?", (opportunity_id,))
         machine_ids = []
@@ -61,7 +71,7 @@ async def import_opportunity(request: Request):
         for item in payload.get("research") or []:
             machine_index = item.get("machine_index")
             machine_id = machine_ids[machine_index] if isinstance(machine_index, int) and 0 <= machine_index < len(machine_ids) else None
-            connection.execute("INSERT INTO opportunity_research (opportunity_id, opportunity_machine_id, part_description, oem_part_number, alternate_part_number, supplier_name, source_url, source_type, confidence, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (opportunity_id, machine_id, item.get("part_description", ""), item.get("oem_part_number", ""), item.get("alternate_part_number", ""), item.get("supplier_name", ""), item.get("source_url", ""), item.get("source_type", "chatgpt"), item.get("confidence"), item.get("notes", "")))
+            connection.execute("INSERT INTO opportunity_research (opportunity_id, opportunity_machine_id, part_description, oem_part_number, alternate_part_number, supplier_name, source_url, source_type, confidence, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (opportunity_id, machine_id, item.get("part_description", ""), item.get("oem_part_number", ""), item.get("alternate_part_number", ""), item.get("supplier_name", ""), normalize_source_url(item.get("source_url", "")), item.get("source_type", "chatgpt"), item.get("confidence"), item.get("notes", "")))
             research_saved += 1
         connection.commit()
     return {"status": "created", "opportunity_id": opportunity_id, "machine_ids": machine_ids, "research_saved": research_saved}
@@ -140,6 +150,43 @@ def update_opportunity_follow_up(opportunity_id: int, status: Annotated[str, For
     return RedirectResponse(url=f"/opportunities/{opportunity_id}", status_code=303)
 
 
+@router.post("/opportunities/{opportunity_id}/convert")
+def convert_opportunity_to_job(opportunity_id: int, opportunity_machine_id: Annotated[str, Form()] = ""):
+    with closing(get_connection()) as connection:
+        opportunity = connection.execute("SELECT * FROM opportunities WHERE id = ?", (opportunity_id,)).fetchone()
+        if opportunity is None:
+            raise HTTPException(status_code=404, detail="Opportunity not found")
+        if opportunity["converted_job_id"]:
+            return RedirectResponse(url=f"/jobs/{opportunity['converted_job_id']}/basket", status_code=303)
+        if not opportunity["customer_id"]:
+            raise HTTPException(status_code=400, detail="Opportunity must have a customer before conversion")
+        customer = connection.execute("SELECT * FROM customers WHERE id = ? AND active = 1", (opportunity["customer_id"],)).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=400, detail="Opportunity customer not found")
+        machine = None
+        machine_id = None
+        if opportunity_machine_id:
+            machine = connection.execute("SELECT * FROM opportunity_machines WHERE id = ? AND opportunity_id = ?", (opportunity_machine_id, opportunity_id)).fetchone()
+            if machine is None:
+                raise HTTPException(status_code=400, detail="Selected opportunity machine not found")
+            machine_id = machine["machine_id"]
+            if not machine_id:
+                display_name = " ".join(part for part in ((machine["manufacturer"] or "").strip(), (machine["model"] or "").strip()) if part).strip() or (machine["vin_pin_serial"] or "").strip()
+                machine_cursor = connection.execute("INSERT INTO machines (customer_id,name,manufacturer,model,vin_pin_serial,engine,notes) VALUES (?,?,?,?,?,?,?)", (customer["id"], display_name, (machine["manufacturer"] or "").strip(), (machine["model"] or "").strip(), (machine["vin_pin_serial"] or "").strip(), (machine["engine"] or "").strip(), machine["notes"] or ""))
+                machine_id = machine_cursor.lastrowid
+                connection.execute("UPDATE machines SET machine_number=? WHERE id=?", (f"PLG-M{machine_id:05d}", machine_id))
+                connection.execute("UPDATE opportunity_machines SET machine_id=? WHERE id=?", (machine_id, machine["id"]))
+        job_number = next_job_number(connection)
+        cursor = connection.execute("INSERT INTO jobs (job_number, created_date, customer_id, machine_id, customer, company, phone, email, address, manufacturer, machine, pin_serial, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REQUESTED', ?)", (job_number, date.today().isoformat(), customer["id"], machine_id, customer["name"], customer["company"] or "", customer["phone"] or "", customer["email"] or "", customer["address"] or "", machine["manufacturer"] if machine else "", machine["model"] if machine else "", machine["vin_pin_serial"] if machine else "", opportunity["notes"] or opportunity["request_text"] or ""))
+        job_id = cursor.lastrowid
+        research = connection.execute("SELECT * FROM opportunity_research WHERE opportunity_id = ? ORDER BY id", (opportunity_id,)).fetchall()
+        connection.execute("UPDATE opportunities SET status = 'CONVERTED', converted_job_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (job_id, opportunity_id))
+        connection.commit()
+    for item in research:
+        add_item(job_id, BasketItemCreate(requested_description=item["part_description"] or "Research candidate", manufacturer_part_number=item["oem_part_number"] or "", supplier_part_number=item["alternate_part_number"] or "", supplier_name=item["supplier_name"] or "", source_type=(item["source_type"] or "RESEARCH").upper(), selected=False, confidence=item["confidence"], source_url=item["source_url"] or ""))
+    return RedirectResponse(url=f"/jobs/{job_id}/basket", status_code=303)
+
+
 @router.get("/api/baskets/{job_id}")
 def read_basket(job_id: int):
     return get_basket(job_id)
@@ -190,7 +237,7 @@ async def import_sis_cart(request: Request):
                 "quantity": item.get("quantity", 1),
                 "supplier_cost": item.get("oem_price"),
                 "availability": item.get("availability", ""),
-                "source_url": item.get("source_url", ""),
+                "source_url": normalize_source_url(item.get("source_url", "")),
             }
             for item in (payload.get("items") or [])
         ],
@@ -205,7 +252,7 @@ async def import_opportunity_research(request: Request, opportunity_id: int):
         opportunity = connection.execute("SELECT id FROM opportunities WHERE id = ?", (opportunity_id,)).fetchone()
         if opportunity is None:
             raise HTTPException(status_code=404, detail="Opportunity not found")
-        connection.execute("INSERT INTO opportunity_research (opportunity_id, opportunity_machine_id, part_description, oem_part_number, alternate_part_number, supplier_name, source_url, source_type, confidence, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (opportunity_id, payload.get("opportunity_machine_id"), payload.get("part_description", ""), payload.get("oem_part_number", ""), payload.get("alternate_part_number", ""), payload.get("supplier_name", ""), payload.get("source_url", ""), payload.get("source_type", "chatgpt"), payload.get("confidence"), payload.get("notes", "")))
+        connection.execute("INSERT INTO opportunity_research (opportunity_id, opportunity_machine_id, part_description, oem_part_number, alternate_part_number, supplier_name, source_url, source_type, confidence, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (opportunity_id, payload.get("opportunity_machine_id"), payload.get("part_description", ""), payload.get("oem_part_number", ""), payload.get("alternate_part_number", ""), payload.get("supplier_name", ""), normalize_source_url(payload.get("source_url", "")), payload.get("source_type", "chatgpt"), payload.get("confidence"), payload.get("notes", "")))
         connection.commit()
     return {"status": "saved", "opportunity_id": opportunity_id}
 
@@ -219,7 +266,7 @@ async def import_opportunity_research_batch(request: Request, opportunity_id: in
         if opportunity is None:
             raise HTTPException(status_code=404, detail="Opportunity not found")
         for item in items:
-            connection.execute("INSERT INTO opportunity_research (opportunity_id, opportunity_machine_id, part_description, oem_part_number, alternate_part_number, supplier_name, source_url, source_type, confidence, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (opportunity_id, item.get("opportunity_machine_id"), item.get("part_description", ""), item.get("oem_part_number", ""), item.get("alternate_part_number", ""), item.get("supplier_name", ""), item.get("source_url", ""), item.get("source_type", "chatgpt"), item.get("confidence"), item.get("notes", "")))
+            connection.execute("INSERT INTO opportunity_research (opportunity_id, opportunity_machine_id, part_description, oem_part_number, alternate_part_number, supplier_name, source_url, source_type, confidence, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (opportunity_id, item.get("opportunity_machine_id"), item.get("part_description", ""), item.get("oem_part_number", ""), item.get("alternate_part_number", ""), item.get("supplier_name", ""), normalize_source_url(item.get("source_url", "")), item.get("source_type", "chatgpt"), item.get("confidence"), item.get("notes", "")))
         connection.commit()
     return {"status": "saved", "opportunity_id": opportunity_id, "items_saved": len(items)}
 
