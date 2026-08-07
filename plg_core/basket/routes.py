@@ -46,6 +46,21 @@ def create_opportunity(title: Annotated[str, Form()], request_text: Annotated[st
     return RedirectResponse(url="/opportunities", status_code=303)
 
 
+@router.post("/api/opportunities/import")
+async def import_opportunity(request: Request):
+    payload = await request.json()
+    with closing(get_connection()) as connection:
+        cursor = connection.execute("INSERT INTO opportunities (title, request_text, follow_up_date, estimated_value, notes) VALUES (?, ?, NULLIF(?, ''), ?, ?)", (payload.get("title", ""), payload.get("request_text", ""), payload.get("follow_up_date", ""), float(payload.get("estimated_value") or 0), payload.get("notes", "")))
+        opportunity_id = cursor.lastrowid
+        connection.execute("UPDATE opportunities SET opportunity_number = 'OPP-' || strftime('%Y','now') || '-' || printf('%03d', id) WHERE id = ?", (opportunity_id,))
+        machine_ids = []
+        for machine in payload.get("machines") or []:
+            cursor = connection.execute("INSERT INTO opportunity_machines (opportunity_id, manufacturer, model, vin_pin_serial, engine, notes) VALUES (?, ?, ?, ?, ?, ?)", (opportunity_id, machine.get("manufacturer", ""), machine.get("model", ""), machine.get("vin_pin_serial", ""), machine.get("engine", ""), machine.get("notes", "")))
+            machine_ids.append(cursor.lastrowid)
+        connection.commit()
+    return {"status": "created", "opportunity_id": opportunity_id, "machine_ids": machine_ids}
+
+
 @router.get("/opportunities", response_class=HTMLResponse)
 def opportunities_page(request: Request):
     with closing(get_connection()) as connection:
