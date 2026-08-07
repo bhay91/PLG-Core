@@ -165,7 +165,7 @@ def _document(path: Path, quote, title: str):
         leftMargin=0.43 * inch, rightMargin=0.43 * inch,
         topMargin=0.38 * inch, bottomMargin=0.63 * inch,
         title=f"{title} {_value(quote, 'quote_number')}",
-        author="PartsLink Global",
+        author="Pinpoint Sourcing Co.",
     )
     frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="main")
     doc.addPageTemplates([
@@ -195,7 +195,7 @@ def _header(quote, internal: bool):
         )))
 
     business = [
-        Paragraph("PARTSLINK GLOBAL", s["brand"]),
+        Paragraph("PINPOINT SOURCING CO.", s["brand"]),
         Paragraph("Worldwide Parts Sourcing &amp; Logistics", s["tagline"]),
         Spacer(1, 3),
         Paragraph("2033 W McNab Rd Ste S, Pompano Beach, FL 33069", s["contact"]),
@@ -652,7 +652,7 @@ def _footer_blocks():
     ]
     center = [
         Paragraph("THANK YOU FOR CHOOSING", s["footer_heading"]),
-        Paragraph("PARTSLINK GLOBAL", s["center_brand"]),
+        Paragraph("PINPOINT SOURCING CO.", s["center_brand"]),
         Paragraph("Worldwide Parts Sourcing &amp; Logistics", s["center_tag"]),
     ]
     right = [

@@ -29,7 +29,7 @@ from plg_core.documents.parts_order_pdf import (
     parts_order_sheet_path,
 )
 
-app = FastAPI(title="PartsLink Global Core")
+app = FastAPI(title="Pinpoint Sourcing Co. Core")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[

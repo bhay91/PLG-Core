@@ -179,7 +179,7 @@ def _page_footer(canvas, doc, invoice_number: str):
     canvas.drawString(
         LEFT_MARGIN,
         0.21 * inch,
-        "PartsLink Global · Internal Purchasing Document",
+        "Pinpoint Sourcing Co. · Internal Purchasing Document",
     )
 
     canvas.drawRightString(
@@ -202,7 +202,7 @@ def _document(path: Path, invoice):
         topMargin=TOP_MARGIN,
         bottomMargin=BOTTOM_MARGIN,
         title=f"Parts Order Sheet {invoice_number}",
-        author="PartsLink Global",
+        author="Pinpoint Sourcing Co.",
     )
 
     frame = Frame(
@@ -249,7 +249,7 @@ def _header(invoice):
         logo_flow = Paragraph("PLG", styles["brand"])
 
     business = [
-        Paragraph("PARTSLINK GLOBAL", styles["brand"]),
+        Paragraph("PINPOINT SOURCING CO.", styles["brand"]),
         Paragraph(
             "Worldwide Parts Sourcing &amp; Logistics",
             styles["tagline"],

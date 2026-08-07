@@ -5,7 +5,7 @@ Status: Locked
 
 ## Article 0 — Single Source of Truth
 
-The `docs/` directory is the official source of truth for PartsLink Global development.
+The `docs/` directory is the official source of truth for Pinpoint Sourcing Co. development.
 
 Development decisions must be made from documented requirements, rules, and specifications rather than memory alone.
 

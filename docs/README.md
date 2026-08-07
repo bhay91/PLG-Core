@@ -1,6 +1,6 @@
-# PartsLink Global Documentation
+# Pinpoint Sourcing Co. Documentation
 
-This directory is the official source of truth for PartsLink Global development.
+This directory is the official source of truth for Pinpoint Sourcing Co. development.
 
 Development decisions must come from these documents rather than memory or chat history.
 

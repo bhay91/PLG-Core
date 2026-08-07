@@ -214,7 +214,7 @@ def _document(path: Path, invoice, title: str):
         topMargin=PDF_TOP_MARGIN,
         bottomMargin=PDF_BOTTOM_MARGIN,
         title=f"{title} {_value(invoice, 'invoice_number')}",
-        author="PartsLink Global",
+        author="Pinpoint Sourcing Co.",
     )
 
     frame = Frame(
@@ -287,7 +287,7 @@ def _header(invoice, internal: bool):
         )))
 
     business = [
-        Paragraph("PARTSLINK GLOBAL", s["brand"]),
+        Paragraph("PINPOINT SOURCING CO.", s["brand"]),
         Paragraph("Worldwide Parts Sourcing &amp; Logistics", s["tagline"]),
         Spacer(1, 1),
         Paragraph(
@@ -784,7 +784,7 @@ def _footer_blocks():
     ]
     center = [
         Paragraph("THANK YOU FOR CHOOSING", s["footer_heading"]),
-        Paragraph("PARTSLINK GLOBAL", s["center_brand"]),
+        Paragraph("PINPOINT SOURCING CO.", s["center_brand"]),
         Paragraph("Worldwide Parts Sourcing &amp; Logistics", s["center_tag"]),
     ]
     right = [
