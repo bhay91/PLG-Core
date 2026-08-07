@@ -189,6 +189,20 @@ async def import_opportunity_research(request: Request, opportunity_id: int):
     return {"status": "saved", "opportunity_id": opportunity_id}
 
 
+@router.post("/api/opportunities/{opportunity_id}/research/batch")
+async def import_opportunity_research_batch(request: Request, opportunity_id: int):
+    payload = await request.json()
+    items = payload.get("items") or []
+    with closing(get_connection()) as connection:
+        opportunity = connection.execute("SELECT id FROM opportunities WHERE id = ?", (opportunity_id,)).fetchone()
+        if opportunity is None:
+            raise HTTPException(status_code=404, detail="Opportunity not found")
+        for item in items:
+            connection.execute("INSERT INTO opportunity_research (opportunity_id, opportunity_machine_id, part_description, oem_part_number, alternate_part_number, supplier_name, source_url, source_type, confidence, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (opportunity_id, item.get("opportunity_machine_id"), item.get("part_description", ""), item.get("oem_part_number", ""), item.get("alternate_part_number", ""), item.get("supplier_name", ""), item.get("source_url", ""), item.get("source_type", "chatgpt"), item.get("confidence"), item.get("notes", "")))
+        connection.commit()
+    return {"status": "saved", "opportunity_id": opportunity_id, "items_saved": len(items)}
+
+
 @router.get("/jobs/{job_id}/basket", response_class=HTMLResponse)
 def basket_page(request: Request, job_id: int):
     basket = get_basket(job_id)
