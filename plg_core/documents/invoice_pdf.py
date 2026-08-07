@@ -16,6 +16,7 @@ from reportlab.platypus import (
     Frame,
     Image,
     KeepTogether,
+    TopPadder,
     PageBreak,
     PageTemplate,
     Paragraph,
@@ -27,6 +28,7 @@ from reportlab.platypus import (
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DOCUMENT_ROOT = PROJECT_ROOT / "documents" / "Customers"
 LOGO_CANDIDATES = [
+    PROJECT_ROOT / "static" / "pps-logo.png",
     PROJECT_ROOT / "static" / "plg-logo.webp",
     PROJECT_ROOT / "static" / "plg-logo.png",
     PROJECT_ROOT / "static" / "plg-logo.jpg",
@@ -47,7 +49,7 @@ PDF_PAGE_SIZE = LETTER
 PDF_LEFT_MARGIN = 0.28 * inch
 PDF_RIGHT_MARGIN = 0.28 * inch
 PDF_TOP_MARGIN = 0.27 * inch
-PDF_BOTTOM_MARGIN = 0.52 * inch
+PDF_BOTTOM_MARGIN = 1.22 * inch
 PDF_CONTENT_WIDTH = 7.94 * inch
 
 
@@ -150,15 +152,15 @@ def _styles():
         ),
         "label": ParagraphStyle(
             "PLGLabel", parent=base["Normal"], fontName="Helvetica-Bold",
-            fontSize=8, leading=10, textColor=INK,
+            fontSize=8.2, leading=10, textColor=INK,
         ),
         "value": ParagraphStyle(
             "PLGValue", parent=base["Normal"], fontName="Helvetica",
-            fontSize=8.7, leading=11, textColor=INK,
+            fontSize=8.2, leading=10, textColor=INK,
         ),
         "small": ParagraphStyle(
             "PLGSmall", parent=base["Normal"], fontName="Helvetica",
-            fontSize=7.2, leading=9, textColor=MUTED,
+            fontSize=8.0, leading=10, textColor=MUTED,
         ),
         "footer_heading": ParagraphStyle(
             "PLGFooterHeading", parent=base["Normal"], fontName="Helvetica-Bold",
@@ -195,13 +197,18 @@ def _page_footer(canvas, doc, title, number):
     canvas.drawString(
         PDF_LEFT_MARGIN,
         0.21 * inch,
-        "PLG Corporate Document Standard v2.0",
+        "Pinpoint Sourcing Co. | Worldwide Parts Sourcing & Logistics",
     )
     canvas.drawRightString(
         width - PDF_RIGHT_MARGIN,
         0.21 * inch,
         f"{title} {number} | Page {doc.page}",
     )
+
+    footer_blocks = _footer_blocks()
+    footer_blocks.wrapOn(canvas, PDF_CONTENT_WIDTH, 0.70 * inch)
+    footer_blocks.drawOn(canvas, PDF_LEFT_MARGIN, 0.47 * inch)
+
     canvas.restoreState()
 
 
@@ -278,24 +285,21 @@ def _header(invoice, internal: bool):
     logo_flow = []
     if logo:
         try:
-            logo_flow.append(Image(str(logo), width=1.14 * inch, height=0.56 * inch))
+            logo_flow.append(Image(str(logo), width=2.50 * inch, height=0.68 * inch))
         except Exception:
             pass
     if not logo_flow:
-        logo_flow.append(Paragraph("PLG", ParagraphStyle(
+        logo_flow.append(Paragraph("PPS", ParagraphStyle(
             "FallbackLogo", parent=s["brand"], fontSize=30, leading=31
         )))
 
     business = [
-        Paragraph("PINPOINT SOURCING CO.", s["brand"]),
-        Paragraph("Worldwide Parts Sourcing &amp; Logistics", s["tagline"]),
-        Spacer(1, 1),
         Paragraph(
             "2033 W McNab Rd Ste S, Pompano Beach, FL 33069",
             s["contact"],
         ),
         Paragraph("USA: +1 (561) 978-4452 &nbsp; | &nbsp; Jamaica: +1 (876) 429-0046", s["contact"]),
-        Paragraph("partslinkglobal@icloud.com", s["contact"]),
+        Paragraph("pinpointsourcing@icloud.com", s["contact"]),
     ]
 
     title = "INTERNAL INVOICE" if internal else "INVOICE"
@@ -305,7 +309,6 @@ def _header(invoice, internal: bool):
     ).strip().upper()
 
     meta_rows = [
-        ["Invoice No.", str(_value(invoice, "invoice_number"))],
         ["Date", _date_text(_value(invoice, "invoice_date"))],
     ]
 
@@ -338,18 +341,31 @@ def _header(invoice, internal: bool):
         ),
     ])
 
+    invoice_number_style = ParagraphStyle(
+        "PPSInvoiceNumber",
+        parent=s["small"],
+        fontName="Helvetica-Bold",
+        fontSize=11.5,
+        leading=13,
+        textColor=BLUE,
+        alignment=TA_RIGHT,
+    )
+
     meta = [
         Paragraph(title, s["doc_title"]),
-        Spacer(1, 4),
+        Spacer(1, 1),
+        Paragraph(str(_value(invoice, "invoice_number")), invoice_number_style),
+        Spacer(1, 5),
         Table(
             meta_rows,
-            colWidths=[0.78 * inch, 1.28 * inch],
+            colWidths=[0.85 * inch, 1.65 * inch],
             style=[
                 ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
                 ("FONTNAME", (1, 0), (1, -2), "Helvetica"),
                 ("FONTSIZE", (0, 0), (-1, -1), 7.7),
                 ("TEXTCOLOR", (0, 0), (0, -1), INK),
-                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("ALIGN", (0, 0), (0, -1), "LEFT"),
+            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("TOPPADDING", (0, 0), (-1, -1), 2),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
@@ -357,11 +373,12 @@ def _header(invoice, internal: bool):
         ),
     ]
 
+    company_block = logo_flow + [Spacer(1, 5)] + business
+
     table = Table(
-        [[logo_flow, business, meta]],
+        [[company_block, meta]],
         colWidths=[
-            1.26 * inch,
-            4.18 * inch,
+            5.44 * inch,
             2.50 * inch,
         ],
     )
@@ -713,7 +730,7 @@ def _totals_box(invoice, internal: bool):
 
     table = Table(
         rows,
-        colWidths=[1.35 * inch, 1.57 * inch],
+        colWidths=[1.20 * inch, 1.92 * inch],
     )
 
     final_row = len(rows) - 1
@@ -814,13 +831,15 @@ def _footer_blocks():
     return table
 
 
-def _invoice_notice(internal):
+def _invoice_notice(invoice, internal):
     s = _styles()
-    text = (
-        "INTERNAL USE ONLY - Supplier pricing and profit are confidential."
-        if internal else
-        "Invoice valid for 30 days. Pricing and availability are subject to confirmation."
-    )
+    status = str(_value(invoice, "status", "") or "").strip().upper()
+    if internal:
+        text = "INTERNAL USE ONLY - Supplier pricing and profit are confidential."
+    elif status == "PAID":
+        text = "Payment received in full. Thank you for your business."
+    else:
+        text = "Invoice valid for 30 days. Pricing and availability are subject to confirmation."
     return Table([[Paragraph(text, ParagraphStyle(
         "Notice", parent=s["small"], alignment=TA_CENTER,
         textColor=NAVY if not internal else colors.HexColor("#9B2C2C"),
@@ -876,12 +895,11 @@ def build_invoice_pdf(
         else _customer_items(items),
 
         Spacer(1, 5),
-        _invoice_notice(internal),
+        _invoice_notice(invoice, internal),
         Spacer(1, 5),
         _bottom_blocks(invoice, internal),
         Spacer(1, 2),
-        _footer_blocks(),
-    ]
+        ]
 
     doc.build(story)
 
