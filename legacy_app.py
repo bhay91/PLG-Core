@@ -19,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 from plg_core.jobs.engine import JobEngine
 from plg_core.dashboard.service import get_dashboard_data
 from plg_core.machines.identifiers import find_machine_by_identifier
-from plg_core.pricing import customer_unit_price
+from plg_core.pricing import customer_unit_price as calculate_customer_unit_price
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -1601,7 +1601,7 @@ def generate_quote(job_id: int):
             customer_unit_price = (
                 float(stored_customer_unit_price)
                 if stored_customer_unit_price is not None
-                else customer_unit_price(
+                else calculate_customer_unit_price(
                     supplier_unit_cost
                 )
             )
