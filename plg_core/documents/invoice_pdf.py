@@ -778,8 +778,22 @@ def _totals_box(invoice, internal: bool):
     return table
 
 def _bottom_blocks(invoice, internal):
-    payment = _payment_box()
     totals = _totals_box(invoice, internal)
+    status = str(_value(invoice, "status", "UNPAID") or "UNPAID").strip().upper()
+
+    if status == "PAID":
+        return Table(
+            [[totals]],
+            colWidths=[3.12 * inch],
+            hAlign="RIGHT",
+            style=[
+                ("VALIGN", (0,0), (-1,-1), "TOP"),
+                ("LEFTPADDING", (0,0), (-1,-1), 0),
+                ("RIGHTPADDING", (0,0), (-1,-1), 0),
+            ],
+        )
+
+    payment = _payment_box()
     table = Table(
         [[payment, totals]],
         colWidths=[4.82 * inch, 3.12 * inch],
