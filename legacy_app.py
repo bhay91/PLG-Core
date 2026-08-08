@@ -3957,6 +3957,19 @@ async def api_import_source_cart(request: Request):
             except (TypeError, ValueError):
                 supplier_cost = None
 
+            try:
+                raw_confidence = raw.get("confidence")
+                confidence = (
+                    float(raw_confidence)
+                    if raw_confidence not in (None, "")
+                    else None
+                )
+            except (TypeError, ValueError):
+                confidence = None
+
+            if confidence is not None and not 0.0 <= confidence <= 1.0:
+                confidence = None
+
             if not supplier_part_number:
                 continue
 
@@ -3997,12 +4010,14 @@ async def api_import_source_cart(request: Request):
                     UPDATE part_sources
                     SET brand = ?, supplier_cost = ?, availability = ?,
                         lead_time = ?, quote_reference = ?, trust_level = ?,
-                        source_url = ?, updated_at = CURRENT_TIMESTAMP
+                        source_url = ?, confidence = ?,
+                        updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                     """,
                     (
                         brand, supplier_cost, availability, lead_time,
-                        reference, trust_level, source_url, existing["id"],
+                        reference, trust_level, source_url, confidence,
+                        existing["id"],
                     ),
                 )
             else:
@@ -4030,14 +4045,15 @@ async def api_import_source_cart(request: Request):
                     INSERT INTO part_sources (
                         part_id, supplier_name, source_type, brand,
                         supplier_part_number, supplier_cost, availability,
-                        lead_time, quote_reference, trust_level, source_url
+                        lead_time, quote_reference, trust_level, source_url,
+                        confidence
                     )
-                    VALUES (?, ?, 'AFTERMARKET', ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, 'AFTERMARKET', ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         part_id, source_name, brand, supplier_part_number,
                         supplier_cost, availability, lead_time,
-                        reference, trust_level, source_url,
+                        reference, trust_level, source_url, confidence,
                     ),
                 )
 
