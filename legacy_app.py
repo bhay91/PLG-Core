@@ -3237,6 +3237,8 @@ def add_part_source(
     availability: Annotated[str, Form()] = "",
     lead_time: Annotated[str, Form()] = "",
     quote_reference: Annotated[str, Form()] = "",
+    verification_status: Annotated[str, Form()] = "UNVERIFIED",
+    verification_note: Annotated[str, Form()] = "",
 ):
     supplier_name = supplier_name.strip()
     if not supplier_name:
@@ -3245,6 +3247,25 @@ def add_part_source(
     source_type = source_type.strip().upper()
     if source_type not in {"OEM", "AFTERMARKET", "USED", "REMAN"}:
         raise HTTPException(status_code=400, detail="Invalid source type.")
+
+    verification_status = verification_status.strip().upper() or "UNVERIFIED"
+    if verification_status not in {
+        "UNVERIFIED",
+        "VERIFIED",
+        "REJECTED",
+        "OVERRIDE",
+    }:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid verification status.",
+        )
+
+    verification_note = verification_note.strip()
+    if verification_status == "OVERRIDE" and not verification_note:
+        raise HTTPException(
+            status_code=400,
+            detail="Manual Override requires a verification note.",
+        )
 
     with closing(get_connection()) as connection:
         part = connection.execute(
@@ -3304,6 +3325,29 @@ def select_part_source(part_id: int, source_id: int):
         if source is None:
             raise HTTPException(status_code=404, detail="Supplier source not found.")
 
+        verification_status = (
+            source["verification_status"] or "UNVERIFIED"
+        ).strip().upper()
+
+        verification_note = (
+            source["verification_note"] or ""
+        ).strip()
+
+        if (
+            verification_status not in {"VERIFIED", "OVERRIDE"}
+            or (
+                verification_status == "OVERRIDE"
+                and not verification_note
+            )
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Only verified candidates or documented manual "
+                    "overrides can be selected for quote."
+                ),
+            )
+
         connection.execute(
             "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
             (part_id,),
@@ -3328,6 +3372,161 @@ def select_part_source(part_id: int, source_id: int):
         connection.commit()
 
     return RedirectResponse(url=f"/jobs/{part['job_id']}#part-{part_id}", status_code=303)
+
+
+@app.post("/parts/{part_id}/sources/{source_id}/verification")
+def update_part_source_verification(
+    part_id: int,
+    source_id: int,
+    verification_status: Annotated[str, Form()],
+    verification_note: Annotated[str, Form()] = "",
+):
+    from plg_core.timeline import log_job_event
+
+    valid_statuses = {
+        "UNVERIFIED",
+        "VERIFIED",
+        "REJECTED",
+        "OVERRIDE",
+    }
+
+    normalized_status = (
+        verification_status.strip().upper() or "UNVERIFIED"
+    )
+    if normalized_status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid verification status.",
+        )
+
+    normalized_note = verification_note.strip()
+    if normalized_status == "OVERRIDE" and not normalized_note:
+        raise HTTPException(
+            status_code=400,
+            detail="Manual Override requires a verification note.",
+        )
+
+    with closing(get_connection()) as connection:
+        source = connection.execute(
+            """
+            SELECT
+                part_sources.*,
+                job_parts.job_id,
+                job_parts.requested_description
+            FROM part_sources
+            JOIN job_parts
+              ON job_parts.id = part_sources.part_id
+            WHERE part_sources.id = ?
+              AND part_sources.part_id = ?
+            """,
+            (source_id, part_id),
+        ).fetchone()
+
+        if source is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Supplier source not found.",
+            )
+
+        old_status = (
+            source["verification_status"] or "UNVERIFIED"
+        ).strip().upper()
+        old_note = (
+            source["verification_note"] or ""
+        ).strip()
+
+        connection.execute(
+            """
+            UPDATE part_sources
+            SET verification_status = ?,
+                verification_note = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                normalized_status,
+                normalized_note,
+                source_id,
+            ),
+        )
+
+        removed_from_quote = False
+        if (
+            source["selected_for_quote"]
+            and normalized_status not in {"VERIFIED", "OVERRIDE"}
+        ):
+            connection.execute(
+                """
+                UPDATE part_sources
+                SET selected_for_quote = 0,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (source_id,),
+            )
+            connection.execute(
+                """
+                UPDATE job_parts
+                SET supplier = '',
+                    supplier_cost = NULL,
+                    availability = ''
+                WHERE id = ?
+                """,
+                (part_id,),
+            )
+            removed_from_quote = True
+
+        if (
+            old_status != normalized_status
+            or old_note != normalized_note
+        ):
+            labels = {
+                "UNVERIFIED": "Unverified",
+                "VERIFIED": "Verified",
+                "REJECTED": "Rejected",
+                "OVERRIDE": "Manual Override",
+            }
+
+            part_label = (
+                source["requested_description"] or "Part"
+            ).strip()
+            supplier_label = (
+                source["supplier_name"] or "Unknown supplier"
+            ).strip()
+
+            if old_status != normalized_status:
+                message = (
+                    f"{part_label} candidate from {supplier_label} "
+                    f"verification changed from "
+                    f"{labels.get(old_status, old_status.title())} "
+                    f"to {labels[normalized_status]}"
+                )
+            else:
+                message = (
+                    f"{part_label} candidate from {supplier_label} "
+                    f"verification note updated"
+                )
+
+            if normalized_note:
+                message += f" — Note: {normalized_note}"
+
+            if removed_from_quote:
+                message += " — Removed from quote selection"
+
+            log_job_event(
+                connection,
+                job_id=int(source["job_id"]),
+                event_type="PART_SOURCE_VERIFICATION_CHANGED",
+                icon="✓",
+                message=message,
+            )
+
+        connection.commit()
+
+    return RedirectResponse(
+        url=f"/jobs/{source['job_id']}#part-{part_id}",
+        status_code=303,
+    )
 
 
 @app.post("/parts/{part_id}/sources/{source_id}/delete")

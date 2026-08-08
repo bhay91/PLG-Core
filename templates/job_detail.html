@@ -300,6 +300,31 @@
                 {% if source.lead_time %}<span>Lead time: {{ source.lead_time }}</span>{% endif %}
               </div>
             </form>
+
+            <form
+              method="post"
+              action="/parts/{{ part.id }}/sources/{{ source.id }}/verification"
+              class="source-verification-form"
+            >
+              {% set candidate_status = source.verification_status or "UNVERIFIED" %}
+              <label>Verification
+                <select name="verification_status">
+                  <option value="UNVERIFIED" {% if candidate_status == "UNVERIFIED" %}selected{% endif %}>Unverified</option>
+                  <option value="VERIFIED" {% if candidate_status == "VERIFIED" %}selected{% endif %}>Verified</option>
+                  <option value="REJECTED" {% if candidate_status == "REJECTED" %}selected{% endif %}>Rejected</option>
+                  <option value="OVERRIDE" {% if candidate_status == "OVERRIDE" %}selected{% endif %}>Manual Override</option>
+                </select>
+              </label>
+              <label>Note
+                <input
+                  name="verification_note"
+                  value="{{ source.verification_note or '' }}"
+                  placeholder="Evidence, rejection reason, or override note"
+                >
+              </label>
+              <button class="text-button" type="submit">Update Verification</button>
+            </form>
+
             {% if source.trust_level != "OEM_VERIFIED" %}
             <form method="post" action="/parts/{{ part.id }}/sources/{{ source.id }}/delete"
                   onsubmit="return confirm('Remove this supplier option?');">
@@ -353,6 +378,20 @@
               </select>
             </label>
             <label>Quote reference<input name="quote_reference" placeholder="Quote #, email, or phone"></label>
+            <label>Verification
+              <select name="verification_status">
+                <option value="UNVERIFIED">Unverified</option>
+                <option value="VERIFIED">Verified</option>
+                <option value="REJECTED">Rejected</option>
+                <option value="OVERRIDE">Manual Override</option>
+              </select>
+            </label>
+            <label>Verification note
+              <input
+                name="verification_note"
+                placeholder="Evidence, rejection reason, or override note"
+              >
+            </label>
             <button class="button" type="submit">Add Source</button>
           </form>
         </details>

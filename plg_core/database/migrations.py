@@ -714,3 +714,45 @@ def _migration_0013_basket_verification_note(
 MIGRATIONS.append(
     ("0013_basket_verification_note", _migration_0013_basket_verification_note)
 )
+
+def _migration_0014_part_source_verification(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add verification state to supplier and OEM part candidates."""
+
+    source_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(part_sources)"
+        ).fetchall()
+    }
+
+    if "verification_status" not in source_columns:
+        connection.execute(
+            """
+            ALTER TABLE part_sources
+            ADD COLUMN verification_status TEXT NOT NULL DEFAULT 'UNVERIFIED'
+            """
+        )
+
+    if "verification_note" not in source_columns:
+        connection.execute(
+            """
+            ALTER TABLE part_sources
+            ADD COLUMN verification_note TEXT NOT NULL DEFAULT ''
+            """
+        )
+
+    connection.execute(
+        """
+        UPDATE part_sources
+        SET verification_status = 'UNVERIFIED'
+        WHERE verification_status IS NULL
+           OR TRIM(verification_status) = ''
+        """
+    )
+
+
+MIGRATIONS.append(
+    ("0014_part_source_verification", _migration_0014_part_source_verification)
+)
