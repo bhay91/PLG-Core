@@ -23,20 +23,20 @@ from reportlab.platypus import (
 )
 
 
-NAVY = colors.HexColor("#123A63")
-BLUE = colors.HexColor("#1666D3")
-INK = colors.HexColor("#24344D")
-MUTED = colors.HexColor("#68778B")
-LINE = colors.HexColor("#D8E1EB")
-SOFT = colors.HexColor("#F3F6FA")
+NAVY = colors.HexColor("#0D3563")
+BLUE = colors.HexColor("#0868D7")
+INK = colors.HexColor("#1D2A3B")
+MUTED = colors.HexColor("#5E6D7E")
+LINE = colors.HexColor("#D4DEE9")
+SOFT = colors.HexColor("#F4F7FB")
 WHITE = colors.white
 
 PAGE_SIZE = LETTER
-LEFT_MARGIN = 0.32 * inch
-RIGHT_MARGIN = 0.32 * inch
-TOP_MARGIN = 0.30 * inch
-BOTTOM_MARGIN = 0.52 * inch
-CONTENT_WIDTH = 7.86 * inch
+LEFT_MARGIN = 0.28 * inch
+RIGHT_MARGIN = 0.28 * inch
+TOP_MARGIN = 0.27 * inch
+BOTTOM_MARGIN = 1.22 * inch
+CONTENT_WIDTH = 7.94 * inch
 
 
 def _value(row, key: str, default=""):
@@ -61,6 +61,7 @@ def _money(value) -> str:
 
 def _logo_path() -> Path | None:
     candidates = (
+        Path("static/pps-logo.png"),
         Path("static/plg-logo.webp"),
         Path("static/plg-logo.png"),
         Path("static/logo.png"),
@@ -240,21 +241,15 @@ def _header(invoice):
         try:
             logo_flow = Image(
                 str(logo),
-                width=1.12 * inch,
-                height=0.55 * inch,
+                width=2.50 * inch,
+                height=0.68 * inch,
             )
         except Exception:
-            logo_flow = Paragraph("PLG", styles["brand"])
+            logo_flow = Paragraph("PPS", styles["brand"])
     else:
-        logo_flow = Paragraph("PLG", styles["brand"])
+        logo_flow = Paragraph("PPS", styles["brand"])
 
     business = [
-        Paragraph("PINPOINT SOURCING CO.", styles["brand"]),
-        Paragraph(
-            "Worldwide Parts Sourcing &amp; Logistics",
-            styles["tagline"],
-        ),
-        Spacer(1, 2),
         Paragraph(
             "2033 W McNab Rd Ste S, Pompano Beach, FL 33069",
             styles["tagline"],
@@ -265,50 +260,65 @@ def _header(invoice):
         ),
     ]
 
+    document_number_style = ParagraphStyle(
+        "PPSPartsOrderNumber",
+        parent=styles["small"],
+        fontName="Helvetica-Bold",
+        fontSize=11.5,
+        leading=13,
+        textColor=BLUE,
+        alignment=TA_RIGHT,
+        rightIndent=4,
+    )
+
+    meta_rows = [
+        ["Invoice", str(_value(invoice, "invoice_number"))],
+        ["Job", str(_value(invoice, "job_number"))],
+        ["Date", date.today().isoformat()],
+    ]
+    meta_rows_display = [["", row[0], row[1]] for row in meta_rows]
+
     meta = [
         Paragraph("PARTS ORDER SHEET", styles["title"]),
-        Spacer(1, 4),
+        Spacer(1, 1),
+        Paragraph(
+            str(_value(invoice, "job_number") or _value(invoice, "invoice_number")),
+            document_number_style,
+        ),
+        Spacer(1, 5),
         Table(
-            [
-                [
-                    "Invoice",
-                    str(_value(invoice, "invoice_number")),
-                ],
-                [
-                    "Job",
-                    str(_value(invoice, "job_number")),
-                ],
-                [
-                    "Date",
-                    date.today().isoformat(),
-                ],
-            ],
-            colWidths=[0.62 * inch, 1.40 * inch],
+            meta_rows_display,
+            colWidths=[0.85 * inch, 0.65 * inch, 1.16 * inch],
+            hAlign="RIGHT",
             style=[
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
-                ("FONTSIZE", (0, 0), (-1, -1), 7.4),
-                ("TEXTCOLOR", (0, 0), (-1, -1), INK),
-                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ("FONTNAME", (1,0), (1,-1), "Helvetica-Bold"),
+                ("FONTNAME", (2,0), (2,-1), "Helvetica"),
+                ("FONTSIZE", (0,0), (-1,-1), 7.7),
+                ("TEXTCOLOR", (1,0), (1,-1), INK),
+                ("ALIGN", (1,0), (1,-1), "LEFT"),
+                ("LEFTPADDING", (1,0), (1,-1), 2),
+                ("ALIGN", (2,0), (2,-1), "RIGHT"),
+                ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+                ("TOPPADDING", (0,0), (-1,-1), 2),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 2),
             ],
         ),
     ]
 
+    company_block = [logo_flow, Spacer(1, 5)] + business
+
     table = Table(
-        [[logo_flow, business, meta]],
-        colWidths=[1.22 * inch, 4.12 * inch, 2.52 * inch],
+        [[company_block, meta]],
+        colWidths=[5.28 * inch, 2.66 * inch],
     )
 
     table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ("LINEBEFORE", (2, 0), (2, 0), 0.65, LINE),
-        ("LEFTPADDING", (2, 0), (2, 0), 10),
+        ("VALIGN", (0,0), (-1,-1), "TOP"),
+        ("LEFTPADDING", (0,0), (-1,-1), 0),
+        ("RIGHTPADDING", (0,0), (-1,-1), 0),
+        ("TOPPADDING", (0,0), (-1,-1), 0),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+        ("LEFTPADDING", (0,0), (0,0), 8),
     ]))
 
     return table
@@ -348,9 +358,9 @@ def _job_information(invoice):
     table = Table(
         rows,
         colWidths=[
-            2.62 * inch,
-            2.82 * inch,
-            2.42 * inch,
+            2.64 * inch,
+            2.92 * inch,
+            2.38 * inch,
         ],
     )
 
@@ -396,7 +406,7 @@ def _supplier_header(name: str, details: dict):
 
     table = Table(
         [[Paragraph(name, styles["supplier"]), right]],
-        colWidths=[3.45 * inch, 4.41 * inch],
+        colWidths=[3.52 * inch, 4.42 * inch],
     )
 
     table.setStyle(TableStyle([
@@ -583,7 +593,7 @@ def generate_parts_order_sheet(
                     ),
                 ]
             ],
-            colWidths=[6.15 * inch, 1.71 * inch],
+            colWidths=[6.23 * inch, 1.71 * inch],
             style=[
                 ("BACKGROUND", (0, 0), (-1, -1), NAVY),
                 ("LEFTPADDING", (0, 0), (-1, -1), 10),
