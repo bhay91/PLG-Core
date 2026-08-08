@@ -161,6 +161,15 @@ def opportunity_detail_page(request: Request, opportunity_id: int):
         customers = connection.execute(
             "SELECT id, customer_number, name FROM customers WHERE active=1 ORDER BY name"
         ).fetchall()
+        registered_machines = connection.execute(
+            """
+            SELECT id, machine_number, manufacturer, model, vin_pin_serial, engine
+            FROM machines
+            WHERE active = 1 AND customer_id = ?
+            ORDER BY manufacturer, model, machine_number
+            """,
+            (opportunity["customer_id"],),
+        ).fetchall()
 
     if opportunity is None:
         raise HTTPException(status_code=404, detail="Opportunity not found")
@@ -168,7 +177,7 @@ def opportunity_detail_page(request: Request, opportunity_id: int):
     return templates.TemplateResponse(
         request=request,
         name="opportunity_detail.html",
-        context={"opportunity": opportunity, "machines": machines, "research": research, "customers": customers},
+        context={"opportunity": opportunity, "machines": machines, "research": research, "customers": customers, "registered_machines": registered_machines},
     )
 
 
@@ -206,6 +215,69 @@ def edit_opportunity(
             ),
         )
         connection.commit()
+
+    return RedirectResponse(
+        url=f"/opportunities/{opportunity_id}",
+        status_code=303,
+    )
+
+
+@router.post("/opportunities/{opportunity_id}/machines/attach")
+def attach_registered_machine(
+    opportunity_id: int,
+    machine_id: Annotated[int, Form()],
+):
+    with closing(get_connection()) as connection:
+        opportunity = connection.execute(
+            "SELECT customer_id FROM opportunities WHERE id = ?",
+            (opportunity_id,),
+        ).fetchone()
+
+        machine = connection.execute(
+            """
+            SELECT id, customer_id, manufacturer, model, vin_pin_serial, engine, notes
+            FROM machines
+            WHERE id = ? AND active = 1
+            """,
+            (machine_id,),
+        ).fetchone()
+
+        if opportunity is None:
+            raise HTTPException(status_code=404, detail="Opportunity not found")
+
+        if machine is None:
+            raise HTTPException(status_code=404, detail="Machine not found")
+
+        if machine["customer_id"] != opportunity["customer_id"]:
+            raise HTTPException(status_code=400, detail="Machine belongs to a different customer")
+
+        existing = connection.execute(
+            """
+            SELECT id
+            FROM opportunity_machines
+            WHERE opportunity_id = ? AND machine_id = ?
+            """,
+            (opportunity_id, machine_id),
+        ).fetchone()
+
+        if existing is None:
+            connection.execute(
+                """
+                INSERT INTO opportunity_machines
+                    (opportunity_id, machine_id, manufacturer, model, vin_pin_serial, engine, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    opportunity_id,
+                    machine["id"],
+                    machine["manufacturer"],
+                    machine["model"],
+                    machine["vin_pin_serial"],
+                    machine["engine"],
+                    machine["notes"],
+                ),
+            )
+            connection.commit()
 
     return RedirectResponse(
         url=f"/opportunities/{opportunity_id}",

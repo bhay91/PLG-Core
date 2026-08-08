@@ -51,6 +51,21 @@
   <button class="button" type="submit">Save Opportunity</button>
 </form>
 
+<hr>
+<h2>Attach Registered Machine</h2>
+<form method="post" action="/opportunities/{{ opportunity.id }}/machines/attach">
+  <label>Registered Machine</label><br>
+  <select name="machine_id" required>
+    <option value="">Select Machine</option>
+    {% for machine in registered_machines %}
+    <option value="{{ machine.id }}">
+      {{ machine.machine_number }} — {{ machine.manufacturer }} {{ machine.model }}{% if machine.vin_pin_serial %} — {{ machine.vin_pin_serial }}{% endif %}
+    </option>
+    {% endfor %}
+  </select><br><br>
+  <button class="button" type="submit">Attach Machine</button>
+</form>
+
 <h2>Machines</h2>
 
 {% for machine in machines %}
