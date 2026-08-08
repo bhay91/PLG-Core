@@ -819,3 +819,36 @@ def _migration_0016_part_source_confidence(
 MIGRATIONS.append(
     ("0016_part_source_confidence", _migration_0016_part_source_confidence)
 )
+
+def _migration_0017_part_source_compatibility(
+    connection: sqlite3.Connection,
+) -> None:
+    """Track candidate compatibility with the linked machine identity."""
+
+    columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(part_sources)"
+        ).fetchall()
+    }
+
+    if "compatibility_status" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE part_sources
+            ADD COLUMN compatibility_status TEXT NOT NULL DEFAULT 'UNCHECKED'
+            """
+        )
+
+    if "compatibility_note" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE part_sources
+            ADD COLUMN compatibility_note TEXT NOT NULL DEFAULT ''
+            """
+        )
+
+
+MIGRATIONS.append(
+    ("0017_part_source_compatibility", _migration_0017_part_source_compatibility)
+)

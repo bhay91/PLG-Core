@@ -328,6 +328,30 @@
               <button class="text-button" type="submit">Update Verification</button>
             </form>
 
+              <form
+                method="post"
+                action="/parts/{{ part.id }}/sources/{{ source.id }}/compatibility"
+                class="source-verification-form"
+              >
+                {% set compatibility_status = source.compatibility_status or "UNCHECKED" %}
+                <label>Compatibility
+                  <select name="compatibility_status">
+                    <option value="UNCHECKED" {% if compatibility_status == "UNCHECKED" %}selected{% endif %}>Unchecked</option>
+                    <option value="COMPATIBLE" {% if compatibility_status == "COMPATIBLE" %}selected{% endif %}>Compatible</option>
+                    <option value="INCOMPATIBLE" {% if compatibility_status == "INCOMPATIBLE" %}selected{% endif %}>Incompatible</option>
+                    <option value="OVERRIDE" {% if compatibility_status == "OVERRIDE" %}selected{% endif %}>Manual Override</option>
+                  </select>
+                </label>
+                <label>Compatibility note
+                  <input
+                    name="compatibility_note"
+                    value="{{ source.compatibility_note or '' }}"
+                    placeholder="VIN, PIN, serial, engine serial, or fitment evidence"
+                  >
+                </label>
+                <button class="text-button" type="submit">Update Compatibility</button>
+              </form>
+
             {% if source.trust_level != "OEM_VERIFIED" %}
             <form method="post" action="/parts/{{ part.id }}/sources/{{ source.id }}/delete"
                   onsubmit="return confirm('Remove this supplier option?');">

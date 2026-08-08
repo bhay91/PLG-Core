@@ -3353,6 +3353,28 @@ def select_part_source(part_id: int, source_id: int):
                 ),
             )
 
+        compatibility_status = (
+            source["compatibility_status"] or "UNCHECKED"
+        ).strip().upper()
+        compatibility_note = (
+            source["compatibility_note"] or ""
+        ).strip()
+
+        if compatibility_status == "INCOMPATIBLE":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This candidate is marked incompatible with the linked "
+                    "machine and cannot be selected for quote."
+                ),
+            )
+
+        if compatibility_status == "OVERRIDE" and not compatibility_note:
+            raise HTTPException(
+                status_code=400,
+                detail="Compatibility override requires a note.",
+            )
+
         connection.execute(
             "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
             (part_id,),
@@ -3532,6 +3554,175 @@ def update_part_source_verification(
         url=f"/jobs/{source['job_id']}#part-{part_id}",
         status_code=303,
     )
+
+
+
+@app.post("/parts/{part_id}/sources/{source_id}/compatibility")
+def update_part_source_compatibility(
+    part_id: int,
+    source_id: int,
+    compatibility_status: Annotated[str, Form()],
+    compatibility_note: Annotated[str, Form()] = "",
+):
+    from plg_core.timeline import log_job_event
+
+    valid_statuses = {
+        "UNCHECKED",
+        "COMPATIBLE",
+        "INCOMPATIBLE",
+        "OVERRIDE",
+    }
+
+    normalized_status = (
+        compatibility_status.strip().upper() or "UNCHECKED"
+    )
+    if normalized_status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid compatibility status.",
+        )
+
+    normalized_note = compatibility_note.strip()
+    if normalized_status == "OVERRIDE" and not normalized_note:
+        raise HTTPException(
+            status_code=400,
+            detail="Compatibility override requires a note.",
+        )
+
+    with closing(get_connection()) as connection:
+        source = connection.execute(
+            """
+            SELECT
+                part_sources.*,
+                job_parts.job_id,
+                job_parts.requested_description,
+                jobs.pin_serial,
+                machines.engine_serial
+            FROM part_sources
+            JOIN job_parts
+              ON job_parts.id = part_sources.part_id
+            JOIN jobs
+              ON jobs.id = job_parts.job_id
+            LEFT JOIN machines
+              ON machines.id = jobs.machine_id
+            WHERE part_sources.id = ?
+              AND part_sources.part_id = ?
+            """,
+            (source_id, part_id),
+        ).fetchone()
+
+        if source is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Supplier source not found.",
+            )
+
+        old_status = (
+            source["compatibility_status"] or "UNCHECKED"
+        ).strip().upper()
+        old_note = (
+            source["compatibility_note"] or ""
+        ).strip()
+
+        connection.execute(
+            """
+            UPDATE part_sources
+            SET compatibility_status = ?,
+                compatibility_note = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                normalized_status,
+                normalized_note,
+                source_id,
+            ),
+        )
+
+        removed_from_quote = False
+        if (
+            source["selected_for_quote"]
+            and normalized_status == "INCOMPATIBLE"
+        ):
+            connection.execute(
+                """
+                UPDATE part_sources
+                SET selected_for_quote = 0,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (source_id,),
+            )
+            connection.execute(
+                """
+                UPDATE job_parts
+                SET supplier = '',
+                    supplier_cost = NULL,
+                    availability = ''
+                WHERE id = ?
+                """,
+                (part_id,),
+            )
+            removed_from_quote = True
+
+        if (
+            old_status != normalized_status
+            or old_note != normalized_note
+        ):
+            labels = {
+                "UNCHECKED": "Unchecked",
+                "COMPATIBLE": "Compatible",
+                "INCOMPATIBLE": "Incompatible",
+                "OVERRIDE": "Manual Override",
+            }
+
+            part_label = (
+                source["requested_description"] or "Part"
+            ).strip()
+            supplier_label = (
+                source["supplier_name"] or "Unknown supplier"
+            ).strip()
+
+            if old_status != normalized_status:
+                message = (
+                    f"{part_label} candidate from {supplier_label} "
+                    f"compatibility changed from "
+                    f"{labels.get(old_status, old_status.title())} "
+                    f"to {labels[normalized_status]}"
+                )
+            else:
+                message = (
+                    f"{part_label} candidate from {supplier_label} "
+                    f"compatibility note updated"
+                )
+
+            identity = (source["pin_serial"] or "").strip()
+            engine_serial = (source["engine_serial"] or "").strip()
+
+            if identity:
+                message += f" — VIN/PIN/Serial: {identity}"
+            if engine_serial:
+                message += f" — Engine Serial: {engine_serial}"
+            if normalized_note:
+                message += f" — Note: {normalized_note}"
+            if removed_from_quote:
+                message += " — Removed from quote selection"
+
+            log_job_event(
+                connection,
+                job_id=int(source["job_id"]),
+                event_type="PART_SOURCE_COMPATIBILITY_CHANGED",
+                icon="🔎",
+                message=message,
+            )
+
+        connection.commit()
+
+    return RedirectResponse(
+        url=f"/jobs/{source['job_id']}#part-{part_id}",
+        status_code=303,
+    )
+
 
 
 @app.post("/parts/{part_id}/sources/{source_id}/delete")
