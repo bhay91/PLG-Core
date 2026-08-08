@@ -74,6 +74,16 @@
 <p>No machines added yet.</p>
 {% endfor %}
 
+{% if opportunity.converted_job_id %}
+<h2>Converted to Job</h2>
+<p>
+  This Opportunity has already been converted to
+  <a href="/jobs/{{ opportunity.converted_job_id }}/basket">
+    {{ opportunity.converted_job_number }}
+  </a>.
+</p>
+<a class="button" href="/jobs/{{ opportunity.converted_job_id }}/basket">Open Job</a>
+{% else %}
 <h2>Convert to Job</h2>
 <form method="post" action="/opportunities/{{ opportunity.id }}/convert">
   <label>Primary Machine</label><br>
@@ -85,6 +95,7 @@
   </select><br><br>
   <button class="button" type="submit">Convert to Job</button>
 </form>
+{% endif %}
 
 <a class="button" href="/opportunities">Back to Opportunities</a>
 <hr>
