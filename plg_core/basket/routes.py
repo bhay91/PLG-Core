@@ -78,10 +78,14 @@ async def import_opportunity(request: Request):
 
 
 @router.get("/opportunities", response_class=HTMLResponse)
-def opportunities_page(request: Request):
+def opportunities_page(request: Request, status: str = ""):
     with closing(get_connection()) as connection:
+        status = status.strip().upper()
+        where_clause = "WHERE o.status = ?" if status else ""
+        parameters = (status,) if status else ()
+
         opportunities = connection.execute(
-            """
+            f"""
             SELECT
                 o.id,
                 o.opportunity_number,
@@ -102,14 +106,16 @@ def opportunities_page(request: Request):
             FROM opportunities o
             LEFT JOIN customers c ON c.id = o.customer_id
             LEFT JOIN jobs j ON j.id = o.converted_job_id
+            {where_clause}
             ORDER BY o.created_at DESC
-            """
+            """,
+            parameters,
         ).fetchall()
 
     return templates.TemplateResponse(
         request=request,
         name="opportunities.html",
-        context={"opportunities": opportunities},
+        context={"opportunities": opportunities, "status_filter": status},
     )
 
 
