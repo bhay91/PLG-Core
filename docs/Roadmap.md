@@ -48,7 +48,7 @@ Completed:
 - Opportunity conversion recorded in Job timeline.
 - Converted Opportunity behavior.
 
-## Alpha 10 — Parts Intelligence & Verification — CURRENT
+## Alpha 10 — Parts Intelligence & Verification — COMPLETE
 
 - Improve sourcing basket.
 - Requested part vs candidate part distinction.
@@ -76,7 +76,7 @@ Completed:
 - Generic supplier research imports.
 - One standard Verify Parts workflow.
 
-## Alpha 11 — Pricing & Business Intelligence
+## Alpha 11 — Pricing & Business Intelligence — CURRENT
 
 - Pricing Assistant.
 - Smart Parts Margin recommendations.
