@@ -582,3 +582,46 @@ def _migration_0009_opportunities(
         """
     )
 MIGRATIONS.append(("0009_opportunities", _migration_0009_opportunities))
+
+def _migration_0010_custom_invoices(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add editable Custom Invoices linked to paid invoices."""
+
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS custom_invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_id INTEGER NOT NULL UNIQUE,
+            custom_invoice_number TEXT NOT NULL UNIQUE,
+            adjustment_mode TEXT NOT NULL DEFAULT 'MANUAL',
+            adjustment_value REAL,
+            custom_total REAL NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (invoice_id)
+                REFERENCES invoices(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS custom_invoice_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            custom_invoice_id INTEGER NOT NULL,
+            invoice_item_id INTEGER NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            custom_unit_price REAL NOT NULL DEFAULT 0,
+            custom_line_total REAL NOT NULL DEFAULT 0,
+            FOREIGN KEY (custom_invoice_id)
+                REFERENCES custom_invoices(id) ON DELETE CASCADE,
+            FOREIGN KEY (invoice_item_id)
+                REFERENCES invoice_items(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_custom_invoice_items_invoice
+            ON custom_invoice_items(custom_invoice_id);
+        """
+    )
+
+
+MIGRATIONS.append(
+    ("0010_custom_invoices", _migration_0010_custom_invoices)
+)

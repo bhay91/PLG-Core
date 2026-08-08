@@ -970,3 +970,74 @@ def generate_invoice_pdfs(invoice, items: Iterable) -> dict[str, str]:
     build_invoice_pdf(invoice, items, paths["customer"], internal=False)
     build_invoice_pdf(invoice, items, paths["internal"], internal=True)
     return {key: str(value) for key, value in paths.items()}
+
+def custom_invoice_path(invoice, custom_invoice) -> Path:
+    """Return the saved PDF path for a Custom Invoice."""
+    customer = sanitize_path_name(
+        str(_value(invoice, "customer", "Customer"))
+    )
+    number = sanitize_path_name(
+        str(_value(custom_invoice, "custom_invoice_number", "Custom"))
+    )
+
+    path = (
+        Path("documents")
+        / "Customers"
+        / customer
+        / "Invoices"
+        / "Custom"
+        / f"{number}.pdf"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def generate_custom_invoice_pdf(
+    invoice,
+    custom_invoice,
+    custom_items: Iterable,
+) -> str:
+    """Generate a saved Custom Invoice using the locked PPS invoice layout."""
+
+    custom_invoice_data = dict(invoice)
+    custom_invoice_data["invoice_number"] = _value(
+        custom_invoice,
+        "custom_invoice_number",
+        _value(invoice, "invoice_number", ""),
+    )
+    custom_invoice_data["parts_subtotal"] = float(
+        _value(custom_invoice, "custom_total", 0) or 0
+    )
+    custom_invoice_data["shipping_total"] = 0.0
+    custom_invoice_data["customer_total"] = float(
+        _value(custom_invoice, "custom_total", 0) or 0
+    )
+    custom_invoice_data["credit_applied"] = 0.0
+    custom_invoice_data["balance_due"] = 0.0
+    custom_invoice_data["status"] = "PAID"
+
+    items = []
+
+    for item in custom_items:
+        row = dict(item)
+        row["customer_unit_price"] = float(
+            _value(item, "custom_unit_price", 0) or 0
+        )
+        row["customer_line_total"] = float(
+            _value(item, "custom_line_total", 0) or 0
+        )
+        items.append(row)
+
+    path = custom_invoice_path(
+        invoice,
+        custom_invoice,
+    )
+
+    build_invoice_pdf(
+        custom_invoice_data,
+        items,
+        path,
+        internal=False,
+    )
+
+    return str(path)

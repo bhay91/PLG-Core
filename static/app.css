@@ -5288,3 +5288,20 @@ small.secondary {
 .invoice-paid-actions {
   margin-top: 12px;
 }
+
+.invoice-paid-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.invoice-paid-grid .workspace-btn {
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .invoice-paid-grid {
+    grid-template-columns: 1fr;
+  }
+}

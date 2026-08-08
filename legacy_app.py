@@ -1850,6 +1850,349 @@ def load_invoice(
     return invoice, items
 
 
+def get_or_create_custom_invoice(
+    connection: sqlite3.Connection,
+    invoice_id: int,
+):
+    invoice, items = load_invoice(connection, invoice_id)
+
+    if str(invoice["status"] or "").upper() != "PAID":
+        raise HTTPException(
+            status_code=400,
+            detail="Custom Invoice is only available for paid invoices.",
+        )
+
+    custom_invoice = connection.execute(
+        """
+        SELECT *
+        FROM custom_invoices
+        WHERE invoice_id = ?
+        """,
+        (invoice_id,),
+    ).fetchone()
+
+    if custom_invoice is None:
+        custom_number = f"{invoice['invoice_number']}C"
+
+        cursor = connection.execute(
+            """
+            INSERT INTO custom_invoices (
+                invoice_id,
+                custom_invoice_number,
+                adjustment_mode,
+                custom_total
+            )
+            VALUES (?, ?, 'MANUAL', ?)
+            """,
+            (
+                invoice_id,
+                custom_number,
+                float(invoice["customer_total"] or 0),
+            ),
+        )
+        custom_invoice_id = cursor.lastrowid
+
+        for item in items:
+            quantity = int(item["quantity"] or 1)
+            unit_price = float(item["customer_unit_price"] or 0)
+            line_total = round(quantity * unit_price, 2)
+
+            connection.execute(
+                """
+                INSERT INTO custom_invoice_items (
+                    custom_invoice_id,
+                    invoice_item_id,
+                    quantity,
+                    custom_unit_price,
+                    custom_line_total
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    custom_invoice_id,
+                    item["id"],
+                    quantity,
+                    unit_price,
+                    line_total,
+                ),
+            )
+
+        connection.commit()
+
+        custom_invoice = connection.execute(
+            """
+            SELECT *
+            FROM custom_invoices
+            WHERE id = ?
+            """,
+            (custom_invoice_id,),
+        ).fetchone()
+
+    custom_items = connection.execute(
+        """
+        SELECT
+            custom_invoice_items.*,
+            invoice_items.description,
+            invoice_items.brand,
+            invoice_items.supplier_part_number
+        FROM custom_invoice_items
+        JOIN invoice_items
+          ON invoice_items.id = custom_invoice_items.invoice_item_id
+        WHERE custom_invoice_items.custom_invoice_id = ?
+        ORDER BY custom_invoice_items.id
+        """,
+        (custom_invoice["id"],),
+    ).fetchall()
+
+    return invoice, custom_invoice, custom_items
+
+
+
+@app.get(
+    "/invoices/{invoice_id}/custom",
+    response_class=HTMLResponse,
+)
+def custom_invoice_editor(
+    request: Request,
+    invoice_id: int,
+):
+    with closing(get_connection()) as connection:
+        invoice, custom_invoice, custom_items = (
+            get_or_create_custom_invoice(
+                connection,
+                invoice_id,
+            )
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="custom_invoice.html",
+        context={
+            "invoice": invoice,
+            "custom_invoice": custom_invoice,
+            "items": custom_items,
+            "active_page": "invoices",
+        },
+    )
+
+
+@app.post("/invoices/{invoice_id}/custom/save")
+async def save_custom_invoice(
+    request: Request,
+    invoice_id: int,
+):
+    form = await request.form()
+
+    with closing(get_connection()) as connection:
+        invoice, custom_invoice, custom_items = (
+            get_or_create_custom_invoice(
+                connection,
+                invoice_id,
+            )
+        )
+
+        mode = str(
+            form.get("adjustment_mode") or "MANUAL"
+        ).upper()
+
+        try:
+            adjustment_value = float(
+                form.get("adjustment_value") or 0
+            )
+        except (TypeError, ValueError):
+            adjustment_value = 0.0
+
+        original_items = connection.execute(
+            """
+            SELECT *
+            FROM invoice_items
+            WHERE invoice_id = ?
+            ORDER BY id
+            """,
+            (invoice_id,),
+        ).fetchall()
+
+        original_by_id = {
+            row["id"]: row
+            for row in original_items
+        }
+
+        updates = []
+
+        if mode == "PERCENTAGE":
+            factor = max(0.0, 1.0 - adjustment_value / 100.0)
+
+            for item in custom_items:
+                original = original_by_id[item["invoice_item_id"]]
+                qty = int(item["quantity"] or 1)
+                unit_price = round(
+                    float(original["customer_unit_price"] or 0) * factor,
+                    2,
+                )
+                line_total = round(qty * unit_price, 2)
+
+                updates.append(
+                    (item["id"], unit_price, line_total)
+                )
+
+        elif mode == "TARGET_TOTAL":
+            target_total = max(0.0, round(adjustment_value, 2))
+
+            base_total = sum(
+                float(row["customer_line_total"] or 0)
+                for row in original_items
+            )
+
+            running_total = 0.0
+
+            for index, item in enumerate(custom_items):
+                original = original_by_id[item["invoice_item_id"]]
+                qty = int(item["quantity"] or 1)
+
+                if index == len(custom_items) - 1:
+                    line_total = round(
+                        target_total - running_total,
+                        2,
+                    )
+                elif base_total > 0:
+                    share = (
+                        float(original["customer_line_total"] or 0)
+                        / base_total
+                    )
+                    line_total = round(target_total * share, 2)
+                    running_total += line_total
+                else:
+                    line_total = 0.0
+
+                unit_price = (
+                    round(line_total / qty, 4)
+                    if qty
+                    else 0.0
+                )
+
+                updates.append(
+                    (item["id"], unit_price, line_total)
+                )
+
+        else:
+            mode = "MANUAL"
+            adjustment_value = None
+
+            for item in custom_items:
+                qty = int(item["quantity"] or 1)
+
+                try:
+                    unit_price = float(
+                        form.get(f"unit_price_{item['id']}") or 0
+                    )
+                except (TypeError, ValueError):
+                    unit_price = 0.0
+
+                unit_price = max(0.0, round(unit_price, 2))
+                line_total = round(qty * unit_price, 2)
+
+                updates.append(
+                    (item["id"], unit_price, line_total)
+                )
+
+        for item_id, unit_price, line_total in updates:
+            connection.execute(
+                """
+                UPDATE custom_invoice_items
+                SET custom_unit_price = ?,
+                    custom_line_total = ?
+                WHERE id = ?
+                """,
+                (
+                    unit_price,
+                    line_total,
+                    item_id,
+                ),
+            )
+
+        custom_total = round(
+            sum(row[2] for row in updates),
+            2,
+        )
+
+        connection.execute(
+            """
+            UPDATE custom_invoices
+            SET adjustment_mode = ?,
+                adjustment_value = ?,
+                custom_total = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                mode,
+                adjustment_value,
+                custom_total,
+                custom_invoice["id"],
+            ),
+        )
+
+        connection.commit()
+
+        invoice, custom_invoice, custom_items = (
+            get_or_create_custom_invoice(
+                connection,
+                invoice_id,
+            )
+        )
+
+        from plg_core.documents.invoice_pdf import (
+            generate_custom_invoice_pdf,
+        )
+
+        generate_custom_invoice_pdf(
+            invoice,
+            custom_invoice,
+            custom_items,
+        )
+
+    return RedirectResponse(
+        url="/invoices",
+        status_code=303,
+    )
+
+
+@app.get("/invoices/{invoice_id}/custom/pdf")
+def custom_invoice_pdf(
+    invoice_id: int,
+    download: int = 0,
+):
+    from plg_core.documents.invoice_pdf import (
+        custom_invoice_path,
+        generate_custom_invoice_pdf,
+    )
+
+    with closing(get_connection()) as connection:
+        invoice, custom_invoice, custom_items = (
+            get_or_create_custom_invoice(
+                connection,
+                invoice_id,
+            )
+        )
+
+        path = custom_invoice_path(
+            invoice,
+            custom_invoice,
+        )
+
+        if not path.exists():
+            generate_custom_invoice_pdf(
+                invoice,
+                custom_invoice,
+                custom_items,
+            )
+
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=path.name if download else None,
+    )
+
 @app.get("/invoices", response_class=HTMLResponse)
 def list_invoices(request: Request, view: str = "all"):
     if view not in {"active", "paid", "void", "all"}:
@@ -1886,7 +2229,13 @@ def list_invoices(request: Request, view: str = "all"):
                     )
                     FROM invoice_items
                     WHERE invoice_items.invoice_id = invoices.id
-                ) AS item_descriptions
+                ) AS item_descriptions,
+
+                EXISTS (
+                    SELECT 1
+                    FROM custom_invoices
+                    WHERE custom_invoices.invoice_id = invoices.id
+                ) AS custom_invoice_exists
 
             FROM invoices
             JOIN jobs
@@ -1963,6 +2312,15 @@ def invoice_documents(request: Request, invoice_id: int):
             for payment in payments
         )
 
+        custom_invoice_exists = connection.execute(
+            """
+            SELECT 1
+            FROM custom_invoices
+            WHERE invoice_id = ?
+            """,
+            (invoice_id,),
+        ).fetchone() is not None
+
     paths = invoice_paths(
         invoice["customer"],
         invoice["invoice_number"],
@@ -2001,6 +2359,7 @@ def invoice_documents(request: Request, invoice_id: int):
             "parts_order_sheet_exists": parts_order_sheet_path(
                 invoice
             ).exists(),
+            "custom_invoice_exists": custom_invoice_exists,
             "active_page": "invoices",
         },
     )

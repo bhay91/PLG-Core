@@ -145,6 +145,22 @@
     {% if invoice.status == "PAID" %}
     <div class="invoice-parts-order-action">
       <div>
+        <span>CUSTOM INVOICE</span>
+        <strong>Create or edit the custom paid invoice</strong>
+      </div>
+
+      {% if custom_invoice_exists %}
+      <div class="workspace-btn-row">
+        <a class="workspace-btn invoice-parts-order-button" href="/invoices/{{ invoice.id }}/custom">Edit Custom Invoice</a>
+        <a class="workspace-btn invoice-parts-order-button" target="_blank" href="/invoices/{{ invoice.id }}/custom/pdf">View PDF</a>
+      </div>
+      {% else %}
+      <a class="workspace-btn invoice-parts-order-button" href="/invoices/{{ invoice.id }}/custom">Open Custom Invoice</a>
+      {% endif %}
+    </div>
+
+    <div class="invoice-parts-order-action">
+      <div>
         <span>PARTS PURCHASING</span>
         <strong>Ready to prepare the supplier buying list</strong>
       </div>

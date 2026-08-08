@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+<div class="panel-heading"><div><p class="eyebrow">CUSTOM INVOICE</p><h1>{{ custom_invoice.custom_invoice_number }}</h1><p>Based on paid invoice <a href="/invoices/{{ invoice.id }}/documents">{{ invoice.invoice_number }}</a></p></div></div>
+<p><strong>{{ invoice.customer }}</strong></p>
+{% if invoice.manufacturer or invoice.machine or invoice.pin_serial %}<p>{{ invoice.manufacturer or "" }} {{ invoice.machine or "" }} {{ invoice.pin_serial or "" }}</p>{% endif %}
+<form method="post" action="/invoices/{{ invoice.id }}/custom/save">
+<label>Adjustment Mode <select name="adjustment_mode" id="adjustment_mode"><option value="MANUAL">Manual</option><option value="PERCENTAGE">Percentage</option><option value="TARGET_TOTAL">Target Total</option></select></label>
+<label>Adjustment Value <input type="number" step="0.01" name="adjustment_value" value="{{ custom_invoice.adjustment_value or "" }}"></label>
+<table class="workspace-table"><thead><tr><th>Qty</th><th>Description</th><th>Part #</th><th>Unit Price</th><th>Line Total</th></tr></thead><tbody>
+{% for item in items %}<tr><td>{{ item.quantity }}</td><td>{{ item.description }}</td><td>{{ item.supplier_part_number or "" }}</td><td><input type="number" step="0.01" min="0" name="unit_price_{{ item.id }}" value="{{ "%.2f"|format(item.custom_unit_price or 0) }}"></td><td>${{ "%.2f"|format(item.custom_line_total or 0) }}</td></tr>{% endfor %}
+</tbody></table>
+<p><strong>Total: ${{ "%.2f"|format(custom_invoice.custom_total or 0) }}</strong></p>
+<button class="workspace-btn" type="submit">Save Custom Invoice</button>
+</form>
+</section>
+{% endblock %}
