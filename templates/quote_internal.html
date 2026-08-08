@@ -55,6 +55,12 @@
     <div><span>Supplier Parts</span><strong>${{ "%.2f"|format(quote.supplier_total - quote.shipping_total) }}</strong></div>
     <div><span>Shipping</span><strong>${{ "%.2f"|format(quote.shipping_total) }}</strong></div>
     <div><span>Supplier Total</span><strong>${{ "%.2f"|format(quote.supplier_total) }}</strong></div>
+    {% if quote.service_charge %}
+    <div><span>Service Charge</span><strong>${{ "%.2f"|format(quote.service_charge) }}</strong></div>
+    {% endif %}
+    {% if quote.sourcing_fee %}
+    <div><span>Sourcing Fee</span><strong>${{ "%.2f"|format(quote.sourcing_fee) }}</strong></div>
+    {% endif %}
     <div><span>Customer Total</span><strong>${{ "%.2f"|format(quote.customer_total) }}</strong></div>
     <div><span>Net Profit</span><strong>${{ "%.2f"|format(quote.profit_total) }}</strong></div>
   </div>

@@ -264,6 +264,24 @@
       <p class="eyebrow">PAYMENT SUMMARY</p>
 
       <div class="invoice-money-summary">
+        {% if invoice.service_charge %}
+        <div>
+          <span>Service Charge</span>
+          <strong>
+            ${{ "%.2f"|format(invoice.service_charge or 0) }}
+          </strong>
+        </div>
+        {% endif %}
+
+        {% if invoice.sourcing_fee %}
+        <div>
+          <span>Sourcing Fee</span>
+          <strong>
+            ${{ "%.2f"|format(invoice.sourcing_fee or 0) }}
+          </strong>
+        </div>
+        {% endif %}
+
         <div>
           <span>Invoice Total</span>
           <strong>

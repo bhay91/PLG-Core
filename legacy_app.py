@@ -395,6 +395,14 @@ def initialize_database() -> None:
         quote_columns = {row["name"] for row in connection.execute("PRAGMA table_info(quotes)").fetchall()}
         if "is_archived" not in quote_columns:
             connection.execute("ALTER TABLE quotes ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0")
+        if "service_charge" not in quote_columns:
+            connection.execute(
+                "ALTER TABLE quotes ADD COLUMN service_charge REAL NOT NULL DEFAULT 0"
+            )
+        if "sourcing_fee" not in quote_columns:
+            connection.execute(
+                "ALTER TABLE quotes ADD COLUMN sourcing_fee REAL NOT NULL DEFAULT 0"
+            )
 
         connection.execute(
             """
@@ -485,6 +493,21 @@ def initialize_database() -> None:
             CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON invoice_items(invoice_id);
             """
         )
+
+        invoice_columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(invoices)"
+            ).fetchall()
+        }
+        if "service_charge" not in invoice_columns:
+            connection.execute(
+                "ALTER TABLE invoices ADD COLUMN service_charge REAL NOT NULL DEFAULT 0"
+            )
+        if "sourcing_fee" not in invoice_columns:
+            connection.execute(
+                "ALTER TABLE invoices ADD COLUMN sourcing_fee REAL NOT NULL DEFAULT 0"
+            )
 
         connection.execute(
             """
@@ -1647,7 +1670,15 @@ def generate_quote(job_id: int):
                 )
             )
 
-        customer_total = parts_subtotal + shipping_total
+        service_charge = float(job["service_charge"] or 0)
+        sourcing_fee = float(job["sourcing_fee"] or 0)
+
+        customer_total = (
+            parts_subtotal
+            + shipping_total
+            + service_charge
+            + sourcing_fee
+        )
         supplier_total = (
             supplier_parts_total + shipping_total
         )
@@ -1662,12 +1693,14 @@ def generate_quote(job_id: int):
                 status,
                 parts_subtotal,
                 shipping_total,
+                service_charge,
+                sourcing_fee,
                 customer_total,
                 supplier_total,
                 profit_total
             )
             VALUES (
-                ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?
+                ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?
             )
             """,
             (
@@ -1676,6 +1709,8 @@ def generate_quote(job_id: int):
                 quote_date,
                 parts_subtotal,
                 shipping_total,
+                service_charge,
+                sourcing_fee,
                 customer_total,
                 supplier_total,
                 profit_total,
@@ -2294,7 +2329,7 @@ def convert_quote_to_invoice(quote_id: int):
         credit_applied = min(available_credit,customer_total)
         balance_due = max(customer_total-credit_applied,0.0)
         status = "PAID" if balance_due == 0 else ("PARTIAL" if credit_applied > 0 else "UNPAID")
-        cur = connection.execute("""INSERT INTO invoices (invoice_number,quote_id,job_id,invoice_date,status,parts_subtotal,shipping_total,customer_total,supplier_total,profit_total,credit_applied,balance_due) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_number,quote_id,quote["job_id"],invoice_date,status,float(quote["parts_subtotal"] or 0),float(quote["shipping_total"] or 0),customer_total,float(quote["supplier_total"] or 0),float(quote["profit_total"] or 0),credit_applied,balance_due))
+        cur = connection.execute("""INSERT INTO invoices (invoice_number,quote_id,job_id,invoice_date,status,parts_subtotal,shipping_total,service_charge,sourcing_fee,customer_total,supplier_total,profit_total,credit_applied,balance_due) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_number,quote_id,quote["job_id"],invoice_date,status,float(quote["parts_subtotal"] or 0),float(quote["shipping_total"] or 0),float(quote["service_charge"] or 0),float(quote["sourcing_fee"] or 0),customer_total,float(quote["supplier_total"] or 0),float(quote["profit_total"] or 0),credit_applied,balance_due))
         invoice_id = cur.lastrowid
         for item in quote_items:
             connection.execute("""INSERT INTO invoice_items (invoice_id,quote_item_id,part_id,source_id,quantity,description,supplier_name,source_type,brand,supplier_part_number,supplier_unit_cost,customer_unit_price,supplier_line_total,customer_line_total,line_profit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_id,item["id"],item["part_id"],item["source_id"],item["quantity"],item["description"],item["supplier_name"],item["source_type"],item["brand"],item["supplier_part_number"],item["supplier_unit_cost"],item["customer_unit_price"],item["supplier_line_total"],item["customer_line_total"],item["line_profit"]))

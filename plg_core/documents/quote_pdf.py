@@ -578,6 +578,12 @@ def _totals_box(quote, internal: bool):
     shipping = float(
         _value(quote, "shipping_total", 0) or 0
     )
+    service_charge = float(
+        _value(quote, "service_charge", 0) or 0
+    )
+    sourcing_fee = float(
+        _value(quote, "sourcing_fee", 0) or 0
+    )
 
     if internal:
         supplier_parts = (
@@ -592,6 +598,21 @@ def _totals_box(quote, internal: bool):
                 "Supplier Total",
                 money(_value(quote, "supplier_total", 0)),
             ],
+        ]
+
+        if service_charge > 0:
+            rows.append([
+                "Service Charge",
+                money(service_charge),
+            ])
+
+        if sourcing_fee > 0:
+            rows.append([
+                "Sourcing Fee",
+                money(sourcing_fee),
+            ])
+
+        rows.extend([
             [
                 "Customer Total",
                 money(_value(quote, "customer_total", 0)),
@@ -600,7 +621,7 @@ def _totals_box(quote, internal: bool):
                 "NET PROFIT",
                 money(_value(quote, "profit_total", 0)),
             ],
-        ]
+        ])
     else:
         rows = [
             [
@@ -613,6 +634,18 @@ def _totals_box(quote, internal: bool):
             rows.append([
                 "Shipping",
                 money(shipping),
+            ])
+
+        if service_charge > 0:
+            rows.append([
+                "Service Charge",
+                money(service_charge),
+            ])
+
+        if sourcing_fee > 0:
+            rows.append([
+                "Sourcing Fee",
+                money(sourcing_fee),
             ])
 
         rows.append([

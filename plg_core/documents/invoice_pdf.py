@@ -666,6 +666,12 @@ def _totals_box(invoice, internal: bool):
     shipping = float(
         _value(invoice, "shipping_total", 0) or 0
     )
+    service_charge = float(
+        _value(invoice, "service_charge", 0) or 0
+    )
+    sourcing_fee = float(
+        _value(invoice, "sourcing_fee", 0) or 0
+    )
 
     status = str(
         _value(invoice, "status", "UNPAID") or "UNPAID"
@@ -688,6 +694,21 @@ def _totals_box(invoice, internal: bool):
                 "Supplier Total",
                 money(_value(invoice, "supplier_total", 0)),
             ],
+        ]
+
+        if service_charge > 0:
+            rows.append([
+                "Service Charge",
+                money(service_charge),
+            ])
+
+        if sourcing_fee > 0:
+            rows.append([
+                "Sourcing Fee",
+                money(sourcing_fee),
+            ])
+
+        rows.extend([
             [
                 "Customer Total",
                 money(_value(invoice, "customer_total", 0)),
@@ -696,7 +717,7 @@ def _totals_box(invoice, internal: bool):
                 "NET PROFIT",
                 money(_value(invoice, "profit_total", 0)),
             ],
-        ]
+        ])
 
         if status == "PAID":
             rows.append(["PAYMENT STATUS", "PAID IN FULL"])
@@ -712,6 +733,12 @@ def _totals_box(invoice, internal: bool):
 
         if shipping > 0:
             rows.append(["Shipping", money(shipping)])
+
+        if service_charge > 0:
+            rows.append(["Service Charge", money(service_charge)])
+
+        if sourcing_fee > 0:
+            rows.append(["Sourcing Fee", money(sourcing_fee)])
 
         rows.append([
             "Invoice Total",
