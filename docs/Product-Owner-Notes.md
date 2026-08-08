@@ -94,3 +94,37 @@ Examples:
 - Receipt: PPS-RCPT-0001
 
 Locked reference invoice layout commit: 097e8ee
+
+## Custom Invoice
+
+A Custom Invoice may only be created from an invoice that is already marked PAID.
+
+- The original paid invoice remains unchanged.
+- The Custom Invoice is a separate saved version linked to the original invoice.
+- It uses the same locked PPS invoice layout.
+- It may use a C suffix on the original invoice number, e.g. PPS-INV-0001C.
+- Payment information is not shown.
+- User may adjust values by percentage.
+- User may enter an exact target total and PPS proportionally recalculates item values.
+- User may manually edit individual line-item prices.
+- Manual line-item edits automatically recalculate line totals and the invoice total.
+- The Custom Invoice can be saved, reopened, edited again, and re-saved.
+- No reset-to-original-values control is required.
+- Changes to the Custom Invoice do not modify the original invoice, payment record, supplier costs, profit, ledger, or accounting data.
+## Custom Invoice
+
+A Custom Invoice may only be created from an invoice that is already marked PAID.
+
+- The original paid invoice remains unchanged.
+- The Custom Invoice is a separate saved version linked to the original invoice.
+- It uses the same locked PPS invoice layout.
+- It uses a C suffix on the original invoice number, e.g. PPS-INV-0001C.
+- Payment information is not shown.
+- User may adjust values by percentage.
+- User may enter an exact target total and PPS proportionally recalculates item values.
+- User may manually edit individual line-item prices.
+- Manual line-item edits automatically recalculate line totals and the invoice total.
+- The Custom Invoice can be saved, reopened, edited again, and re-saved.
+- No reset-to-original-values control is required.
+- Changes to the Custom Invoice do not modify the original invoice, payment record, supplier costs, profit, ledger, or accounting data.
+
