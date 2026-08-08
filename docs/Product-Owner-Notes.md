@@ -66,3 +66,31 @@ Future development can resume accurately without rediscovering past decisions.
 - Existing PLG record numbers should not be changed automatically.
 - A later implementation decision will determine whether new customer, machine, opportunity, job, quote, and invoice numbers switch from PLG prefixes to PPS prefixes.
 - Rebranding should be handled as a controlled customer-facing change so existing operational history is preserved.
+
+## PPS Master PDF Standard
+
+The final locked PPS invoice layout is the master visual standard for all future customer-facing and internal PDF documents.
+
+Use the same:
+- PPS logo and company/contact header
+- Blue, white, and black brand styling
+- Right-side document title and document number block
+- Customer and equipment information styling
+- Table typography, borders, spacing, and alignment
+- Right-aligned totals area
+- Fixed bottom information section:
+  - Parts Identification
+  - Pinpoint Sourcing Co. thank-you block
+  - Warranty Information
+- Thin page footer with document number and page count
+
+Each document keeps its own content and business logic, but should visually inherit this PPS master PDF shell.
+
+Examples:
+- Invoice: PPS-INV-0001
+- Quote: PPS-Q-0001
+- Job-related PDF: PPS-J-0001 where appropriate
+- Supplier/Purchase Order: PPS-PO-0001
+- Receipt: PPS-RCPT-0001
+
+Locked reference invoice layout commit: 097e8ee
