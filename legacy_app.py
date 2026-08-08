@@ -3809,7 +3809,7 @@ async def api_import_source_cart(request: Request):
                         verification_status, verification_source,
                         source_url, captured_at
                     )
-                    VALUES (?, ?, ?, ?, ?, 'VERIFIED', ?, ?, CURRENT_TIMESTAMP)
+                    VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, CURRENT_TIMESTAMP)
                     """,
                     (
                         job_id, description, quantity,
@@ -3973,8 +3973,10 @@ async def api_import_sis_cart(request: Request):
                     """
                     UPDATE part_sources
                     SET supplier_name = 'CAT SIS', brand = 'CAT', supplier_cost = ?,
-                        availability = ?, trust_level = 'OEM_VERIFIED', source_url = ?,
-                        updated_at = CURRENT_TIMESTAMP
+                        availability = ?, trust_level = 'OEM_VERIFIED',
+                        verification_status = 'VERIFIED',
+                        verification_note = 'Verified via CAT SIS',
+                        source_url = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                     """,
                     (price, availability, source_url, source["id"]),
@@ -3985,8 +3987,12 @@ async def api_import_sis_cart(request: Request):
                     INSERT INTO part_sources (
                         part_id, supplier_name, source_type, brand,
                         supplier_part_number, supplier_cost, availability,
-                        trust_level, source_url
-                    ) VALUES (?, 'CAT SIS', 'OEM', 'CAT', ?, ?, ?, 'OEM_VERIFIED', ?)
+                        trust_level, verification_status,
+                        verification_note, source_url
+                    ) VALUES (
+                        ?, 'CAT SIS', 'OEM', 'CAT', ?, ?, ?,
+                        'OEM_VERIFIED', 'VERIFIED', 'Verified via CAT SIS', ?
+                    )
                     """,
                     (part_id, part_number, price, availability, source_url),
                 )
