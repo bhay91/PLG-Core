@@ -794,3 +794,28 @@ def _migration_0015_alternate_part_numbers(
 MIGRATIONS.append(
     ("0015_alternate_part_numbers", _migration_0015_alternate_part_numbers)
 )
+
+def _migration_0016_part_source_confidence(
+    connection: sqlite3.Connection,
+) -> None:
+    """Preserve sourcing candidate confidence on permanent part sources."""
+
+    columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(part_sources)"
+        ).fetchall()
+    }
+
+    if "confidence" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE part_sources
+            ADD COLUMN confidence REAL
+            """
+        )
+
+
+MIGRATIONS.append(
+    ("0016_part_source_confidence", _migration_0016_part_source_confidence)
+)

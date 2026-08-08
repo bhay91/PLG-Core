@@ -807,9 +807,10 @@ def commit_basket(job_id: int):
                     supplier_part_number, supplier_cost,
                     availability, lead_time, trust_level,
                 verification_status, verification_note,
+                confidence,
                 selected_for_quote, source_url
                 )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
                 """,
                 (
                     part_id, item["supplier_name"] or "Basket Source",
@@ -821,6 +822,7 @@ def commit_basket(job_id: int):
                     else "SUPPLIER_VERIFIED",
                 candidate_verification_status,
                 verification_note,
+                    item["confidence"],
                     item["source_url"],
                 ),
             )
