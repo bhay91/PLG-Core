@@ -41,6 +41,12 @@
       </div>
 
       <div class="cc-command-head-meta">
+        {% if originating_opportunity %}
+        <a class="cc-chip" href="/opportunities/{{ originating_opportunity.id }}">
+          {{ originating_opportunity.opportunity_number }} · Opportunity
+        </a>
+        {% endif %}
+
         <span class="cc-chip">
           {{ basket.totals.selected_items }}
           part{% if basket.totals.selected_items != 1 %}s{% endif %}

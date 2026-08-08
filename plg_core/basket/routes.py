@@ -522,6 +522,17 @@ def basket_page(request: Request, job_id: int):
             (job_id,),
         ).fetchone()
 
+        originating_opportunity = connection.execute(
+            """
+            SELECT id, opportunity_number, title, status
+            FROM opportunities
+            WHERE converted_job_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (job_id,),
+        ).fetchone()
+
         request_attachment_count = 0
         if customer_request is not None:
             request_attachment_count = connection.execute(
@@ -678,6 +689,7 @@ def basket_page(request: Request, job_id: int):
             "source_lookup": source_lookup,
             "connectors": connectors,
             "customer_request": customer_request,
+            "originating_opportunity": originating_opportunity,
             "request_attachment_count": request_attachment_count,
             "quote": quote,
             "invoice": invoice,
