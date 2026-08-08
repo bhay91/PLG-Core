@@ -93,6 +93,9 @@ def opportunities_page(request: Request, status: str = "", follow_up: str = ""):
         if follow_up == "today":
             conditions.append("o.follow_up_date = ?")
             parameters.append(date.today().isoformat())
+        elif follow_up == "upcoming":
+            conditions.append("o.follow_up_date > ?")
+            parameters.append(date.today().isoformat())
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
