@@ -11,6 +11,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from legacy_app import BASE_DIR, get_connection, next_job_number, templates
+from plg_core.machines.identifiers import find_machine_by_identifier
 
 router = APIRouter(prefix="/requests", tags=["customer-requests"])
 UPLOAD_ROOT = BASE_DIR / "uploads" / "requests"
@@ -544,29 +545,15 @@ def _find_existing_machine(
     customer_id: int,
     parsed: dict[str, str],
 ):
-    identifier = _normalize_match(
-        parsed.get("identifier", "")
-    )
+    identifier = parsed.get("identifier", "").strip()
 
     if identifier:
-        rows = connection.execute(
-            """
-            SELECT *
-            FROM machines
-            WHERE customer_id = ?
-              AND active = 1
-              AND TRIM(COALESCE(vin_pin_serial, '')) != ''
-            ORDER BY id
-            """,
-            (customer_id,),
-        ).fetchall()
-
-        for row in rows:
-            if (
-                _normalize_match(row["vin_pin_serial"])
-                == identifier
-            ):
-                return row
+        machine = find_machine_by_identifier(
+            connection,
+            identifier,
+        )
+        if machine is not None:
+            return machine
 
     manufacturer = _normalize_match(
         parsed.get("manufacturer", "")
@@ -670,6 +657,7 @@ def analyze_smart_intake(
 
 @router.post("/smart-intake/create")
 def create_from_smart_intake(
+    request: Request,
     raw_text: str = Form(""),
     individual_name: str = Form(""),
     company_name: str = Form(""),
@@ -804,6 +792,25 @@ def create_from_smart_intake(
             customer_id,
             parsed,
         )
+
+        if (
+            machine is not None
+            and machine["customer_id"] != customer_id
+        ):
+            return templates.TemplateResponse(
+                request=request,
+                name="smart_intake.html",
+                context={
+                    "active_page": "requests",
+                    "raw_text": raw_text,
+                    "parsed": parsed,
+                    "customer_match": customer,
+                    "location_match": customer_location,
+                    "machine_match": machine,
+                    "machine_ownership_conflict": True,
+                    "registry_types": REGISTRY_TYPES,
+                },
+            )
 
         if machine is None:
             machine_name = " ".join(
@@ -1326,22 +1333,40 @@ def create_registry_from_request(request_id: int):
             return RedirectResponse(url=f"/requests/{request_id}#next-steps", status_code=303)
         if not any(((record["manufacturer"] or "").strip(), (record["model"] or "").strip(), (record["identifier"] or "").strip())):
             raise HTTPException(status_code=400, detail="Add make, model, or VIN / serial first.")
-        display_name = _registry_display_name(record)
-        cursor = connection.execute(
-            """
-            INSERT INTO machines (
-                customer_id, registry_type, name, manufacturer, model, year, vin_pin_serial, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (record["customer_id"], record["registry_type"] or "other", display_name,
-             record["manufacturer"] or "", record["model"] or "", record["year"] or "",
-             record["identifier"] or "", f"Created from {record['request_number']}"),
+        existing_machine = find_machine_by_identifier(
+            connection,
+            record["identifier"] or "",
         )
-        machine_id = cursor.lastrowid
-        connection.execute(
-            "UPDATE machines SET machine_number = ? WHERE id = ?",
-            (f"PPS-M-{machine_id:04d}", machine_id),
-        )
+
+        if existing_machine is not None:
+            if existing_machine["customer_id"] != record["customer_id"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"VIN/PIN/serial already belongs to "
+                        f"{existing_machine['machine_number']} "
+                        f"({existing_machine['customer_name']}). "
+                        "Transfer the machine before linking it to this request."
+                    ),
+                )
+            machine_id = existing_machine["id"]
+        else:
+            display_name = _registry_display_name(record)
+            cursor = connection.execute(
+                """
+                INSERT INTO machines (
+                    customer_id, registry_type, name, manufacturer, model, year, vin_pin_serial, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (record["customer_id"], record["registry_type"] or "other", display_name,
+                 record["manufacturer"] or "", record["model"] or "", record["year"] or "",
+                 record["identifier"] or "", f"Created from {record['request_number']}"),
+            )
+            machine_id = cursor.lastrowid
+            connection.execute(
+                "UPDATE machines SET machine_number = ? WHERE id = ?",
+                (f"PPS-M-{machine_id:04d}", machine_id),
+            )
         connection.execute(
             "UPDATE customer_requests SET machine_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (machine_id, request_id),

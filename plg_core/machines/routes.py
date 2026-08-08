@@ -7,6 +7,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from legacy_app import get_connection, templates
+from plg_core.machines.identifiers import find_machine_by_identifier
 
 router = APIRouter()
 
@@ -36,7 +37,7 @@ def _registry_type_context(registry_type: str):
 
 def _machine_form_context(*, title: str, subtitle: str, form_action: str,
                           cancel_url: str, machine, customers, registry_type: str = "other",
-                          is_new: bool = False):
+                          is_new: bool = False, duplicate=None):
     return {
         "title": title,
         "subtitle": subtitle,
@@ -47,6 +48,7 @@ def _machine_form_context(*, title: str, subtitle: str, form_action: str,
         "active_page": "machines",
         "registry_type": registry_type,
         "is_new": is_new,
+        "duplicate": duplicate,
         **_registry_type_context(registry_type),
     }
 
@@ -122,6 +124,7 @@ def new_machine_form(
 
 @router.post("/machines/new")
 def create_machine(
+    request: Request,
     customer_id: Annotated[int, Form()],
     name: Annotated[str, Form()] = "",
     manufacturer: Annotated[str, Form()] = "",
@@ -148,6 +151,41 @@ def create_machine(
         ).fetchone()
         if customer is None:
             raise HTTPException(status_code=400, detail="Customer not found.")
+
+        duplicate = find_machine_by_identifier(connection, vin_pin_serial)
+        if duplicate is not None:
+            customers = connection.execute(
+                "SELECT * FROM customers WHERE active = 1 ORDER BY name COLLATE NOCASE"
+            ).fetchall()
+            form_machine = {
+                "customer_id": customer_id,
+                "name": name,
+                "manufacturer": manufacturer,
+                "model": model,
+                "year": year,
+                "vin_pin_serial": vin_pin_serial,
+                "engine": engine,
+                "engine_serial": engine_serial,
+                "transmission": transmission,
+                "component_details": component_details,
+                "notes": notes,
+            }
+            return templates.TemplateResponse(
+                request=request,
+                name="machine_form.html",
+                context=_machine_form_context(
+                    title="Duplicate Registry Item",
+                    subtitle="This VIN/PIN/serial is already registered. Review the existing machine before continuing.",
+                    form_action="/machines/new",
+                    cancel_url="/machines",
+                    machine=form_machine,
+                    customers=customers,
+                    registry_type=registry_type,
+                    is_new=True,
+                    duplicate=duplicate,
+                ),
+            )
+
         cursor = connection.execute(
             """
             INSERT INTO machines (customer_id, registry_type, name, manufacturer, model, year,
@@ -190,14 +228,128 @@ def machine_detail(request: Request, machine_id: int):
             """SELECT invoices.* FROM invoices JOIN jobs ON jobs.id = invoices.job_id
                WHERE jobs.machine_id = ? ORDER BY invoices.id DESC""", (machine_id,)
         ).fetchall()
+
+        ownership_history = connection.execute(
+            """
+            SELECT h.*,
+                   old_customer.name AS from_customer_name,
+                   old_customer.customer_number AS from_customer_number,
+                   new_customer.name AS to_customer_name,
+                   new_customer.customer_number AS to_customer_number
+            FROM machine_ownership_history h
+            LEFT JOIN customers old_customer
+                ON old_customer.id = h.from_customer_id
+            JOIN customers new_customer
+                ON new_customer.id = h.to_customer_id
+            WHERE h.machine_id = ?
+            ORDER BY h.id DESC
+            """,
+            (machine_id,),
+        ).fetchall()
     return templates.TemplateResponse(
         request=request, name="machine_detail.html",
         context={
             "machine": machine, "jobs": jobs, "quotes": quotes,
-            "invoices": invoices, "active_page": "machines",
+            "invoices": invoices, "ownership_history": ownership_history,
+            "active_page": "machines",
             **_registry_type_context(machine["registry_type"] or "other"),
         },
     )
+
+
+@router.get("/machines/{machine_id}/transfer", response_class=HTMLResponse)
+def transfer_machine_form(
+    request: Request,
+    machine_id: int,
+    customer_id: int | None = None,
+):
+    with closing(get_connection()) as connection:
+        machine = connection.execute(
+            """
+            SELECT machines.*,
+                   customers.name AS customer_name,
+                   customers.company AS customer_company,
+                   customers.customer_number
+            FROM machines
+            JOIN customers ON customers.id = machines.customer_id
+            WHERE machines.id = ?
+            """,
+            (machine_id,),
+        ).fetchone()
+
+        if machine is None:
+            raise HTTPException(status_code=404, detail="Registry item not found.")
+
+        customers = connection.execute(
+            """
+            SELECT id, customer_number, name, company
+            FROM customers
+            WHERE active = 1
+            ORDER BY name COLLATE NOCASE
+            """
+        ).fetchall()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="machine_transfer.html",
+        context={
+            "machine": machine,
+            "customers": customers,
+            "selected_customer_id": customer_id or "",
+            "active_page": "machines",
+        },
+    )
+
+
+@router.post("/machines/{machine_id}/transfer")
+def transfer_machine(
+    machine_id: int,
+    customer_id: Annotated[int, Form()],
+    transfer_note: Annotated[str, Form()] = "",
+):
+    transfer_note = transfer_note.strip()
+
+    with closing(get_connection()) as connection:
+        machine = connection.execute(
+            "SELECT id, customer_id FROM machines WHERE id = ? AND active = 1",
+            (machine_id,),
+        ).fetchone()
+
+        if machine is None:
+            raise HTTPException(status_code=404, detail="Registry item not found.")
+
+        if customer_id == machine["customer_id"]:
+            raise HTTPException(status_code=400, detail="Select a different customer.")
+
+        customer = connection.execute(
+            "SELECT id FROM customers WHERE id = ? AND active = 1",
+            (customer_id,),
+        ).fetchone()
+
+        if customer is None:
+            raise HTTPException(status_code=400, detail="New customer not found.")
+
+        connection.execute(
+            """
+            INSERT INTO machine_ownership_history
+                (machine_id, from_customer_id, to_customer_id, transfer_note)
+            VALUES (?, ?, ?, ?)
+            """,
+            (machine_id, machine["customer_id"], customer_id, transfer_note),
+        )
+
+        connection.execute(
+            """
+            UPDATE machines
+            SET customer_id = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (customer_id, machine_id),
+        )
+
+        connection.commit()
+
+    return RedirectResponse(url=f"/machines/{machine_id}", status_code=303)
 
 
 @router.get("/machines/{machine_id}/edit", response_class=HTMLResponse)
@@ -240,20 +392,45 @@ def update_machine(
     if not name:
         name = " ".join(part for part in (manufacturer, model) if part).strip() or vin_pin_serial
     with closing(get_connection()) as connection:
+        current_machine = connection.execute(
+            "SELECT id, customer_id FROM machines WHERE id = ?",
+            (machine_id,),
+        ).fetchone()
+
+        if current_machine is None:
+            raise HTTPException(status_code=404, detail="Registry item not found.")
+
+        if customer_id != current_machine["customer_id"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Use Transfer Machine to change ownership.",
+            )
+
+        duplicate = find_machine_by_identifier(
+            connection,
+            vin_pin_serial,
+            exclude_machine_id=machine_id,
+        )
+        if duplicate is not None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"VIN/PIN/serial already belongs to {duplicate['machine_number']} ({duplicate['customer_name']}).",
+            )
+
         result = connection.execute(
-            """UPDATE machines SET customer_id = ?, registry_type = ?, name = ?, manufacturer = ?,
+            """UPDATE machines SET registry_type = ?, name = ?, manufacturer = ?,
                model = ?, year = ?, vin_pin_serial = ?, engine = ?,
                engine_serial = ?, transmission = ?, component_details = ?,
                notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
-            (customer_id, registry_type, name, manufacturer, model, year, vin_pin_serial, engine,
+            (registry_type, name, manufacturer, model, year, vin_pin_serial, engine,
              engine_serial, transmission, component_details, notes, machine_id),
         )
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Registry item not found.")
         connection.execute(
-            """UPDATE jobs SET customer_id = ?, manufacturer = ?, machine = ?,
+            """UPDATE jobs SET manufacturer = ?, machine = ?,
                pin_serial = ? WHERE machine_id = ?""",
-            (customer_id, manufacturer, model or name, vin_pin_serial, machine_id),
+            (manufacturer, model or name, vin_pin_serial, machine_id),
         )
         connection.commit()
     return RedirectResponse(url=f"/machines/{machine_id}", status_code=303)

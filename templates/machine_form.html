@@ -2,10 +2,23 @@
 {% block title %}{{ title }} · Pinpoint Sourcing Co.{% endblock %}
 {% block content %}
 <section class="workspace-heading"><div><p class="eyebrow">UNIVERSAL REGISTRY</p><h1>{{ title }}</h1><p>{{ subtitle }}</p></div></section>
+{% if duplicate %}
+<section class="panel duplicate-warning-panel">
+<p class="eyebrow">DUPLICATE IDENTIFIER</p>
+<h2>Machine Already Registered</h2>
+<p><strong>{{ duplicate.machine_number }}</strong> · {{ duplicate.manufacturer }} {{ duplicate.model }}</p>
+<p>{{ duplicate.vin_pin_serial }}</p>
+<p>Current owner: <strong>{{ duplicate.customer_name }}</strong>{% if duplicate.customer_number %} · {{ duplicate.customer_number }}{% endif %}</p>
+<div class="form-actions">
+<a class="button ghost" href="/machines/{{ duplicate.id }}">Open Existing Machine</a>
+<a class="button" href="/machines/{{ duplicate.id }}/transfer?customer_id={{ machine.customer_id }}">Transfer Machine</a>
+</div>
+</section>
+{% endif %}
 <form method="post" action="{{ form_action }}" class="panel form-grid">
 <input type="hidden" name="registry_type" value="{{ registry_type }}">
 <div class="form-section full"><p class="eyebrow">TYPE</p><h2>{{ type_label }}</h2><p>{{ type_description }}</p><a class="button ghost" href="/machines/new{% if machine.customer_id %}?customer_id={{ machine.customer_id }}{% endif %}">Change Type</a></div>
-<div class="form-section full"><p class="eyebrow">OWNER</p><h2>Customer</h2><label>Customer *<select name="customer_id" required><option value="">Select customer</option>{% for customer in customers %}<option value="{{ customer.id }}" {% if machine.customer_id|string == customer.id|string %}selected{% endif %}>{{ customer.name }}{% if customer.company %} · {{ customer.company }}{% endif %}</option>{% endfor %}</select></label></div>
+<div class="form-section full"><p class="eyebrow">OWNER</p><h2>Customer</h2>{% if is_new %}<label>Customer *<select name="customer_id" required><option value="">Select customer</option>{% for customer in customers %}<option value="{{ customer.id }}" {% if machine.customer_id|string == customer.id|string %}selected{% endif %}>{{ customer.name }}{% if customer.company %} · {{ customer.company }}{% endif %}</option>{% endfor %}</select></label>{% else %}<input type="hidden" name="customer_id" value="{{ machine.customer_id }}"><p>{% for customer in customers %}{% if customer.id == machine.customer_id %}<strong>{{ customer.name }}</strong>{% if customer.company %} · {{ customer.company }}{% endif %}{% endif %}{% endfor %}</p><a class="button ghost" href="/machines/{{ machine.id }}/transfer">Transfer Machine</a>{% endif %}</div>
 <div class="form-section"><p class="eyebrow">IDENTITY</p><h2>{{ type_label }} Information</h2><label>Display Name<input name="name" value="{{ machine.name or '' }}" placeholder="{{ display_placeholder }}"></label><div class="two-column"><label>Manufacturer<input name="manufacturer" value="{{ machine.manufacturer or '' }}"></label><label>Model<input name="model" value="{{ machine.model or '' }}"></label></div><div class="two-column"><label>Year<input name="year" value="{{ machine.year or '' }}"></label><label>{{ identifier_label }}<input name="vin_pin_serial" value="{{ machine.vin_pin_serial or '' }}"></label></div></div>
 <div class="form-section"><p class="eyebrow">POWERTRAIN / COMPONENTS</p><h2>Technical Details</h2><label>Engine<input name="engine" value="{{ machine.engine or '' }}"></label><label>Engine Serial<input name="engine_serial" value="{{ machine.engine_serial or '' }}"></label><label>Transmission<input name="transmission" value="{{ machine.transmission or '' }}"></label><label>Component Details<textarea name="component_details" rows="3">{{ machine.component_details or '' }}</textarea></label></div>
 <div class="form-section full"><label>Notes<textarea name="notes" rows="4">{{ machine.notes or '' }}</textarea></label></div>

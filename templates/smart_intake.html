@@ -96,6 +96,18 @@
       <p class="eyebrow">REGISTRY</p>
 
       {% if machine_match %}
+      {% if machine_ownership_conflict %}
+      <div class="smart-match-state review">
+        ⚠ Ownership conflict
+      </div>
+      <h2>
+        {{ machine_match.manufacturer }}
+        {{ machine_match.model or machine_match.name }}
+      </h2>
+      <p>{{ machine_match.vin_pin_serial or "No identifier" }}</p>
+      <p>Currently registered to <strong>{{ machine_match.customer_name }}</strong>{% if machine_match.customer_number %} · {{ machine_match.customer_number }}{% endif %}</p>
+      <a class="button" href="/machines/{{ machine_match.id }}/transfer?customer_id={{ customer_match.id }}">Transfer Machine</a>
+      {% else %}
       <div class="smart-match-state matched">
         ✓ Existing machine
       </div>
@@ -104,6 +116,7 @@
         {{ machine_match.model or machine_match.name }}
       </h2>
       <p>{{ machine_match.vin_pin_serial or "No identifier" }}</p>
+      {% endif %}
       {% else %}
       <div class="smart-match-state new">
         ＋ New machine

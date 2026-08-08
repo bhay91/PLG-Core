@@ -625,3 +625,33 @@ def _migration_0010_custom_invoices(
 MIGRATIONS.append(
     ("0010_custom_invoices", _migration_0010_custom_invoices)
 )
+
+
+def _migration_0011_machine_ownership_history(
+    connection: sqlite3.Connection,
+) -> None:
+    """Track machine ownership changes without rewriting historical Jobs."""
+
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS machine_ownership_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            machine_id INTEGER NOT NULL,
+            from_customer_id INTEGER,
+            to_customer_id INTEGER NOT NULL,
+            transfer_note TEXT NOT NULL DEFAULT '',
+            transferred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (machine_id) REFERENCES machines(id),
+            FOREIGN KEY (from_customer_id) REFERENCES customers(id),
+            FOREIGN KEY (to_customer_id) REFERENCES customers(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_machine_ownership_history_machine
+            ON machine_ownership_history(machine_id);
+        """
+    )
+
+
+MIGRATIONS.append(
+    ("0011_machine_ownership_history", _migration_0011_machine_ownership_history)
+)

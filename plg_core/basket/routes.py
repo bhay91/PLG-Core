@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from legacy_app import get_connection, next_job_number, templates
 from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
 from plg_core.jobs.engine import JobEngine
+from plg_core.machines.identifiers import find_machine_by_identifier
 from plg_core.timeline import log_job_event
 from plg_core.basket.service import (
     add_item,
@@ -339,11 +340,63 @@ def convert_opportunity_to_job(opportunity_id: int, opportunity_machine_id: Anno
                 raise HTTPException(status_code=400, detail="Selected opportunity machine not found")
             machine_id = machine["machine_id"]
             if not machine_id:
-                display_name = " ".join(part for part in ((machine["manufacturer"] or "").strip(), (machine["model"] or "").strip()) if part).strip() or (machine["vin_pin_serial"] or "").strip()
-                machine_cursor = connection.execute("INSERT INTO machines (customer_id,name,manufacturer,model,vin_pin_serial,engine,notes) VALUES (?,?,?,?,?,?,?)", (customer["id"], display_name, (machine["manufacturer"] or "").strip(), (machine["model"] or "").strip(), (machine["vin_pin_serial"] or "").strip(), (machine["engine"] or "").strip(), machine["notes"] or ""))
-                machine_id = machine_cursor.lastrowid
-                connection.execute("UPDATE machines SET machine_number=? WHERE id=?", (f"PPS-M-{machine_id:04d}", machine_id))
-                connection.execute("UPDATE opportunity_machines SET machine_id=? WHERE id=?", (machine_id, machine["id"]))
+                existing_machine = find_machine_by_identifier(
+                    connection,
+                    machine["vin_pin_serial"] or "",
+                )
+
+                if existing_machine is not None:
+                    if existing_machine["customer_id"] != customer["id"]:
+                        raise HTTPException(
+                            status_code=409,
+                            detail=(
+                                f"VIN/PIN/serial already belongs to "
+                                f"{existing_machine['machine_number']} "
+                                f"({existing_machine['customer_name']}). "
+                                "Transfer the machine before converting this Opportunity."
+                            ),
+                        )
+
+                    machine_id = existing_machine["id"]
+                    connection.execute(
+                        "UPDATE opportunity_machines SET machine_id=? WHERE id=?",
+                        (machine_id, machine["id"]),
+                    )
+                else:
+                    display_name = " ".join(
+                        part
+                        for part in (
+                            (machine["manufacturer"] or "").strip(),
+                            (machine["model"] or "").strip(),
+                        )
+                        if part
+                    ).strip() or (machine["vin_pin_serial"] or "").strip()
+
+                    machine_cursor = connection.execute(
+                        """
+                        INSERT INTO machines
+                            (customer_id, name, manufacturer, model, vin_pin_serial, engine, notes)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            customer["id"],
+                            display_name,
+                            (machine["manufacturer"] or "").strip(),
+                            (machine["model"] or "").strip(),
+                            (machine["vin_pin_serial"] or "").strip(),
+                            (machine["engine"] or "").strip(),
+                            machine["notes"] or "",
+                        ),
+                    )
+                    machine_id = machine_cursor.lastrowid
+                    connection.execute(
+                        "UPDATE machines SET machine_number=? WHERE id=?",
+                        (f"PPS-M-{machine_id:04d}", machine_id),
+                    )
+                    connection.execute(
+                        "UPDATE opportunity_machines SET machine_id=? WHERE id=?",
+                        (machine_id, machine["id"]),
+                    )
         job_number = next_job_number(connection)
         cursor = connection.execute("INSERT INTO jobs (job_number, created_date, customer_id, machine_id, customer, company, phone, email, address, manufacturer, machine, pin_serial, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REQUESTED', ?)", (job_number, date.today().isoformat(), customer["id"], machine_id, customer["name"], customer["company"] or "", customer["phone"] or "", customer["email"] or "", customer["address"] or "", machine["manufacturer"] if machine else "", machine["model"] if machine else "", machine["vin_pin_serial"] if machine else "", opportunity["notes"] or opportunity["request_text"] or ""))
         job_id = cursor.lastrowid

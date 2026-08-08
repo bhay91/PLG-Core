@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from plg_core.jobs.engine import JobEngine
 from plg_core.dashboard.service import get_dashboard_data
+from plg_core.machines.identifiers import find_machine_by_identifier
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -600,13 +601,39 @@ def create_job(
             machine = selected_machine["model"] or selected_machine["name"] or ""
             pin_serial = selected_machine["vin_pin_serial"] or ""
         elif any((manufacturer.strip(), machine.strip(), pin_serial.strip())):
-            display_name = " ".join(part for part in (manufacturer.strip(), machine.strip()) if part).strip() or pin_serial.strip()
-            machine_cursor = connection.execute(
-                "INSERT INTO machines (customer_id,name,manufacturer,model,vin_pin_serial) VALUES (?,?,?,?,?)",
-                (customer_row["id"], display_name, manufacturer.strip(), machine.strip(), pin_serial.strip()),
+            existing_machine = find_machine_by_identifier(
+                connection,
+                pin_serial.strip(),
             )
-            machine_id = machine_cursor.lastrowid
-            connection.execute("UPDATE machines SET machine_number=? WHERE id=?", (f"PPS-M-{machine_id:04d}", machine_id))
+
+            if existing_machine is not None:
+                if existing_machine["customer_id"] != customer_row["id"]:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"VIN/PIN/serial already belongs to "
+                            f"{existing_machine['machine_number']} "
+                            f"({existing_machine['customer_name']}). "
+                            "Transfer the machine before creating this Job."
+                        ),
+                    )
+                machine_id = existing_machine["id"]
+                manufacturer = existing_machine["manufacturer"] or manufacturer
+                machine = existing_machine["model"] or existing_machine["name"] or machine
+                pin_serial = existing_machine["vin_pin_serial"] or pin_serial
+            else:
+                display_name = " ".join(
+                    part for part in (manufacturer.strip(), machine.strip()) if part
+                ).strip() or pin_serial.strip()
+                machine_cursor = connection.execute(
+                    "INSERT INTO machines (customer_id,name,manufacturer,model,vin_pin_serial) VALUES (?,?,?,?,?)",
+                    (customer_row["id"], display_name, manufacturer.strip(), machine.strip(), pin_serial.strip()),
+                )
+                machine_id = machine_cursor.lastrowid
+                connection.execute(
+                    "UPDATE machines SET machine_number=? WHERE id=?",
+                    (f"PPS-M-{machine_id:04d}", machine_id),
+                )
         job_number=next_job_number(connection)
         cur=connection.execute("""
             INSERT INTO jobs (job_number,created_date,customer_id,machine_id,customer,company,phone,email,address,manufacturer,machine,pin_serial,status,notes)
