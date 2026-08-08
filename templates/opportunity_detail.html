@@ -23,6 +23,34 @@
 </form>
 <p><strong>Estimated Value:</strong> ${{ "%.2f"|format(opportunity.estimated_value or 0) }}</p>
 
+<hr>
+<h2>Edit Opportunity</h2>
+<form method="post" action="/opportunities/{{ opportunity.id }}/edit">
+  <label>Customer</label><br>
+  <select name="customer_id" required>
+    {% for customer in customers %}
+    <option value="{{ customer.id }}" {% if customer.id == opportunity.customer_id %}selected{% endif %}>{{ customer.customer_number }} — {{ customer.name }}</option>
+    {% endfor %}
+  </select><br><br>
+
+  <label>Title</label><br>
+  <input type="text" name="title" value="{{ opportunity.title }}" required><br><br>
+
+  <label>Request</label><br>
+  <textarea name="request_text" rows="5">{{ opportunity.request_text or "" }}</textarea><br><br>
+
+  <label>Follow Up Date</label><br>
+  <input type="date" name="follow_up_date" value="{{ opportunity.follow_up_date or '' }}"><br><br>
+
+  <label>Estimated Value</label><br>
+  <input type="number" step="0.01" name="estimated_value" value="{{ opportunity.estimated_value or 0 }}"><br><br>
+
+  <label>Notes</label><br>
+  <textarea name="notes" rows="4">{{ opportunity.notes or "" }}</textarea><br><br>
+
+  <button class="button" type="submit">Save Opportunity</button>
+</form>
+
 <h2>Machines</h2>
 
 {% for machine in machines %}

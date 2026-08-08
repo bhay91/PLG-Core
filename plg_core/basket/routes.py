@@ -158,6 +158,9 @@ def opportunity_detail_page(request: Request, opportunity_id: int):
             "SELECT * FROM opportunity_research WHERE opportunity_id = ? ORDER BY id DESC",
             (opportunity_id,),
         ).fetchall()
+        customers = connection.execute(
+            "SELECT id, customer_number, name FROM customers WHERE active=1 ORDER BY name"
+        ).fetchall()
 
     if opportunity is None:
         raise HTTPException(status_code=404, detail="Opportunity not found")
@@ -165,7 +168,48 @@ def opportunity_detail_page(request: Request, opportunity_id: int):
     return templates.TemplateResponse(
         request=request,
         name="opportunity_detail.html",
-        context={"opportunity": opportunity, "machines": machines, "research": research},
+        context={"opportunity": opportunity, "machines": machines, "research": research, "customers": customers},
+    )
+
+
+@router.post("/opportunities/{opportunity_id}/edit")
+def edit_opportunity(
+    opportunity_id: int,
+    customer_id: Annotated[int, Form()],
+    title: Annotated[str, Form()],
+    request_text: Annotated[str, Form()] = "",
+    follow_up_date: Annotated[str, Form()] = "",
+    estimated_value: Annotated[str, Form()] = "",
+    notes: Annotated[str, Form()] = "",
+):
+    with closing(get_connection()) as connection:
+        connection.execute(
+            """
+            UPDATE opportunities
+            SET customer_id = ?,
+                title = ?,
+                request_text = ?,
+                follow_up_date = NULLIF(?, ''),
+                estimated_value = ?,
+                notes = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                customer_id,
+                title,
+                request_text,
+                follow_up_date,
+                float(estimated_value or 0),
+                notes,
+                opportunity_id,
+            ),
+        )
+        connection.commit()
+
+    return RedirectResponse(
+        url=f"/opportunities/{opportunity_id}",
+        status_code=303,
     )
 
 
