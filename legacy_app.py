@@ -281,6 +281,8 @@ def initialize_database() -> None:
              'https://sis2.cat.com/#/cart', 'CART', 'cat_sis_cart', 1, 10),
             ('worldpac', 'Worldpac', 'Automotive', 'SUPPLIER_VERIFIED',
              'https://speeddial.worldpac.com/#/login', 'CART', 'worldpac_cart', 1, 20),
+            ('7zap', '7zap', 'Automotive Catalog', 'NEEDS_REVIEW',
+             'https://7zap.com/en/vin-decoder/', 'CATALOG', '7zap_catalog', 1, 25),
             ('ssf', 'SSF', 'Automotive', 'SUPPLIER_VERIFIED',
              'https://www.ssfautoparts.com/', 'CART', 'ssf_cart', 0, 30),
             ('rockauto', 'RockAuto', 'Automotive', 'SUPPLIER_VERIFIED',
