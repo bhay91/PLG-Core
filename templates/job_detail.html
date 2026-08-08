@@ -251,6 +251,9 @@
         <div class="verified-meta">
           <span><strong>Requested:</strong> {{ part.requested_description }}</span>
           <span><strong>OEM number:</strong> {{ part.oem_part_number }}</span>
+            {% if part.alternate_part_number %}
+            <span><strong>Alternate / superseded:</strong> {{ part.alternate_part_number }}</span>
+            {% endif %}
           <span><strong>OEM description:</strong> {{ part.oem_description or "—" }}</span>
           <span><strong>Source:</strong> {{ part.verification_source or "Manual" }}</span>
           {% if part.oem_dealer_price is not none %}
@@ -298,6 +301,9 @@
                 </span>
                 {% if source.availability %}<span>{{ source.availability }}</span>{% endif %}
                 {% if source.lead_time %}<span>Lead time: {{ source.lead_time }}</span>{% endif %}
+                  {% if source.confidence is not none %}
+                  <span>Confidence: {{ "%.0f"|format(source.confidence * 100) }}%</span>
+                  {% endif %}
                 {% if source.source_url %}
                 <span><a href="{{ source.source_url }}" target="_blank" rel="noopener">Open evidence</a></span>
                 {% endif %}
