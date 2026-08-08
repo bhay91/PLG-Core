@@ -17,50 +17,38 @@
 - Payment-before-ordering protection.
 - Job workflow foundation.
 
-## Alpha 9 — Opportunities & ChatGPT Research — CURRENT
+## Alpha 9 — Opportunities & ChatGPT Research — COMPLETE
 
-Completed through Alpha 9.10:
+Completed:
 
 - Opportunity database.
-- Opportunity creation and list.
-- Opportunity detail page.
+- Opportunity creation, list, detail, and editing.
+- Customer assignment and reassignment.
+- Opportunities dashboard with customer, machine count, research count, and converted Job.
+- Status and follow-up filters.
 - Multiple machines per Opportunity.
+- Registered machine attachment.
+- VIN/PIN/serial duplicate machine protection.
+- Machine ownership transfer workflow.
+- Improved multi-machine research handling.
 - Research/evidence records.
-- Clickable source links.
+- Clickable and normalized source links.
 - Follow-up management.
 - ChatGPT single research import.
 - ChatGPT batch research import.
 - ChatGPT Opportunity import.
 - ChatGPT Opportunity + machine import.
 - Full ChatGPT Opportunity package import.
-- Customer-linked Opportunities.
 - Opportunity to Job conversion.
 - Machine registry creation/linking.
 - Duplicate Job conversion protection.
 - Research to Job basket transfer.
-- Source URL normalization.
-- Customer shown on Opportunity.
 - Converted Job shown and linkable.
+- Job backlink to originating Opportunity.
+- Opportunity conversion recorded in Job timeline.
+- Converted Opportunity behavior.
 
-Remaining Alpha 9 work:
-
-- Better Opportunities dashboard.
-- Customer shown on Opportunity list.
-- Machine count.
-- Research count.
-- Converted Job shown in list.
-- Status filters.
-- Follow-up filtering.
-- Edit Opportunity.
-- Change/assign customer.
-- Attach existing registered machine.
-- VIN/PIN/serial duplicate machine protection.
-- Better handling of multi-machine Opportunities.
-- Link from Job back to originating Opportunity.
-- Record conversion in Job timeline.
-- Make converted Opportunities behave appropriately after conversion.
-
-## Alpha 10 — Parts Intelligence & Verification
+## Alpha 10 — Parts Intelligence & Verification — CURRENT
 
 - Improve sourcing basket.
 - Requested part vs candidate part distinction.
