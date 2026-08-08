@@ -6,7 +6,6 @@ from plg_core.documents.invoice_pdf import generate_invoice_pdfs, invoice_paths
 from fastapi import File, UploadFile
 
 import sqlite3
-import math
 from contextlib import closing
 from datetime import date
 from pathlib import Path
@@ -20,6 +19,7 @@ from fastapi.templating import Jinja2Templates
 from plg_core.jobs.engine import JobEngine
 from plg_core.dashboard.service import get_dashboard_data
 from plg_core.machines.identifiers import find_machine_by_identifier
+from plg_core.pricing import customer_unit_price
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -1457,19 +1457,6 @@ def next_quote_number(connection: sqlite3.Connection) -> str:
     return f"{prefix}{sequence:04d}"
 
 
-def calculate_customer_unit_price(cost: float) -> float:
-    if cost <= 50:
-        markup = 0.40
-    elif cost <= 200:
-        markup = 0.30
-    elif cost <= 500:
-        markup = 0.25
-    else:
-        markup = 0.20
-
-    return float(math.ceil(cost * (1 + markup)))
-
-
 @app.post("/jobs/{job_id}/generate-quote")
 def generate_quote(job_id: int):
     # The basket commit is an internal step. The user should not
@@ -1614,7 +1601,7 @@ def generate_quote(job_id: int):
             customer_unit_price = (
                 float(stored_customer_unit_price)
                 if stored_customer_unit_price is not None
-                else calculate_customer_unit_price(
+                else customer_unit_price(
                     supplier_unit_cost
                 )
             )

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from contextlib import closing
-import math
 import sqlite3
 from typing import Any
 
@@ -10,25 +9,7 @@ from fastapi import HTTPException
 from legacy_app import get_connection
 from plg_core.timeline import log_job_event
 from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
-
-
-def customer_unit_price(
-    cost: float,
-    markup_percent: float | None = None,
-) -> float:
-    if markup_percent is not None:
-        return round(cost * (1 + float(markup_percent) / 100), 2)
-
-    if cost <= 50:
-        markup = 0.40
-    elif cost <= 200:
-        markup = 0.30
-    elif cost <= 500:
-        markup = 0.25
-    else:
-        markup = 0.20
-
-    return float(math.ceil(cost * (1 + markup)))
+from plg_core.pricing import customer_unit_price
 
 
 def get_or_create_basket(connection: sqlite3.Connection, job_id: int):
