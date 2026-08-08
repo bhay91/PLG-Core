@@ -414,6 +414,16 @@
             <label>Evidence URL
               <input name="source_url" type="url" placeholder="Supplier product page URL">
             </label>
+              <label>Confidence
+                <input
+                  name="confidence"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  placeholder="0.00 - 1.00"
+                >
+              </label>
             <label>Verification
               <select name="verification_status">
                 <option value="UNVERIFIED">Unverified</option>

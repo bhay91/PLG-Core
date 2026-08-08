@@ -3238,6 +3238,7 @@ def add_part_source(
     lead_time: Annotated[str, Form()] = "",
     quote_reference: Annotated[str, Form()] = "",
     source_url: Annotated[str, Form()] = "",
+    confidence: Annotated[float | None, Form()] = None,
     verification_status: Annotated[str, Form()] = "UNVERIFIED",
     verification_note: Annotated[str, Form()] = "",
 ):
@@ -3259,6 +3260,12 @@ def add_part_source(
         raise HTTPException(
             status_code=400,
             detail="Invalid verification status.",
+        )
+
+    if confidence is not None and not 0.0 <= confidence <= 1.0:
+        raise HTTPException(
+            status_code=400,
+            detail="Confidence must be between 0.0 and 1.0.",
         )
 
     verification_note = verification_note.strip()
@@ -3289,9 +3296,10 @@ def add_part_source(
                 part_id, supplier_name, source_type, brand,
                 supplier_part_number, supplier_cost, availability,
                 lead_time, quote_reference, trust_level,
-                verification_status, verification_note, source_url
+                verification_status, verification_note, source_url,
+                confidence
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'MANUAL', ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'MANUAL', ?, ?, ?, ?)
             """,
             (
                 part_id,
@@ -3306,6 +3314,7 @@ def add_part_source(
                 verification_status,
                 verification_note,
                 source_url.strip(),
+                confidence,
             ),
         )
         connection.commit()
