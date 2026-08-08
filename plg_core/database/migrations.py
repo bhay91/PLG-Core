@@ -756,3 +756,41 @@ def _migration_0014_part_source_verification(
 MIGRATIONS.append(
     ("0014_part_source_verification", _migration_0014_part_source_verification)
 )
+
+def _migration_0015_alternate_part_numbers(
+    connection: sqlite3.Connection,
+) -> None:
+    """Preserve alternate and superseded part numbers through the workflow."""
+
+    basket_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(basket_items)"
+        ).fetchall()
+    }
+    if "alternate_part_number" not in basket_columns:
+        connection.execute(
+            """
+            ALTER TABLE basket_items
+            ADD COLUMN alternate_part_number TEXT NOT NULL DEFAULT ''
+            """
+        )
+
+    part_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(job_parts)"
+        ).fetchall()
+    }
+    if "alternate_part_number" not in part_columns:
+        connection.execute(
+            """
+            ALTER TABLE job_parts
+            ADD COLUMN alternate_part_number TEXT NOT NULL DEFAULT ''
+            """
+        )
+
+
+MIGRATIONS.append(
+    ("0015_alternate_part_numbers", _migration_0015_alternate_part_numbers)
+)

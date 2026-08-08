@@ -429,7 +429,7 @@ def convert_opportunity_to_job(opportunity_id: int, opportunity_machine_id: Anno
         )
         connection.commit()
     for item in research:
-        add_item(job_id, BasketItemCreate(requested_description=item["part_description"] or "Research candidate", manufacturer_part_number=item["oem_part_number"] or "", supplier_part_number=item["alternate_part_number"] or "", supplier_name=item["supplier_name"] or "", source_type=(item["source_type"] or "RESEARCH").upper(), selected=False, confidence=item["confidence"], source_url=item["source_url"] or ""))
+        add_item(job_id, BasketItemCreate(requested_description=item["part_description"] or "Research candidate", manufacturer_part_number=item["oem_part_number"] or "", alternate_part_number=item["alternate_part_number"] or "", supplier_name=item["supplier_name"] or "", source_type=(item["source_type"] or "RESEARCH").upper(), selected=False, confidence=item["confidence"], source_url=item["source_url"] or ""))
     return RedirectResponse(url=f"/jobs/{job_id}/basket", status_code=303)
 
 

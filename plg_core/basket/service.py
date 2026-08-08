@@ -104,18 +104,19 @@ def add_item(job_id: int, payload: BasketItemCreate):
             """
             INSERT INTO basket_items (
                 basket_id, requested_description,
-                manufacturer_part_number, supplier_part_number,
-                supplier_name, source_type, brand, quantity,
+                manufacturer_part_number, alternate_part_number,
+                supplier_part_number, supplier_name, source_type, brand, quantity,
                 supplier_unit_cost, verification_status,
                 verification_note, availability, lead_time,
                 selected, confidence, source_url
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 basket["id"],
                 payload.requested_description.strip(),
                 payload.manufacturer_part_number.strip(),
+                payload.alternate_part_number.strip(),
                 payload.supplier_part_number.strip(),
                 payload.supplier_name.strip(),
                 payload.source_type.strip().upper() or "AFTERMARKET",
@@ -163,7 +164,8 @@ def update_item(item_id: int, payload: BasketItemUpdate):
 
     allowed = {
         "requested_description", "manufacturer_part_number",
-        "supplier_part_number", "supplier_name", "source_type",
+        "alternate_part_number", "supplier_part_number",
+        "supplier_name", "source_type",
         "brand", "quantity", "supplier_unit_cost", "markup_percent", "part_status", "verification_status", "verification_note", "availability",
         "lead_time", "selected", "confidence", "source_url",
     }
@@ -773,19 +775,20 @@ def commit_basket(job_id: int):
                 """
                 INSERT INTO job_parts (
                     job_id, requested_description, quantity,
-                    oem_part_number, oem_description,
+                    oem_part_number, alternate_part_number, oem_description,
                     verification_status, verification_source,
                     verification_notes,
                     oem_dealer_name, oem_dealer_price,
                     oem_dealer_availability, source_url,
                     product_url, captured_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                         CURRENT_TIMESTAMP)
                 """,
                 (
                     job_id, item["requested_description"], item["quantity"],
                     oem_number,
+                    item["alternate_part_number"] or "",
                     item["requested_description"] if oem_number else "",
                     committed_verification_status,
                     committed_verification_source,
