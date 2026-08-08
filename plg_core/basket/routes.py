@@ -152,11 +152,29 @@ def opportunity_detail_page(request: Request, opportunity_id: int):
             (opportunity_id,),
         ).fetchone()
         machines = connection.execute(
-            "SELECT * FROM opportunity_machines WHERE opportunity_id = ? ORDER BY id",
+            """
+            SELECT opportunity_machines.*,
+                   machines.machine_number AS registered_machine_number
+            FROM opportunity_machines
+            LEFT JOIN machines
+              ON machines.id = opportunity_machines.machine_id
+            WHERE opportunity_machines.opportunity_id = ?
+            ORDER BY opportunity_machines.id
+            """,
             (opportunity_id,),
         ).fetchall()
         research = connection.execute(
-            "SELECT * FROM opportunity_research WHERE opportunity_id = ? ORDER BY id DESC",
+            """
+            SELECT opportunity_research.*,
+                   opportunity_machines.manufacturer AS machine_manufacturer,
+                   opportunity_machines.model AS machine_model,
+                   opportunity_machines.vin_pin_serial AS machine_identifier
+            FROM opportunity_research
+            LEFT JOIN opportunity_machines
+              ON opportunity_machines.id = opportunity_research.opportunity_machine_id
+            WHERE opportunity_research.opportunity_id = ?
+            ORDER BY opportunity_research.id DESC
+            """,
             (opportunity_id,),
         ).fetchall()
         customers = connection.execute(

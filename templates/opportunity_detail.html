@@ -69,7 +69,15 @@
 <h2>Machines</h2>
 
 {% for machine in machines %}
-<p>{{ machine.manufacturer }} {{ machine.model }} — {{ machine.vin_pin_serial }}</p>
+<p>
+  <strong>{{ machine.manufacturer }} {{ machine.model }}</strong>
+  {% if machine.vin_pin_serial %} — {{ machine.vin_pin_serial }}{% endif %}
+  {% if machine.registered_machine_number %}
+    — <a href="/machines/{{ machine.machine_id }}">{{ machine.registered_machine_number }}</a>
+  {% else %}
+    — Not yet registered
+  {% endif %}
+</p>
 {% else %}
 <p>No machines added yet.</p>
 {% endfor %}
@@ -101,7 +109,18 @@
 <hr>
 <h2>Research</h2>
 {% for item in research %}
-<p><strong>{{ item.part_description }}</strong> — {{ item.oem_part_number or item.alternate_part_number or "No part number" }}{% if item.source_url %} — <a href="{{ item.source_url }}" target="_blank">Source</a>{% endif %}</p>
+<p>
+  <strong>{{ item.part_description }}</strong>
+  — {{ item.oem_part_number or item.alternate_part_number or "No part number" }}
+  —
+  {% if item.opportunity_machine_id %}
+    {{ item.machine_manufacturer }} {{ item.machine_model }}
+    {% if item.machine_identifier %}· {{ item.machine_identifier }}{% endif %}
+  {% else %}
+    General
+  {% endif %}
+  {% if item.source_url %} — <a href="{{ item.source_url }}" target="_blank">Source</a>{% endif %}
+</p>
 {% else %}
 <p>No research added yet.</p>
 {% endfor %}
