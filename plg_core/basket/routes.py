@@ -81,7 +81,29 @@ async def import_opportunity(request: Request):
 def opportunities_page(request: Request):
     with closing(get_connection()) as connection:
         opportunities = connection.execute(
-            "SELECT * FROM opportunities ORDER BY created_at DESC"
+            """
+            SELECT
+                o.id,
+                o.opportunity_number,
+                o.customer_id,
+                o.title,
+                o.request_text,
+                o.status,
+                o.follow_up_date,
+                o.estimated_value,
+                o.notes,
+                o.converted_job_id,
+                o.created_at,
+                o.updated_at,
+                c.name AS customer_name,
+                j.job_number AS converted_job_number,
+                (SELECT COUNT(1) FROM opportunity_machines m WHERE m.opportunity_id = o.id) AS machine_count,
+                (SELECT COUNT(1) FROM opportunity_research r WHERE r.opportunity_id = o.id) AS research_count
+            FROM opportunities o
+            LEFT JOIN customers c ON c.id = o.customer_id
+            LEFT JOIN jobs j ON j.id = o.converted_job_id
+            ORDER BY o.created_at DESC
+            """
         ).fetchall()
 
     return templates.TemplateResponse(

@@ -13,19 +13,23 @@
 <div style="overflow-x:auto">
 <table class="op-table">
 <thead>
-<tr><th>Opportunity</th><th>Title</th><th>Status</th><th>Follow Up</th><th>Estimated Value</th></tr>
+<tr><th>Opportunity</th><th>Customer</th><th>Title</th><th>Machines</th><th>Research</th><th>Status</th><th>Follow Up</th><th>Converted Job</th><th>Estimated Value</th></tr>
 </thead>
 <tbody>
 {% for opportunity in opportunities %}
 <tr>
 <td><a href="/opportunities/{{ opportunity.id }}">{{ opportunity.opportunity_number or opportunity.id }}</a></td>
+<td>{{ opportunity.customer_name or "-" }}</td>
 <td>{{ opportunity.title }}</td>
+<td>{{ opportunity.machine_count }}</td>
+<td>{{ opportunity.research_count }}</td>
 <td>{{ opportunity.status }}</td>
 <td>{{ opportunity.follow_up_date or "-" }}</td>
+<td>{% if opportunity.converted_job_id %}<a href="/jobs/{{ opportunity.converted_job_id }}">{{ opportunity.converted_job_number or opportunity.converted_job_id }}</a>{% else %}-{% endif %}</td>
 <td>${{ "%.2f"|format(opportunity.estimated_value or 0) }}</td>
 </tr>
 {% else %}
-<tr><td colspan="5">No opportunities yet.</td></tr>
+<tr><td colspan="9">No opportunities yet.</td></tr>
 {% endfor %}
 </tbody>
 </table>
