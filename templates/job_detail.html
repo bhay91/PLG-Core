@@ -9,11 +9,6 @@
   </div>
 
   <div class="header-actions job-top-actions-clean">
-    {% if job.manufacturer and job.manufacturer|upper in ["CAT", "CATERPILLAR"] %}
-    <form method="post" action="/jobs/{{ job.id }}/start-sis-cart-import" target="_blank">
-      <button class="button" type="submit">Import Cart</button>
-    </form>
-    {% endif %}
     <form method="post" action="/jobs/{{ job.id }}/status" class="status-form">
       <select name="status">
         {% for value in ["REQUESTED", "RESEARCHING", "VERIFIED", "QUOTED", "CONFIRMED", "ORDERED", "RECEIVED", "DELIVERED", "VOID"] %}
@@ -58,14 +53,14 @@
   <div class="panel-heading">
     <div>
       <p class="eyebrow">PARTS RESEARCH</p>
-      <h2>Open a supplier source</h2>
+      <h2>Verify Parts</h2>
     </div>
   </div>
 
   <form method="post" action="/jobs/{{ job.id }}/start-source-import" target="_blank">
     <div class="form-grid compact-grid">
       <label>
-        Supplier / Source
+        Verification Source
         <select name="source_key" required>
           {% for connector in connectors %}
           <option value="{{ connector.connector_key }}">{{ connector.display_name }}</option>
@@ -74,13 +69,13 @@
       </label>
 
       <div class="form-action">
-        <button class="button" type="submit">Open Source</button>
+        <button class="button" type="submit">Verify Parts</button>
       </div>
     </div>
   </form>
 
   <p class="muted">
-    CAT SIS cart import is active. Worldpac, SSF, and RockAuto readers will be added after each cart is tested.
+    Choose CAT SIS, 7zap, a supplier source, or upload evidence. Imported candidates still require verification and compatibility review.
   </p>
 </section>
 

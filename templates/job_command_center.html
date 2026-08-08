@@ -262,18 +262,18 @@
 
   <section class="cc-card cc-section" id="parts-research">
     <div class="cc-section-head">
-      <div><p class="cc-label">PARTS RESEARCH</p><h2>Find and compare parts</h2><p class="cc-muted">Open an online source or add a quote received directly from another supplier.</p></div>
+      <div><p class="cc-label">PARTS RESEARCH</p><h2>Find and compare parts</h2><p class="cc-muted">Use the standard Verify Parts workflow or add a quote received directly from another supplier.</p></div>
     </div>
     <div class="cc-research-layout">
       <aside class="cc-tools">
-        <p class="cc-label">RESEARCH TOOLS</p>
+        <p class="cc-label">VERIFY PARTS</p>
         <form method="post" action="/jobs/{{ job.id }}/start-source-import" target="_blank">
-          <label>Supplier / Source
+          <label>Verification Source
             <select name="source_key" required>{% for connector in connectors %}<option value="{{ connector.connector_key }}">{{ connector.display_name }}</option>{% endfor %}</select>
           </label>
-          <button class="button full-width" type="submit">Open Source</button>
+          <button class="button full-width" type="submit">Verify Parts</button>
         </form>
-        <p class="cc-muted">Complete the supplier cart, then import it with the Firefox extension.</p>
+        <p class="cc-muted">Open the selected verification source, then import its evidence or candidate results.</p>
 
         <div class="cc-tools-divider"></div>
 

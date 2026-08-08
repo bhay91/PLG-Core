@@ -60,17 +60,17 @@
 
 <section class="command-section research-section" id="parts-research">
   <div class="command-section-heading">
-    <div><p class="eyebrow">PARTS RESEARCH</p><h2>Find and compare parts</h2><p>Open a supplier, import its results, or enter a part manually.</p></div>
+    <div><p class="eyebrow">PARTS RESEARCH</p><h2>Find and compare parts</h2><p>Choose a verification source, import its results, or enter a candidate manually.</p></div>
     <button class="button ghost" type="button" data-dialog-open="manual-vendor-line">＋ Manual Part</button>
   </div>
 
-  <div class="research-tools-label"><span>Research tools</span></div>
+  <div class="research-tools-label"><span>Verify Parts</span></div>
   <div class="research-launcher">
     <form method="post" action="/jobs/{{ job.id }}/start-source-import" target="_blank">
-      <label>Supplier / Source<select name="source_key" required>{% for connector in connectors %}<option value="{{ connector.connector_key }}">{{ connector.display_name }}</option>{% endfor %}</select></label>
-      <button class="button" type="submit">Open Source</button>
+      <label>Verification Source<select name="source_key" required>{% for connector in connectors %}<option value="{{ connector.connector_key }}">{{ connector.display_name }}</option>{% endfor %}</select></label>
+      <button class="button" type="submit">Verify Parts</button>
     </form>
-    <p>Complete the supplier cart, then import it with the Firefox extension.</p>
+    <p>Open the selected verification source, then import its evidence or candidate results.</p>
   </div>
 
   <div class="research-results-title"><span>Research results</span><strong>{{ basket.totals.all_items }}</strong></div>
@@ -83,7 +83,7 @@
       {% else %}<p class="command-empty">No parts imported from this source yet.</p>{% endif %}
     </details>{% endfor %}
   </div>
-  {% else %}<div class="command-empty"><strong>No research results yet.</strong><span>Open a supplier or add a manual part to begin.</span></div>{% endif %}
+  {% else %}<div class="command-empty"><strong>No research results yet.</strong><span>Start Verify Parts or add a manual part to begin.</span></div>{% endif %}
 </section>
 
 <section class="command-section ready-section">
