@@ -3237,6 +3237,7 @@ def add_part_source(
     availability: Annotated[str, Form()] = "",
     lead_time: Annotated[str, Form()] = "",
     quote_reference: Annotated[str, Form()] = "",
+    source_url: Annotated[str, Form()] = "",
     verification_status: Annotated[str, Form()] = "UNVERIFIED",
     verification_note: Annotated[str, Form()] = "",
 ):
@@ -3287,9 +3288,10 @@ def add_part_source(
             INSERT INTO part_sources (
                 part_id, supplier_name, source_type, brand,
                 supplier_part_number, supplier_cost, availability,
-                lead_time, quote_reference, trust_level
+                lead_time, quote_reference, trust_level,
+                verification_status, verification_note, source_url
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'MANUAL')
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'MANUAL', ?, ?, ?)
             """,
             (
                 part_id,
@@ -3301,6 +3303,9 @@ def add_part_source(
                 availability.strip(),
                 lead_time.strip(),
                 quote_reference.strip(),
+                verification_status,
+                verification_note,
+                source_url.strip(),
             ),
         )
         connection.commit()

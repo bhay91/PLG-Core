@@ -298,6 +298,9 @@
                 </span>
                 {% if source.availability %}<span>{{ source.availability }}</span>{% endif %}
                 {% if source.lead_time %}<span>Lead time: {{ source.lead_time }}</span>{% endif %}
+                {% if source.source_url %}
+                <span><a href="{{ source.source_url }}" target="_blank" rel="noopener">Open evidence</a></span>
+                {% endif %}
               </div>
             </form>
 
@@ -378,6 +381,9 @@
               </select>
             </label>
             <label>Quote reference<input name="quote_reference" placeholder="Quote #, email, or phone"></label>
+            <label>Evidence URL
+              <input name="source_url" type="url" placeholder="Supplier product page URL">
+            </label>
             <label>Verification
               <select name="verification_status">
                 <option value="UNVERIFIED">Unverified</option>
