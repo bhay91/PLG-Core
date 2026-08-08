@@ -1497,6 +1497,7 @@ def generate_quote(job_id: int):
                 job_parts.requested_description,
                 job_parts.oem_description,
                 job_parts.quantity,
+                job_parts.customer_unit_price,
                 part_sources.id AS source_id,
                 part_sources.supplier_name,
                 part_sources.source_type,
@@ -1609,8 +1610,11 @@ def generate_quote(job_id: int):
                 row["supplier_cost"] or 0
             )
 
+            stored_customer_unit_price = row["customer_unit_price"]
             customer_unit_price = (
-                calculate_customer_unit_price(
+                float(stored_customer_unit_price)
+                if stored_customer_unit_price is not None
+                else calculate_customer_unit_price(
                     supplier_unit_cost
                 )
             )

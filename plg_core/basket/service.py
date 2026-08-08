@@ -12,7 +12,13 @@ from plg_core.timeline import log_job_event
 from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
 
 
-def customer_unit_price(cost: float) -> float:
+def customer_unit_price(
+    cost: float,
+    markup_percent: float | None = None,
+) -> float:
+    if markup_percent is not None:
+        return round(cost * (1 + float(markup_percent) / 100), 2)
+
     if cost <= 50:
         markup = 0.40
     elif cost <= 200:
@@ -21,6 +27,7 @@ def customer_unit_price(cost: float) -> float:
         markup = 0.25
     else:
         markup = 0.20
+
     return float(math.ceil(cost * (1 + markup)))
 
 
@@ -63,7 +70,10 @@ def serialize_basket(connection: sqlite3.Connection, basket) -> dict[str, Any]:
         for row in selected
     )
     customer_parts = sum(
-        customer_unit_price(row["supplier_unit_cost"] or 0) * row["quantity"]
+        customer_unit_price(
+            row["supplier_unit_cost"] or 0,
+            row["markup_percent"],
+        ) * row["quantity"]
         for row in selected
     )
     shipping = sum(row["shipping_total"] or 0 for row in sources)
@@ -106,11 +116,11 @@ def add_item(job_id: int, payload: BasketItemCreate):
                 basket_id, requested_description,
                 manufacturer_part_number, alternate_part_number,
                 supplier_part_number, supplier_name, source_type, brand, quantity,
-                supplier_unit_cost, verification_status,
+                supplier_unit_cost, markup_percent, verification_status,
                 verification_note, availability, lead_time,
                 selected, confidence, source_url
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 basket["id"],
@@ -123,6 +133,7 @@ def add_item(job_id: int, payload: BasketItemCreate):
                 payload.brand.strip(),
                 payload.quantity,
                 payload.supplier_unit_cost,
+                payload.markup_percent,
                 payload.verification_status.strip().upper() or "UNVERIFIED",
                 payload.verification_note.strip(),
                 payload.availability.strip(),
@@ -776,13 +787,14 @@ def commit_basket(job_id: int):
                 INSERT INTO job_parts (
                     job_id, requested_description, quantity,
                     oem_part_number, alternate_part_number, oem_description,
+                    customer_unit_price,
                     verification_status, verification_source,
                     verification_notes,
                     oem_dealer_name, oem_dealer_price,
                     oem_dealer_availability, source_url,
                     product_url, captured_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                         CURRENT_TIMESTAMP)
                 """,
                 (
@@ -790,6 +802,10 @@ def commit_basket(job_id: int):
                     oem_number,
                     item["alternate_part_number"] or "",
                     item["requested_description"] if oem_number else "",
+                    customer_unit_price(
+                        float(item["supplier_unit_cost"] or 0),
+                        item["markup_percent"],
+                    ),
                     committed_verification_status,
                     committed_verification_source,
                     verification_note,
