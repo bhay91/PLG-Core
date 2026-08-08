@@ -27,6 +27,7 @@ from reportlab.platypus import (
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DOCUMENT_ROOT = PROJECT_ROOT / "documents" / "Customers"
 LOGO_CANDIDATES = [
+    PROJECT_ROOT / "static" / "pps-logo.png",
     PROJECT_ROOT / "static" / "plg-logo.webp",
     PROJECT_ROOT / "static" / "plg-logo.png",
     PROJECT_ROOT / "static" / "plg-logo.jpg",
@@ -117,15 +118,15 @@ def _styles():
         ),
         "label": ParagraphStyle(
             "PLGLabel", parent=base["Normal"], fontName="Helvetica-Bold",
-            fontSize=8, leading=10, textColor=INK,
+            fontSize=8.2, leading=10, textColor=INK,
         ),
         "value": ParagraphStyle(
             "PLGValue", parent=base["Normal"], fontName="Helvetica",
-            fontSize=8.7, leading=11, textColor=INK,
+            fontSize=8.2, leading=10, textColor=INK,
         ),
         "small": ParagraphStyle(
             "PLGSmall", parent=base["Normal"], fontName="Helvetica",
-            fontSize=7.2, leading=9, textColor=MUTED,
+            fontSize=8.0, leading=10, textColor=MUTED,
         ),
         "footer_heading": ParagraphStyle(
             "PLGFooterHeading", parent=base["Normal"], fontName="Helvetica-Bold",
@@ -151,19 +152,22 @@ def _page_footer(canvas, doc, title, number):
     width, _ = LETTER
     canvas.setStrokeColor(NAVY)
     canvas.setLineWidth(0.8)
-    canvas.line(0.43 * inch, 0.47 * inch, width - 0.43 * inch, 0.47 * inch)
+    canvas.line(0.28 * inch, 0.39 * inch, width - 0.28 * inch, 0.39 * inch)
     canvas.setFont("Helvetica", 6.5)
     canvas.setFillColor(MUTED)
-    canvas.drawString(0.44 * inch, 0.28 * inch, "PLG Corporate Document Standard v1.0")
-    canvas.drawRightString(width - 0.44 * inch, 0.28 * inch, f"{title} {number} | Page {doc.page}")
+    canvas.drawString(0.28 * inch, 0.21 * inch, "Pinpoint Sourcing Co. | Worldwide Parts Sourcing & Logistics")
+    canvas.drawRightString(width - 0.28 * inch, 0.21 * inch, f"{title} {number} | Page {doc.page}")
+    footer_blocks = _footer_blocks()
+    footer_blocks.wrapOn(canvas, 7.94 * inch, 0.70 * inch)
+    footer_blocks.drawOn(canvas, 0.28 * inch, 0.47 * inch)
     canvas.restoreState()
 
 
 def _document(path: Path, quote, title: str):
     doc = BaseDocTemplate(
         str(path), pagesize=LETTER,
-        leftMargin=0.43 * inch, rightMargin=0.43 * inch,
-        topMargin=0.38 * inch, bottomMargin=0.63 * inch,
+        leftMargin=0.28 * inch, rightMargin=0.28 * inch,
+        topMargin=0.27 * inch, bottomMargin=1.22 * inch,
         title=f"{title} {_value(quote, 'quote_number')}",
         author="Pinpoint Sourcing Co.",
     )
@@ -186,57 +190,79 @@ def _header(quote, internal: bool):
     logo_flow = []
     if logo:
         try:
-            logo_flow.append(Image(str(logo), width=1.28 * inch, height=0.63 * inch))
+            logo_flow.append(Image(str(logo), width=2.50 * inch, height=0.68 * inch))
         except Exception:
             pass
     if not logo_flow:
-        logo_flow.append(Paragraph("PLG", ParagraphStyle(
+        logo_flow.append(Paragraph("PPS", ParagraphStyle(
             "FallbackLogo", parent=s["brand"], fontSize=30, leading=31
         )))
 
     business = [
-        Paragraph("PINPOINT SOURCING CO.", s["brand"]),
-        Paragraph("Worldwide Parts Sourcing &amp; Logistics", s["tagline"]),
-        Spacer(1, 3),
         Paragraph("2033 W McNab Rd Ste S, Pompano Beach, FL 33069", s["contact"]),
         Paragraph("USA: +1 (561) 978-4452 &nbsp; | &nbsp; Jamaica: +1 (876) 429-0046", s["contact"]),
-        Paragraph("partslinkglobal@icloud.com", s["contact"]),
+        Paragraph("pinpointsourcing@icloud.com", s["contact"]),
     ]
 
     title = "INTERNAL QUOTE" if internal else "QUOTE"
+
+    quote_number_style = ParagraphStyle(
+        "PPSQuoteNumber",
+        parent=s["small"],
+        fontName="Helvetica-Bold",
+        fontSize=11.5,
+        leading=13,
+        textColor=BLUE,
+        alignment=TA_RIGHT,
+        rightIndent=4,
+    )
+
+    meta_rows = [
+        ["Date", _date_text(_value(quote, "quote_date"))],
+        ["Valid Until", _valid_until(_value(quote, "quote_date"))],
+        ["Status", str(_value(quote, "status", "DRAFT"))],
+    ]
+    meta_rows_display = [["", row[0], row[1]] for row in meta_rows]
+
     meta = [
         Paragraph(title, s["doc_title"]),
-        Spacer(1, 4),
-        Table([
-            ["Quote No.", str(_value(quote, "quote_number"))],
-            ["Date", _date_text(_value(quote, "quote_date"))],
-            ["Valid Until", _valid_until(_value(quote, "quote_date"))],
-            ["Status", str(_value(quote, "status", "DRAFT"))],
-        ], colWidths=[0.78 * inch, 1.28 * inch], style=[
-            ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
-            ("FONTNAME", (1,0), (1,-1), "Helvetica"),
-            ("FONTSIZE", (0,0), (-1,-1), 7.7),
-            ("TEXTCOLOR", (0,0), (-1,-1), INK),
-            ("ALIGN", (1,0), (1,-1), "RIGHT"),
-            ("TOPPADDING", (0,0), (-1,-1), 2),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 2),
-            ("TEXTCOLOR", (1,-1), (1,-1), BLUE),
-            ("FONTNAME", (1,-1), (1,-1), "Helvetica-Bold"),
-        ]),
+        Spacer(1, 1),
+        Paragraph(str(_value(quote, "quote_number")), quote_number_style),
+        Spacer(1, 5),
+        Table(
+            meta_rows_display,
+            colWidths=[0.85 * inch, 0.65 * inch, 1.16 * inch],
+            hAlign="RIGHT",
+            style=[
+                ("FONTNAME", (1,0), (1,-1), "Helvetica-Bold"),
+                ("FONTNAME", (2,0), (2,-1), "Helvetica"),
+                ("FONTSIZE", (0,0), (-1,-1), 7.7),
+                ("TEXTCOLOR", (1,0), (1,-1), INK),
+                ("ALIGN", (1,0), (1,-1), "LEFT"),
+                ("LEFTPADDING", (1,0), (1,-1), 2),
+                ("ALIGN", (2,0), (2,-1), "RIGHT"),
+                ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+                ("TOPPADDING", (0,0), (-1,-1), 2),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+                ("TEXTCOLOR", (2,-1), (2,-1), BLUE),
+                ("FONTNAME", (2,-1), (2,-1), "Helvetica-Bold"),
+            ],
+        ),
     ]
 
+    company_block = logo_flow + [Spacer(1, 5)] + business
+
     table = Table(
-        [[logo_flow, business, meta]],
-        colWidths=[1.42 * inch, 3.72 * inch, 2.18 * inch],
+        [[company_block, meta]],
+        colWidths=[5.28 * inch, 2.66 * inch],
     )
     table.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("LEFTPADDING", (0,0), (-1,-1), 0),
+        ("LEFTPADDING", (0,0), (0,0), 8),
         ("RIGHTPADDING", (0,0), (-1,-1), 0),
         ("TOPPADDING", (0,0), (-1,-1), 0),
         ("BOTTOMPADDING", (0,0), (-1,-1), 0),
-        ("LINEBEFORE", (2,0), (2,0), 0.7, LINE),
-        ("LEFTPADDING", (2,0), (2,0), 14),
     ]))
     return table
 
@@ -251,7 +277,7 @@ def _info_box(title, rows):
             Table([[
                 Paragraph(f"{label}:", s["label"]),
                 Paragraph(str(value or "Not Provided"), s["value"]),
-            ]], colWidths=[0.83 * inch, 2.7 * inch], style=[
+            ]], colWidths=[1.12 * inch, 2.41 * inch], style=[
                 ("LEFTPADDING", (0,0), (-1,-1), 0),
                 ("RIGHTPADDING", (0,0), (-1,-1), 0),
                 ("TOPPADDING", (0,0), (-1,-1), 1),
@@ -259,7 +285,7 @@ def _info_box(title, rows):
                 ("VALIGN", (0,0), (-1,-1), "TOP"),
             ])
         ])
-    box = Table(data, colWidths=[3.67 * inch])
+    box = Table(data, colWidths=[3.92 * inch])
     box.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), PALE_BLUE),
         ("BOX", (0,0), (-1,-1), 0.65, LINE),
@@ -286,7 +312,7 @@ def _information(quote):
         ("Year", _value(quote, "year", "Not Provided")),
         ("VIN / PIN / Serial", _value(quote, "pin_serial", "Not Provided")),
     ])
-    table = Table([[customer, machine]], colWidths=[3.72 * inch, 3.72 * inch])
+    table = Table([[customer, machine]], colWidths=[3.97 * inch, 3.97 * inch])
     table.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("LEFTPADDING", (0,0), (-1,-1), 0),
@@ -353,7 +379,7 @@ def _customer_information(quote):
 
     table = Table(
         [[customer_lines, machine_lines]],
-        colWidths=[3.72 * inch, 3.72 * inch],
+        colWidths=[3.97 * inch, 3.97 * inch],
     )
 
     table.setStyle(TableStyle([
@@ -370,7 +396,7 @@ def _customer_information(quote):
     return table
 
 def _section_bar(text):
-    return Table([[text]], colWidths=[7.44 * inch], style=[
+    return Table([[text]], colWidths=[7.94 * inch], style=[
         ("BACKGROUND", (0,0), (-1,-1), NAVY),
         ("TEXTCOLOR", (0,0), (-1,-1), WHITE),
         ("FONTNAME", (0,0), (-1,-1), "Helvetica-Bold"),
@@ -430,11 +456,11 @@ def _customer_items(items):
     table = Table(
         rows,
         colWidths=[
-            0.48 * inch,
-            1.25 * inch,
-            3.25 * inch,
-            1.10 * inch,
-            1.36 * inch,
+            0.45 * inch,
+            1.28 * inch,
+            3.82 * inch,
+            1.08 * inch,
+            1.31 * inch,
         ],
         repeatRows=1,
     )
@@ -534,7 +560,7 @@ def _payment_box():
             "PaymentHeader", parent=s["label"], fontSize=9.5, textColor=NAVY
         ))],
         [inner],
-    ], colWidths=[4.52*inch])
+    ], colWidths=[4.82 * inch])
     box.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), PALE_BLUE),
         ("BOX", (0,0), (-1,-1), 0.65, LINE),
@@ -596,7 +622,7 @@ def _totals_box(quote, internal: bool):
 
     table = Table(
         rows,
-        colWidths=[1.35 * inch, 1.57 * inch],
+        colWidths=[1.20 * inch, 1.92 * inch],
     )
 
     final_row = len(rows) - 1
@@ -629,7 +655,7 @@ def _totals_box(quote, internal: bool):
 def _bottom_blocks(quote, internal):
     payment = _payment_box()
     totals = _totals_box(quote, internal)
-    table = Table([[payment, totals]], colWidths=[4.52*inch,2.92*inch])
+    table = Table([[payment, totals]], colWidths=[4.82*inch,3.12*inch])
     table.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
         ("LEFTPADDING", (0,0), (-1,-1), 0),
@@ -693,7 +719,7 @@ def _quote_notice(internal):
                     fontName="Helvetica-Bold",
                 ),
             )]],
-            colWidths=[7.44 * inch],
+            colWidths=[7.94 * inch],
             style=[
                 (
                     "BACKGROUND",
@@ -735,7 +761,7 @@ def build_quote_pdf(quote, items: Iterable, path: Path, internal: bool):
             ("BOTTOMPADDING", (0,0), (-1,-1), 0),
         ]),
         Spacer(1, 10),
-        _information(quote) if internal else _customer_information(quote),
+        _information(quote),
         Spacer(1, 10),
         _section_bar("QUOTED ITEMS" if not internal else "INTERNAL COST & PROFIT DETAIL"),
         _internal_items(items) if internal else _customer_items(items),
@@ -743,8 +769,6 @@ def build_quote_pdf(quote, items: Iterable, path: Path, internal: bool):
         _quote_notice(internal),
         Spacer(1, 10),
         _bottom_blocks(quote, internal),
-        Spacer(1, 4),
-        _footer_blocks(),
     ]
     doc.build(story)
 
