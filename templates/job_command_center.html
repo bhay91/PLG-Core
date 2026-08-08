@@ -518,7 +518,7 @@
   {% endif %}
 </div></div>
     {% if basket_items %}
-    <div style="overflow-x:auto"><table class="cc-ready-table"><thead><tr><th>Supplier</th><th>Part Numbers</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Cost</th><th>Markup %</th><th>Markup $</th><th>Customer Unit</th><th>Total</th><th>Status</th><th>Verification</th><th>Actions</th></tr></thead><tbody>
+    <div style="overflow-x:auto"><table class="cc-ready-table"><thead><tr><th>Supplier</th><th>Part Numbers</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Cost</th><th>Markup %</th><th>Markup $</th><th>Customer Unit</th><th>Total</th><th>Status</th><th>Confidence</th><th>Verification</th><th>Actions</th></tr></thead><tbody>
     {% for item in basket_items %}{% set cost = item.supplier_unit_cost or 0 %}{% if item.markup_percent is not none %}{% set markup = item.markup_percent %}{% set customer_unit = (cost * (1 + markup / 100))|round(2) %}{% elif cost <= 50 %}{% set markup = 40 %}{% set customer_unit = (cost * 1.40)|round(0, 'ceil') %}{% elif cost <= 200 %}{% set markup = 30 %}{% set customer_unit = (cost * 1.30)|round(0, 'ceil') %}{% elif cost <= 500 %}{% set markup = 25 %}{% set customer_unit = (cost * 1.25)|round(0, 'ceil') %}{% else %}{% set markup = 20 %}{% set customer_unit = (cost * 1.20)|round(0, 'ceil') %}{% endif %}
     <tr>
 <td><strong>{{ item.supplier_name or "Manual Vendor" }}</strong></td>
@@ -620,6 +620,23 @@
     {{ current_status }}
   {% endif %}
 </span>
+</td>
+
+<td>
+<input
+  form="part-update-{{ item.id }}"
+  type="number"
+  name="confidence"
+  value="{% if item.confidence is not none %}{{ item.confidence }}{% endif %}"
+  min="0"
+  max="1"
+  step="0.01"
+  placeholder="0–1"
+  title="Candidate confidence from 0.0 to 1.0"
+>
+{% if item.confidence is not none %}
+<small>{{ "%.0f"|format(item.confidence * 100) }}%</small>
+{% endif %}
 </td>
 
 <td>

@@ -1531,6 +1531,7 @@ def update_basket_item_form(
     part_status: str = Form(""),
     verification_status: str = Form("UNVERIFIED"),
     verification_note: str = Form(""),
+    confidence: float | None = Form(None),
 ):
     valid_statuses = {
         "RESEARCH",
@@ -1553,6 +1554,12 @@ def update_basket_item_form(
         raise HTTPException(
             status_code=400,
             detail="Invalid verification status.",
+        )
+
+    if confidence is not None and not 0.0 <= confidence <= 1.0:
+        raise HTTPException(
+            status_code=400,
+            detail="Confidence must be between 0.0 and 1.0.",
         )
 
     requested_verification_note = verification_note.strip()
@@ -1619,6 +1626,7 @@ def update_basket_item_form(
             part_status=new_status,
             verification_status=requested_verification_status,
             verification_note=requested_verification_note,
+            confidence=confidence,
         ),
     )
 
