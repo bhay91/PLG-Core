@@ -1526,6 +1526,8 @@ def update_basket_item_form(
     supplier_unit_cost: float = Form(...),
     markup_percent: float = Form(...),
     part_status: str = Form(""),
+    verification_status: str = Form("UNVERIFIED"),
+    verification_note: str = Form(""),
 ):
     valid_statuses = {
         "RESEARCH",
@@ -1535,10 +1537,35 @@ def update_basket_item_form(
     }
     requested_status = part_status.strip().upper()
 
+    valid_verification_statuses = {
+        "UNVERIFIED",
+        "VERIFIED",
+        "REJECTED",
+        "OVERRIDE",
+    }
+    requested_verification_status = (
+        verification_status.strip().upper() or "UNVERIFIED"
+    )
+    if requested_verification_status not in valid_verification_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid verification status.",
+        )
+
+    requested_verification_note = verification_note.strip()
+    if (
+        requested_verification_status == "OVERRIDE"
+        and not requested_verification_note
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Manual Override requires a verification note.",
+        )
+
     with closing(get_connection()) as connection:
         old_item = connection.execute(
             """
-            SELECT requested_description, part_status
+            SELECT requested_description, part_status, verification_status
             FROM basket_items
             WHERE id = ?
             """,
@@ -1553,6 +1580,10 @@ def update_basket_item_form(
 
     old_status = (
         old_item["part_status"] or "RESEARCH"
+    ).strip().upper()
+
+    old_verification_status = (
+        old_item["verification_status"] or "UNVERIFIED"
     ).strip().upper()
 
     new_status = (
@@ -1576,8 +1607,42 @@ def update_basket_item_form(
             supplier_unit_cost=supplier_unit_cost,
             markup_percent=markup_percent,
             part_status=new_status,
+            verification_status=requested_verification_status,
+            verification_note=requested_verification_note,
         ),
     )
+
+    if old_verification_status != requested_verification_status:
+        verification_labels = {
+            "UNVERIFIED": "Unverified",
+            "VERIFIED": "Verified",
+            "REJECTED": "Rejected",
+            "OVERRIDE": "Manual Override",
+        }
+
+        description = (
+            old_item["requested_description"]
+            or "Part"
+        ).strip()
+
+        with closing(get_connection()) as connection:
+            log_job_event(
+                connection,
+                job_id=job_id,
+                event_type="PART_VERIFICATION_CHANGED",
+                icon="✓",
+                message=(
+                    f"{description} verification changed from "
+                    f"{verification_labels.get(old_verification_status, old_verification_status.title())} "
+                    f"to {verification_labels[requested_verification_status]}"
+                    + (
+                        f" — Override note: {requested_verification_note}"
+                        if requested_verification_status == "OVERRIDE"
+                        else ""
+                    )
+                ),
+            )
+            connection.commit()
 
     if old_status != new_status:
         status_icons = {

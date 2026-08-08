@@ -655,3 +655,62 @@ def _migration_0011_machine_ownership_history(
 MIGRATIONS.append(
     ("0011_machine_ownership_history", _migration_0011_machine_ownership_history)
 )
+
+def _migration_0012_part_verification_status(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add independent verification state for basket candidates."""
+
+    basket_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(basket_items)"
+        ).fetchall()
+    }
+
+    if "verification_status" not in basket_columns:
+        connection.execute(
+            """
+            ALTER TABLE basket_items
+            ADD COLUMN verification_status TEXT NOT NULL DEFAULT 'UNVERIFIED'
+            """
+        )
+
+    connection.execute(
+        """
+        UPDATE basket_items
+        SET verification_status = 'UNVERIFIED'
+        WHERE verification_status IS NULL
+           OR TRIM(verification_status) = ''
+        """
+    )
+
+
+MIGRATIONS.append(
+    ("0012_part_verification_status", _migration_0012_part_verification_status)
+)
+
+def _migration_0013_basket_verification_note(
+    connection: sqlite3.Connection,
+) -> None:
+    """Store the current verification or override note on basket candidates."""
+
+    basket_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(basket_items)"
+        ).fetchall()
+    }
+
+    if "verification_note" not in basket_columns:
+        connection.execute(
+            """
+            ALTER TABLE basket_items
+            ADD COLUMN verification_note TEXT NOT NULL DEFAULT ''
+            """
+        )
+
+
+MIGRATIONS.append(
+    ("0013_basket_verification_note", _migration_0013_basket_verification_note)
+)

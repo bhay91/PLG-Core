@@ -518,7 +518,7 @@
   {% endif %}
 </div></div>
     {% if basket_items %}
-    <div style="overflow-x:auto"><table class="cc-ready-table"><thead><tr><th>Supplier</th><th>Part Number</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Cost</th><th>Markup %</th><th>Markup $</th><th>Customer Unit</th><th>Total</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+    <div style="overflow-x:auto"><table class="cc-ready-table"><thead><tr><th>Supplier</th><th>Part Number</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Cost</th><th>Markup %</th><th>Markup $</th><th>Customer Unit</th><th>Total</th><th>Status</th><th>Verification</th><th>Actions</th></tr></thead><tbody>
     {% for item in basket_items %}{% set cost = item.supplier_unit_cost or 0 %}{% if item.markup_percent is not none %}{% set markup = item.markup_percent %}{% set customer_unit = (cost * (1 + markup / 100))|round(2) %}{% elif cost <= 50 %}{% set markup = 40 %}{% set customer_unit = (cost * 1.40)|round(0, 'ceil') %}{% elif cost <= 200 %}{% set markup = 30 %}{% set customer_unit = (cost * 1.30)|round(0, 'ceil') %}{% elif cost <= 500 %}{% set markup = 25 %}{% set customer_unit = (cost * 1.25)|round(0, 'ceil') %}{% else %}{% set markup = 20 %}{% set customer_unit = (cost * 1.20)|round(0, 'ceil') %}{% endif %}
     <tr>
 <td><strong>{{ item.supplier_name or "Manual Vendor" }}</strong></td>
@@ -593,6 +593,26 @@
     {{ current_status }}
   {% endif %}
 </span>
+</td>
+
+<td>
+{% set verification_status = item.verification_status or "UNVERIFIED" %}
+<select
+  form="part-update-{{ item.id }}"
+  name="verification_status"
+>
+  <option value="UNVERIFIED" {% if verification_status == "UNVERIFIED" %}selected{% endif %}>Unverified</option>
+  <option value="VERIFIED" {% if verification_status == "VERIFIED" %}selected{% endif %}>Verified</option>
+  <option value="REJECTED" {% if verification_status == "REJECTED" %}selected{% endif %}>Rejected</option>
+  <option value="OVERRIDE" {% if verification_status == "OVERRIDE" %}selected{% endif %}>Manual Override</option>
+</select>
+  <input
+    form="part-update-{{ item.id }}"
+    type="text"
+    name="verification_note"
+    value="{{ item.verification_note or '' }}"
+    placeholder="Verification / override note"
+  >
 </td>
 
 <td>

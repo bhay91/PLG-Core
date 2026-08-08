@@ -106,10 +106,11 @@ def add_item(job_id: int, payload: BasketItemCreate):
                 basket_id, requested_description,
                 manufacturer_part_number, supplier_part_number,
                 supplier_name, source_type, brand, quantity,
-                supplier_unit_cost, availability, lead_time,
+                supplier_unit_cost, verification_status,
+                verification_note, availability, lead_time,
                 selected, confidence, source_url
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 basket["id"],
@@ -121,6 +122,8 @@ def add_item(job_id: int, payload: BasketItemCreate):
                 payload.brand.strip(),
                 payload.quantity,
                 payload.supplier_unit_cost,
+                payload.verification_status.strip().upper() or "UNVERIFIED",
+                payload.verification_note.strip(),
                 payload.availability.strip(),
                 payload.lead_time.strip(),
                 int(payload.selected),
@@ -161,7 +164,7 @@ def update_item(item_id: int, payload: BasketItemUpdate):
     allowed = {
         "requested_description", "manufacturer_part_number",
         "supplier_part_number", "supplier_name", "source_type",
-        "brand", "quantity", "supplier_unit_cost", "markup_percent", "part_status", "availability",
+        "brand", "quantity", "supplier_unit_cost", "markup_percent", "part_status", "verification_status", "verification_note", "availability",
         "lead_time", "selected", "confidence", "source_url",
     }
 
@@ -712,6 +715,37 @@ def commit_basket(job_id: int):
                 detail="Select at least one basket item.",
             )
 
+        invalid_items = []
+        for item in items:
+            candidate_status = (
+                item["verification_status"] or "UNVERIFIED"
+            ).strip().upper()
+            candidate_note = (
+                item["verification_note"] or ""
+            ).strip()
+
+            if (
+                candidate_status not in {"VERIFIED", "OVERRIDE"}
+                or (
+                    candidate_status == "OVERRIDE"
+                    and not candidate_note
+                )
+            ):
+                invalid_items.append(item)
+
+        if invalid_items:
+            descriptions = ", ".join(
+                item["requested_description"] or f"Item {item['id']}"
+                for item in invalid_items
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "All selected parts must be verified or have a documented "
+                    f"manual override before commit: {descriptions}"
+                ),
+            )
+
         created = 0
         for item in items:
             source_type = (item["source_type"] or "AFTERMARKET").upper()
@@ -719,24 +753,43 @@ def commit_basket(job_id: int):
                 item["manufacturer_part_number"]
                 if source_type == "OEM" else ""
             )
+            candidate_verification_status = (
+                item["verification_status"] or "UNVERIFIED"
+            ).strip().upper()
+            verification_note = (
+                item["verification_note"] or ""
+            ).strip()
+
+            # Legacy Job Parts treat VERIFIED as the accepted gate.
+            # Preserve manual override provenance separately.
+            committed_verification_status = "VERIFIED"
+            committed_verification_source = (
+                "Manual Override"
+                if candidate_verification_status == "OVERRIDE"
+                else item["supplier_name"] or "Basket"
+            )
+
             cursor = connection.execute(
                 """
                 INSERT INTO job_parts (
                     job_id, requested_description, quantity,
                     oem_part_number, oem_description,
                     verification_status, verification_source,
+                    verification_notes,
                     oem_dealer_name, oem_dealer_price,
                     oem_dealer_availability, source_url,
                     product_url, captured_at
                 )
-                VALUES (?, ?, ?, ?, ?, 'VERIFIED', ?, ?, ?, ?, ?, ?,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                         CURRENT_TIMESTAMP)
                 """,
                 (
                     job_id, item["requested_description"], item["quantity"],
                     oem_number,
                     item["requested_description"] if oem_number else "",
-                    item["supplier_name"] or "Basket",
+                    committed_verification_status,
+                    committed_verification_source,
+                    verification_note,
                     item["supplier_name"] if source_type == "OEM" else "",
                     item["supplier_unit_cost"] if source_type == "OEM" else None,
                     item["availability"] if source_type == "OEM" else "",
