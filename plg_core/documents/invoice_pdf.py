@@ -148,7 +148,7 @@ def _styles():
         ),
         "doc_title": ParagraphStyle(
             "PLGDocTitle", parent=base["Heading1"], fontName="Helvetica-Bold",
-            fontSize=26, leading=28, alignment=TA_RIGHT, textColor=NAVY,
+            fontSize=26, leading=28, alignment=TA_RIGHT, rightIndent=4, textColor=NAVY,
         ),
         "label": ParagraphStyle(
             "PLGLabel", parent=base["Normal"], fontName="Helvetica-Bold",
@@ -349,7 +349,10 @@ def _header(invoice, internal: bool):
         leading=13,
         textColor=BLUE,
         alignment=TA_RIGHT,
+        rightIndent=4,
     )
+
+    meta_rows_display = [["", row[0], row[1]] for row in meta_rows]
 
     meta = [
         Paragraph(title, s["doc_title"]),
@@ -357,15 +360,17 @@ def _header(invoice, internal: bool):
         Paragraph(str(_value(invoice, "invoice_number")), invoice_number_style),
         Spacer(1, 5),
         Table(
-            meta_rows,
-            colWidths=[0.85 * inch, 1.65 * inch],
+            meta_rows_display,
+            colWidths=[1.05 * inch, 0.60 * inch, 0.85 * inch],
+            hAlign="RIGHT",
             style=[
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("FONTNAME", (1, 0), (1, -2), "Helvetica"),
+                ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+                ("FONTNAME", (2, 0), (2, -2), "Helvetica"),
                 ("FONTSIZE", (0, 0), (-1, -1), 7.7),
-                ("TEXTCOLOR", (0, 0), (0, -1), INK),
-                ("ALIGN", (0, 0), (0, -1), "LEFT"),
-            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("TEXTCOLOR", (1, 0), (1, -1), INK),
+                ("ALIGN", (1, 0), (1, -1), "LEFT"),
+            ("LEFTPADDING", (1, 0), (1, -1), 2),
+            ("ALIGN", (2, 0), (2, -1), "RIGHT"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("TOPPADDING", (0, 0), (-1, -1), 2),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
