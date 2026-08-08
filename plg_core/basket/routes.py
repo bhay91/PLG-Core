@@ -402,6 +402,13 @@ def convert_opportunity_to_job(opportunity_id: int, opportunity_machine_id: Anno
         job_id = cursor.lastrowid
         research = connection.execute("SELECT * FROM opportunity_research WHERE opportunity_id = ? ORDER BY id", (opportunity_id,)).fetchall()
         connection.execute("UPDATE opportunities SET status = 'CONVERTED', converted_job_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (job_id, opportunity_id))
+        log_job_event(
+            connection,
+            job_id=job_id,
+            event_type="OPPORTUNITY_CONVERTED",
+            message=f"Job created from Opportunity {opportunity['opportunity_number']}.",
+            icon="↗",
+        )
         connection.commit()
     for item in research:
         add_item(job_id, BasketItemCreate(requested_description=item["part_description"] or "Research candidate", manufacturer_part_number=item["oem_part_number"] or "", supplier_part_number=item["alternate_part_number"] or "", supplier_name=item["supplier_name"] or "", source_type=(item["source_type"] or "RESEARCH").upper(), selected=False, confidence=item["confidence"], source_url=item["source_url"] or ""))
