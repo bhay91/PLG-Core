@@ -12,6 +12,7 @@ from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
 from plg_core.jobs.engine import JobEngine
 from plg_core.machines.identifiers import find_machine_by_identifier
 from plg_core.timeline import log_job_event
+from plg_core.pricing import pricing_assessment
 from plg_core.basket.service import (
     add_item,
     advance_all_parts_workflow,
@@ -646,6 +647,12 @@ def basket_page(request: Request, job_id: int):
         item for item in basket["items"]
         if item["selected"]
     ]
+
+    for item in basket_items:
+        item["pricing"] = pricing_assessment(
+            item.get("supplier_unit_cost") or 0,
+            item.get("markup_percent"),
+        )
 
     selected_status_items = [
         item

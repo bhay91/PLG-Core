@@ -5305,3 +5305,23 @@ small.secondary {
     grid-template-columns: 1fr;
   }
 }
+
+/* PPS Pricing Assistant */
+.cc-pricing-recommendation {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.cc-pricing-warning {
+  display: block;
+  margin-top: 3px;
+  color: #b33d3d;
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1.25;
+  white-space: nowrap;
+}

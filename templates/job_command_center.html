@@ -519,7 +519,11 @@
 </div></div>
     {% if basket_items %}
     <div style="overflow-x:auto"><table class="cc-ready-table"><thead><tr><th>Supplier</th><th>Part Numbers</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Cost</th><th>Markup %</th><th>Markup $</th><th>Customer Unit</th><th>Total</th><th>Status</th><th>Confidence</th><th>Verification</th><th>Actions</th></tr></thead><tbody>
-    {% for item in basket_items %}{% set cost = item.supplier_unit_cost or 0 %}{% if item.markup_percent is not none %}{% set markup = item.markup_percent %}{% set customer_unit = (cost * (1 + markup / 100))|round(2) %}{% elif cost <= 50 %}{% set markup = 40 %}{% set customer_unit = (cost * 1.40)|round(0, 'ceil') %}{% elif cost <= 200 %}{% set markup = 30 %}{% set customer_unit = (cost * 1.30)|round(0, 'ceil') %}{% elif cost <= 500 %}{% set markup = 25 %}{% set customer_unit = (cost * 1.25)|round(0, 'ceil') %}{% else %}{% set markup = 20 %}{% set customer_unit = (cost * 1.20)|round(0, 'ceil') %}{% endif %}
+    {% for item in basket_items %}
+    {% set cost = item.supplier_unit_cost or 0 %}
+    {% set pricing = item.pricing %}
+    {% set markup = pricing.current_markup_percent %}
+    {% set customer_unit = pricing.current_unit_price %}
     <tr>
 <td><strong>{{ item.supplier_name or "Manual Vendor" }}</strong></td>
 <td>
@@ -584,6 +588,17 @@
        step="0.01"
        min="0"
        required>
+<small class="cc-pricing-recommendation">
+  Recommended: {{ "%.2f"|format(pricing.recommended_markup_percent) }}%
+  · ${{ "%.2f"|format(pricing.recommended_unit_price) }}
+</small>
+{% if pricing.status == "BELOW_RECOMMENDED" %}
+<small class="cc-pricing-warning">Below recommended margin</small>
+{% elif pricing.status == "AT_COST" %}
+<small class="cc-pricing-warning">No parts margin</small>
+{% elif pricing.status == "MISSING_COST" %}
+<small class="cc-pricing-warning">Supplier cost required</small>
+{% endif %}
 </td>
 
 <td>

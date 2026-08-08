@@ -3,6 +3,16 @@ from __future__ import annotations
 import math
 
 
+def recommended_markup_percent(cost: float) -> float:
+    if cost <= 50:
+        return 40.0
+    if cost <= 200:
+        return 30.0
+    if cost <= 500:
+        return 25.0
+    return 20.0
+
+
 def customer_unit_price(
     cost: float,
     markup_percent: float | None = None,
@@ -10,13 +20,46 @@ def customer_unit_price(
     if markup_percent is not None:
         return round(cost * (1 + float(markup_percent) / 100), 2)
 
-    if cost <= 50:
-        markup = 0.40
-    elif cost <= 200:
-        markup = 0.30
-    elif cost <= 500:
-        markup = 0.25
-    else:
-        markup = 0.20
-
+    markup = recommended_markup_percent(cost) / 100
     return float(math.ceil(cost * (1 + markup)))
+
+
+def pricing_assessment(
+    cost: float,
+    markup_percent: float | None = None,
+) -> dict[str, float | str | bool]:
+    cost = float(cost or 0)
+    recommended_markup = recommended_markup_percent(cost)
+    recommended_price = customer_unit_price(cost)
+
+    effective_markup = (
+        recommended_markup
+        if markup_percent is None
+        else float(markup_percent)
+    )
+    current_price = customer_unit_price(
+        cost,
+        None if markup_percent is None else effective_markup,
+    )
+    unit_profit = round(current_price - cost, 2)
+
+    if cost <= 0:
+        status = "MISSING_COST"
+    elif current_price < cost:
+        status = "BELOW_COST"
+    elif current_price == cost:
+        status = "AT_COST"
+    elif effective_markup < recommended_markup:
+        status = "BELOW_RECOMMENDED"
+    else:
+        status = "ON_TARGET"
+
+    return {
+        "recommended_markup_percent": recommended_markup,
+        "recommended_unit_price": recommended_price,
+        "current_markup_percent": effective_markup,
+        "current_unit_price": current_price,
+        "unit_profit": unit_profit,
+        "status": status,
+        "below_recommended": status == "BELOW_RECOMMENDED",
+    }
