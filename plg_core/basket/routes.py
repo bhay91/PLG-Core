@@ -78,11 +78,23 @@ async def import_opportunity(request: Request):
 
 
 @router.get("/opportunities", response_class=HTMLResponse)
-def opportunities_page(request: Request, status: str = ""):
+def opportunities_page(request: Request, status: str = "", follow_up: str = ""):
     with closing(get_connection()) as connection:
         status = status.strip().upper()
-        where_clause = "WHERE o.status = ?" if status else ""
-        parameters = (status,) if status else ()
+        follow_up = follow_up.strip().lower()
+
+        conditions = []
+        parameters = []
+
+        if status:
+            conditions.append("o.status = ?")
+            parameters.append(status)
+
+        if follow_up == "today":
+            conditions.append("o.follow_up_date = ?")
+            parameters.append(date.today().isoformat())
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
         opportunities = connection.execute(
             f"""
@@ -115,7 +127,7 @@ def opportunities_page(request: Request, status: str = ""):
     return templates.TemplateResponse(
         request=request,
         name="opportunities.html",
-        context={"opportunities": opportunities, "status_filter": status},
+        context={"opportunities": opportunities, "status_filter": status, "follow_up_filter": follow_up},
     )
 
 
