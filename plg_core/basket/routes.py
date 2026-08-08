@@ -1568,7 +1568,8 @@ def update_basket_item_form(
     with closing(get_connection()) as connection:
         old_item = connection.execute(
             """
-            SELECT requested_description, part_status, verification_status
+            SELECT requested_description, part_status,
+                   verification_status, verification_note
             FROM basket_items
             WHERE id = ?
             """,
@@ -1588,6 +1589,9 @@ def update_basket_item_form(
     old_verification_status = (
         old_item["verification_status"] or "UNVERIFIED"
     ).strip().upper()
+    old_verification_note = (
+        old_item["verification_note"] or ""
+    ).strip()
 
     new_status = (
         requested_status
@@ -1618,7 +1622,10 @@ def update_basket_item_form(
         ),
     )
 
-    if old_verification_status != requested_verification_status:
+    if (
+        old_verification_status != requested_verification_status
+        or old_verification_note != requested_verification_note
+    ):
         verification_labels = {
             "UNVERIFIED": "Unverified",
             "VERIFIED": "Verified",
@@ -1638,12 +1645,16 @@ def update_basket_item_form(
                 event_type="PART_VERIFICATION_CHANGED",
                 icon="✓",
                 message=(
-                    f"{description} verification changed from "
-                    f"{verification_labels.get(old_verification_status, old_verification_status.title())} "
-                    f"to {verification_labels[requested_verification_status]}"
+                    (
+                        f"{description} verification changed from "
+                        f"{verification_labels.get(old_verification_status, old_verification_status.title())} "
+                        f"to {verification_labels[requested_verification_status]}"
+                        if old_verification_status != requested_verification_status
+                        else f"{description} verification note updated"
+                    )
                     + (
-                        f" — Override note: {requested_verification_note}"
-                        if requested_verification_status == "OVERRIDE"
+                        f" — Note: {requested_verification_note}"
+                        if requested_verification_note
                         else ""
                     )
                 ),
