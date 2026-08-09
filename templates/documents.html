@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+{% block title %}Documents · Pinpoint Sourcing Co.{% endblock %}
+
+{% block content %}
+<style>
+.docs-shell{
+  max-width:1280px;
+  margin:0 auto;
+  display:grid;
+  gap:18px
+}
+.docs-summary{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px
+}
+.docs-card{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:15px;
+  padding:17px;
+  box-shadow:var(--shadow-sm);
+  display:grid;
+  gap:4px
+}
+.docs-card strong{
+  font-size:27px;
+  color:var(--ink-strong)
+}
+.docs-card span{
+  font-weight:800
+}
+.docs-card small{
+  color:var(--muted)
+}
+.docs-search{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:15px;
+  padding:16px;
+  display:flex;
+  gap:10px;
+  align-items:center
+}
+.docs-search input{
+  flex:1
+}
+.docs-table-wrap{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:16px;
+  overflow:auto;
+  box-shadow:var(--shadow-sm)
+}
+.docs-table{
+  width:100%;
+  border-collapse:collapse;
+  min-width:900px
+}
+.docs-table th,
+.docs-table td{
+  padding:13px 15px;
+  text-align:left;
+  border-bottom:1px solid var(--line);
+  vertical-align:middle
+}
+.docs-table th{
+  background:#f7f9fc;
+  font-size:12px;
+  text-transform:uppercase;
+  color:var(--muted)
+}
+.docs-table tr:last-child td{
+  border-bottom:0
+}
+.docs-name{
+  display:grid;
+  gap:3px
+}
+.docs-name strong{
+  color:var(--ink-strong)
+}
+.docs-name small{
+  color:var(--muted);
+  word-break:break-all
+}
+.docs-badge{
+  display:inline-flex;
+  width:max-content;
+  padding:5px 9px;
+  border-radius:999px;
+  background:#eef4ff;
+  font-size:12px;
+  font-weight:850
+}
+.docs-empty{
+  padding:55px 25px;
+  text-align:center;
+  background:#fff;
+  border:1px dashed var(--line-strong);
+  border-radius:16px
+}
+@media(max-width:850px){
+  .docs-summary{
+    grid-template-columns:repeat(2,minmax(0,1fr))
+  }
+  .docs-search{
+    align-items:stretch;
+    flex-direction:column
+  }
+}
+</style>
+
+<div class="docs-shell">
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">DOCUMENT CENTER</p>
+      <h1>PPS Documents</h1>
+      <p>
+        Generated customer, internal and purchasing
+        documents stored by PPS.
+      </p>
+    </div>
+
+    <a class="button ghost" href="/accounting">
+      Accounting &amp; Audit
+    </a>
+  </section>
+
+  <section class="docs-summary">
+    <article class="docs-card">
+      <strong>{{ summary.total }}</strong>
+      <span>PDF Documents</span>
+      <small>Current search results</small>
+    </article>
+
+    <article class="docs-card">
+      <strong>{{ summary.quotes }}</strong>
+      <span>Quotes</span>
+      <small>Customer and internal copies</small>
+    </article>
+
+    <article class="docs-card">
+      <strong>{{ summary.invoices }}</strong>
+      <span>Invoices</span>
+      <small>Standard and paid copies</small>
+    </article>
+
+    <article class="docs-card">
+      <strong>{{ summary.purchasing }}</strong>
+      <span>Purchasing</span>
+      <small>Parts order sheets</small>
+    </article>
+  </section>
+
+  <form
+    method="get"
+    action="/documents"
+    class="docs-search"
+  >
+    <input
+      type="search"
+      name="q"
+      value="{{ query }}"
+      placeholder="Search customer, invoice, quote, filename or document type"
+      aria-label="Search PPS documents"
+    >
+
+    <button
+      class="button"
+      type="submit"
+    >
+      Search
+    </button>
+
+    {% if query %}
+    <a
+      class="button ghost"
+      href="/documents"
+    >
+      Clear
+    </a>
+    {% endif %}
+  </form>
+
+  {% if items %}
+  <section class="docs-table-wrap">
+    <table class="docs-table">
+      <thead>
+        <tr>
+          <th>Document</th>
+          <th>Customer</th>
+          <th>Type</th>
+          <th>Audience</th>
+          <th>Modified</th>
+          <th>Size</th>
+          <th></th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>
+            <div class="docs-name">
+              <strong>{{ item.name }}</strong>
+              <small>{{ item.relative_path }}</small>
+            </div>
+          </td>
+
+          <td>{{ item.customer }}</td>
+
+          <td>
+            <span class="docs-badge">
+              {{ item.document_type }}
+            </span>
+          </td>
+
+          <td>{{ item.audience }}</td>
+
+          <td>{{ item.modified_at }}</td>
+
+          <td>{{ item.size_kb }} KB</td>
+
+          <td>
+            <a
+              class="workspace-primary-link"
+              href="{{ item.open_url }}"
+              target="_blank"
+              rel="noopener"
+            >
+              Open PDF →
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  {% else %}
+  <div class="docs-empty">
+    {% if query %}
+    <strong>No documents matched “{{ query }}”.</strong>
+    <p>Try a customer name, PPS number or document type.</p>
+    {% else %}
+    <strong>No PPS PDFs found.</strong>
+    <p>
+      Generated quotes, invoices and purchasing
+      documents will appear here.
+    </p>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

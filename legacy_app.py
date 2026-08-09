@@ -754,6 +754,57 @@ def accounting_center(
     )
 
 
+@app.get(
+    "/documents",
+    response_class=HTMLResponse,
+)
+def document_center(
+    request: Request,
+    q: str = "",
+):
+    from plg_core.documents.library import (
+        scan_documents,
+    )
+
+    data = scan_documents(
+        BASE_DIR / "documents",
+        q=q,
+    )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="documents.html",
+        context={
+            **data,
+            "active_page": "documents",
+        },
+    )
+
+
+@app.get("/documents/file")
+def open_pps_document(
+    path: str,
+):
+    from plg_core.documents.library import (
+        resolve_document_path,
+    )
+
+    document = resolve_document_path(
+        BASE_DIR / "documents",
+        path,
+    )
+
+    return FileResponse(
+        path=document,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                f'inline; filename="{document.name}"'
+            )
+        },
+    )
+
+
 @app.get("/customers", response_class=HTMLResponse)
 def list_customers(request: Request, view: str = "active"):
     if view not in {"active", "inactive", "all"}: view = "active"
