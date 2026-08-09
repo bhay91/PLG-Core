@@ -3659,51 +3659,314 @@ FILES = {
                 raise HTTPException(status_code=401, detail="Invalid PPS API key.")
     '''),
     "plg_core/core_api/middleware.py": block('''
+        from __future__ import annotations
+
+        import hmac
         import os
         import uuid
 
+        from fastapi.responses import JSONResponse
+
+
+        WRITE_METHODS = {
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+        }
+
+
+        def _truthy(value: str | None) -> bool:
+            return str(value or "").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+
+
         def install_optional_api_hardening(app) -> None:
-            enabled = os.getenv("PPS_ENABLE_API_HARDENING", "").strip().lower() in {"1","true","yes","on"}
-            if not enabled:
-                return
+            """
+            Always install request tracing and safe response headers.
+
+            API-key enforcement remains environment controlled so
+            local browser development is not broken. When enabled,
+            only mutating /api/v1/* requests require the PPS API key.
+            """
+
+            hardening_enabled = _truthy(
+                os.getenv("PPS_ENABLE_API_HARDENING")
+            )
+
+            expected_key = os.getenv(
+                "PPS_API_KEY",
+                "",
+            ).strip()
 
             @app.middleware("http")
-            async def pps_api_hardening(request, call_next):
-                request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+            async def pps_api_hardening(
+                request,
+                call_next,
+            ):
+                request_id = (
+                    request.headers.get("X-Request-ID")
+                    or str(uuid.uuid4())
+                )
+
+                path = str(request.url.path or "")
+                method = str(request.method or "").upper()
+
+                protected_write = (
+                    hardening_enabled
+                    and path.startswith("/api/v1/")
+                    and method in WRITE_METHODS
+                )
+
+                if protected_write:
+                    supplied = str(
+                        request.headers.get(
+                            "X-PPS-API-Key",
+                            "",
+                        )
+                        or ""
+                    ).strip()
+
+                    if not expected_key:
+                        response = JSONResponse(
+                            status_code=503,
+                            content={
+                                "detail": (
+                                    "API hardening is enabled but "
+                                    "PPS_API_KEY is not configured."
+                                )
+                            },
+                        )
+
+                        _set_security_headers(
+                            response,
+                            request_id=request_id,
+                            api_response=True,
+                        )
+
+                        return response
+
+                    if (
+                        not supplied
+                        or not hmac.compare_digest(
+                            supplied,
+                            expected_key,
+                        )
+                    ):
+                        response = JSONResponse(
+                            status_code=401,
+                            content={
+                                "detail": "Invalid PPS API key."
+                            },
+                        )
+
+                        _set_security_headers(
+                            response,
+                            request_id=request_id,
+                            api_response=True,
+                        )
+
+                        return response
+
                 response = await call_next(request)
-                response.headers["X-Request-ID"] = request_id
-                response.headers["X-Content-Type-Options"] = "nosniff"
-                response.headers["Referrer-Policy"] = "same-origin"
+
+                _set_security_headers(
+                    response,
+                    request_id=request_id,
+                    api_response=path.startswith("/api/"),
+                )
+
                 return response
+
+
+        def _set_security_headers(
+            response,
+            *,
+            request_id: str,
+            api_response: bool,
+        ) -> None:
+            response.headers["X-Request-ID"] = request_id
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["Referrer-Policy"] = "same-origin"
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+            response.headers[
+                "Permissions-Policy"
+            ] = "camera=(), microphone=(), geolocation=()"
+
+            if api_response:
+                response.headers[
+                    "Cache-Control"
+                ] = "no-store"
     '''),
     "plg_core/core_api/routes.py": block('''
+        from __future__ import annotations
+
+        import os
         from contextlib import closing
+
         from fastapi import APIRouter
+
         from legacy_app import get_connection
 
-        router = APIRouter(prefix="/api/v1/core", tags=["alpha19-core"])
+
+        router = APIRouter(
+            prefix="/api/v1/core",
+            tags=["alpha19-core"],
+        )
+
+
+        def _truthy(value: str | None) -> bool:
+            return str(value or "").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+
 
         @router.get("/ready")
         def ready():
             required = {
-                "customers", "machines", "jobs", "quotes", "invoices",
-                "supplier_orders", "supplier_order_items",
-                "receiving_events", "deliveries", "audit_logs",
+                "customers",
+                "machines",
+                "jobs",
+                "quotes",
+                "quote_events",
+                "invoices",
+                "invoice_events",
+                "supplier_orders",
+                "supplier_order_items",
+                "receiving_events",
+                "receiving_event_items",
+                "deliveries",
+                "delivery_items",
+                "audit_logs",
+                "api_idempotency_keys",
             }
-            with closing(get_connection()) as connection:
-                existing = {row["name"] for row in connection.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
-                ).fetchall()}
-            missing = sorted(required - existing)
-            return {"ok": not missing, "missing_tables": missing, "roadmap": "alpha-12-19-starter"}
+
+            database_check = "unknown"
+            missing = []
+
+            try:
+                with closing(
+                    get_connection()
+                ) as connection:
+                    existing = {
+                        row["name"]
+                        for row in connection.execute(
+                            """
+                            SELECT name
+                            FROM sqlite_master
+                            WHERE type='table'
+                            """
+                        ).fetchall()
+                    }
+
+                    missing = sorted(
+                        required - existing
+                    )
+
+                    quick_check = connection.execute(
+                        "PRAGMA quick_check"
+                    ).fetchone()
+
+                    database_check = str(
+                        quick_check[0]
+                        if quick_check
+                        else "unknown"
+                    ).lower()
+
+            except Exception:
+                database_check = "error"
+
+            hardening_enabled = _truthy(
+                os.getenv(
+                    "PPS_ENABLE_API_HARDENING"
+                )
+            )
+
+            api_key_configured = bool(
+                os.getenv(
+                    "PPS_API_KEY",
+                    "",
+                ).strip()
+            )
+
+            database_ok = (
+                database_check == "ok"
+            )
+
+            security_ok = (
+                not hardening_enabled
+                or api_key_configured
+            )
+
+            return {
+                "ok": (
+                    database_ok
+                    and not missing
+                    and security_ok
+                ),
+                "database_check": database_check,
+                "missing_tables": missing,
+                "security": {
+                    "hardening_enabled": (
+                        hardening_enabled
+                    ),
+                    "api_key_configured": (
+                        api_key_configured
+                    ),
+                    "write_api_protected": (
+                        hardening_enabled
+                        and api_key_configured
+                    ),
+                },
+                "roadmap": "alpha-19",
+            }
+
 
         @router.get("/capabilities")
         def capabilities():
             return {
-                "alpha_12_13": ["quote tracker", "quote status", "quote conversion adapter", "invoice tracker"],
-                "alpha_14_15": ["supplier orders", "receiving", "delivery"],
-                "alpha_16_18": ["customer API", "machine API", "admin dashboard", "audit logs"],
-                "alpha_19": ["versioned API", "readiness", "API-key template", "optional hardening middleware"],
+                "sales": [
+                    "quote lifecycle",
+                    "quote approval",
+                    "invoice conversion",
+                    "payments",
+                    "payment reversals",
+                    "invoice voiding",
+                ],
+                "purchasing": [
+                    "supplier purchase orders",
+                    "supplier cost adjustments",
+                    "receiving",
+                    "partial receiving",
+                    "customer delivery",
+                ],
+                "records": [
+                    "customers",
+                    "machines",
+                    "global search",
+                    "document center",
+                ],
+                "operations": [
+                    "workflow dashboard",
+                    "follow-up center",
+                    "accounting snapshot",
+                    "audit trail",
+                ],
+                "api": [
+                    "versioned API",
+                    "readiness",
+                    "request IDs",
+                    "security headers",
+                    "optional API-key write protection",
+                    "idempotency storage",
+                ],
             }
     '''),
 }
