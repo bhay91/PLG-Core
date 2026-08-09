@@ -223,6 +223,38 @@
         </div>
       </section>
 
+      <section class="panel invoice-payment-history">
+        <header>
+          <div>
+            <p class="eyebrow">INVOICE HISTORY</p>
+            <h2>Status history</h2>
+          </div>
+        </header>
+
+        {% if invoice_events %}
+        <div class="invoice-payment-list">
+          {% for event in invoice_events %}
+          <article class="invoice-payment-record">
+            <div>
+              <strong>{{ event.event_type|replace("_", " ")|title }}</strong>
+              <small>{{ event.notes or "Invoice status updated." }}</small>
+            </div>
+            <div>
+              {% if event.from_status or event.to_status %}
+              <strong>{{ event.from_status or "—" }} → {{ event.to_status or "—" }}</strong>
+              {% endif %}
+              <small>{{ event.created_at or "" }}</small>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          No invoice history recorded yet.
+        </div>
+        {% endif %}
+      </section>
+
       {% if payments %}
       <section class="panel invoice-payment-history">
         <div class="invoice-center-section-heading">

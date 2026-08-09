@@ -2431,6 +2431,16 @@ def invoice_documents(request: Request, invoice_id: int):
             (invoice_id,),
         ).fetchall()
 
+        invoice_events = connection.execute(
+            """
+            SELECT event_type, from_status, to_status, notes, created_at
+            FROM invoice_events
+            WHERE invoice_id = ?
+            ORDER BY id DESC
+            """,
+            (invoice_id,),
+        ).fetchall()
+
         payment_total = sum(
             float(payment["amount"] or 0)
             for payment in payments
@@ -2472,6 +2482,7 @@ def invoice_documents(request: Request, invoice_id: int):
             "invoice": invoice,
             "items": items,
             "payments": payments,
+            "invoice_events": invoice_events,
             "payment_total": payment_total,
             "paid_customer_invoice_exists": (
                 paid_paths["customer"].exists()
@@ -2497,6 +2508,8 @@ def receive_invoice_payment(
     reference: Annotated[str, Form()] = "",
     payment_date: Annotated[str, Form()] = "",
 ):
+    from plg_core.audit import write_audit
+
     amount = round(float(amount or 0), 2)
     payment_method = (payment_method or "").strip().upper()
     reference = (reference or "").strip()
@@ -2606,6 +2619,54 @@ def receive_invoice_payment(
                 new_status,
                 invoice_id,
             ),
+        )
+
+        previous_status = str(
+            invoice["status"] or ""
+        ).strip().upper()
+
+        payment_message = (
+            f"${amount:.2f} payment received for "
+            f"{invoice['invoice_number']} via "
+            f"{payment_method.title()}. "
+            f"Balance due ${max(new_balance, 0):.2f}."
+        )
+
+        connection.execute(
+            """
+            INSERT INTO invoice_events (
+                invoice_id,
+                event_type,
+                from_status,
+                to_status,
+                notes
+            )
+            VALUES (?, 'PAYMENT_RECEIVED', ?, ?, ?)
+            """,
+            (
+                invoice_id,
+                previous_status,
+                new_status,
+                payment_message,
+            ),
+        )
+
+        write_audit(
+            connection,
+            action="PAYMENT_RECEIVED",
+            entity_type="INVOICE",
+            entity_id=invoice_id,
+            summary=payment_message,
+            metadata={
+                "amount": amount,
+                "payment_method": payment_method,
+                "reference": reference,
+                "payment_date": payment_date,
+                "from_status": previous_status,
+                "to_status": new_status,
+                "balance_due": max(new_balance, 0),
+                "job_id": int(invoice["job_id"]),
+            },
         )
 
         if new_status == "PAID":
