@@ -88,66 +88,89 @@ def get_basket(job_id: int):
         return serialize_basket(connection, basket)
 
 
+def add_item_with_connection(
+    connection: sqlite3.Connection,
+    job_id: int,
+    payload: BasketItemCreate,
+):
+    """Add one item using an existing database transaction."""
+
+    basket = get_or_create_basket(connection, job_id)
+
+    connection.execute(
+        """
+        INSERT INTO basket_items (
+            basket_id, requested_description,
+            manufacturer_part_number, alternate_part_number,
+            supplier_part_number, supplier_name, source_type, brand, quantity,
+            supplier_unit_cost, markup_percent, verification_status,
+            verification_note, availability, lead_time,
+            selected, confidence, source_url
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            basket["id"],
+            payload.requested_description.strip(),
+            payload.manufacturer_part_number.strip(),
+            payload.alternate_part_number.strip(),
+            payload.supplier_part_number.strip(),
+            payload.supplier_name.strip(),
+            payload.source_type.strip().upper() or "AFTERMARKET",
+            payload.brand.strip(),
+            payload.quantity,
+            payload.supplier_unit_cost,
+            payload.markup_percent,
+            payload.verification_status.strip().upper() or "UNVERIFIED",
+            payload.verification_note.strip(),
+            payload.availability.strip(),
+            payload.lead_time.strip(),
+            int(payload.selected),
+            payload.confidence,
+            payload.source_url.strip(),
+        ),
+    )
+
+    connection.execute(
+        """
+        UPDATE baskets
+        SET status='OPEN',
+            updated_at=CURRENT_TIMESTAMP
+        WHERE id=?
+        """,
+        (basket["id"],),
+    )
+
+    description = (
+        payload.requested_description.strip()
+        or "Unnamed part"
+    )
+
+    log_job_event(
+        connection,
+        job_id=job_id,
+        event_type="PART_ADDED",
+        icon="➕",
+        message=f"Part added: {description}",
+    )
+
+    basket = connection.execute(
+        "SELECT * FROM baskets WHERE id=?",
+        (basket["id"],),
+    ).fetchone()
+
+    return serialize_basket(connection, basket)
+
+
 def add_item(job_id: int, payload: BasketItemCreate):
     with closing(get_connection()) as connection:
-        basket = get_or_create_basket(connection, job_id)
-        connection.execute(
-            """
-            INSERT INTO basket_items (
-                basket_id, requested_description,
-                manufacturer_part_number, alternate_part_number,
-                supplier_part_number, supplier_name, source_type, brand, quantity,
-                supplier_unit_cost, markup_percent, verification_status,
-                verification_note, availability, lead_time,
-                selected, confidence, source_url
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                basket["id"],
-                payload.requested_description.strip(),
-                payload.manufacturer_part_number.strip(),
-                payload.alternate_part_number.strip(),
-                payload.supplier_part_number.strip(),
-                payload.supplier_name.strip(),
-                payload.source_type.strip().upper() or "AFTERMARKET",
-                payload.brand.strip(),
-                payload.quantity,
-                payload.supplier_unit_cost,
-                payload.markup_percent,
-                payload.verification_status.strip().upper() or "UNVERIFIED",
-                payload.verification_note.strip(),
-                payload.availability.strip(),
-                payload.lead_time.strip(),
-                int(payload.selected),
-                payload.confidence,
-                payload.source_url.strip(),
-            ),
-        )
-        connection.execute(
-            "UPDATE baskets SET status='OPEN', updated_at=CURRENT_TIMESTAMP WHERE id=?",
-            (basket["id"],),
-        )
-
-        description = (
-            payload.requested_description.strip()
-            or "Unnamed part"
-        )
-
-        log_job_event(
+        result = add_item_with_connection(
             connection,
-            job_id=job_id,
-            event_type="PART_ADDED",
-            icon="➕",
-            message=f"Part added: {description}",
+            job_id,
+            payload,
         )
-
         connection.commit()
-        basket = connection.execute(
-            "SELECT * FROM baskets WHERE id=?", (basket["id"],)
-        ).fetchone()
-        return serialize_basket(connection, basket)
-
+        return result
 
 def update_item(item_id: int, payload: BasketItemUpdate):
     updates = payload.model_dump(exclude_unset=True)

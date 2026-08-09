@@ -168,3 +168,59 @@ The first duplicate also contained Smart Intake `customer_location_id` migration
 Migration history is now deterministic for both existing and fresh PPS databases.
 
 No customer data repair was required.
+
+---
+
+## 2026-08-09 — Alpha 19 Audit Remediation 2
+
+### Finding
+
+Customer Request and Smart Intake Job creation were bypassing the modern Job Basket.
+
+Requested parts were being inserted directly into legacy `job_parts`, while the Job Command Center works from `baskets` and `basket_items`.
+
+This could create a Job whose requested parts existed in the database but were not visible in its active sourcing workspace.
+
+### Architecture Confirmed
+
+The intended parts flow is:
+
+Customer Request / Smart Intake / Opportunity
+→ Job Basket
+→ research and sourcing
+→ Basket commit
+→ `job_parts`
+
+`job_parts` remains a downstream compatibility/document workflow store rather than the primary working parts store.
+
+### Resolution
+
+- Added `add_item_with_connection()` to the Basket service.
+- Preserved the existing public `add_item()` behavior.
+- Customer Request → Job now adds requested parts to the Job Basket.
+- Smart Intake → Job now adds requested parts to the Job Basket.
+- Initial requested parts are no longer written directly into `job_parts`.
+- This prevents duplicate `job_parts` rows when the Basket is later committed.
+
+### Verification
+
+- Connection-aware Basket helper passed isolated testing.
+- Existing `add_item()` behavior passed regression testing.
+- No existing Request-created Jobs required data backfill.
+- Both affected intake functions were confirmed and repaired.
+- Customer Request → Job → Basket passed end-to-end against a disposable copy of the real PPS database.
+- Requested parts appeared in the Job Basket.
+- No premature legacy `job_parts` records were created.
+- Source syntax and Git diff checks passed.
+
+### ChatGPT Workflow Requirement
+
+ChatGPT remains a supported natural-language front door into PPS.
+
+The user must continue to be able to enter reminders, follow-ups, customer requests, sourcing tasks, and other things they do not want to forget through ChatGPT instead of having to manually open PPS first.
+
+Future PPS workflow changes must preserve this capability.
+
+### Result
+
+All current Request-based Job creation paths now feed the same working Basket architecture used by the Job Command Center.

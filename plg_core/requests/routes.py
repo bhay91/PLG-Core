@@ -11,6 +11,8 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from legacy_app import BASE_DIR, get_connection, next_job_number, templates
+from plg_core.basket.models import BasketItemCreate
+from plg_core.basket.service import add_item_with_connection
 from plg_core.machines.identifiers import find_machine_by_identifier
 
 router = APIRouter(prefix="/requests", tags=["customer-requests"])
@@ -1010,16 +1012,12 @@ def create_from_smart_intake(
         ]
 
         for part in parts:
-            connection.execute(
-                """
-                INSERT INTO job_parts (
-                    job_id,
-                    requested_description,
-                    quantity
-                )
-                VALUES (?, ?, 1)
-                """,
-                (job_id, part),
+            add_item_with_connection(
+                connection,
+                job_id,
+                BasketItemCreate(
+                    requested_description=part,
+                ),
             )
 
         connection.execute(
@@ -1436,9 +1434,12 @@ def create_job_from_request(request_id: int):
         job_id = cursor.lastrowid
         parts = [line.strip(" -•\t") for line in (record["requested_parts"] or "").splitlines()]
         for part in (part for part in parts if part):
-            connection.execute(
-                "INSERT INTO job_parts (job_id, requested_description, quantity) VALUES (?, ?, 1)",
-                (job_id, part),
+            add_item_with_connection(
+                connection,
+                job_id,
+                BasketItemCreate(
+                    requested_description=part,
+                ),
             )
         connection.execute(
             """
