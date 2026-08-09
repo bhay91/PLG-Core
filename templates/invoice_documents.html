@@ -283,7 +283,69 @@
               <span>
                 {{ payment.reference or "No reference" }}
               </span>
+
+              {% if payment.reversed_amount %}
+              <small>
+                Reversed / refunded:
+                ${{ "%.2f"|format(payment.reversed_amount or 0) }}
+              </small>
+              {% endif %}
             </div>
+
+            {% if payment.reversible_amount > 0 %}
+            <details>
+              <summary>Reverse / Refund Payment</summary>
+
+              <form
+                method="post"
+                action="/invoices/{{ invoice.id }}/payments/{{ payment.id }}/reverse"
+                class="invoice-payment-form"
+                onsubmit="return confirm('Reverse or refund this payment amount? This will reopen the invoice balance.');"
+              >
+                <label>
+                  <span>Amount</span>
+                  <input
+                    type="number"
+                    name="amount"
+                    min="0.01"
+                    max="{{ '%.2f'|format(payment.reversible_amount) }}"
+                    step="0.01"
+                    value="{{ '%.2f'|format(payment.reversible_amount) }}"
+                    required
+                  >
+                </label>
+
+                <label>
+                  <span>Reason</span>
+                  <input
+                    name="reason"
+                    maxlength="1000"
+                    placeholder="Correction, refund, chargeback, etc."
+                    required
+                  >
+                </label>
+
+                <label>
+                  <span>Reversal Date</span>
+                  <input
+                    type="date"
+                    name="reversal_date"
+                    value="{{ today }}"
+                    required
+                  >
+                </label>
+
+                <button
+                  class="workspace-btn"
+                  type="submit"
+                >
+                  Reverse / Refund Payment
+                </button>
+              </form>
+            </details>
+            {% else %}
+            <small>Payment fully reversed / refunded.</small>
+            {% endif %}
           </article>
           {% endfor %}
         </div>

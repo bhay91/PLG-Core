@@ -260,6 +260,11 @@ FILES = {
             payment_method: str = Field(min_length=1, max_length=50)
             reference: str = Field(default="", max_length=200)
             payment_date: str = Field(default="", max_length=10)
+
+        class InvoicePaymentReversalRequest(BaseModel):
+            amount: float = Field(gt=0)
+            reason: str = Field(min_length=1, max_length=1000)
+            reversal_date: str = Field(default="", max_length=10)
     '''),
     "plg_core/sales/service.py": block('''
         from __future__ import annotations
@@ -397,7 +402,8 @@ FILES = {
                            COALESCE((
                                SELECT SUM(t.amount)
                                FROM customer_transactions t
-                               WHERE t.invoice_id=i.id AND t.transaction_type='PAYMENT'
+                               WHERE t.invoice_id=i.id
+                                 AND t.transaction_type IN ('PAYMENT','PAYMENT_REVERSAL')
                            ), 0) AS payments_received
                     FROM invoices i
                     JOIN quotes q ON q.id=i.quote_id
@@ -423,8 +429,35 @@ FILES = {
                     (invoice_id,),
                 ).fetchall()
                 payments = connection.execute("""
-                    SELECT * FROM customer_transactions
-                    WHERE invoice_id=? AND transaction_type='PAYMENT'
+                    SELECT
+                        p.*,
+                        COALESCE((
+                            SELECT -SUM(r.amount)
+                            FROM customer_transactions r
+                            WHERE r.invoice_id=p.invoice_id
+                              AND r.transaction_type='PAYMENT_REVERSAL'
+                              AND r.reference='PAYMENT_REVERSAL:' || p.id
+                        ), 0) AS reversed_amount,
+                        ROUND(
+                            p.amount - COALESCE((
+                                SELECT -SUM(r.amount)
+                                FROM customer_transactions r
+                                WHERE r.invoice_id=p.invoice_id
+                                  AND r.transaction_type='PAYMENT_REVERSAL'
+                                  AND r.reference='PAYMENT_REVERSAL:' || p.id
+                            ), 0),
+                            2
+                        ) AS reversible_amount
+                    FROM customer_transactions p
+                    WHERE p.invoice_id=?
+                      AND p.transaction_type='PAYMENT'
+                    ORDER BY p.transaction_date DESC,p.id DESC
+                """, (invoice_id,)).fetchall()
+                reversals = connection.execute("""
+                    SELECT *
+                    FROM customer_transactions
+                    WHERE invoice_id=?
+                      AND transaction_type='PAYMENT_REVERSAL'
                     ORDER BY transaction_date DESC,id DESC
                 """, (invoice_id,)).fetchall()
                 events = connection.execute(
@@ -434,8 +467,15 @@ FILES = {
             result = dict(invoice)
             result["items"] = [dict(row) for row in items]
             result["payments"] = [dict(row) for row in payments]
+            result["payment_reversals"] = [
+                dict(row) for row in reversals
+            ]
             result["events"] = [dict(row) for row in events]
-            result["payments_received"] = round(sum(float(row["amount"] or 0) for row in payments), 2)
+            result["payments_received"] = round(
+                sum(float(row["amount"] or 0) for row in payments)
+                + sum(float(row["amount"] or 0) for row in reversals),
+                2,
+            )
             return result
 
         def record_invoice_payment(
@@ -655,6 +695,289 @@ FILES = {
             return get_invoice(invoice_id)
 
 
+        def reverse_invoice_payment(
+            invoice_id: int,
+            payment_id: int,
+            amount: float,
+            reason: str,
+            reversal_date: str = "",
+        ):
+            amount = round(float(amount or 0), 2)
+            reason = str(reason or "").strip()
+            reversal_date = (
+                str(reversal_date or "").strip()
+                or __import__("datetime").date.today().isoformat()
+            )
+
+            if amount <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Reversal amount must be greater than zero.",
+                )
+
+            if not reason:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Reversal reason is required.",
+                )
+
+            with closing(get_connection()) as connection:
+                invoice = connection.execute(
+                    """
+                    SELECT i.*, j.customer_id
+                    FROM invoices i
+                    JOIN jobs j ON j.id=i.job_id
+                    WHERE i.id=?
+                    """,
+                    (invoice_id,),
+                ).fetchone()
+
+                if invoice is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Invoice not found.",
+                    )
+
+                previous_status = str(
+                    invoice["status"] or ""
+                ).strip().upper()
+
+                if previous_status == "VOID":
+                    raise HTTPException(
+                        status_code=409,
+                        detail="A void invoice cannot have payments reversed.",
+                    )
+
+                payment = connection.execute(
+                    """
+                    SELECT *
+                    FROM customer_transactions
+                    WHERE id=?
+                      AND invoice_id=?
+                      AND transaction_type='PAYMENT'
+                    """,
+                    (payment_id, invoice_id),
+                ).fetchone()
+
+                if payment is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Payment not found for this invoice.",
+                    )
+
+                reversal_reference = (
+                    f"PAYMENT_REVERSAL:{payment_id}"
+                )
+
+                reversed_row = connection.execute(
+                    """
+                    SELECT COALESCE(-SUM(amount), 0) AS amount
+                    FROM customer_transactions
+                    WHERE invoice_id=?
+                      AND transaction_type='PAYMENT_REVERSAL'
+                      AND reference=?
+                    """,
+                    (invoice_id, reversal_reference),
+                ).fetchone()
+
+                already_reversed = round(
+                    float(reversed_row["amount"] or 0),
+                    2,
+                )
+
+                original_amount = round(
+                    float(payment["amount"] or 0),
+                    2,
+                )
+
+                remaining = round(
+                    original_amount - already_reversed,
+                    2,
+                )
+
+                if remaining <= 0:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="This payment has already been fully reversed.",
+                    )
+
+                if amount > remaining:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Reversal cannot exceed the remaining "
+                            f"reversible amount of ${remaining:.2f}."
+                        ),
+                    )
+
+                connection.execute(
+                    """
+                    INSERT INTO customer_transactions (
+                        customer_id,
+                        transaction_date,
+                        transaction_type,
+                        amount,
+                        payment_method,
+                        reference,
+                        reason,
+                        job_id,
+                        quote_id,
+                        invoice_id
+                    )
+                    VALUES (
+                        ?, ?, 'PAYMENT_REVERSAL', ?, ?, ?, ?, ?, ?, ?
+                    )
+                    """,
+                    (
+                        invoice["customer_id"],
+                        reversal_date,
+                        -amount,
+                        payment["payment_method"],
+                        reversal_reference,
+                        (
+                            f"Payment reversal/refund for "
+                            f"{invoice['invoice_number']}: {reason}"
+                        ),
+                        invoice["job_id"],
+                        invoice["quote_id"],
+                        invoice_id,
+                    ),
+                )
+
+                net_row = connection.execute(
+                    """
+                    SELECT COALESCE(SUM(amount), 0) AS amount
+                    FROM customer_transactions
+                    WHERE invoice_id=?
+                      AND transaction_type IN (
+                          'PAYMENT',
+                          'PAYMENT_REVERSAL'
+                      )
+                    """,
+                    (invoice_id,),
+                ).fetchone()
+
+                net_payments = round(
+                    float(net_row["amount"] or 0),
+                    2,
+                )
+
+                base_due = round(
+                    max(
+                        float(invoice["customer_total"] or 0)
+                        - float(invoice["credit_applied"] or 0),
+                        0,
+                    ),
+                    2,
+                )
+
+                new_balance = round(
+                    max(base_due - net_payments, 0),
+                    2,
+                )
+
+                if new_balance <= 0:
+                    new_status = "PAID"
+                elif (
+                    net_payments > 0
+                    or float(invoice["credit_applied"] or 0) > 0
+                ):
+                    new_status = "PARTIAL"
+                else:
+                    new_status = "UNPAID"
+
+                connection.execute(
+                    """
+                    UPDATE invoices
+                    SET balance_due=?,
+                        status=?,
+                        updated_at=CURRENT_TIMESTAMP
+                    WHERE id=?
+                    """,
+                    (
+                        new_balance,
+                        new_status,
+                        invoice_id,
+                    ),
+                )
+
+                message = (
+                    f"${amount:.2f} reversed/refunded from payment "
+                    f"#{payment_id} for {invoice['invoice_number']}. "
+                    f"Reason: {reason}. "
+                    f"Balance due ${new_balance:.2f}."
+                )
+
+                connection.execute(
+                    """
+                    INSERT INTO invoice_events (
+                        invoice_id,
+                        event_type,
+                        from_status,
+                        to_status,
+                        notes
+                    )
+                    VALUES (
+                        ?, 'PAYMENT_REVERSED', ?, ?, ?
+                    )
+                    """,
+                    (
+                        invoice_id,
+                        previous_status,
+                        new_status,
+                        message,
+                    ),
+                )
+
+                write_audit(
+                    connection,
+                    action="PAYMENT_REVERSED",
+                    entity_type="INVOICE",
+                    entity_id=invoice_id,
+                    summary=message,
+                    metadata={
+                        "payment_id": int(payment_id),
+                        "amount": amount,
+                        "reason": reason,
+                        "reversal_date": reversal_date,
+                        "from_status": previous_status,
+                        "to_status": new_status,
+                        "balance_due": new_balance,
+                        "job_id": int(invoice["job_id"]),
+                    },
+                )
+
+                try:
+                    log_job_event(
+                        connection,
+                        job_id=int(invoice["job_id"]),
+                        event_type="PAYMENT_REVERSED",
+                        icon="↩",
+                        message=message,
+                    )
+                except Exception:
+                    pass
+
+                connection.commit()
+
+                from legacy_app import (
+                    generate_invoice_pdfs,
+                    load_invoice,
+                )
+
+                updated_invoice, updated_items = load_invoice(
+                    connection,
+                    invoice_id,
+                )
+
+                generate_invoice_pdfs(
+                    updated_invoice,
+                    updated_items,
+                )
+
+            return get_invoice(invoice_id)
+
+
         def void_invoice(invoice_id: int, reason: str):
             reason = str(reason or "").strip()
 
@@ -691,16 +1014,18 @@ FILES = {
 
                 payment = connection.execute(
                     """
-                    SELECT 1
+                    SELECT COALESCE(SUM(amount), 0) AS amount
                     FROM customer_transactions
                     WHERE invoice_id = ?
-                      AND transaction_type = 'PAYMENT'
-                    LIMIT 1
+                      AND transaction_type IN (
+                          'PAYMENT',
+                          'PAYMENT_REVERSAL'
+                      )
                     """,
                     (invoice_id,),
                 ).fetchone()
 
-                if payment is not None:
+                if float(payment["amount"] or 0) > 0.005:
                     raise HTTPException(
                         status_code=409,
                         detail=(
@@ -881,8 +1206,8 @@ FILES = {
         from contextlib import closing
         from fastapi import APIRouter, HTTPException
         from legacy_app import get_connection
-        from plg_core.sales.models import ConversionRequest, InvoicePaymentRequest, InvoiceVoidRequest, QuoteStatusUpdate
-        from plg_core.sales.service import get_invoice, get_quote, list_invoices, list_quotes, record_invoice_payment, update_quote_status, void_invoice
+        from plg_core.sales.models import ConversionRequest, InvoicePaymentRequest, InvoicePaymentReversalRequest, InvoiceVoidRequest, QuoteStatusUpdate
+        from plg_core.sales.service import get_invoice, get_quote, list_invoices, list_quotes, record_invoice_payment, reverse_invoice_payment, update_quote_status, void_invoice
 
         router = APIRouter(prefix="/api/v1/sales", tags=["alpha12-13-sales"])
 
@@ -937,6 +1262,22 @@ FILES = {
                 payment_method=payload.payment_method,
                 reference=payload.reference,
                 payment_date=payload.payment_date,
+            )
+
+        @router.post(
+            "/invoices/{invoice_id}/payments/{payment_id}/reverse"
+        )
+        def invoice_payment_reversal(
+            invoice_id: int,
+            payment_id: int,
+            payload: InvoicePaymentReversalRequest,
+        ):
+            return reverse_invoice_payment(
+                invoice_id=invoice_id,
+                payment_id=payment_id,
+                amount=payload.amount,
+                reason=payload.reason,
+                reversal_date=payload.reversal_date,
             )
 
         @router.post("/invoices/{invoice_id}/void")

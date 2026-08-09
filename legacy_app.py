@@ -2422,11 +2422,29 @@ def invoice_documents(request: Request, invoice_id: int):
 
         payments = connection.execute(
             """
-            SELECT *
-            FROM customer_transactions
-            WHERE invoice_id = ?
-              AND transaction_type = 'PAYMENT'
-            ORDER BY transaction_date DESC, id DESC
+            SELECT
+                p.*,
+                COALESCE((
+                    SELECT -SUM(r.amount)
+                    FROM customer_transactions r
+                    WHERE r.invoice_id=p.invoice_id
+                      AND r.transaction_type='PAYMENT_REVERSAL'
+                      AND r.reference='PAYMENT_REVERSAL:' || p.id
+                ), 0) AS reversed_amount,
+                ROUND(
+                    p.amount - COALESCE((
+                        SELECT -SUM(r.amount)
+                        FROM customer_transactions r
+                        WHERE r.invoice_id=p.invoice_id
+                          AND r.transaction_type='PAYMENT_REVERSAL'
+                          AND r.reference='PAYMENT_REVERSAL:' || p.id
+                    ), 0),
+                    2
+                ) AS reversible_amount
+            FROM customer_transactions p
+            WHERE p.invoice_id = ?
+              AND p.transaction_type = 'PAYMENT'
+            ORDER BY p.transaction_date DESC, p.id DESC
             """,
             (invoice_id,),
         ).fetchall()
@@ -2443,6 +2461,7 @@ def invoice_documents(request: Request, invoice_id: int):
 
         payment_total = sum(
             float(payment["amount"] or 0)
+            - float(payment["reversed_amount"] or 0)
             for payment in payments
         )
 
@@ -2485,7 +2504,7 @@ def invoice_documents(request: Request, invoice_id: int):
 
         can_void_invoice = (
             invoice_status != "VOID"
-            and not payments
+            and payment_total <= 0.005
             and not has_supplier_orders
             and not has_purchased_parts
         )
@@ -2493,10 +2512,11 @@ def invoice_documents(request: Request, invoice_id: int):
         void_block_reason = ""
 
         if invoice_status != "VOID" and not can_void_invoice:
-            if payments:
+            if payment_total > 0.005:
                 void_block_reason = (
-                    "Void unavailable after a customer payment has "
-                    "been recorded. Refund or reverse the payment first."
+                    "Void unavailable while customer payment value "
+                    "remains on this invoice. Reverse or refund the "
+                    "payment first."
                 )
             else:
                 void_block_reason = (
@@ -2567,6 +2587,34 @@ def receive_invoice_payment(
         payment_method=payment_method,
         reference=reference,
         payment_date=payment_date,
+    )
+
+    return RedirectResponse(
+        url=f"/invoices/{invoice_id}/documents",
+        status_code=303,
+    )
+
+
+@app.post(
+    "/invoices/{invoice_id}/payments/{payment_id}/reverse"
+)
+def reverse_invoice_payment_web(
+    invoice_id: int,
+    payment_id: int,
+    amount: Annotated[float, Form()],
+    reason: Annotated[str, Form()],
+    reversal_date: Annotated[str, Form()] = "",
+):
+    from plg_core.sales.service import (
+        reverse_invoice_payment,
+    )
+
+    reverse_invoice_payment(
+        invoice_id=invoice_id,
+        payment_id=payment_id,
+        amount=amount,
+        reason=reason,
+        reversal_date=reversal_date,
     )
 
     return RedirectResponse(

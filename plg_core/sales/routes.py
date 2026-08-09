@@ -1,8 +1,8 @@
 from contextlib import closing
 from fastapi import APIRouter, HTTPException
 from legacy_app import get_connection
-from plg_core.sales.models import ConversionRequest, InvoicePaymentRequest, InvoiceVoidRequest, QuoteStatusUpdate
-from plg_core.sales.service import get_invoice, get_quote, list_invoices, list_quotes, record_invoice_payment, update_quote_status, void_invoice
+from plg_core.sales.models import ConversionRequest, InvoicePaymentRequest, InvoicePaymentReversalRequest, InvoiceVoidRequest, QuoteStatusUpdate
+from plg_core.sales.service import get_invoice, get_quote, list_invoices, list_quotes, record_invoice_payment, reverse_invoice_payment, update_quote_status, void_invoice
 
 router = APIRouter(prefix="/api/v1/sales", tags=["alpha12-13-sales"])
 
@@ -57,6 +57,22 @@ def invoice_payment(
         payment_method=payload.payment_method,
         reference=payload.reference,
         payment_date=payload.payment_date,
+    )
+
+@router.post(
+    "/invoices/{invoice_id}/payments/{payment_id}/reverse"
+)
+def invoice_payment_reversal(
+    invoice_id: int,
+    payment_id: int,
+    payload: InvoicePaymentReversalRequest,
+):
+    return reverse_invoice_payment(
+        invoice_id=invoice_id,
+        payment_id=payment_id,
+        amount=payload.amount,
+        reason=payload.reason,
+        reversal_date=payload.reversal_date,
     )
 
 @router.post("/invoices/{invoice_id}/void")
