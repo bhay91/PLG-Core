@@ -23,6 +23,147 @@ def search_records(
     with closing(get_connection()) as connection:
         results = []
 
+        requests = connection.execute(
+            """
+            SELECT
+                'REQUEST' AS record_type,
+                r.id,
+                r.request_number AS record_number,
+                COALESCE(
+                    NULLIF(TRIM(r.individual_name),''),
+                    NULLIF(TRIM(r.company_name),''),
+                    'Customer Request'
+                ) AS title,
+                TRIM(
+                    COALESCE(r.manufacturer,'')
+                    || CASE
+                        WHEN TRIM(
+                            COALESCE(r.model,'')
+                        ) != ''
+                        THEN ' ' || r.model
+                        ELSE ''
+                    END
+                    || CASE
+                        WHEN TRIM(
+                            COALESCE(r.identifier,'')
+                        ) != ''
+                        THEN ' · ' || r.identifier
+                        ELSE ''
+                    END
+                ) AS subtitle,
+                '/requests/' || r.id AS url
+            FROM customer_requests r
+            WHERE
+                r.request_number LIKE ? COLLATE NOCASE
+                OR r.individual_name LIKE ? COLLATE NOCASE
+                OR r.company_name LIKE ? COLLATE NOCASE
+                OR r.phone LIKE ? COLLATE NOCASE
+                OR r.email LIKE ? COLLATE NOCASE
+                OR r.location LIKE ? COLLATE NOCASE
+                OR r.request_text LIKE ? COLLATE NOCASE
+                OR r.manufacturer LIKE ? COLLATE NOCASE
+                OR r.model LIKE ? COLLATE NOCASE
+                OR r.year LIKE ? COLLATE NOCASE
+                OR r.identifier LIKE ? COLLATE NOCASE
+                OR r.requested_parts LIKE ? COLLATE NOCASE
+            ORDER BY
+                CASE
+                    WHEN r.request_number
+                         LIKE ? COLLATE NOCASE
+                      OR r.identifier
+                         LIKE ? COLLATE NOCASE
+                    THEN 0
+                    ELSE 1
+                END,
+                r.id DESC
+            LIMIT ?
+            """,
+            (
+                like, like, like, like, like, like,
+                like, like, like, like, like, like,
+                prefix, prefix,
+                limit,
+            ),
+        ).fetchall()
+
+        results.extend(
+            dict(row)
+            for row in requests
+        )
+
+        opportunities = connection.execute(
+            """
+            SELECT
+                'OPPORTUNITY' AS record_type,
+                o.id,
+                o.opportunity_number AS record_number,
+                COALESCE(
+                    NULLIF(TRIM(o.title),''),
+                    NULLIF(TRIM(c.name),''),
+                    NULLIF(TRIM(c.company),''),
+                    'Opportunity'
+                ) AS title,
+                TRIM(
+                    COALESCE(c.name,'')
+                    || CASE
+                        WHEN TRIM(
+                            COALESCE(o.status,'')
+                        ) != ''
+                        THEN ' · ' || o.status
+                        ELSE ''
+                    END
+                ) AS subtitle,
+                '/opportunities/' || o.id AS url
+            FROM opportunities o
+            LEFT JOIN customers c
+              ON c.id=o.customer_id
+            LEFT JOIN customer_requests r
+              ON r.id=o.customer_request_id
+            WHERE
+                o.opportunity_number
+                    LIKE ? COLLATE NOCASE
+                OR o.title LIKE ? COLLATE NOCASE
+                OR o.request_text LIKE ? COLLATE NOCASE
+                OR o.status LIKE ? COLLATE NOCASE
+                OR o.notes LIKE ? COLLATE NOCASE
+                OR c.customer_number
+                    LIKE ? COLLATE NOCASE
+                OR c.name LIKE ? COLLATE NOCASE
+                OR c.company LIKE ? COLLATE NOCASE
+                OR c.phone LIKE ? COLLATE NOCASE
+                OR c.email LIKE ? COLLATE NOCASE
+                OR r.request_number
+                    LIKE ? COLLATE NOCASE
+                OR r.identifier
+                    LIKE ? COLLATE NOCASE
+                OR r.requested_parts
+                    LIKE ? COLLATE NOCASE
+            ORDER BY
+                CASE
+                    WHEN o.opportunity_number
+                         LIKE ? COLLATE NOCASE
+                      OR o.title
+                         LIKE ? COLLATE NOCASE
+                    THEN 0
+                    ELSE 1
+                END,
+                o.id DESC
+            LIMIT ?
+            """,
+            (
+                like, like, like, like, like,
+                like, like, like, like, like,
+                like, like, like,
+                prefix, prefix,
+                limit,
+            ),
+        ).fetchall()
+
+        results.extend(
+            dict(row)
+            for row in opportunities
+        )
+
         customers = connection.execute(
             """
             SELECT
@@ -297,7 +438,7 @@ def search_records(
         orders = connection.execute(
             """
             SELECT
-                'PURCHASE ORDER' AS record_type,
+                'SUPPLIER PURCHASE' AS record_type,
                 po.id,
                 po.po_number AS record_number,
                 po.supplier_name AS title,

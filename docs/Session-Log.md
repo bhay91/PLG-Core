@@ -679,3 +679,44 @@ A disposable database verified that:
 
 ### Result
 PPS Accounting can now distinguish expected profitability from profitability based on final purchasing costs without rewriting historical Invoice profit or changing the purchasing database structure.
+
+## 2026-08-09 — Alpha 19 Audit Remediation 13
+
+### Finding
+Global Search covered Customers, Machines, Jobs, Quotes, Invoices, and Supplier Purchases, but did not search Customer Requests or Opportunities even though both are now authoritative stages in the PPS workflow.
+
+The Supplier Purchase search result category also still displayed the older Purchase Order terminology.
+
+### Product Decision
+Global Search should cover the full operational record chain so a known customer, request, machine, identifier, opportunity, job, quote, invoice, part, supplier, or purchase reference can lead back to the correct PPS record.
+
+Historical identifiers remain unchanged.
+
+### Resolution
+Updated `plg_core/crm/routes.py` so Global Search now includes:
+
+- Customer Requests
+- Opportunities
+- Customers
+- Registry Machines
+- Jobs
+- Quotes
+- Invoices
+- Supplier Purchases
+
+Request search includes request number, customer/contact information, location, request text, manufacturer, model, year, identifier, and requested parts.
+
+Opportunity search includes opportunity number, title, request text, status, notes, customer/contact information, linked Request number, identifier, and requested parts.
+
+The visible Supplier Purchase search category now uses `SUPPLIER PURCHASE` while the existing internal `supplier_orders` table, `po_number`, routes, and historical identifiers remain unchanged.
+
+### Verification
+Live read-only testing against the PPS database confirmed:
+- a real historical Customer Request can be found and opens its Request detail page;
+- a real Opportunity can be found and opens its Opportunity detail page;
+- Supplier Purchase search keeps the existing internal purchasing structure;
+- `git diff --check` passes;
+- no files are staged.
+
+### Result
+Global Search now matches the PPS operational workflow from Customer Request through Supplier Purchase without requiring new routes or a database migration.
