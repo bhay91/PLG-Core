@@ -2383,6 +2383,85 @@ def place_supplier_order_web(
     )
 
 
+@app.post(
+    "/purchasing/orders/{order_id}/receive"
+)
+async def receive_supplier_order_web(
+    request: Request,
+    order_id: int,
+    notes: Annotated[str, Form()] = "",
+):
+    from plg_core.supply.models import (
+        ReceiptCreate,
+        ReceiptItem,
+    )
+    from plg_core.supply.service import (
+        get_order,
+        record_receipt,
+    )
+
+    order = get_order(order_id)
+    form = await request.form()
+
+    receipt_items = []
+
+    for item in order["items"]:
+        item_id = int(item["id"])
+        field_name = f"qty_{item_id}"
+        raw_value = str(
+            form.get(field_name, "0") or "0"
+        ).strip()
+
+        try:
+            quantity = int(raw_value)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Received quantities must be "
+                    "whole numbers."
+                ),
+            )
+
+        if quantity < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Received quantity cannot be negative."
+                ),
+            )
+
+        if quantity > 0:
+            receipt_items.append(
+                ReceiptItem(
+                    order_item_id=item_id,
+                    quantity_received=quantity,
+                )
+            )
+
+    if not receipt_items:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Enter a received quantity for at "
+                "least one part."
+            ),
+        )
+
+    record_receipt(
+        order_id,
+        ReceiptCreate(
+            items=receipt_items,
+            notes=notes,
+        ),
+    )
+
+    return RedirectResponse(
+        url=f"/purchasing/orders/{order_id}",
+        status_code=303,
+    )
+
+
 @app.get("/invoices", response_class=HTMLResponse)
 def list_invoices(request: Request, view: str = "all"):
     if view not in {"active", "paid", "void", "all"}:

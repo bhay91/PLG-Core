@@ -1448,7 +1448,20 @@ FILES = {
                     (order_id,),
                 ).fetchall()
                 receipts = connection.execute(
-                    "SELECT * FROM receiving_events WHERE order_id=? ORDER BY id DESC",
+                    """
+                    SELECT
+                        r.*,
+                        COALESCE(
+                            SUM(ri.quantity_received),
+                            0
+                        ) AS quantity_received
+                    FROM receiving_events r
+                    LEFT JOIN receiving_event_items ri
+                      ON ri.receipt_id=r.id
+                    WHERE r.order_id=?
+                    GROUP BY r.id
+                    ORDER BY r.id DESC
+                    """,
                     (order_id,),
                 ).fetchall()
             result = dict(order)
@@ -1854,52 +1867,312 @@ FILES = {
 
         def record_receipt(order_id: int, payload: ReceiptCreate):
             if not payload.items:
-                raise HTTPException(status_code=400, detail="Receipt requires at least one item.")
-            with closing(get_connection()) as connection:
-                order = connection.execute("SELECT * FROM supplier_orders WHERE id=?", (order_id,)).fetchone()
-                if order is None:
-                    raise HTTPException(status_code=404, detail="Supplier order not found.")
-                cur = connection.execute(
-                    "INSERT INTO receiving_events (order_id,notes) VALUES (?,?)",
-                    (order_id, payload.notes.strip()),
+                raise HTTPException(
+                    status_code=400,
+                    detail="Receipt requires at least one item.",
                 )
-                receipt_id = int(cur.lastrowid)
-                receipt_number = f"PPS-RCPT-{receipt_id:04d}"
-                connection.execute("UPDATE receiving_events SET receipt_number=? WHERE id=?", (receipt_number, receipt_id))
+
+            incoming_ids = [
+                int(item.order_item_id)
+                for item in payload.items
+            ]
+
+            if len(set(incoming_ids)) != len(incoming_ids):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Each supplier order item may appear only "
+                        "once on a receipt."
+                    ),
+                )
+
+            with closing(get_connection()) as connection:
+                order = connection.execute(
+                    """
+                    SELECT *
+                    FROM supplier_orders
+                    WHERE id=?
+                    """,
+                    (order_id,),
+                ).fetchone()
+
+                if order is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Supplier order not found.",
+                    )
+
+                current_status = str(
+                    order["status"] or ""
+                ).strip().upper()
+
+                if current_status == "DRAFT":
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "Parts cannot be received until the "
+                            "supplier order has been placed."
+                        ),
+                    )
+
+                if current_status == "RECEIVED":
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "This supplier order is already fully received."
+                        ),
+                    )
+
+                if current_status not in {
+                    "ORDERED",
+                    "PARTIAL",
+                }:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "Supplier order is not in a receivable status."
+                        ),
+                    )
+
+                validated = []
+
                 for incoming in payload.items:
                     item = connection.execute(
-                        "SELECT * FROM supplier_order_items WHERE id=? AND order_id=?",
-                        (incoming.order_item_id, order_id),
-                    ).fetchone()
-                    if item is None:
-                        raise HTTPException(status_code=404, detail=f"Order item {incoming.order_item_id} not found.")
-                    remaining = int(item["quantity_ordered"] or 0) - int(item["quantity_received"] or 0)
-                    if incoming.quantity_received > remaining:
-                        raise HTTPException(status_code=409, detail=f"Only {remaining} remain for order item {item['id']}.")
-                    connection.execute("""
-                        INSERT INTO receiving_event_items (receipt_id,order_item_id,quantity_received)
-                        VALUES (?, ?, ?)
-                    """, (receipt_id, item["id"], incoming.quantity_received))
-                    connection.execute("""
-                        UPDATE supplier_order_items
-                        SET quantity_received=quantity_received+?, updated_at=CURRENT_TIMESTAMP
+                        """
+                        SELECT *
+                        FROM supplier_order_items
                         WHERE id=?
-                    """, (incoming.quantity_received, item["id"]))
-                remaining_rows = connection.execute("""
-                    SELECT COUNT(*) FROM supplier_order_items
-                    WHERE order_id=? AND quantity_received < quantity_ordered
-                """, (order_id,)).fetchone()[0]
-                status = "RECEIVED" if remaining_rows == 0 else "PARTIAL"
-                connection.execute("""
+                          AND order_id=?
+                        """,
+                        (
+                            incoming.order_item_id,
+                            order_id,
+                        ),
+                    ).fetchone()
+
+                    if item is None:
+                        raise HTTPException(
+                            status_code=404,
+                            detail=(
+                                f"Order item "
+                                f"{incoming.order_item_id} not found."
+                            ),
+                        )
+
+                    ordered = int(
+                        item["quantity_ordered"] or 0
+                    )
+                    already_received = int(
+                        item["quantity_received"] or 0
+                    )
+                    remaining = (
+                        ordered - already_received
+                    )
+
+                    if remaining <= 0:
+                        raise HTTPException(
+                            status_code=409,
+                            detail=(
+                                f"{item['description']} is already "
+                                "fully received."
+                            ),
+                        )
+
+                    quantity = int(
+                        incoming.quantity_received
+                    )
+
+                    if quantity > remaining:
+                        raise HTTPException(
+                            status_code=409,
+                            detail=(
+                                f"Only {remaining} remain for "
+                                f"{item['description']}."
+                            ),
+                        )
+
+                    validated.append(
+                        (
+                            int(item["id"]),
+                            quantity,
+                            str(item["description"] or "Part"),
+                        )
+                    )
+
+                cur = connection.execute(
+                    """
+                    INSERT INTO receiving_events (
+                        order_id,
+                        notes
+                    )
+                    VALUES (?, ?)
+                    """,
+                    (
+                        order_id,
+                        payload.notes.strip(),
+                    ),
+                )
+
+                receipt_id = int(cur.lastrowid)
+                receipt_number = (
+                    f"PPS-RCPT-{receipt_id:04d}"
+                )
+
+                connection.execute(
+                    """
+                    UPDATE receiving_events
+                    SET receipt_number=?
+                    WHERE id=?
+                    """,
+                    (
+                        receipt_number,
+                        receipt_id,
+                    ),
+                )
+
+                total_received = 0
+
+                for item_id, quantity, _description in validated:
+                    connection.execute(
+                        """
+                        INSERT INTO receiving_event_items (
+                            receipt_id,
+                            order_item_id,
+                            quantity_received
+                        )
+                        VALUES (?, ?, ?)
+                        """,
+                        (
+                            receipt_id,
+                            item_id,
+                            quantity,
+                        ),
+                    )
+
+                    connection.execute(
+                        """
+                        UPDATE supplier_order_items
+                        SET quantity_received=
+                                quantity_received+?,
+                            updated_at=CURRENT_TIMESTAMP
+                        WHERE id=?
+                        """,
+                        (
+                            quantity,
+                            item_id,
+                        ),
+                    )
+
+                    total_received += quantity
+
+                remaining_rows = connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM supplier_order_items
+                    WHERE order_id=?
+                      AND quantity_received < quantity_ordered
+                    """,
+                    (order_id,),
+                ).fetchone()[0]
+
+                new_status = (
+                    "RECEIVED"
+                    if int(remaining_rows or 0) == 0
+                    else "PARTIAL"
+                )
+
+                connection.execute(
+                    """
                     UPDATE supplier_orders
-                    SET status=?, received_at=CASE WHEN ?='RECEIVED' THEN CURRENT_TIMESTAMP ELSE received_at END,
+                    SET status=?,
+                        received_at=
+                            CASE
+                                WHEN ?='RECEIVED'
+                                THEN COALESCE(
+                                    received_at,
+                                    CURRENT_TIMESTAMP
+                                )
+                                ELSE received_at
+                            END,
                         updated_at=CURRENT_TIMESTAMP
                     WHERE id=?
-                """, (status, status, order_id))
-                write_audit(connection, action="PARTS_RECEIVED", entity_type="SUPPLIER_ORDER",
-                            entity_id=order_id, summary=f"{receipt_number} recorded for {order['po_number']}")
+                    """,
+                    (
+                        new_status,
+                        new_status,
+                        order_id,
+                    ),
+                )
+
+                summary = (
+                    f"{receipt_number}: "
+                    f"{total_received} "
+                    f"part{'s' if total_received != 1 else ''} "
+                    f"received from {order['supplier_name']}. "
+                    f"PO status {new_status}."
+                )
+
+                write_audit(
+                    connection,
+                    action="PARTS_RECEIVED",
+                    entity_type="SUPPLIER_ORDER",
+                    entity_id=order_id,
+                    summary=summary,
+                    metadata={
+                        "receipt_id": receipt_id,
+                        "receipt_number": receipt_number,
+                        "quantity_received": total_received,
+                        "status": new_status,
+                        "job_id": int(order["job_id"]),
+                        "invoice_id": order["invoice_id"],
+                    },
+                )
+
+                log_job_event(
+                    connection,
+                    job_id=int(order["job_id"]),
+                    event_type="PARTS_RECEIVED",
+                    icon="📦",
+                    message=summary,
+                )
+
+                outstanding_orders = connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM supplier_orders
+                    WHERE job_id=?
+                      AND UPPER(
+                            COALESCE(status, 'DRAFT')
+                          ) != 'RECEIVED'
+                    """,
+                    (order["job_id"],),
+                ).fetchone()[0]
+
+                if int(outstanding_orders or 0) == 0:
+                    connection.execute(
+                        """
+                        UPDATE jobs
+                        SET status='RECEIVED'
+                        WHERE id=?
+                        """,
+                        (order["job_id"],),
+                    )
+
+                    log_job_event(
+                        connection,
+                        job_id=int(order["job_id"]),
+                        event_type="RECEIVING_COMPLETE",
+                        icon="✅",
+                        message=(
+                            "All supplier purchase orders have "
+                            "been received."
+                        ),
+                    )
+
                 connection.commit()
+
             return get_order(order_id)
+
 
         def create_delivery(job_id: int, payload: DeliveryCreate):
             with closing(get_connection()) as connection:

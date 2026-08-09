@@ -89,7 +89,9 @@
     <table class="invoice-center-table">
       <thead>
         <tr>
-          <th>Qty</th>
+          <th>Ordered</th>
+          <th>Received</th>
+          <th>Remaining</th>
           <th>Supplier Part #</th>
           <th>Description</th>
           <th>Unit Cost</th>
@@ -101,6 +103,14 @@
         {% for item in items %}
         <tr>
           <td>{{ item.quantity_ordered }}</td>
+          <td>{{ item.quantity_received }}</td>
+          <td>
+            {{
+              (item.quantity_ordered or 0)
+              -
+              (item.quantity_received or 0)
+            }}
+          </td>
           <td>
             <strong>
               {{ item.supplier_part_number or "—" }}
@@ -151,6 +161,145 @@
     </table>
   </div>
 </section>
+
+{% if order.status in ["ORDERED", "PARTIAL"] %}
+<section class="panel">
+  <div class="invoice-center-section-heading">
+    <div>
+      <p class="eyebrow">RECORD PARTS RECEIPT</p>
+      <h2>Receive supplier shipment</h2>
+      <p>
+        Enter only the quantities physically received.
+        Partial shipments are supported.
+      </p>
+    </div>
+  </div>
+
+  <form
+    method="post"
+    action="/purchasing/orders/{{ order.id }}/receive"
+    class="invoice-payment-form"
+  >
+    <div class="invoice-center-table-wrap">
+      <table class="invoice-center-table">
+        <thead>
+          <tr>
+            <th>Part</th>
+            <th>Ordered</th>
+            <th>Already Received</th>
+            <th>Remaining</th>
+            <th>Receive Now</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for item in items %}
+          {% set remaining =
+            (item.quantity_ordered or 0)
+            -
+            (item.quantity_received or 0)
+          %}
+          <tr>
+            <td>
+              <strong>
+                {{ item.supplier_part_number or "—" }}
+              </strong>
+              <br>
+              <small>{{ item.description }}</small>
+            </td>
+            <td>{{ item.quantity_ordered }}</td>
+            <td>{{ item.quantity_received }}</td>
+            <td>{{ remaining }}</td>
+            <td>
+              {% if remaining > 0 %}
+              <input
+                type="number"
+                name="qty_{{ item.id }}"
+                value="0"
+                min="0"
+                max="{{ remaining }}"
+                step="1"
+                style="max-width: 100px;"
+              >
+              {% else %}
+              Fully received
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <label>
+      <span>Receiving Notes</span>
+      <textarea
+        name="notes"
+        rows="3"
+        maxlength="1000"
+        placeholder="Packing slip, damaged packaging, backorder notes, or other receiving details"
+      ></textarea>
+    </label>
+
+    <button
+      type="submit"
+      class="workspace-btn workspace-btn-primary"
+    >
+      Record Receipt
+    </button>
+  </form>
+</section>
+{% elif order.status == "RECEIVED" %}
+<section class="panel">
+  <div class="invoice-paid-state">
+    <span class="invoice-paid-check">✓</span>
+    <div>
+      <strong>Purchase Order Fully Received</strong>
+      <p>
+        All quantities on {{ order.po_number }}
+        have been received.
+      </p>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if order.receipts %}
+<section class="panel">
+  <div class="invoice-center-section-heading">
+    <div>
+      <p class="eyebrow">RECEIVING HISTORY</p>
+      <h2>Supplier receipts</h2>
+    </div>
+  </div>
+
+  <div class="invoice-center-table-wrap">
+    <table class="invoice-center-table">
+      <thead>
+        <tr>
+          <th>Receipt</th>
+          <th>Date</th>
+          <th>Quantity</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for receipt in order.receipts %}
+        <tr>
+          <td>
+            <strong>{{ receipt.receipt_number }}</strong>
+          </td>
+          <td>{{ receipt.received_at }}</td>
+          <td>{{ receipt.quantity_received }}</td>
+          <td>{{ receipt.notes or "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
 
 {% if order.notes %}
 <section class="panel">
@@ -250,12 +399,25 @@
       Mark PO Ordered
     </button>
   </form>
-  {% elif order.status == "ORDERED" %}
+  {% elif order.status in ["ORDERED", "PARTIAL"] %}
   <div class="invoice-paid-state">
     <span class="invoice-paid-check">✓</span>
     <div>
-      <strong>Order Placed</strong>
-      <p>Waiting for parts to arrive from the supplier.</p>
+      <strong>
+        {% if order.status == "PARTIAL" %}
+        Partially Received
+        {% else %}
+        Order Placed
+        {% endif %}
+      </strong>
+      <p>
+        {% if order.status == "PARTIAL" %}
+        Some parts have arrived. Remaining quantities
+        are still outstanding.
+        {% else %}
+        Waiting for parts to arrive from the supplier.
+        {% endif %}
+      </p>
     </div>
   </div>
   {% endif %}
