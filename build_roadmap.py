@@ -254,6 +254,12 @@ FILES = {
 
         class InvoiceVoidRequest(BaseModel):
             reason: str = Field(min_length=1, max_length=1000)
+
+        class InvoicePaymentRequest(BaseModel):
+            amount: float = Field(gt=0)
+            payment_method: str = Field(min_length=1, max_length=50)
+            reference: str = Field(default="", max_length=200)
+            payment_date: str = Field(default="", max_length=10)
     '''),
     "plg_core/sales/service.py": block('''
         from __future__ import annotations
@@ -431,6 +437,223 @@ FILES = {
             result["events"] = [dict(row) for row in events]
             result["payments_received"] = round(sum(float(row["amount"] or 0) for row in payments), 2)
             return result
+
+        def record_invoice_payment(
+            invoice_id: int,
+            amount: float,
+            payment_method: str,
+            reference: str = "",
+            payment_date: str = "",
+        ):
+            amount = round(float(amount or 0), 2)
+            payment_method = str(payment_method or "").strip().upper()
+            reference = str(reference or "").strip()
+            payment_date = (
+                str(payment_date or "").strip()
+                or __import__("datetime").date.today().isoformat()
+            )
+
+            if amount <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Payment amount must be greater than zero.",
+                )
+
+            allowed_methods = {
+                "CASH",
+                "BANK TRANSFER",
+                "ZELLE",
+                "CARD",
+                "CHEQUE",
+                "OTHER",
+            }
+
+            if payment_method not in allowed_methods:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Select a valid payment method.",
+                )
+
+            with closing(get_connection()) as connection:
+                invoice = connection.execute(
+                    """
+                    SELECT i.*, j.customer_id
+                    FROM invoices i
+                    JOIN jobs j ON j.id = i.job_id
+                    WHERE i.id = ?
+                    """,
+                    (invoice_id,),
+                ).fetchone()
+
+                if invoice is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Invoice not found.",
+                    )
+
+                previous_status = str(
+                    invoice["status"] or ""
+                ).strip().upper()
+
+                if previous_status == "VOID":
+                    raise HTTPException(
+                        status_code=400,
+                        detail="A void invoice cannot receive payment.",
+                    )
+
+                current_balance = round(
+                    float(invoice["balance_due"] or 0),
+                    2,
+                )
+
+                if current_balance <= 0:
+                    return get_invoice(invoice_id)
+
+                if amount > current_balance:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Payment cannot be greater than the "
+                            f"current balance of ${current_balance:.2f}."
+                        ),
+                    )
+
+                new_balance = round(current_balance - amount, 2)
+                new_status = "PAID" if new_balance <= 0 else "PARTIAL"
+
+                connection.execute(
+                    """
+                    INSERT INTO customer_transactions (
+                        customer_id,
+                        transaction_date,
+                        transaction_type,
+                        amount,
+                        payment_method,
+                        reference,
+                        reason,
+                        job_id,
+                        quote_id,
+                        invoice_id
+                    )
+                    VALUES (?, ?, 'PAYMENT', ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        invoice["customer_id"],
+                        payment_date,
+                        amount,
+                        payment_method,
+                        reference,
+                        f"Payment received for {invoice['invoice_number']}",
+                        invoice["job_id"],
+                        invoice["quote_id"],
+                        invoice_id,
+                    ),
+                )
+
+                connection.execute(
+                    """
+                    UPDATE invoices
+                    SET balance_due = ?,
+                        status = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (
+                        max(new_balance, 0),
+                        new_status,
+                        invoice_id,
+                    ),
+                )
+
+                payment_message = (
+                    f"${amount:.2f} payment received for "
+                    f"{invoice['invoice_number']} via "
+                    f"{payment_method.title()}. "
+                    f"Balance due ${max(new_balance, 0):.2f}."
+                )
+
+                connection.execute(
+                    """
+                    INSERT INTO invoice_events (
+                        invoice_id,
+                        event_type,
+                        from_status,
+                        to_status,
+                        notes
+                    )
+                    VALUES (?, 'PAYMENT_RECEIVED', ?, ?, ?)
+                    """,
+                    (
+                        invoice_id,
+                        previous_status,
+                        new_status,
+                        payment_message,
+                    ),
+                )
+
+                write_audit(
+                    connection,
+                    action="PAYMENT_RECEIVED",
+                    entity_type="INVOICE",
+                    entity_id=invoice_id,
+                    summary=payment_message,
+                    metadata={
+                        "amount": amount,
+                        "payment_method": payment_method,
+                        "reference": reference,
+                        "payment_date": payment_date,
+                        "from_status": previous_status,
+                        "to_status": new_status,
+                        "balance_due": max(new_balance, 0),
+                        "job_id": int(invoice["job_id"]),
+                    },
+                )
+
+                if new_status == "PAID":
+                    connection.execute(
+                        """
+                        UPDATE jobs
+                        SET status = 'CONFIRMED'
+                        WHERE id = ?
+                        """,
+                        (invoice["job_id"],),
+                    )
+
+                try:
+                    log_job_event(
+                        connection,
+                        job_id=int(invoice["job_id"]),
+                        event_type="PAYMENT_RECEIVED",
+                        icon="💳",
+                        message=(
+                            f"${amount:.2f} payment received "
+                            f"for {invoice['invoice_number']} "
+                            f"via {payment_method.title()}"
+                        ),
+                    )
+                except Exception:
+                    pass
+
+                connection.commit()
+
+                if new_status == "PAID":
+                    from legacy_app import load_invoice
+                    from plg_core.documents.invoice_pdf import (
+                        generate_paid_invoice_pdfs,
+                    )
+
+                    updated_invoice, updated_items = load_invoice(
+                        connection,
+                        invoice_id,
+                    )
+
+                    generate_paid_invoice_pdfs(
+                        updated_invoice,
+                        updated_items,
+                    )
+
+            return get_invoice(invoice_id)
+
 
         def void_invoice(invoice_id: int, reason: str):
             reason = str(reason or "").strip()
@@ -658,8 +881,8 @@ FILES = {
         from contextlib import closing
         from fastapi import APIRouter, HTTPException
         from legacy_app import get_connection
-        from plg_core.sales.models import ConversionRequest, InvoiceVoidRequest, QuoteStatusUpdate
-        from plg_core.sales.service import get_invoice, get_quote, list_invoices, list_quotes, update_quote_status, void_invoice
+        from plg_core.sales.models import ConversionRequest, InvoicePaymentRequest, InvoiceVoidRequest, QuoteStatusUpdate
+        from plg_core.sales.service import get_invoice, get_quote, list_invoices, list_quotes, record_invoice_payment, update_quote_status, void_invoice
 
         router = APIRouter(prefix="/api/v1/sales", tags=["alpha12-13-sales"])
 
@@ -702,6 +925,19 @@ FILES = {
         @router.get("/invoices/{invoice_id}")
         def invoice_detail(invoice_id: int):
             return get_invoice(invoice_id)
+
+        @router.post("/invoices/{invoice_id}/payments")
+        def invoice_payment(
+            invoice_id: int,
+            payload: InvoicePaymentRequest,
+        ):
+            return record_invoice_payment(
+                invoice_id=invoice_id,
+                amount=payload.amount,
+                payment_method=payload.payment_method,
+                reference=payload.reference,
+                payment_date=payload.payment_date,
+            )
 
         @router.post("/invoices/{invoice_id}/void")
         def invoice_void(invoice_id: int, payload: InvoiceVoidRequest):
