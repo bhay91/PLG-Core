@@ -11,7 +11,7 @@ def create_orders_from_paid_invoice(invoice_id: int):
         if invoice is None:
             raise HTTPException(status_code=404, detail="Invoice not found.")
         if str(invoice["status"] or "").upper() != "PAID" or float(invoice["balance_due"] or 0) > 0:
-            raise HTTPException(status_code=409, detail="Supplier orders require a fully paid invoice.")
+            raise HTTPException(status_code=409, detail="Supplier purchases require a fully paid invoice.")
         existing = connection.execute(
             "SELECT * FROM supplier_orders WHERE invoice_id=? ORDER BY id",
             (invoice_id,),
@@ -44,7 +44,7 @@ def create_orders_from_paid_invoice(invoice_id: int):
                 invoice["job_id"], invoice_id,
                 supplier["id"] if supplier else None,
                 supplier_name, total, total,
-                "Generated from paid invoice; invoice-level shipping is not allocated to supplier POs.",
+                "Generated from paid invoice; invoice-level shipping is not allocated to supplier purchases.",
             ))
             order_id = int(cur.lastrowid)
             ids.append(order_id)
@@ -120,7 +120,7 @@ def get_order(order_id: int):
             (order_id,),
         ).fetchone()
         if order is None:
-            raise HTTPException(status_code=404, detail="Supplier order not found.")
+            raise HTTPException(status_code=404, detail="Supplier purchase not found.")
         items = connection.execute(
             """
             SELECT
@@ -185,7 +185,7 @@ def update_order_item_cost(
         if order is None:
             raise HTTPException(
                 status_code=404,
-                detail="Supplier order not found.",
+                detail="Supplier purchase not found.",
             )
 
         status = str(
@@ -197,7 +197,7 @@ def update_order_item_cost(
                 status_code=409,
                 detail=(
                     "Supplier costs are locked once "
-                    "the purchase order is placed."
+                    "the supplier purchase is marked ordered."
                 ),
             )
 
@@ -214,7 +214,7 @@ def update_order_item_cost(
         if item is None:
             raise HTTPException(
                 status_code=404,
-                detail="Supplier order item not found.",
+                detail="Supplier purchase item not found.",
             )
 
         old_unit_cost = round(
@@ -364,7 +364,7 @@ def update_order(
         if order is None:
             raise HTTPException(
                 status_code=404,
-                detail="Supplier order not found.",
+                detail="Supplier purchase not found.",
             )
 
         status = str(
@@ -375,7 +375,7 @@ def update_order(
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    "Only a draft supplier order can be edited."
+                    "Only a draft supplier purchase can be edited."
                 ),
             )
 
@@ -458,7 +458,7 @@ def place_order(order_id: int):
         if order is None:
             raise HTTPException(
                 status_code=404,
-                detail="Supplier order not found.",
+                detail="Supplier purchase not found.",
             )
 
         current_status = str(
@@ -472,7 +472,7 @@ def place_order(order_id: int):
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    "Only a draft supplier order can be "
+                    "Only a draft supplier purchase can be "
                     "marked ordered."
                 ),
             )
@@ -543,7 +543,7 @@ def place_order(order_id: int):
                     event_type="PURCHASING_STARTED",
                     icon="✅",
                     message=(
-                        "All supplier orders placed for "
+                        "All supplier purchases placed for "
                         f"{order['invoice_number'] or 'invoice'}"
                     ),
                 )
@@ -568,7 +568,7 @@ def record_receipt(order_id: int, payload: ReceiptCreate):
         raise HTTPException(
             status_code=400,
             detail=(
-                "Each supplier order item may appear only "
+                "Each supplier purchase item may appear only "
                 "once on a receipt."
             ),
         )
@@ -586,7 +586,7 @@ def record_receipt(order_id: int, payload: ReceiptCreate):
         if order is None:
             raise HTTPException(
                 status_code=404,
-                detail="Supplier order not found.",
+                detail="Supplier purchase not found.",
             )
 
         current_status = str(
@@ -598,7 +598,7 @@ def record_receipt(order_id: int, payload: ReceiptCreate):
                 status_code=409,
                 detail=(
                     "Parts cannot be received until the "
-                    "supplier order has been placed."
+                    "supplier purchase has been marked ordered."
                 ),
             )
 
@@ -606,7 +606,7 @@ def record_receipt(order_id: int, payload: ReceiptCreate):
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    "This supplier order is already fully received."
+                    "This supplier purchase is already fully received."
                 ),
             )
 
@@ -617,7 +617,7 @@ def record_receipt(order_id: int, payload: ReceiptCreate):
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    "Supplier order is not in a receivable status."
+                    "Supplier purchase is not in a receivable status."
                 ),
             )
 
@@ -796,7 +796,7 @@ def record_receipt(order_id: int, payload: ReceiptCreate):
             f"{total_received} "
             f"part{'s' if total_received != 1 else ''} "
             f"received from {order['supplier_name']}. "
-            f"PO status {new_status}."
+            f"Purchase status {new_status}."
         )
 
         write_audit(
@@ -851,7 +851,7 @@ def record_receipt(order_id: int, payload: ReceiptCreate):
                 event_type="RECEIVING_COMPLETE",
                 icon="✅",
                 message=(
-                    "All supplier purchase orders have "
+                    "All supplier purchases have "
                     "been received."
                 ),
             )

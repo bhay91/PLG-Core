@@ -618,3 +618,25 @@ Existing backend structures remain unchanged, including `supplier_orders`, `po_n
 
 ### Result
 PPS now presents purchasing as practical internal purchase tracking without forcing formal PO paperwork into the normal workflow. Formal PO output may remain optional where a supplier requires it.
+
+## 2026-08-09 — Alpha 19 Audit Remediation 11
+
+### Finding
+After Remediation 10 simplified the purchasing UI, operator-visible backend messages still used Supplier Order, Purchase Order, PO status, and supplier PO wording.
+
+### Resolution
+Updated operator-visible purchasing errors, timeline messages, audit summaries, and generated purchasing notes to use Supplier Purchase terminology.
+
+Internal implementation names remain unchanged, including `supplier_orders`, `supplier_order_items`, `po_number`, `PPS-PO-####`, event codes, SQL structures, receiving logic, and delivery logic.
+
+### Verification
+- `plg_core/supply/service.py` parses successfully.
+- Targeted operator-visible Purchase Order / Supplier Order wording is removed.
+- Supplier Purchase wording is present.
+- Internal purchasing identifiers remain intact.
+- Receiving quantity limits and delivery completion logic remain present.
+- `git diff --check` passes.
+- No files are staged.
+
+### Result
+PPS now uses consistent Supplier Purchase terminology across both the UI and operator-visible backend messages while preserving the existing purchasing engine.
