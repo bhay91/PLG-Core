@@ -1,4 +1,4 @@
-/* PLG Corporate Shell */
+/* PPS Corporate Shell */
 
 :root {
   --ink: #10213d;
@@ -67,7 +67,9 @@ a { color: inherit; }
 .brand-logo {
   display: block;
   width: 100%;
-  height: 92px;
+  max-width: 205px;
+  height: auto;
+  margin: 0 auto;
   object-fit: contain;
 }
 
