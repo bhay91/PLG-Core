@@ -1060,11 +1060,25 @@ def list_jobs(request: Request):
                 progress = 100
                 priority_rank = 70
 
+            elif job_status == "RECEIVED":
+                stage_key = "READY"
+                stage_label = "Ready for Delivery"
+                stage_icon = "📦"
+                progress = 95
+                priority_rank = 25
+
+            elif job_status == "ORDERED":
+                stage_key = "WAITING"
+                stage_label = "Waiting for Parts"
+                stage_icon = "🚚"
+                progress = 88
+                priority_rank = 40
+
             elif invoice_status in paid_statuses:
                 stage_key = "PAID"
                 stage_label = "Paid"
                 stage_icon = "💰"
-                progress = 88
+                progress = 78
                 priority_rank = 60
 
             elif quote_status in approved_statuses:
@@ -2458,6 +2472,71 @@ async def receive_supplier_order_web(
 
     return RedirectResponse(
         url=f"/purchasing/orders/{order_id}",
+        status_code=303,
+    )
+
+
+@app.get(
+    "/jobs/{job_id}/delivery",
+    response_class=HTMLResponse,
+)
+def job_delivery_workspace(
+    request: Request,
+    job_id: int,
+):
+    from plg_core.supply.service import (
+        get_delivery_workspace,
+    )
+
+    workspace = get_delivery_workspace(job_id)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="job_delivery.html",
+        context={
+            **workspace,
+            "active_page": "jobs",
+        },
+    )
+
+
+@app.post("/jobs/{job_id}/delivery")
+def create_job_delivery(
+    job_id: int,
+    recipient: Annotated[str, Form()] = "",
+    notes: Annotated[str, Form()] = "",
+):
+    from plg_core.supply.models import DeliveryCreate
+    from plg_core.supply.service import create_delivery
+
+    create_delivery(
+        job_id,
+        DeliveryCreate(
+            recipient=recipient,
+            notes=notes,
+        ),
+    )
+
+    return RedirectResponse(
+        url=f"/jobs/{job_id}/delivery",
+        status_code=303,
+    )
+
+
+@app.post("/deliveries/{delivery_id}/complete")
+def complete_job_delivery(
+    delivery_id: int,
+):
+    from plg_core.supply.service import (
+        complete_delivery,
+    )
+
+    result = complete_delivery(
+        delivery_id
+    )
+
+    return RedirectResponse(
+        url=f"/jobs/{result['job_id']}/delivery",
         status_code=303,
     )
 

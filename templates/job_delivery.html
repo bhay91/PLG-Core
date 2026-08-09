@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}Delivery · {{ job.job_number }}{% endblock %}
+
+{% block content %}
+<section class="workspace-heading">
+  <div>
+    <p class="eyebrow">CUSTOMER DELIVERY</p>
+    <h1>{{ job.job_number }}</h1>
+    <p>
+      {{ job.customer }}
+      {% if job.company %}
+      · {{ job.company }}
+      {% endif %}
+    </p>
+  </div>
+
+  <a
+    class="button ghost"
+    href="/jobs/{{ job.id }}/basket"
+  >
+    Back to Job
+  </a>
+</section>
+
+<section class="panel">
+  <div class="invoice-center-identity-grid">
+    <div>
+      <span>Customer</span>
+      <strong>{{ job.customer }}</strong>
+    </div>
+
+    <div>
+      <span>Machine</span>
+      <strong>
+        {{ job.manufacturer or "" }}
+        {{ job.machine or "" }}
+      </strong>
+    </div>
+
+    <div>
+      <span>VIN / PIN / Serial</span>
+      <strong>{{ job.pin_serial or "—" }}</strong>
+    </div>
+
+    <div>
+      <span>Job Status</span>
+      <strong>{{ job.status }}</strong>
+    </div>
+  </div>
+</section>
+
+{% if job.status == "DELIVERED" %}
+<section class="panel">
+  <div class="invoice-paid-state">
+    <span class="invoice-paid-check">✓</span>
+    <div>
+      <strong>Job Delivered</strong>
+      <p>
+        All purchased parts have been delivered
+        to the customer.
+      </p>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if ready_delivery %}
+<section class="panel">
+  <div class="invoice-center-section-heading">
+    <div>
+      <p class="eyebrow">READY DELIVERY</p>
+      <h2>Delivery #{{ ready_delivery.id }}</h2>
+      <p>
+        Prepared for {{ ready_delivery.recipient }}
+      </p>
+    </div>
+  </div>
+
+  <div class="invoice-center-table-wrap">
+    <table class="invoice-center-table">
+      <thead>
+        <tr>
+          <th>Part</th>
+          <th>Supplier</th>
+          <th>Quantity</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for item in ready_delivery.items %}
+        <tr>
+          <td>
+            <strong>
+              {{ item.supplier_part_number or "—" }}
+            </strong>
+            <br>
+            <small>{{ item.description }}</small>
+          </td>
+          <td>
+            {{ item.supplier_name }}
+            <br>
+            <small>{{ item.po_number }}</small>
+          </td>
+          <td>{{ item.quantity_delivered }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if ready_delivery.notes %}
+  <p>
+    <strong>Notes:</strong>
+    {{ ready_delivery.notes }}
+  </p>
+  {% endif %}
+
+  <form
+    method="post"
+    action="/deliveries/{{ ready_delivery.id }}/complete"
+    onsubmit="return confirm('Confirm these parts were delivered to {{ ready_delivery.recipient }}?');"
+  >
+    <button
+      type="submit"
+      class="workspace-btn workspace-btn-primary"
+    >
+      Mark Delivered
+    </button>
+  </form>
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="invoice-center-section-heading">
+    <div>
+      <p class="eyebrow">DELIVERY INVENTORY</p>
+      <h2>Received parts</h2>
+      <p>
+        Only physically received parts can be
+        prepared for customer delivery.
+      </p>
+    </div>
+  </div>
+
+  <div class="invoice-center-table-wrap">
+    <table class="invoice-center-table">
+      <thead>
+        <tr>
+          <th>Part</th>
+          <th>Supplier</th>
+          <th>Received</th>
+          <th>Delivered</th>
+          <th>Available</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>
+            <strong>
+              {{ item.supplier_part_number or "—" }}
+            </strong>
+            <br>
+            <small>{{ item.description }}</small>
+          </td>
+          <td>
+            {{ item.supplier_name }}
+            <br>
+            <small>{{ item.po_number }}</small>
+          </td>
+          <td>{{ item.quantity_received }}</td>
+          <td>{{ item.quantity_delivered }}</td>
+          <td>
+            <strong>{{ item.available_to_deliver }}</strong>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5">
+            No purchasing records are attached to this job.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if has_available and not ready_delivery %}
+<section class="panel invoice-payment-panel">
+  <p class="eyebrow">PREPARE DELIVERY</p>
+
+  <form
+    method="post"
+    action="/jobs/{{ job.id }}/delivery"
+    class="invoice-payment-form"
+  >
+    <label>
+      <span>Recipient</span>
+      <input
+        type="text"
+        name="recipient"
+        value="{{ job.customer }}"
+        maxlength="200"
+      >
+    </label>
+
+    <label>
+      <span>Delivery Notes</span>
+      <textarea
+        name="notes"
+        rows="4"
+        maxlength="1000"
+        placeholder="Shipping method, tracking reference, pickup details, or delivery notes"
+      ></textarea>
+    </label>
+
+    <button
+      type="submit"
+      class="workspace-btn workspace-btn-primary"
+    >
+      Prepare Available Parts
+    </button>
+  </form>
+</section>
+{% elif not ready_delivery and job.status != "DELIVERED" %}
+<section class="panel">
+  <p class="eyebrow">DELIVERY STATUS</p>
+  <p>
+    No received, undelivered parts are currently available.
+  </p>
+</section>
+{% endif %}
+
+{% if deliveries %}
+<section class="panel">
+  <div class="invoice-center-section-heading">
+    <div>
+      <p class="eyebrow">DELIVERY HISTORY</p>
+      <h2>Customer deliveries</h2>
+    </div>
+  </div>
+
+  <div class="invoice-center-table-wrap">
+    <table class="invoice-center-table">
+      <thead>
+        <tr>
+          <th>Delivery</th>
+          <th>Recipient</th>
+          <th>Quantity</th>
+          <th>Status</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for delivery in deliveries %}
+        <tr>
+          <td>
+            <strong>#{{ delivery.id }}</strong>
+          </td>
+          <td>{{ delivery.recipient or "—" }}</td>
+          <td>{{ delivery.quantity_total }}</td>
+          <td>{{ delivery.status }}</td>
+          <td>
+            {{
+              delivery.delivery_date
+              or delivery.created_at
+            }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

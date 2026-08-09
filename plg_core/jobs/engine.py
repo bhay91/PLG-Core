@@ -84,7 +84,7 @@ class JobEngine:
         "WAITING_PAYMENT": "Waiting for Payment",
         "READY_TO_ORDER": "Ready to Order",
         "WAITING_PARTS": "Waiting for Parts",
-        "READY_TO_COMPLETE": "Ready to Complete",
+        "READY_TO_COMPLETE": "Ready for Delivery",
         "COMPLETE": "Completed",
     }
 
@@ -218,6 +218,26 @@ class JobEngine:
         }
 
         job_status = _status(_value(job, "status", ""))
+
+        # Supplier POs are the durable purchasing source of truth.
+        # Once the job reaches ORDERED or RECEIVED, do not let
+        # stale basket part_status values move the command center
+        # backward in the workflow.
+        if job_status == "ORDERED":
+            ordered_items = max(
+                ordered_items,
+                selected_items,
+            )
+
+        elif job_status == "RECEIVED":
+            ordered_items = max(
+                ordered_items,
+                selected_items,
+            )
+            received_items = max(
+                received_items,
+                selected_items,
+            )
 
         completed = job_status in {
             "DELIVERED",
@@ -381,19 +401,29 @@ class JobEngine:
             )
             blocked_reason = ""
 
-        elif payment_received and received_items >= selected_items:
+        elif payment_received and (
+            job_status == "RECEIVED"
+            or (
+                selected_items > 0
+                and received_items >= selected_items
+            )
+        ):
             stage = "READY_TO_COMPLETE"
             action = (
-                "Complete Job",
-                "COMPLETE_JOB",
-                f"/jobs/{job_id}/basket",
+                "Prepare Delivery",
+                "PREPARE_DELIVERY",
+                f"/jobs/{job_id}/delivery",
                 "GET",
             )
             blocked_reason = (
-                "All selected parts have been received."
+                "Purchased parts are received and ready "
+                "for customer delivery."
             )
 
-        elif payment_received and ordered_items > 0:
+        elif payment_received and (
+            job_status == "ORDERED"
+            or ordered_items > 0
+        ):
             stage = "WAITING_PARTS"
 
             remaining = max(
@@ -405,7 +435,7 @@ class JobEngine:
                 f"Receive {remaining} remaining "
                 f"part{'s' if remaining != 1 else ''}",
                 "RECEIVE_REMAINING_PARTS",
-                "#parts-ready",
+                "/purchasing",
                 "GET",
             )
 
@@ -512,9 +542,9 @@ class JobEngine:
                 if has_invoice
                 else ""
             ),
-            "READY_TO_ORDER": "#parts-ready",
-            "WAITING_PARTS": "#parts-ready",
-            "READY_TO_COMPLETE": f"/jobs/{job_id}/basket",
+            "READY_TO_ORDER": "/purchasing",
+            "WAITING_PARTS": "/purchasing",
+            "READY_TO_COMPLETE": f"/jobs/{job_id}/delivery",
             "COMPLETE": "",
         }
 

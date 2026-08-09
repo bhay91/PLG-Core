@@ -2174,67 +2174,535 @@ FILES = {
             return get_order(order_id)
 
 
+        def get_delivery(delivery_id: int):
+            with closing(get_connection()) as connection:
+                delivery = connection.execute(
+                    """
+                    SELECT
+                        d.*,
+                        j.job_number,
+                        j.customer,
+                        j.company,
+                        i.invoice_number
+                    FROM deliveries d
+                    JOIN jobs j
+                      ON j.id=d.job_id
+                    LEFT JOIN invoices i
+                      ON i.id=d.invoice_id
+                    WHERE d.id=?
+                    """,
+                    (delivery_id,),
+                ).fetchone()
+
+                if delivery is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Delivery not found.",
+                    )
+
+                items = connection.execute(
+                    """
+                    SELECT
+                        di.*,
+                        oi.description,
+                        oi.supplier_part_number,
+                        po.po_number,
+                        po.supplier_name
+                    FROM delivery_items di
+                    JOIN supplier_order_items oi
+                      ON oi.id=di.order_item_id
+                    JOIN supplier_orders po
+                      ON po.id=oi.order_id
+                    WHERE di.delivery_id=?
+                    ORDER BY di.id
+                    """,
+                    (delivery_id,),
+                ).fetchall()
+
+            result = dict(delivery)
+            result["items"] = [dict(row) for row in items]
+            result["quantity_total"] = sum(
+                int(row["quantity_delivered"] or 0)
+                for row in items
+            )
+            return result
+
+
+        def get_delivery_workspace(job_id: int):
+            with closing(get_connection()) as connection:
+                job = connection.execute(
+                    """
+                    SELECT *
+                    FROM jobs
+                    WHERE id=?
+                    """,
+                    (job_id,),
+                ).fetchone()
+
+                if job is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Job not found.",
+                    )
+
+                items = connection.execute(
+                    """
+                    SELECT
+                        oi.id,
+                        oi.description,
+                        oi.supplier_part_number,
+                        oi.quantity_ordered,
+                        oi.quantity_received,
+                        po.po_number,
+                        po.supplier_name,
+                        COALESCE((
+                            SELECT SUM(di.quantity_delivered)
+                            FROM delivery_items di
+                            JOIN deliveries d
+                              ON d.id=di.delivery_id
+                            WHERE di.order_item_id=oi.id
+                              AND d.status='DELIVERED'
+                        ),0) AS quantity_delivered,
+                        COALESCE((
+                            SELECT SUM(di.quantity_delivered)
+                            FROM delivery_items di
+                            JOIN deliveries d
+                              ON d.id=di.delivery_id
+                            WHERE di.order_item_id=oi.id
+                              AND d.status='READY'
+                        ),0) AS quantity_reserved
+                    FROM supplier_order_items oi
+                    JOIN supplier_orders po
+                      ON po.id=oi.order_id
+                    WHERE po.job_id=?
+                    ORDER BY po.id, oi.id
+                    """,
+                    (job_id,),
+                ).fetchall()
+
+                deliveries = connection.execute(
+                    """
+                    SELECT
+                        d.*,
+                        COALESCE(
+                            SUM(di.quantity_delivered),
+                            0
+                        ) AS quantity_total
+                    FROM deliveries d
+                    LEFT JOIN delivery_items di
+                      ON di.delivery_id=d.id
+                    WHERE d.job_id=?
+                    GROUP BY d.id
+                    ORDER BY d.id DESC
+                    """,
+                    (job_id,),
+                ).fetchall()
+
+                ready = connection.execute(
+                    """
+                    SELECT id
+                    FROM deliveries
+                    WHERE job_id=?
+                      AND status='READY'
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (job_id,),
+                ).fetchone()
+
+            item_rows = []
+
+            for row in items:
+                item = dict(row)
+
+                item["available_to_deliver"] = max(
+                    int(item["quantity_received"] or 0)
+                    - int(item["quantity_delivered"] or 0)
+                    - int(item["quantity_reserved"] or 0),
+                    0,
+                )
+
+                item_rows.append(item)
+
+            return {
+                "job": dict(job),
+                "items": item_rows,
+                "deliveries": [
+                    dict(row)
+                    for row in deliveries
+                ],
+                "ready_delivery": (
+                    get_delivery(int(ready["id"]))
+                    if ready
+                    else None
+                ),
+                "has_available": any(
+                    int(item["available_to_deliver"]) > 0
+                    for item in item_rows
+                ),
+            }
+
+
         def create_delivery(job_id: int, payload: DeliveryCreate):
             with closing(get_connection()) as connection:
-                job = connection.execute("SELECT id FROM jobs WHERE id=?", (job_id,)).fetchone()
+                job = connection.execute(
+                    """
+                    SELECT id, job_number, customer, status
+                    FROM jobs
+                    WHERE id=?
+                    """,
+                    (job_id,),
+                ).fetchone()
+
                 if job is None:
-                    raise HTTPException(status_code=404, detail="Job not found.")
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Job not found.",
+                    )
+
                 existing = connection.execute(
-                    "SELECT * FROM deliveries WHERE job_id=? AND status='READY' ORDER BY id DESC LIMIT 1",
+                    """
+                    SELECT id
+                    FROM deliveries
+                    WHERE job_id=?
+                      AND status='READY'
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
                     (job_id,),
                 ).fetchone()
+
                 if existing:
-                    return {"delivery_id": existing["id"], "status": existing["status"], "existing": True}
-                available = connection.execute("""
-                    SELECT oi.id, oi.quantity_received,
-                           COALESCE((
-                               SELECT SUM(di.quantity_delivered)
-                               FROM delivery_items di
-                               JOIN deliveries d ON d.id=di.delivery_id
-                               WHERE di.order_item_id=oi.id AND d.status!='CANCELLED'
-                           ),0) AS delivered
+                    result = get_delivery(
+                        int(existing["id"])
+                    )
+                    result["existing"] = True
+                    return result
+
+                available = connection.execute(
+                    """
+                    SELECT
+                        oi.id,
+                        oi.description,
+                        oi.quantity_received,
+                        COALESCE((
+                            SELECT SUM(di.quantity_delivered)
+                            FROM delivery_items di
+                            JOIN deliveries d
+                              ON d.id=di.delivery_id
+                            WHERE di.order_item_id=oi.id
+                              AND d.status!='CANCELLED'
+                        ),0) AS committed
                     FROM supplier_order_items oi
-                    JOIN supplier_orders po ON po.id=oi.order_id
-                    WHERE po.job_id=? AND oi.quantity_received>0
-                """, (job_id,)).fetchall()
-                deliverable = [(int(row["id"]), int(row["quantity_received"])-int(row["delivered"])) for row in available
-                               if int(row["quantity_received"])-int(row["delivered"]) > 0]
+                    JOIN supplier_orders po
+                      ON po.id=oi.order_id
+                    WHERE po.job_id=?
+                      AND oi.quantity_received>0
+                    ORDER BY po.id, oi.id
+                    """,
+                    (job_id,),
+                ).fetchall()
+
+                deliverable = []
+
+                for row in available:
+                    quantity = (
+                        int(row["quantity_received"] or 0)
+                        - int(row["committed"] or 0)
+                    )
+
+                    if quantity > 0:
+                        deliverable.append(
+                            (
+                                int(row["id"]),
+                                quantity,
+                            )
+                        )
+
                 if not deliverable:
-                    raise HTTPException(status_code=409, detail="No received parts are ready for delivery.")
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "No received parts are ready "
+                            "for customer delivery."
+                        ),
+                    )
+
                 invoice = connection.execute(
-                    "SELECT id FROM invoices WHERE job_id=? ORDER BY id DESC LIMIT 1",
+                    """
+                    SELECT id
+                    FROM invoices
+                    WHERE job_id=?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
                     (job_id,),
                 ).fetchone()
-                cur = connection.execute("""
-                    INSERT INTO deliveries (job_id,invoice_id,recipient,notes)
+
+                recipient = (
+                    payload.recipient.strip()
+                    or str(job["customer"] or "").strip()
+                    or "Customer"
+                )
+
+                cursor = connection.execute(
+                    """
+                    INSERT INTO deliveries (
+                        job_id,
+                        invoice_id,
+                        recipient,
+                        notes
+                    )
                     VALUES (?, ?, ?, ?)
-                """, (job_id, invoice["id"] if invoice else None, payload.recipient.strip(), payload.notes.strip()))
-                delivery_id = int(cur.lastrowid)
-                for order_item_id, qty in deliverable:
-                    connection.execute("""
-                        INSERT INTO delivery_items (delivery_id,order_item_id,quantity_delivered)
+                    """,
+                    (
+                        job_id,
+                        invoice["id"] if invoice else None,
+                        recipient,
+                        payload.notes.strip(),
+                    ),
+                )
+
+                delivery_id = int(cursor.lastrowid)
+
+                quantity_total = 0
+
+                for order_item_id, quantity in deliverable:
+                    connection.execute(
+                        """
+                        INSERT INTO delivery_items (
+                            delivery_id,
+                            order_item_id,
+                            quantity_delivered
+                        )
                         VALUES (?, ?, ?)
-                    """, (delivery_id, order_item_id, qty))
-                write_audit(connection, action="DELIVERY_CREATED", entity_type="DELIVERY",
-                            entity_id=delivery_id, summary=f"Delivery prepared for job {job_id}")
+                        """,
+                        (
+                            delivery_id,
+                            order_item_id,
+                            quantity,
+                        ),
+                    )
+
+                    quantity_total += quantity
+
+                message = (
+                    f"Delivery #{delivery_id} prepared for "
+                    f"{recipient}: {quantity_total} "
+                    f"part{'s' if quantity_total != 1 else ''}."
+                )
+
+                write_audit(
+                    connection,
+                    action="DELIVERY_CREATED",
+                    entity_type="DELIVERY",
+                    entity_id=delivery_id,
+                    summary=message,
+                    metadata={
+                        "job_id": job_id,
+                        "quantity": quantity_total,
+                        "recipient": recipient,
+                    },
+                )
+
+                log_job_event(
+                    connection,
+                    job_id=job_id,
+                    event_type="DELIVERY_CREATED",
+                    icon="🚚",
+                    message=message,
+                )
+
                 connection.commit()
-            return {"delivery_id": delivery_id, "status": "READY", "existing": False}
+
+            result = get_delivery(delivery_id)
+            result["existing"] = False
+            return result
+
 
         def complete_delivery(delivery_id: int):
             with closing(get_connection()) as connection:
-                delivery = connection.execute("SELECT * FROM deliveries WHERE id=?", (delivery_id,)).fetchone()
+                delivery = connection.execute(
+                    """
+                    SELECT *
+                    FROM deliveries
+                    WHERE id=?
+                    """,
+                    (delivery_id,),
+                ).fetchone()
+
                 if delivery is None:
-                    raise HTTPException(status_code=404, detail="Delivery not found.")
-                connection.execute("""
-                    UPDATE deliveries SET status='DELIVERED',
-                        delivery_date=COALESCE(delivery_date,CURRENT_TIMESTAMP),
-                        updated_at=CURRENT_TIMESTAMP WHERE id=?
-                """, (delivery_id,))
-                connection.execute("UPDATE jobs SET status='DELIVERED' WHERE id=?", (delivery["job_id"],))
-                write_audit(connection, action="DELIVERY_COMPLETED", entity_type="DELIVERY",
-                            entity_id=delivery_id, summary=f"Job {delivery['job_id']} delivered")
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Delivery not found.",
+                    )
+
+                status = str(
+                    delivery["status"] or ""
+                ).strip().upper()
+
+                if status == "DELIVERED":
+                    result = get_delivery(delivery_id)
+                    result["job_complete"] = (
+                        str(
+                            connection.execute(
+                                "SELECT status FROM jobs WHERE id=?",
+                                (delivery["job_id"],),
+                            ).fetchone()["status"]
+                            or ""
+                        ).upper()
+                        == "DELIVERED"
+                    )
+                    return result
+
+                if status != "READY":
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "Only a ready delivery can be "
+                            "marked delivered."
+                        ),
+                    )
+
+                quantity_total = connection.execute(
+                    """
+                    SELECT COALESCE(
+                        SUM(quantity_delivered),
+                        0
+                    )
+                    FROM delivery_items
+                    WHERE delivery_id=?
+                    """,
+                    (delivery_id,),
+                ).fetchone()[0]
+
+                if int(quantity_total or 0) <= 0:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Delivery has no parts.",
+                    )
+
+                connection.execute(
+                    """
+                    UPDATE deliveries
+                    SET status='DELIVERED',
+                        delivery_date=COALESCE(
+                            delivery_date,
+                            CURRENT_TIMESTAMP
+                        ),
+                        updated_at=CURRENT_TIMESTAMP
+                    WHERE id=?
+                    """,
+                    (delivery_id,),
+                )
+
+                remaining = connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM supplier_order_items oi
+                    JOIN supplier_orders po
+                      ON po.id=oi.order_id
+                    WHERE po.job_id=?
+                      AND (
+                            oi.quantity_received
+                                < oi.quantity_ordered
+                            OR
+                            COALESCE((
+                                SELECT SUM(
+                                    di.quantity_delivered
+                                )
+                                FROM delivery_items di
+                                JOIN deliveries d
+                                  ON d.id=di.delivery_id
+                                WHERE di.order_item_id=oi.id
+                                  AND d.status='DELIVERED'
+                            ),0) < oi.quantity_ordered
+                      )
+                    """,
+                    (delivery["job_id"],),
+                ).fetchone()[0]
+
+                receiving_remaining = connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM supplier_order_items oi
+                    JOIN supplier_orders po
+                      ON po.id=oi.order_id
+                    WHERE po.job_id=?
+                      AND oi.quantity_received
+                            < oi.quantity_ordered
+                    """,
+                    (delivery["job_id"],),
+                ).fetchone()[0]
+
+                job_complete = (
+                    int(remaining or 0) == 0
+                )
+
+                if job_complete:
+                    new_job_status = "DELIVERED"
+                elif int(receiving_remaining or 0) > 0:
+                    new_job_status = "ORDERED"
+                else:
+                    new_job_status = "RECEIVED"
+
+                connection.execute(
+                    """
+                    UPDATE jobs
+                    SET status=?
+                    WHERE id=?
+                    """,
+                    (
+                        new_job_status,
+                        delivery["job_id"],
+                    ),
+                )
+
+                message = (
+                    f"Delivery #{delivery_id} delivered to "
+                    f"{delivery['recipient'] or 'customer'}: "
+                    f"{int(quantity_total)} "
+                    f"part{'s' if int(quantity_total) != 1 else ''}."
+                )
+
+                write_audit(
+                    connection,
+                    action="DELIVERY_COMPLETED",
+                    entity_type="DELIVERY",
+                    entity_id=delivery_id,
+                    summary=message,
+                    metadata={
+                        "job_id": int(delivery["job_id"]),
+                        "quantity": int(quantity_total),
+                        "job_complete": job_complete,
+                    },
+                )
+
+                log_job_event(
+                    connection,
+                    job_id=int(delivery["job_id"]),
+                    event_type="DELIVERY_COMPLETED",
+                    icon="📬",
+                    message=message,
+                )
+
+                if job_complete:
+                    log_job_event(
+                        connection,
+                        job_id=int(delivery["job_id"]),
+                        event_type="JOB_DELIVERED",
+                        icon="✅",
+                        message=(
+                            "All purchased parts have been "
+                            "delivered to the customer."
+                        ),
+                    )
+
                 connection.commit()
-            return {"delivery_id": delivery_id, "status": "DELIVERED", "job_id": delivery["job_id"]}
+
+            result = get_delivery(delivery_id)
+            result["job_complete"] = job_complete
+            return result
     '''),
     "plg_core/supply/routes.py": block('''
         from fastapi import APIRouter
