@@ -307,3 +307,46 @@ Passed:
 ### Result
 
 PPS now has one coherent intake architecture instead of disconnected Request and Opportunity workflows.
+
+---
+
+## 2026-08-09 — Alpha 19 Audit Remediation 4
+
+### Finding
+
+Opportunities were a real operational PPS workflow and were now connected to Customer Requests and Jobs, but they were still absent from the main navigation.
+
+That made an important sourcing and research stage discoverable only by entering it from another record.
+
+### Resolution
+
+Added Opportunities to the PPS Daily Work navigation between Customer Requests and Jobs.
+
+The visible workflow order is now:
+
+Follow-Up Center
+→ Customer Requests
+→ Opportunities
+→ Jobs
+→ Quotes
+→ Invoices
+→ Purchasing
+
+Opportunity create, list, and detail pages now set the Opportunities navigation item as active.
+
+### Verification
+
+Passed:
+
+- Opportunities route exists
+- Opportunity detail route exists
+- sidebar previously had no Opportunity link
+- one Opportunities link added
+- navigation order is Customer Requests → Opportunities → Jobs
+- Opportunity create/list/detail pages all set the correct active navigation state
+- Python syntax check
+- Git diff whitespace check
+
+### Result
+
+Opportunities are now a first-class, directly accessible part of the PPS operating workflow rather than a hidden intermediate feature.

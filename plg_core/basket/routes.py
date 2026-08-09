@@ -44,7 +44,10 @@ def new_opportunity_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="opportunity_new.html",
-        context={"customers": customers},
+        context={
+            "customers": customers,
+            "active_page": "opportunities",
+        },
     )
 
 
@@ -132,7 +135,12 @@ def opportunities_page(request: Request, status: str = "", follow_up: str = ""):
     return templates.TemplateResponse(
         request=request,
         name="opportunities.html",
-        context={"opportunities": opportunities, "status_filter": status, "follow_up_filter": follow_up},
+        context={
+            "opportunities": opportunities,
+            "status_filter": status,
+            "follow_up_filter": follow_up,
+            "active_page": "opportunities",
+        },
     )
 
 
@@ -197,7 +205,14 @@ def opportunity_detail_page(request: Request, opportunity_id: int):
     return templates.TemplateResponse(
         request=request,
         name="opportunity_detail.html",
-        context={"opportunity": opportunity, "machines": machines, "research": research, "customers": customers, "registered_machines": registered_machines},
+        context={
+            "opportunity": opportunity,
+            "machines": machines,
+            "research": research,
+            "customers": customers,
+            "registered_machines": registered_machines,
+            "active_page": "opportunities",
+        },
     )
 
 
