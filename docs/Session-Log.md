@@ -511,3 +511,42 @@ Passed:
 ### Result
 
 The active PPS interface now presents consistent PPS branding without risky or unnecessary internal renaming.
+
+---
+
+## 2026-08-09 — Alpha 19 Audit Remediation 8
+
+### Finding
+
+The PPS Invoice PDF had two narrow layout columns that could wrap important labels:
+
+- the top paid status value could wrap `PAID IN FULL`
+- the equipment information label could wrap `VIN / PIN / Serial:`
+
+The bottom totals/payment table was inspected separately and already had sufficient width, so it did not require modification.
+
+### Resolution
+
+Adjusted only the affected column widths in `plg_core/documents/invoice_pdf.py`.
+
+The overall section widths remain unchanged.
+
+No pricing, payment, accounting, invoice-status, or totals logic was modified.
+
+### Verification
+
+Passed:
+
+- Python compilation
+- Git diff whitespace check
+- ReportLab single-line measurement for `PAID IN FULL`
+- ReportLab single-line measurement for `VIN / PIN / Serial:`
+- disposable customer Invoice PDF generation
+- real Poppler PDF rendering
+- rendered PDF text-line verification
+- both customer-PDF `PAID IN FULL` occurrences remain single-line
+- equipment identifier label remains single-line
+
+### Result
+
+The locked PPS Invoice PDF design is preserved while the two identified wrapping defects are corrected.

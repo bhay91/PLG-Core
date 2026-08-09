@@ -361,7 +361,7 @@ def _header(invoice, internal: bool):
         Spacer(1, 5),
         Table(
             meta_rows_display,
-            colWidths=[1.05 * inch, 0.60 * inch, 0.85 * inch],
+            colWidths=[1.00 * inch, 0.60 * inch, 0.90 * inch],
             hAlign="RIGHT",
             style=[
                 ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
@@ -409,7 +409,7 @@ def _info_box(title, rows):
             Table([[
                 Paragraph(f"{label}:", s["label"]),
                 Paragraph(str(value or "Not Provided"), s["value"]),
-            ]], colWidths=[0.83 * inch, 2.7 * inch], style=[
+            ]], colWidths=[0.95 * inch, 2.58 * inch], style=[
                 ("LEFTPADDING", (0,0), (-1,-1), 0),
                 ("RIGHTPADDING", (0,0), (-1,-1), 0),
                 ("TOPPADDING", (0,0), (-1,-1), 1),
