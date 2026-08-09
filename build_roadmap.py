@@ -1307,6 +1307,7 @@ FILES = {
         from fastapi import HTTPException
         from legacy_app import get_connection
         from plg_core.audit import write_audit
+        from plg_core.timeline import log_job_event
         from plg_core.supply.models import ReceiptCreate, DeliveryCreate
 
         def create_orders_from_paid_invoice(invoice_id: int):
@@ -1375,6 +1376,15 @@ FILES = {
                         summary=f"{po_number} created for {supplier_name}",
                         metadata={"invoice_id": invoice_id},
                     )
+                    log_job_event(
+                        connection,
+                        job_id=int(invoice["job_id"]),
+                        event_type="SUPPLIER_ORDER_CREATED",
+                        icon="📋",
+                        message=(
+                            f"{po_number} created for {supplier_name}"
+                        ),
+                    )
                 connection.commit()
                 rows = connection.execute(
                     f"SELECT * FROM supplier_orders WHERE id IN ({','.join('?' for _ in ids)}) ORDER BY id",
@@ -1397,7 +1407,23 @@ FILES = {
 
         def get_order(order_id: int):
             with closing(get_connection()) as connection:
-                order = connection.execute("SELECT * FROM supplier_orders WHERE id=?", (order_id,)).fetchone()
+                order = connection.execute(
+                    """
+                    SELECT
+                        po.*,
+                        j.job_number,
+                        j.customer,
+                        j.company,
+                        i.invoice_number
+                    FROM supplier_orders po
+                    JOIN jobs j
+                      ON j.id=po.job_id
+                    LEFT JOIN invoices i
+                      ON i.id=po.invoice_id
+                    WHERE po.id=?
+                    """,
+                    (order_id,),
+                ).fetchone()
                 if order is None:
                     raise HTTPException(status_code=404, detail="Supplier order not found.")
                 items = connection.execute(
@@ -1415,18 +1441,112 @@ FILES = {
 
         def place_order(order_id: int):
             with closing(get_connection()) as connection:
-                order = connection.execute("SELECT * FROM supplier_orders WHERE id=?", (order_id,)).fetchone()
+                order = connection.execute(
+                    """
+                    SELECT po.*, i.invoice_number
+                    FROM supplier_orders po
+                    LEFT JOIN invoices i
+                      ON i.id=po.invoice_id
+                    WHERE po.id=?
+                    """,
+                    (order_id,),
+                ).fetchone()
+
                 if order is None:
-                    raise HTTPException(status_code=404, detail="Supplier order not found.")
-                connection.execute("""
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Supplier order not found.",
+                    )
+
+                current_status = str(
+                    order["status"] or ""
+                ).strip().upper()
+
+                if current_status == "ORDERED":
+                    return get_order(order_id)
+
+                if current_status != "DRAFT":
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "Only a draft supplier order can be "
+                            "marked ordered."
+                        ),
+                    )
+
+                connection.execute(
+                    """
                     UPDATE supplier_orders
-                    SET status='ORDERED', ordered_at=COALESCE(ordered_at,CURRENT_TIMESTAMP),
+                    SET status='ORDERED',
+                        ordered_at=COALESCE(
+                            ordered_at,
+                            CURRENT_TIMESTAMP
+                        ),
                         updated_at=CURRENT_TIMESTAMP
                     WHERE id=?
-                """, (order_id,))
-                write_audit(connection, action="SUPPLIER_ORDER_PLACED", entity_type="SUPPLIER_ORDER",
-                            entity_id=order_id, summary=f"{order['po_number']} marked ordered")
+                    """,
+                    (order_id,),
+                )
+
+                write_audit(
+                    connection,
+                    action="SUPPLIER_ORDER_PLACED",
+                    entity_type="SUPPLIER_ORDER",
+                    entity_id=order_id,
+                    summary=f"{order['po_number']} marked ordered",
+                    metadata={
+                        "invoice_id": order["invoice_id"],
+                        "job_id": int(order["job_id"]),
+                    },
+                )
+
+                log_job_event(
+                    connection,
+                    job_id=int(order["job_id"]),
+                    event_type="SUPPLIER_ORDER_PLACED",
+                    icon="🛒",
+                    message=(
+                        f"{order['po_number']} placed with "
+                        f"{order['supplier_name']}"
+                    ),
+                )
+
+                if order["invoice_id"]:
+                    remaining = connection.execute(
+                        """
+                        SELECT COUNT(*)
+                        FROM supplier_orders
+                        WHERE invoice_id=?
+                          AND UPPER(
+                              COALESCE(status, 'DRAFT')
+                          )='DRAFT'
+                        """,
+                        (order["invoice_id"],),
+                    ).fetchone()[0]
+
+                    if int(remaining or 0) == 0:
+                        connection.execute(
+                            """
+                            UPDATE jobs
+                            SET status='ORDERED'
+                            WHERE id=?
+                            """,
+                            (order["job_id"],),
+                        )
+
+                        log_job_event(
+                            connection,
+                            job_id=int(order["job_id"]),
+                            event_type="PURCHASING_STARTED",
+                            icon="✅",
+                            message=(
+                                "All supplier orders placed for "
+                                f"{order['invoice_number'] or 'invoice'}"
+                            ),
+                        )
+
                 connection.commit()
+
             return get_order(order_id)
 
         def record_receipt(order_id: int, payload: ReceiptCreate):

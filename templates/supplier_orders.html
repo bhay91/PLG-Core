@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Purchasing · Pinpoint Sourcing Co.{% endblock %}
+
+{% block content %}
+<section class="workspace-heading">
+  <div>
+    <p class="eyebrow">PURCHASING</p>
+    <h1>Supplier Orders</h1>
+    <p>
+      Purchase orders created from paid customer invoices.
+    </p>
+  </div>
+</section>
+
+{% if invoice_id %}
+<section class="panel">
+  <strong>Filtered to invoice #{{ invoice_id }}</strong>
+  <a class="button ghost" href="/purchasing">
+    Show All Supplier Orders
+  </a>
+</section>
+{% endif %}
+
+<section class="panel">
+  {% if orders %}
+  <div class="invoice-center-table-wrap">
+    <table class="invoice-center-table">
+      <thead>
+        <tr>
+          <th>PO</th>
+          <th>Supplier</th>
+          <th>Job</th>
+          <th>Invoice</th>
+          <th>Items</th>
+          <th>Total</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for order in orders %}
+        <tr>
+          <td>
+            <strong>{{ order.po_number or "Draft PO" }}</strong>
+          </td>
+          <td>{{ order.supplier_name }}</td>
+          <td>{{ order.job_number }}</td>
+          <td>{{ order.invoice_number or "—" }}</td>
+          <td>{{ order.item_count }}</td>
+          <td>${{ "%.2f"|format(order.order_total or 0) }}</td>
+          <td>
+            <span class="workspace-status-badge workspace-status-{{ order.status|lower }}">
+              {{ order.status }}
+            </span>
+          </td>
+          <td>
+            <a
+              class="workspace-btn"
+              href="/purchasing/orders/{{ order.id }}"
+            >
+              Open
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    No supplier purchase orders yet.
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

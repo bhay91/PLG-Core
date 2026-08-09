@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}{{ order.po_number }} · Purchasing{% endblock %}
+
+{% block content %}
+<section class="workspace-heading">
+  <div>
+    <p class="eyebrow">SUPPLIER PURCHASE ORDER</p>
+
+    <div class="invoice-center-title">
+      <h1>{{ order.po_number }}</h1>
+
+      <span class="workspace-status-badge workspace-status-{{ order.status|lower }}">
+        {{ order.status }}
+      </span>
+    </div>
+
+    <p>
+      {{ order.supplier_name }}
+      · {{ order.job_number }}
+      {% if order.invoice_number %}
+      · {{ order.invoice_number }}
+      {% endif %}
+    </p>
+  </div>
+
+  <div>
+    <a class="button ghost" href="/purchasing">
+      Back to Purchasing
+    </a>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="invoice-center-identity-grid">
+    <div>
+      <span>Supplier</span>
+      <strong>{{ order.supplier_name }}</strong>
+    </div>
+
+    <div>
+      <span>Customer</span>
+      <strong>{{ order.customer }}</strong>
+      {% if order.company %}
+      <small>{{ order.company }}</small>
+      {% endif %}
+    </div>
+
+    <div>
+      <span>Job</span>
+      <strong>{{ order.job_number }}</strong>
+    </div>
+
+    <div>
+      <span>Invoice</span>
+      <strong>{{ order.invoice_number or "—" }}</strong>
+    </div>
+
+    <div>
+      <span>Created</span>
+      <strong>{{ order.created_at }}</strong>
+    </div>
+
+    <div>
+      <span>Ordered</span>
+      <strong>{{ order.ordered_at or "Not yet" }}</strong>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="invoice-center-section-heading">
+    <div>
+      <p class="eyebrow">ORDER ITEMS</p>
+      <h2>Parts to purchase</h2>
+    </div>
+
+    <span class="invoice-item-count">
+      {{ items|length }}
+      item{% if items|length != 1 %}s{% endif %}
+    </span>
+  </div>
+
+  <div class="invoice-center-table-wrap">
+    <table class="invoice-center-table">
+      <thead>
+        <tr>
+          <th>Qty</th>
+          <th>Supplier Part #</th>
+          <th>Description</th>
+          <th>Unit Cost</th>
+          <th>Line Cost</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ item.quantity_ordered }}</td>
+          <td>
+            <strong>
+              {{ item.supplier_part_number or "—" }}
+            </strong>
+          </td>
+          <td>{{ item.description }}</td>
+          <td>${{ "%.2f"|format(item.unit_cost or 0) }}</td>
+          <td>
+            <strong>
+              ${{ "%.2f"|format(item.line_cost or 0) }}
+            </strong>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel invoice-payment-panel">
+  <p class="eyebrow">PURCHASE TOTAL</p>
+
+  <div class="invoice-money-summary">
+    <div>
+      <span>Parts</span>
+      <strong>
+        ${{ "%.2f"|format(order.parts_total or 0) }}
+      </strong>
+    </div>
+
+    <div>
+      <span>Shipping</span>
+      <strong>
+        ${{ "%.2f"|format(order.shipping_total or 0) }}
+      </strong>
+    </div>
+  </div>
+
+  <div class="invoice-balance-due">
+    <span>Order Total</span>
+    <strong>
+      ${{ "%.2f"|format(order.order_total or 0) }}
+    </strong>
+  </div>
+
+  {% if order.status == "DRAFT" %}
+  <form
+    method="post"
+    action="/purchasing/orders/{{ order.id }}/place"
+    onsubmit="return confirm('Mark {{ order.po_number }} as ordered with {{ order.supplier_name }}?');"
+  >
+    <button
+      type="submit"
+      class="workspace-btn workspace-btn-primary"
+    >
+      Mark PO Ordered
+    </button>
+  </form>
+  {% elif order.status == "ORDERED" %}
+  <div class="invoice-paid-state">
+    <span class="invoice-paid-check">✓</span>
+    <div>
+      <strong>Order Placed</strong>
+      <p>Waiting for parts to arrive from the supplier.</p>
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

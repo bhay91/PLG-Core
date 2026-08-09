@@ -2248,6 +2248,93 @@ def custom_invoice_pdf(
         filename=path.name if download else None,
     )
 
+@app.get(
+    "/purchasing",
+    response_class=HTMLResponse,
+)
+def purchasing_center(
+    request: Request,
+    invoice_id: int | None = None,
+):
+    from plg_core.supply.service import list_orders
+
+    orders = list_orders(500)
+
+    if invoice_id is not None:
+        orders = [
+            order
+            for order in orders
+            if int(order["invoice_id"] or 0) == invoice_id
+        ]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="supplier_orders.html",
+        context={
+            "orders": orders,
+            "invoice_id": invoice_id,
+            "active_page": "purchasing",
+        },
+    )
+
+
+@app.get(
+    "/purchasing/orders/{order_id}",
+    response_class=HTMLResponse,
+)
+def purchasing_order_detail(
+    request: Request,
+    order_id: int,
+):
+    from plg_core.supply.service import get_order
+
+    order = get_order(order_id)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="supplier_order_detail.html",
+        context={
+            "order": order,
+            "items": order["items"],
+            "active_page": "purchasing",
+        },
+    )
+
+
+@app.post(
+    "/invoices/{invoice_id}/supplier-orders"
+)
+def create_supplier_orders_web(
+    invoice_id: int,
+):
+    from plg_core.supply.service import (
+        create_orders_from_paid_invoice,
+    )
+
+    create_orders_from_paid_invoice(invoice_id)
+
+    return RedirectResponse(
+        url=f"/purchasing?invoice_id={invoice_id}",
+        status_code=303,
+    )
+
+
+@app.post(
+    "/purchasing/orders/{order_id}/place"
+)
+def place_supplier_order_web(
+    order_id: int,
+):
+    from plg_core.supply.service import place_order
+
+    place_order(order_id)
+
+    return RedirectResponse(
+        url=f"/purchasing/orders/{order_id}",
+        status_code=303,
+    )
+
+
 @app.get("/invoices", response_class=HTMLResponse)
 def list_invoices(request: Request, view: str = "all"):
     if view not in {"active", "paid", "void", "all"}:
@@ -2474,15 +2561,22 @@ def invoice_documents(request: Request, invoice_id: int):
             (invoice_id,),
         ).fetchone() is not None
 
-        has_supplier_orders = connection.execute(
+        supplier_orders = connection.execute(
             """
-            SELECT 1
+            SELECT
+                id,
+                po_number,
+                supplier_name,
+                status,
+                order_total
             FROM supplier_orders
             WHERE invoice_id = ?
-            LIMIT 1
+            ORDER BY id
             """,
             (invoice_id,),
-        ).fetchone() is not None
+        ).fetchall()
+
+        has_supplier_orders = bool(supplier_orders)
 
         has_purchased_parts = connection.execute(
             """
@@ -2564,6 +2658,7 @@ def invoice_documents(request: Request, invoice_id: int):
                 invoice
             ).exists(),
             "custom_invoice_exists": custom_invoice_exists,
+            "supplier_orders": supplier_orders,
             "can_void_invoice": can_void_invoice,
             "void_block_reason": void_block_reason,
             "active_page": "invoices",

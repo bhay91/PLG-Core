@@ -161,6 +161,45 @@
 
     <div class="invoice-parts-order-action">
       <div>
+        <span>SUPPLIER PURCHASE ORDERS</span>
+
+        {% if supplier_orders %}
+        <strong>
+          {{ supplier_orders|length }}
+          purchase order{% if supplier_orders|length != 1 %}s{% endif %}
+          created
+        </strong>
+        {% else %}
+        <strong>Create supplier purchase orders</strong>
+        {% endif %}
+      </div>
+
+      {% if supplier_orders %}
+      <a
+        class="workspace-btn invoice-parts-order-button"
+        href="/purchasing?invoice_id={{ invoice.id }}"
+      >
+        Open Supplier Orders
+      </a>
+      {% else %}
+      <form
+        method="post"
+        action="/invoices/{{ invoice.id }}/supplier-orders"
+        class="invoice-parts-order-form"
+        onsubmit="return confirm('Create supplier purchase orders from this paid invoice?');"
+      >
+        <button
+          class="workspace-btn invoice-parts-order-button"
+          type="submit"
+        >
+          Create Supplier Orders
+        </button>
+      </form>
+      {% endif %}
+    </div>
+
+    <div class="invoice-parts-order-action">
+      <div>
         <span>PARTS PURCHASING</span>
         <strong>Ready to prepare the supplier buying list</strong>
       </div>
