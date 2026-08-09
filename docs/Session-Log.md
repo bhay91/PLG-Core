@@ -134,3 +134,37 @@ Audit what PPS actually implements today before choosing the next development mi
 ### Development Rule
 
 Do not assume an audit item is missing merely because it appears on an older roadmap. Verify the current implementation first, then improve only genuine workflow gaps.
+
+---
+
+## 2026-08-09 — Alpha 19 Audit Remediation 1
+
+### Finding
+
+The modular migration source defined `_migration_0008_job_revenue_adjustments` twice.
+
+The first duplicate also contained Smart Intake `customer_location_id` migration logic, but the second Python definition replaced it.
+
+### Resolution
+
+- Removed the duplicate Alpha 8.3 migration definition.
+- Preserved Revenue Adjustments as migration `0008`.
+- Added `0009_smart_intake_location_links`.
+- Migration `0009` safely ensures `customer_location_id` exists on:
+  - `customer_requests`
+  - `machines`
+
+### Verification
+
+- Existing live database already contained both required columns.
+- Migration `0009` passed an isolated in-memory test.
+- Migration `0009` is idempotent.
+- Full `run_migrations()` registration passed against a disposable database copy.
+- SQLite integrity check passed.
+- Migration source structure and Git diff check passed.
+
+### Result
+
+Migration history is now deterministic for both existing and fresh PPS databases.
+
+No customer data repair was required.

@@ -380,12 +380,8 @@ def _migration_0007_smart_intake_locations(
         """
     )
 
-    request_columns = {
-        row["name"]
-        for row in connection.execute(
-            "PRAGMA table_info(customer_requests)"
-        ).fetchall()
-    }
+
+
 
 def _migration_0008_job_revenue_adjustments(
     connection: sqlite3.Connection,
@@ -412,6 +408,19 @@ def _migration_0008_job_revenue_adjustments(
                 f"ALTER TABLE jobs ADD COLUMN {name} {definition}"
             )
 
+
+
+def _migration_0009_smart_intake_location_links(
+    connection: sqlite3.Connection,
+) -> None:
+    """Ensure Smart Intake location relationships exist."""
+
+    request_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(customer_requests)"
+        ).fetchall()
+    }
 
     if "customer_location_id" not in request_columns:
         connection.execute(
@@ -437,32 +446,6 @@ def _migration_0008_job_revenue_adjustments(
         )
 
 
-def _migration_0008_job_revenue_adjustments(
-    connection: sqlite3.Connection,
-) -> None:
-    """Add optional job-level Service Charge and Sourcing Fee fields."""
-
-    job_columns = {
-        row["name"]
-        for row in connection.execute(
-            "PRAGMA table_info(jobs)"
-        ).fetchall()
-    }
-
-    additions = {
-        "service_charge": "REAL NOT NULL DEFAULT 0",
-        "service_charge_description": "TEXT NOT NULL DEFAULT ''",
-        "sourcing_fee": "REAL NOT NULL DEFAULT 0",
-        "sourcing_fee_description": "TEXT NOT NULL DEFAULT ''",
-    }
-
-    for name, definition in additions.items():
-        if name not in job_columns:
-            connection.execute(
-                f"ALTER TABLE jobs ADD COLUMN {name} {definition}"
-            )
-
-
 MIGRATIONS: list[Migration] = [
     ("0001_basket_foundation", _migration_0001_basket_foundation),
     ("0002_machine_registry", _migration_0002_machine_registry),
@@ -472,6 +455,7 @@ MIGRATIONS: list[Migration] = [
     ("0006_part_status_timeline", _migration_0006_part_status_timeline),    ("0007_smart_intake_locations", _migration_0007_smart_intake_locations),
 
     ("0008_job_revenue_adjustments", _migration_0008_job_revenue_adjustments),
+    ("0009_smart_intake_location_links", _migration_0009_smart_intake_location_links),
 ]
 
 
