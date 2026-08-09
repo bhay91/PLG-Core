@@ -130,6 +130,36 @@
     {% endif %}
   </section>
 
+  <section class="panel quote-review-history">
+    <header class="quote-review-section-head">
+      <div>
+        <p class="eyebrow">QUOTE HISTORY</p>
+        <h2>Status history</h2>
+      </div>
+    </header>
+
+    {% if quote_events %}
+      {% for event in quote_events %}
+      <div class="quote-document-row">
+        <div>
+          <strong>{{ event.event_type|replace("_", " ")|title }}</strong>
+          <p>{{ event.notes or "Quote status updated." }}</p>
+        </div>
+        <div>
+          {% if event.from_status or event.to_status %}
+          <strong>{{ event.from_status or "—" }} → {{ event.to_status or "—" }}</strong>
+          {% endif %}
+          <p>{{ event.created_at or "" }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+    <div class="empty-state">
+      No quote decision history recorded yet.
+    </div>
+    {% endif %}
+  </section>
+
   <section class="panel quote-review-identity">
     <div class="quote-review-identity-grid">
       <div>

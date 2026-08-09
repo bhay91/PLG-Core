@@ -2974,6 +2974,7 @@ def update_quote_decision(
     decision: str = Form(...),
 ):
     from plg_core.timeline import log_job_event
+    from plg_core.audit import write_audit
 
     valid_decisions = {
         "APPROVED",
@@ -3044,6 +3045,44 @@ def update_quote_decision(
             (job_status, quote["job_id"]),
         )
 
+        previous_status = str(
+            quote["status"] or ""
+        ).strip().upper()
+
+        if previous_status != normalized:
+            connection.execute(
+                """
+                INSERT INTO quote_events (
+                    quote_id,
+                    event_type,
+                    from_status,
+                    to_status,
+                    notes
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    quote_id,
+                    event_type,
+                    previous_status,
+                    normalized,
+                    message,
+                ),
+            )
+
+            write_audit(
+                connection,
+                action=event_type,
+                entity_type="QUOTE",
+                entity_id=quote_id,
+                summary=message,
+                metadata={
+                    "from_status": previous_status,
+                    "to_status": normalized,
+                    "job_id": int(quote["job_id"]),
+                },
+            )
+
         log_job_event(
             connection,
             job_id=int(quote["job_id"]),
@@ -3065,11 +3104,20 @@ def quote_documents(request: Request, quote_id: int):
     with closing(get_connection()) as connection:
         quote, items = load_quote(connection, quote_id)
         invoice = connection.execute("SELECT id,invoice_number FROM invoices WHERE quote_id=?",(quote_id,)).fetchone()
+        quote_events = connection.execute(
+            """
+            SELECT event_type, from_status, to_status, notes, created_at
+            FROM quote_events
+            WHERE quote_id = ?
+            ORDER BY id DESC
+            """,
+            (quote_id,),
+        ).fetchall()
     paths = quote_paths(quote["customer"],quote["quote_number"])
     if not paths["customer"].exists() or not paths["internal"].exists():
         generate_quote_pdfs(quote,items)
     customer_path = Path("documents")/"Customers"/sanitize_path_name(quote["customer"])/"Quotes"
-    return templates.TemplateResponse(request=request,name="quote_documents.html",context={"quote":quote,"items":items,"invoice":invoice,"customer_path":str(customer_path),"active_page":"quotes"})
+    return templates.TemplateResponse(request=request,name="quote_documents.html",context={"quote":quote,"items":items,"invoice":invoice,"quote_events":quote_events,"customer_path":str(customer_path),"active_page":"quotes"})
 
 
 @app.get("/quotes/{quote_id}/customer/pdf")
