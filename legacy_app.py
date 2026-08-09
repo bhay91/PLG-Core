@@ -3037,6 +3037,18 @@ def restore_quote(quote_id: int):
     return RedirectResponse(url="/quotes?view=archived",status_code=303)
 
 
+@app.post("/quotes/{quote_id}/mark-sent")
+def mark_quote_sent(quote_id: int):
+    from plg_core.sales.service import update_quote_status
+
+    update_quote_status(quote_id, "SENT")
+
+    return RedirectResponse(
+        url=f"/quotes/{quote_id}/documents",
+        status_code=303,
+    )
+
+
 @app.post("/quotes/{quote_id}/decision")
 def update_quote_decision(
     quote_id: int,

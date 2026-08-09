@@ -69,71 +69,90 @@
       </span>
     </header>
 
-    {% if quote.status == "APPROVED" %}
-    <div class="quote-decision-result approved">
-      <strong>✓ Customer approved this quote</strong>
-      <p>The quote is ready to be converted into an invoice.</p>
-    </div>
+      {% if quote.status == "APPROVED" %}
+      <div class="quote-decision-result approved">
+        <strong>✓ Customer approved this quote</strong>
+        <p>The quote is ready to be converted into an invoice.</p>
+      </div>
 
-    {% elif quote.status == "REVISION_REQUIRED" %}
-    <div class="quote-decision-result revision">
-      <strong>↺ Customer requested changes</strong>
-      <p>Return to the Job Command Center and revise the quote.</p>
-    </div>
+      {% elif quote.status == "REVISION_REQUIRED" %}
+      <div class="quote-decision-result revision">
+        <strong>↺ Customer requested changes</strong>
+        <p>Return to the Job Command Center and revise the quote.</p>
+      </div>
 
-    {% elif quote.status == "REJECTED" %}
-    <div class="quote-decision-result rejected">
-      <strong>✕ Customer rejected this quote</strong>
-      <p>Review pricing, prepare a revision, or close the job.</p>
-    </div>
+      {% elif quote.status == "REJECTED" %}
+      <div class="quote-decision-result rejected">
+        <strong>✕ Customer rejected this quote</strong>
+        <p>Review pricing, prepare a revision, or close the job.</p>
+      </div>
 
-    {% else %}
-    <div class="quote-decision-result waiting">
-      <strong>Awaiting customer response</strong>
-      <p>Record the customer’s decision when it is received.</p>
-    </div>
-    {% endif %}
+      {% elif quote.status == "DRAFT" %}
+      <div class="quote-decision-result waiting">
+        <strong>Quote is ready to send</strong>
+        <p>Mark the quote as sent when it has been delivered to the customer.</p>
+      </div>
 
-    {% if not invoice %}
-    <div class="quote-decision-actions">
-      <form
-        method="post"
-        action="/quotes/{{ quote.id }}/decision"
-      >
-        <input type="hidden" name="decision" value="APPROVED">
+      {% else %}
+      <div class="quote-decision-result waiting">
+        <strong>Awaiting customer response</strong>
+        <p>Record the customer’s decision when it is received.</p>
+      </div>
+      {% endif %}
 
-        <button class="button" type="submit">
-          ✓ Approve Quote
-        </button>
-      </form>
-
-      <form
-        method="post"
-        action="/quotes/{{ quote.id }}/decision"
-      >
-        <input
-          type="hidden"
-          name="decision"
-          value="REVISION_REQUIRED"
+      {% if not invoice %}
+      {% if quote.status == "DRAFT" %}
+      <div class="quote-decision-actions">
+        <form
+          method="post"
+          action="/quotes/{{ quote.id }}/mark-sent"
         >
+          <button class="button" type="submit">
+            📤 Mark Quote as Sent
+          </button>
+        </form>
+      </div>
+      {% else %}
+      <div class="quote-decision-actions">
+        <form
+          method="post"
+          action="/quotes/{{ quote.id }}/decision"
+        >
+          <input type="hidden" name="decision" value="APPROVED">
 
-        <button class="button ghost" type="submit">
-          ↺ Request Changes
-        </button>
-      </form>
+          <button class="button" type="submit">
+            ✓ Approve Quote
+          </button>
+        </form>
 
-      <form
-        method="post"
-        action="/quotes/{{ quote.id }}/decision"
-      >
-        <input type="hidden" name="decision" value="REJECTED">
+        <form
+          method="post"
+          action="/quotes/{{ quote.id }}/decision"
+        >
+          <input
+            type="hidden"
+            name="decision"
+            value="REVISION_REQUIRED"
+          >
 
-        <button class="button danger" type="submit">
-          ✕ Reject Quote
-        </button>
-      </form>
-    </div>
-    {% endif %}
+          <button class="button ghost" type="submit">
+            ↺ Request Changes
+          </button>
+        </form>
+
+        <form
+          method="post"
+          action="/quotes/{{ quote.id }}/decision"
+        >
+          <input type="hidden" name="decision" value="REJECTED">
+
+          <button class="button danger" type="submit">
+            ✕ Reject Quote
+          </button>
+        </form>
+      </div>
+      {% endif %}
+      {% endif %}
   </section>
 
   <section class="panel quote-review-history">

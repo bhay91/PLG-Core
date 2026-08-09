@@ -306,6 +306,7 @@ FILES = {
                 raise HTTPException(status_code=400, detail="Invalid quote status.")
 
             decision_rules = {
+                "SENT": ("QUOTE_SENT", "📤", "QUOTED", "sent to customer"),
                 "APPROVED": ("QUOTE_APPROVED", "✅", "CONFIRMED", "approved"),
                 "REVISION_REQUIRED": ("QUOTE_REVISION_REQUIRED", "↺", "QUOTED", "requires revision"),
                 "REJECTED": ("QUOTE_REJECTED", "✕", "QUOTED", "rejected"),
