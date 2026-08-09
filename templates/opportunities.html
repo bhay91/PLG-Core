@@ -1,45 +1,526 @@
 {% extends "base.html" %}
-{% block title %}Opportunities{% endblock %}
+{% block title %}Opportunities · Pinpoint Sourcing Co.{% endblock %}
+
 {% block content %}
 <style>
-.op-table{width:100%;border-collapse:collapse}
-.op-table th{padding:11px 12px;background:#f7f9fc;color:#6c7890;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.04em}
-.op-table td{padding:13px 12px;border-top:1px solid var(--line);font-size:13px}
+.op-shell{
+  width:100%;
+  max-width:none;
+  margin:0;
+  display:grid;
+  gap:18px
+}
+.op-heading{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:20px
+}
+.op-heading h1{
+  margin:2px 0 6px
+}
+.op-heading p{
+  margin:0;
+  color:var(--muted)
+}
+.op-summary{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:12px
+}
+.op-stat{
+  display:grid;
+  gap:4px;
+  min-width:0;
+  padding:15px 16px;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:14px;
+  box-shadow:var(--shadow-sm);
+  text-decoration:none;
+  color:inherit;
+  transition:transform .12s ease,border-color .12s ease
+}
+.op-stat:hover{
+  transform:translateY(-1px);
+  border-color:#b7c9e7
+}
+.op-stat strong{
+  font-size:26px;
+  line-height:1;
+  color:var(--ink-strong)
+}
+.op-stat span{
+  font-weight:850;
+  color:var(--ink-strong)
+}
+.op-stat small{
+  color:var(--muted)
+}
+.op-stat.alert{
+  border-color:#efb3b3
+}
+.op-stat.alert strong{
+  color:#b42318
+}
+.op-filters{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  flex-wrap:wrap
+}
+.op-filter-group{
+  display:flex;
+  gap:7px;
+  flex-wrap:wrap
+}
+.op-filter{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:34px;
+  padding:7px 12px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:#fff;
+  color:var(--ink-strong);
+  text-decoration:none;
+  font-size:12px;
+  font-weight:800
+}
+.op-filter:hover{
+  border-color:#9fb9df
+}
+.op-filter.active{
+  background:var(--accent);
+  border-color:var(--accent);
+  color:#fff
+}
+.op-count{
+  color:var(--muted);
+  font-size:12px;
+  font-weight:750
+}
+.op-panel{
+  overflow:hidden;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:15px;
+  box-shadow:var(--shadow-sm)
+}
+.op-table-wrap{
+  overflow-x:auto
+}
+.op-table{
+  width:100%;
+  border-collapse:collapse;
+  min-width:940px
+}
+.op-table th{
+  padding:11px 14px;
+  background:#f7f9fc;
+  color:#6c7890;
+  font-size:10px;
+  text-align:left;
+  text-transform:uppercase;
+  letter-spacing:.055em;
+  white-space:nowrap
+}
+.op-table td{
+  padding:14px;
+  border-top:1px solid var(--line);
+  font-size:13px;
+  vertical-align:middle
+}
+.op-row{
+  transition:background .12s ease
+}
+.op-row:hover{
+  background:#f9fbff
+}
+.op-row.overdue{
+  background:#fff9f8
+}
+.op-row.due-today{
+  background:#fffdf5
+}
+.op-main{
+  display:grid;
+  gap:4px;
+  min-width:220px
+}
+.op-main a{
+  color:var(--ink-strong);
+  font-weight:850;
+  text-decoration:none
+}
+.op-main a:hover{
+  color:var(--accent-dark);
+  text-decoration:underline
+}
+.op-number{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800
+}
+.op-customer{
+  font-weight:750
+}
+.op-unlinked{
+  display:inline-flex;
+  width:max-content;
+  padding:4px 8px;
+  border-radius:999px;
+  background:#f2f4f7;
+  color:#667085;
+  font-size:11px;
+  font-weight:800
+}
+.op-activity{
+  display:flex;
+  gap:7px
+}
+.op-mini{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:4px 7px;
+  border-radius:7px;
+  background:#f4f7fb;
+  color:#46566f;
+  font-size:11px;
+  font-weight:800;
+  white-space:nowrap
+}
+.op-status{
+  display:inline-flex;
+  width:max-content;
+  padding:5px 9px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:900
+}
+.op-status.open{
+  background:#eef4ff;
+  color:#175cd3
+}
+.op-status.converted{
+  background:#ecfdf3;
+  color:#027a48
+}
+.op-status.other{
+  background:#f2f4f7;
+  color:#475467
+}
+.op-follow{
+  display:grid;
+  gap:4px
+}
+.op-follow-date{
+  font-weight:750;
+  white-space:nowrap
+}
+.op-follow-badge{
+  display:inline-flex;
+  width:max-content;
+  padding:3px 7px;
+  border-radius:999px;
+  font-size:10px;
+  font-weight:900
+}
+.op-follow-badge.overdue{
+  background:#fee4e2;
+  color:#b42318
+}
+.op-follow-badge.today{
+  background:#fef0c7;
+  color:#b54708
+}
+.op-follow-badge.upcoming{
+  background:#eef4ff;
+  color:#175cd3
+}
+.op-job a{
+  color:var(--accent-dark);
+  font-weight:800;
+  text-decoration:none
+}
+.op-job a:hover{
+  text-decoration:underline
+}
+.op-value{
+  text-align:right;
+  font-weight:850;
+  white-space:nowrap
+}
+.op-table th:last-child{
+  text-align:right
+}
+.op-empty{
+  padding:55px 25px !important;
+  text-align:center;
+  color:var(--muted)
+}
+@media(max-width:1050px){
+  .op-summary{
+    grid-template-columns:repeat(3,minmax(0,1fr))
+  }
+}
+@media(max-width:700px){
+  .op-heading{
+    display:grid
+  }
+  .op-heading .button{
+    width:max-content
+  }
+  .op-summary{
+    grid-template-columns:repeat(2,minmax(0,1fr))
+  }
+  .op-filters{
+    align-items:flex-start
+  }
+}
 </style>
 
-<div style="display:flex;justify-content:space-between;align-items:center;gap:16px"><h1>Opportunities</h1><a class="button" href="/opportunities/new">New Opportunity</a></div>
-<p>Customer opportunities and follow-ups.</p>
+<div class="op-shell">
+  <section class="op-heading">
+    <div>
+      <p class="eyebrow">OPPORTUNITIES</p>
+      <h1>Customer opportunities</h1>
+      <p>
+        Track sourcing work, research, follow-ups,
+        and conversion into active Jobs.
+      </p>
+    </div>
 
-<div style="display:flex;gap:8px;margin:14px 0 18px;flex-wrap:wrap">
-<a class="button" href="/opportunities">All</a>
-<a class="button" href="/opportunities?status=OPEN">Open</a>
-<a class="button" href="/opportunities?status=CONVERTED">Converted</a>
-<a class="button" href="/opportunities?follow_up=today">Due Today</a>
-<a class="button" href="/opportunities?follow_up=upcoming">Upcoming</a>
-</div>
+    <a class="button" href="/opportunities/new">
+      New Opportunity
+    </a>
+  </section>
 
-<div style="overflow-x:auto">
-<table class="op-table">
-<thead>
-<tr><th>Opportunity</th><th>Customer</th><th>Title</th><th>Machines</th><th>Research</th><th>Status</th><th>Follow Up</th><th>Converted Job</th><th>Estimated Value</th></tr>
-</thead>
-<tbody>
-{% for opportunity in opportunities %}
-<tr>
-<td><a href="/opportunities/{{ opportunity.id }}">{{ opportunity.opportunity_number or opportunity.id }}</a></td>
-<td>{{ opportunity.customer_name or "-" }}</td>
-<td>{{ opportunity.title }}</td>
-<td>{{ opportunity.machine_count }}</td>
-<td>{{ opportunity.research_count }}</td>
-<td>{{ opportunity.status }}</td>
-<td>{{ opportunity.follow_up_date or "-" }}</td>
-<td>{% if opportunity.converted_job_id %}<a href="/jobs/{{ opportunity.converted_job_id }}">{{ opportunity.converted_job_number or opportunity.converted_job_id }}</a>{% else %}-{% endif %}</td>
-<td>${{ "%.2f"|format(opportunity.estimated_value or 0) }}</td>
-</tr>
-{% else %}
-<tr><td colspan="9">No opportunities yet.</td></tr>
-{% endfor %}
-</tbody>
-</table>
+  <section class="op-summary">
+    <a class="op-stat" href="/opportunities">
+      <strong>{{ summary.total }}</strong>
+      <span>Total</span>
+      <small>All opportunities</small>
+    </a>
+
+    <a class="op-stat" href="/opportunities?status=OPEN">
+      <strong>{{ summary.open }}</strong>
+      <span>Open</span>
+      <small>Still being worked</small>
+    </a>
+
+    <a class="op-stat" href="/opportunities?follow_up=today">
+      <strong>{{ summary.due_today }}</strong>
+      <span>Due Today</span>
+      <small>Follow-up due now</small>
+    </a>
+
+    <a
+      class="op-stat {% if summary.overdue %}alert{% endif %}"
+      href="/opportunities?follow_up=overdue"
+    >
+      <strong>{{ summary.overdue }}</strong>
+      <span>Overdue</span>
+      <small>Follow-up date passed</small>
+    </a>
+
+    <a class="op-stat" href="/opportunities?follow_up=upcoming">
+      <strong>{{ summary.upcoming }}</strong>
+      <span>Upcoming</span>
+      <small>Future follow-ups</small>
+    </a>
+
+    <a class="op-stat" href="/opportunities?status=CONVERTED">
+      <strong>{{ summary.converted }}</strong>
+      <span>Converted</span>
+      <small>Moved into Jobs</small>
+    </a>
+  </section>
+
+  <section class="op-filters">
+    <div class="op-filter-group">
+      <a
+        class="op-filter {% if not status_filter and not follow_up_filter %}active{% endif %}"
+        href="/opportunities"
+      >
+        All
+      </a>
+
+      <a
+        class="op-filter {% if status_filter == 'OPEN' %}active{% endif %}"
+        href="/opportunities?status=OPEN"
+      >
+        Open
+      </a>
+
+      <a
+        class="op-filter {% if follow_up_filter == 'today' %}active{% endif %}"
+        href="/opportunities?follow_up=today"
+      >
+        Due Today
+      </a>
+
+      <a
+        class="op-filter {% if follow_up_filter == 'overdue' %}active{% endif %}"
+        href="/opportunities?follow_up=overdue"
+      >
+        Overdue
+      </a>
+
+      <a
+        class="op-filter {% if follow_up_filter == 'upcoming' %}active{% endif %}"
+        href="/opportunities?follow_up=upcoming"
+      >
+        Upcoming
+      </a>
+
+      <a
+        class="op-filter {% if status_filter == 'CONVERTED' %}active{% endif %}"
+        href="/opportunities?status=CONVERTED"
+      >
+        Converted
+      </a>
+    </div>
+
+    <div class="op-count">
+      Showing {{ opportunities|length }} record{% if opportunities|length != 1 %}s{% endif %}
+    </div>
+  </section>
+
+  <section class="op-panel">
+    <div class="op-table-wrap">
+      <table class="op-table">
+        <thead>
+          <tr>
+            <th>Opportunity</th>
+            <th>Customer</th>
+            <th>Activity</th>
+            <th>Status</th>
+            <th>Follow Up</th>
+            <th>Converted Job</th>
+            <th>Estimated Value</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for opportunity in opportunities %}
+          {% set is_open = opportunity.status == "OPEN" %}
+          {% set is_overdue = is_open and opportunity.follow_up_date and opportunity.follow_up_date < report_date %}
+          {% set is_today = is_open and opportunity.follow_up_date == report_date %}
+
+          <tr
+            class="op-row
+                   {% if is_overdue %}overdue{% endif %}
+                   {% if is_today %}due-today{% endif %}"
+          >
+            <td>
+              <div class="op-main">
+                <a href="/opportunities/{{ opportunity.id }}">
+                  {{ opportunity.title or "Untitled Opportunity" }}
+                </a>
+                <span class="op-number">
+                  {{ opportunity.opportunity_number or opportunity.id }}
+                </span>
+              </div>
+            </td>
+
+            <td>
+              {% if opportunity.customer_name %}
+              <span class="op-customer">
+                {{ opportunity.customer_name }}
+              </span>
+              {% else %}
+              <span class="op-unlinked">
+                Unlinked Customer
+              </span>
+              {% endif %}
+            </td>
+
+            <td>
+              <div class="op-activity">
+                <span
+                  class="op-mini"
+                  title="Linked machines"
+                >
+                  {{ opportunity.machine_count }} Machine{% if opportunity.machine_count != 1 %}s{% endif %}
+                </span>
+
+                <span
+                  class="op-mini"
+                  title="Research records"
+                >
+                  {{ opportunity.research_count }} Research
+                </span>
+              </div>
+            </td>
+
+            <td>
+              {% if opportunity.status == "OPEN" %}
+              <span class="op-status open">OPEN</span>
+              {% elif opportunity.status == "CONVERTED" %}
+              <span class="op-status converted">CONVERTED</span>
+              {% else %}
+              <span class="op-status other">
+                {{ opportunity.status or "UNKNOWN" }}
+              </span>
+              {% endif %}
+            </td>
+
+            <td>
+              <div class="op-follow">
+                {% if opportunity.follow_up_date %}
+                <span class="op-follow-date">
+                  {{ opportunity.follow_up_date }}
+                </span>
+
+                {% if is_overdue %}
+                <span class="op-follow-badge overdue">
+                  OVERDUE
+                </span>
+                {% elif is_today %}
+                <span class="op-follow-badge today">
+                  DUE TODAY
+                </span>
+                {% elif is_open and opportunity.follow_up_date > report_date %}
+                <span class="op-follow-badge upcoming">
+                  UPCOMING
+                </span>
+                {% endif %}
+
+                {% else %}
+                <span style="color:var(--muted)">—</span>
+                {% endif %}
+              </div>
+            </td>
+
+            <td class="op-job">
+              {% if opportunity.converted_job_id %}
+              <a href="/jobs/{{ opportunity.converted_job_id }}">
+                {{ opportunity.converted_job_number or opportunity.converted_job_id }}
+              </a>
+              {% else %}
+              <span style="color:var(--muted)">—</span>
+              {% endif %}
+            </td>
+
+            <td class="op-value">
+              ${{ "%.2f"|format(opportunity.estimated_value or 0) }}
+            </td>
+          </tr>
+
+          {% else %}
+          <tr>
+            <td class="op-empty" colspan="7">
+              No opportunities match this view.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 </div>
 {% endblock %}

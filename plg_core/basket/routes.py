@@ -87,6 +87,7 @@ def opportunities_page(request: Request, status: str = "", follow_up: str = ""):
     with closing(get_connection()) as connection:
         status = status.strip().upper()
         follow_up = follow_up.strip().lower()
+        report_date = date.today().isoformat()
 
         conditions = []
         parameters = []
@@ -97,12 +98,19 @@ def opportunities_page(request: Request, status: str = "", follow_up: str = ""):
 
         if follow_up == "today":
             conditions.append("o.follow_up_date = ?")
-            parameters.append(date.today().isoformat())
+            parameters.append(report_date)
         elif follow_up == "upcoming":
             conditions.append("o.follow_up_date > ?")
-            parameters.append(date.today().isoformat())
+            parameters.append(report_date)
+        elif follow_up == "overdue":
+            conditions.append("o.follow_up_date < ?")
+            parameters.append(report_date)
 
-        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        where_clause = (
+            f"WHERE {' AND '.join(conditions)}"
+            if conditions
+            else ""
+        )
 
         opportunities = connection.execute(
             f"""
@@ -121,22 +129,89 @@ def opportunities_page(request: Request, status: str = "", follow_up: str = ""):
                 o.updated_at,
                 c.name AS customer_name,
                 j.job_number AS converted_job_number,
-                (SELECT COUNT(1) FROM opportunity_machines m WHERE m.opportunity_id = o.id) AS machine_count,
-                (SELECT COUNT(1) FROM opportunity_research r WHERE r.opportunity_id = o.id) AS research_count
+                (
+                    SELECT COUNT(1)
+                    FROM opportunity_machines m
+                    WHERE m.opportunity_id = o.id
+                ) AS machine_count,
+                (
+                    SELECT COUNT(1)
+                    FROM opportunity_research r
+                    WHERE r.opportunity_id = o.id
+                ) AS research_count
             FROM opportunities o
-            LEFT JOIN customers c ON c.id = o.customer_id
-            LEFT JOIN jobs j ON j.id = o.converted_job_id
+            LEFT JOIN customers c
+              ON c.id = o.customer_id
+            LEFT JOIN jobs j
+              ON j.id = o.converted_job_id
             {where_clause}
             ORDER BY o.created_at DESC
             """,
             parameters,
         ).fetchall()
 
+        summary_row = connection.execute(
+            """
+            SELECT
+                COUNT(*) AS total,
+                SUM(
+                    CASE
+                        WHEN UPPER(COALESCE(status,'')) = 'OPEN'
+                        THEN 1 ELSE 0
+                    END
+                ) AS open_count,
+                SUM(
+                    CASE
+                        WHEN UPPER(COALESCE(status,'')) = 'CONVERTED'
+                        THEN 1 ELSE 0
+                    END
+                ) AS converted_count,
+                SUM(
+                    CASE
+                        WHEN UPPER(COALESCE(status,'')) = 'OPEN'
+                         AND follow_up_date = ?
+                        THEN 1 ELSE 0
+                    END
+                ) AS due_today,
+                SUM(
+                    CASE
+                        WHEN UPPER(COALESCE(status,'')) = 'OPEN'
+                         AND follow_up_date < ?
+                        THEN 1 ELSE 0
+                    END
+                ) AS overdue,
+                SUM(
+                    CASE
+                        WHEN UPPER(COALESCE(status,'')) = 'OPEN'
+                         AND follow_up_date > ?
+                        THEN 1 ELSE 0
+                    END
+                ) AS upcoming
+            FROM opportunities
+            """,
+            (
+                report_date,
+                report_date,
+                report_date,
+            ),
+        ).fetchone()
+
+        summary = {
+            "total": int(summary_row["total"] or 0),
+            "open": int(summary_row["open_count"] or 0),
+            "converted": int(summary_row["converted_count"] or 0),
+            "due_today": int(summary_row["due_today"] or 0),
+            "overdue": int(summary_row["overdue"] or 0),
+            "upcoming": int(summary_row["upcoming"] or 0),
+        }
+
     return templates.TemplateResponse(
         request=request,
         name="opportunities.html",
         context={
             "opportunities": opportunities,
+            "summary": summary,
+            "report_date": report_date,
             "status_filter": status,
             "follow_up_filter": follow_up,
             "active_page": "opportunities",
