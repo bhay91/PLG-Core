@@ -107,7 +107,39 @@
             </strong>
           </td>
           <td>{{ item.description }}</td>
-          <td>${{ "%.2f"|format(item.unit_cost or 0) }}</td>
+          <td>
+            {% if order.status == "DRAFT" %}
+            <form
+              method="post"
+              action="/purchasing/orders/{{ order.id }}/items/{{ item.id }}/cost"
+            >
+              <input
+                type="number"
+                name="unit_cost"
+                min="0"
+                step="0.01"
+                value="{{ '%.2f'|format(item.unit_cost or 0) }}"
+                required
+                style="max-width: 110px;"
+              >
+              <button
+                type="submit"
+                class="workspace-btn"
+              >
+                Save
+              </button>
+            </form>
+
+            {% if item.quoted_unit_cost is not none %}
+            <small>
+              Quoted:
+              ${{ "%.2f"|format(item.quoted_unit_cost or 0) }}
+            </small>
+            {% endif %}
+            {% else %}
+            ${{ "%.2f"|format(item.unit_cost or 0) }}
+            {% endif %}
+          </td>
           <td>
             <strong>
               ${{ "%.2f"|format(item.line_cost or 0) }}

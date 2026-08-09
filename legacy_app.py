@@ -2320,6 +2320,30 @@ def create_supplier_orders_web(
 
 
 @app.post(
+    "/purchasing/orders/{order_id}/items/{item_id}/cost"
+)
+def update_supplier_order_item_cost_web(
+    order_id: int,
+    item_id: int,
+    unit_cost: Annotated[float, Form()],
+):
+    from plg_core.supply.service import (
+        update_order_item_cost,
+    )
+
+    update_order_item_cost(
+        order_id=order_id,
+        item_id=item_id,
+        unit_cost=unit_cost,
+    )
+
+    return RedirectResponse(
+        url=f"/purchasing/orders/{order_id}",
+        status_code=303,
+    )
+
+
+@app.post(
     "/purchasing/orders/{order_id}/update"
 )
 def update_supplier_order_web(

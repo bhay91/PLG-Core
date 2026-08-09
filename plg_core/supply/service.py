@@ -122,7 +122,16 @@ def get_order(order_id: int):
         if order is None:
             raise HTTPException(status_code=404, detail="Supplier order not found.")
         items = connection.execute(
-            "SELECT * FROM supplier_order_items WHERE order_id=? ORDER BY id",
+            """
+            SELECT
+                oi.*,
+                ii.supplier_unit_cost AS quoted_unit_cost
+            FROM supplier_order_items oi
+            LEFT JOIN invoice_items ii
+              ON ii.id=oi.invoice_item_id
+            WHERE oi.order_id=?
+            ORDER BY oi.id
+            """,
             (order_id,),
         ).fetchall()
         receipts = connection.execute(
@@ -133,6 +142,182 @@ def get_order(order_id: int):
     result["items"] = [dict(row) for row in items]
     result["receipts"] = [dict(row) for row in receipts]
     return result
+
+def update_order_item_cost(
+    order_id: int,
+    item_id: int,
+    unit_cost: float,
+):
+    unit_cost = round(
+        float(unit_cost or 0),
+        2,
+    )
+
+    if unit_cost < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Supplier unit cost cannot be negative.",
+        )
+
+    with closing(get_connection()) as connection:
+        order = connection.execute(
+            """
+            SELECT *
+            FROM supplier_orders
+            WHERE id=?
+            """,
+            (order_id,),
+        ).fetchone()
+
+        if order is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Supplier order not found.",
+            )
+
+        status = str(
+            order["status"] or ""
+        ).strip().upper()
+
+        if status != "DRAFT":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Supplier costs are locked once "
+                    "the purchase order is placed."
+                ),
+            )
+
+        item = connection.execute(
+            """
+            SELECT *
+            FROM supplier_order_items
+            WHERE id=?
+              AND order_id=?
+            """,
+            (item_id, order_id),
+        ).fetchone()
+
+        if item is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Supplier order item not found.",
+            )
+
+        old_unit_cost = round(
+            float(item["unit_cost"] or 0),
+            2,
+        )
+
+        quantity = max(
+            1,
+            int(item["quantity_ordered"] or 1),
+        )
+
+        line_cost = round(
+            unit_cost * quantity,
+            2,
+        )
+
+        connection.execute(
+            """
+            UPDATE supplier_order_items
+            SET unit_cost=?,
+                line_cost=?,
+                updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+            """,
+            (
+                unit_cost,
+                line_cost,
+                item_id,
+            ),
+        )
+
+        totals = connection.execute(
+            """
+            SELECT COALESCE(SUM(line_cost), 0) AS parts_total
+            FROM supplier_order_items
+            WHERE order_id=?
+            """,
+            (order_id,),
+        ).fetchone()
+
+        parts_total = round(
+            float(totals["parts_total"] or 0),
+            2,
+        )
+
+        shipping_total = round(
+            float(order["shipping_total"] or 0),
+            2,
+        )
+
+        order_total = round(
+            parts_total + shipping_total,
+            2,
+        )
+
+        connection.execute(
+            """
+            UPDATE supplier_orders
+            SET parts_total=?,
+                order_total=?,
+                updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+            """,
+            (
+                parts_total,
+                order_total,
+                order_id,
+            ),
+        )
+
+        difference = round(
+            unit_cost - old_unit_cost,
+            2,
+        )
+
+        message = (
+            f"{order['po_number']} supplier cost updated: "
+            f"{item['description']} "
+            f"${old_unit_cost:.2f} → ${unit_cost:.2f} "
+            f"per unit. PO total ${order_total:.2f}."
+        )
+
+        write_audit(
+            connection,
+            action="SUPPLIER_ORDER_COST_UPDATED",
+            entity_type="SUPPLIER_ORDER",
+            entity_id=order_id,
+            summary=message,
+            metadata={
+                "job_id": int(order["job_id"]),
+                "invoice_id": order["invoice_id"],
+                "order_item_id": int(item_id),
+                "invoice_item_id": item["invoice_item_id"],
+                "quantity": quantity,
+                "old_unit_cost": old_unit_cost,
+                "new_unit_cost": unit_cost,
+                "unit_cost_variance": difference,
+                "line_cost": line_cost,
+                "parts_total": parts_total,
+                "order_total": order_total,
+            },
+        )
+
+        log_job_event(
+            connection,
+            job_id=int(order["job_id"]),
+            event_type="SUPPLIER_ORDER_COST_UPDATED",
+            icon="💲",
+            message=message,
+        )
+
+        connection.commit()
+
+    return get_order(order_id)
+
 
 def update_order(
     order_id: int,

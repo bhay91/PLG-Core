@@ -1,8 +1,8 @@
 from fastapi import APIRouter
-from plg_core.supply.models import DeliveryCreate, ReceiptCreate, SupplierOrderUpdate
+from plg_core.supply.models import DeliveryCreate, ReceiptCreate, SupplierOrderItemCostUpdate, SupplierOrderUpdate
 from plg_core.supply.service import (
     complete_delivery, create_delivery, create_orders_from_paid_invoice,
-    get_order, list_orders, place_order, record_receipt, update_order,
+    get_order, list_orders, place_order, record_receipt, update_order, update_order_item_cost,
 )
 
 router = APIRouter(prefix="/api/v1/supply", tags=["alpha14-15-supply"])
@@ -18,6 +18,20 @@ def order_detail(order_id: int):
 @router.post("/orders/from-invoice/{invoice_id}")
 def orders_from_invoice(invoice_id: int):
     return {"items": create_orders_from_paid_invoice(invoice_id)}
+
+@router.patch(
+    "/orders/{order_id}/items/{item_id}"
+)
+def order_item_cost_update(
+    order_id: int,
+    item_id: int,
+    payload: SupplierOrderItemCostUpdate,
+):
+    return update_order_item_cost(
+        order_id=order_id,
+        item_id=item_id,
+        unit_cost=payload.unit_cost,
+    )
 
 @router.patch("/orders/{order_id}")
 def order_update(
