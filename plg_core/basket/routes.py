@@ -1577,11 +1577,11 @@ def update_revenue_adjustments(
         "Sourcing Fee",
     )
 
-    if 0 < parsed_service_charge < 150:
+    if 0 < parsed_service_charge < 50:
         raise HTTPException(
             status_code=400,
             detail=(
-                "Service Charge must be $0 or at least $150.00."
+                "Service Charge must be $0 or at least $50.00."
             ),
         )
 

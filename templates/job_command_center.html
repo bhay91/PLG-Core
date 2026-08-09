@@ -11,6 +11,21 @@
 .cc-summary{overflow:hidden}.cc-summary-head{padding:20px 22px;display:flex;justify-content:space-between;gap:18px;align-items:center}.cc-primary-numbers{display:grid;grid-template-columns:1fr 1fr}.cc-primary-number{padding:24px 22px}.cc-primary-number:first-child{background:#eaf4ff}.cc-primary-number:last-child{background:#ebf9ef}.cc-primary-number span,.cc-costs span{display:block;color:#6b7890;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.06em}.cc-primary-number strong{display:block;margin-top:7px;font-size:30px;color:#0863cb}.cc-primary-number:last-child strong{color:#168648}.cc-costs{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line)}.cc-costs div{padding:18px 22px;border-right:1px solid var(--line)}.cc-costs div:last-child{border-right:0}.cc-costs strong{display:block;margin-top:5px;font-size:17px}
 .cc-qty-form{display:flex;align-items:center;gap:6px}.cc-qty-form input{width:58px}.cc-remove{width:30px;height:30px;border:1px solid #f1b6b6;border-radius:8px;background:#fff;color:var(--danger);font-weight:900}.cc-dialog{width:min(720px,calc(100vw - 32px));border:0;border-radius:16px;padding:0;box-shadow:0 24px 80px rgba(8,30,65,.25)}.cc-dialog::backdrop{background:rgba(7,26,54,.55)}.cc-dialog form{padding:22px}.cc-dialog-head{display:flex;justify-content:space-between;gap:18px}.cc-dialog-grid{margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:14px}.cc-dialog-grid label{display:grid;gap:6px;font-size:12px;font-weight:800}.cc-dialog-grid .full{grid-column:1/-1}.cc-dialog-actions{margin-top:20px;display:flex;justify-content:flex-end;gap:10px}
 @media(max-width:1050px){.cc-hero,.cc-grid,.cc-research-layout{grid-template-columns:1fr}.cc-next{min-height:160px}.cc-primary-numbers,.cc-costs{grid-template-columns:1fr}.cc-costs div{border-right:0;border-bottom:1px solid var(--line)}.cc-costs div:last-child{border-bottom:0}}@media(max-width:720px){.cc-hero h1{font-size:30px}.cc-section-head,.cc-summary-head{flex-direction:column}.cc-result-table,.cc-ready-table{display:block;overflow-x:auto}.cc-dialog-grid{grid-template-columns:1fr}.cc-dialog-grid .full{grid-column:auto}}
+
+.cc-verification-cell{
+  min-width:210px;
+  white-space:normal;
+}
+.cc-confidence-column{
+  display:none;
+}
+.cc-verification-cell select{
+  display:block;
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  box-sizing:border-box;
+}
 </style>
 
 <div class="cc-shell">
@@ -518,7 +533,7 @@
   {% endif %}
 </div></div>
     {% if basket_items %}
-    <div style="overflow-x:auto"><table class="cc-ready-table"><thead><tr><th>Supplier</th><th>Part Numbers</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Cost</th><th>Markup %</th><th>Markup $</th><th>Customer Unit</th><th>Total</th><th>Status</th><th>Confidence</th><th>Verification</th><th>Actions</th></tr></thead><tbody>
+    <div style="overflow-x:auto"><table class="cc-ready-table"><thead><tr><th>Supplier</th><th>Part Numbers</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Cost</th><th>Markup %</th><th>Markup $</th><th>Customer Unit</th><th>Total</th><th>Status</th><th class="cc-confidence-column">Confidence</th><th>Verification</th><th>Actions</th></tr></thead><tbody>
     {% for item in basket_items %}
     {% set cost = item.supplier_unit_cost or 0 %}
     {% set pricing = item.pricing %}
@@ -637,7 +652,7 @@
 </span>
 </td>
 
-<td>
+<td class="cc-confidence-column">
 <input
   form="part-update-{{ item.id }}"
   type="number"
@@ -654,7 +669,7 @@
 {% endif %}
 </td>
 
-<td>
+<td class="cc-verification-cell">
 {% set verification_status = item.verification_status or "UNVERIFIED" %}
 <select
   form="part-update-{{ item.id }}"
@@ -667,10 +682,9 @@
 </select>
   <input
     form="part-update-{{ item.id }}"
-    type="text"
+    type="hidden"
     name="verification_note"
     value="{{ item.verification_note or '' }}"
-    placeholder="Verification / override note"
   >
 </td>
 
@@ -821,8 +835,8 @@
               <input
                 type="number"
                 name="service_charge"
-                value="{{ '%.2f'|format(job.service_charge or 0) }}"
-                min="0"
+                value="{{ '%.2f'|format(job.service_charge) if (job.service_charge or 0) > 0 else '' }}"
+                min="50"
                 step="0.01"
                 inputmode="decimal"
               >
