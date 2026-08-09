@@ -55,6 +55,9 @@
       </a>
 
       <div class="nav-section-label">System</div>
+      <a class="{% if active_page == 'accounting' %}active{% endif %}" href="/accounting">
+        <span class="nav-icon" aria-hidden="true">▥</span><span>Accounting &amp; Audit</span>
+      </a>
       <a class="{% if active_page == 'admin' %}active{% endif %}" href="/admin">
         <span class="nav-icon" aria-hidden="true">⚙</span><span>Administration</span>
       </a>

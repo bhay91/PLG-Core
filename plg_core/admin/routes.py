@@ -1,13 +1,18 @@
 from contextlib import closing
 from fastapi import APIRouter
 from legacy_app import get_connection
-from plg_core.admin.service import dashboard_snapshot
+from plg_core.admin.service import accounting_snapshot, dashboard_snapshot
 
 router = APIRouter(prefix="/api/v1/admin", tags=["alpha17-18-admin"])
 
 @router.get("/dashboard")
 def dashboard():
     return dashboard_snapshot()
+
+@router.get("/accounting")
+def accounting():
+    return accounting_snapshot()
+
 
 @router.get("/audit")
 def audit(limit: int = 100, entity_type: str = "", entity_id: str = ""):

@@ -731,6 +731,29 @@ def follow_up_center(
     )
 
 
+@app.get(
+    "/accounting",
+    response_class=HTMLResponse,
+)
+def accounting_center(
+    request: Request,
+):
+    from plg_core.admin.service import (
+        accounting_snapshot,
+    )
+
+    data = accounting_snapshot()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="accounting.html",
+        context={
+            **data,
+            "active_page": "accounting",
+        },
+    )
+
+
 @app.get("/customers", response_class=HTMLResponse)
 def list_customers(request: Request, view: str = "active"):
     if view not in {"active", "inactive", "all"}: view = "active"

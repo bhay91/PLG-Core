@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+{% block title %}Accounting & Audit · Pinpoint Sourcing Co.{% endblock %}
+
+{% block content %}
+<style>
+.accounting-shell{
+  max-width:1280px;
+  margin:0 auto;
+  display:grid;
+  gap:20px
+}
+.accounting-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:14px
+}
+.accounting-card{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:18px;
+  box-shadow:var(--shadow-sm);
+  display:grid;
+  gap:5px
+}
+.accounting-card span{
+  font-weight:750;
+  color:var(--muted)
+}
+.accounting-card strong{
+  font-size:28px;
+  color:var(--ink-strong)
+}
+.accounting-card small{
+  color:var(--muted)
+}
+.accounting-section{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:16px;
+  overflow:hidden;
+  box-shadow:var(--shadow-sm)
+}
+.accounting-section-head{
+  padding:17px 19px;
+  border-bottom:1px solid var(--line);
+  background:#f7f9fc
+}
+.accounting-section-head h2{
+  margin:2px 0 0
+}
+.accounting-table{
+  width:100%;
+  border-collapse:collapse
+}
+.accounting-table th,
+.accounting-table td{
+  padding:12px 16px;
+  text-align:left;
+  border-bottom:1px solid var(--line);
+  vertical-align:top
+}
+.accounting-table th{
+  font-size:12px;
+  text-transform:uppercase;
+  color:var(--muted);
+  background:#fbfcfe
+}
+.accounting-table tr:last-child td{
+  border-bottom:0
+}
+.accounting-money{
+  font-weight:850
+}
+.accounting-positive{
+  color:#087a43
+}
+.accounting-negative{
+  color:#b42318
+}
+.accounting-audit-summary{
+  max-width:520px
+}
+.accounting-status-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:16px
+}
+@media(max-width:900px){
+  .accounting-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))
+  }
+  .accounting-status-grid{
+    grid-template-columns:1fr
+  }
+}
+@media(max-width:620px){
+  .accounting-grid{
+    grid-template-columns:1fr
+  }
+}
+</style>
+
+<div class="accounting-shell">
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">ACCOUNTING &amp; AUDIT</p>
+      <h1>Financial Control Center</h1>
+      <p>
+        Read-only financial and audit view derived
+        from PPS invoices, payments and supplier orders.
+      </p>
+    </div>
+
+    <a class="button ghost" href="/">
+      Dashboard
+    </a>
+  </section>
+
+  <section class="accounting-grid">
+    <article class="accounting-card">
+      <span>Invoiced Revenue</span>
+      <strong>
+        ${{ "%.2f"|format(financials.invoiced_revenue) }}
+      </strong>
+      <small>All non-void invoices</small>
+    </article>
+
+    <article class="accounting-card">
+      <span>Booked Gross Profit</span>
+      <strong>
+        ${{ "%.2f"|format(financials.booked_profit) }}
+      </strong>
+      <small>
+        {{ "%.1f"|format(financials.gross_margin_percent) }}%
+        booked gross margin
+      </small>
+    </article>
+
+    <article class="accounting-card">
+      <span>Outstanding Receivables</span>
+      <strong>
+        ${{ "%.2f"|format(financials.receivables) }}
+      </strong>
+      <small>Unpaid and partial invoice balances</small>
+    </article>
+
+    <article class="accounting-card">
+      <span>Net Customer Payments</span>
+      <strong>
+        ${{ "%.2f"|format(financials.net_customer_payments) }}
+      </strong>
+      <small>Payments less payment reversals</small>
+    </article>
+
+    <article class="accounting-card">
+      <span>Placed Supplier Spend</span>
+      <strong>
+        ${{ "%.2f"|format(financials.supplier_spend) }}
+      </strong>
+      <small>Ordered, partial and received POs</small>
+    </article>
+
+    <article class="accounting-card">
+      <span>This Month</span>
+      <strong>
+        ${{ "%.2f"|format(month.invoiced_revenue) }}
+      </strong>
+      <small>
+        {{ month.invoice_count }}
+        invoice{% if month.invoice_count != 1 %}s{% endif %}
+        · ${{ "%.2f"|format(month.net_customer_payments) }}
+        collected
+      </small>
+    </article>
+  </section>
+
+  <div class="accounting-status-grid">
+    <section class="accounting-section">
+      <div class="accounting-section-head">
+        <p class="eyebrow">SALES</p>
+        <h2>Invoice Status</h2>
+      </div>
+
+      <table class="accounting-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Count</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for row in invoice_status %}
+          <tr>
+            <td><strong>{{ row.status }}</strong></td>
+            <td>{{ row.count }}</td>
+            <td class="accounting-money">
+              ${{ "%.2f"|format(row.total or 0) }}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="3">No invoices recorded.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="accounting-section">
+      <div class="accounting-section-head">
+        <p class="eyebrow">PURCHASING</p>
+        <h2>Supplier PO Status</h2>
+      </div>
+
+      <table class="accounting-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Count</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for row in po_status %}
+          <tr>
+            <td><strong>{{ row.status }}</strong></td>
+            <td>{{ row.count }}</td>
+            <td class="accounting-money">
+              ${{ "%.2f"|format(row.total or 0) }}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="3">No supplier orders recorded.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <section class="accounting-section">
+    <div class="accounting-section-head">
+      <p class="eyebrow">FINANCIAL ACTIVITY</p>
+      <h2>Recent Customer Transactions</h2>
+    </div>
+
+    <table class="accounting-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Customer</th>
+          <th>Invoice</th>
+          <th>Type</th>
+          <th>Reference</th>
+          <th>Amount</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for tx in transactions %}
+        <tr>
+          <td>{{ tx.transaction_date }}</td>
+          <td>
+            {% if tx.customer_id %}
+            <a href="/customers/{{ tx.customer_id }}">
+              {{ tx.customer_number or tx.customer_name }}
+            </a>
+            {% else %}
+            {{ tx.customer_name or "—" }}
+            {% endif %}
+          </td>
+          <td>
+            {% if tx.invoice_id %}
+            <a href="/invoices/{{ tx.invoice_id }}/documents">
+              {{ tx.invoice_number or "Invoice" }}
+            </a>
+            {% else %}
+            —
+            {% endif %}
+          </td>
+          <td>
+            {{ tx.transaction_type|replace("_"," ") }}
+          </td>
+          <td>{{ tx.reference or "—" }}</td>
+          <td
+            class="
+              accounting-money
+              {% if tx.amount >= 0 %}
+              accounting-positive
+              {% else %}
+              accounting-negative
+              {% endif %}
+            "
+          >
+            {% if tx.amount >= 0 %}+{% endif %}
+            ${{ "%.2f"|format(tx.amount) }}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6">
+            No customer financial transactions recorded.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="accounting-section">
+    <div class="accounting-section-head">
+      <p class="eyebrow">AUDIT TRAIL</p>
+      <h2>Recent PPS Activity</h2>
+    </div>
+
+    <table class="accounting-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Action</th>
+          <th>Record</th>
+          <th>Summary</th>
+          <th>Actor</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for entry in audit %}
+        <tr>
+          <td>{{ entry.created_at }}</td>
+          <td><strong>{{ entry.action }}</strong></td>
+          <td>
+            {{ entry.entity_type }}
+            {% if entry.entity_id %}
+            #{{ entry.entity_id }}
+            {% endif %}
+          </td>
+          <td class="accounting-audit-summary">
+            {{ entry.summary or "—" }}
+          </td>
+          <td>{{ entry.actor or "system" }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5">No audit events recorded.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+{% endblock %}
