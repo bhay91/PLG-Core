@@ -18,51 +18,63 @@
 
   <section class="dashboard-priority-grid" aria-label="Current workload summary">
     <a class="dashboard-priority-card priority-attention" href="/jobs">
-      <span class="dashboard-priority-icon" aria-hidden="true">!</span>
-
+      <span class="dashboard-priority-icon">!</span>
       <span class="dashboard-priority-content">
         <strong>{{ stats.needs_attention or 0 }}</strong>
         <span>Needs Attention</span>
-        <small>Jobs requiring your next action</small>
+        <small>Research or verification work</small>
       </span>
-
-      <span class="dashboard-priority-arrow" aria-hidden="true">→</span>
+      <span class="dashboard-priority-arrow">→</span>
     </a>
 
     <a class="dashboard-priority-card priority-quotes" href="/quotes">
-      <span class="dashboard-priority-icon" aria-hidden="true">＄</span>
-
+      <span class="dashboard-priority-icon">＄</span>
       <span class="dashboard-priority-content">
         <strong>{{ stats.active_quotes or 0 }}</strong>
         <span>Active Quotes</span>
-        <small>Quotes currently open</small>
+        <small>Open customer quotes</small>
       </span>
-
-      <span class="dashboard-priority-arrow" aria-hidden="true">→</span>
+      <span class="dashboard-priority-arrow">→</span>
     </a>
 
     <a class="dashboard-priority-card priority-payment" href="/invoices">
-      <span class="dashboard-priority-icon" aria-hidden="true">$</span>
-
+      <span class="dashboard-priority-icon">$</span>
       <span class="dashboard-priority-content">
         <strong>{{ stats.waiting_payment or 0 }}</strong>
         <span>Waiting for Payment</span>
         <small>Unpaid or partially paid invoices</small>
       </span>
-
-      <span class="dashboard-priority-arrow" aria-hidden="true">→</span>
+      <span class="dashboard-priority-arrow">→</span>
     </a>
 
     <a class="dashboard-priority-card priority-order" href="/invoices?view=paid">
-      <span class="dashboard-priority-icon" aria-hidden="true">▣</span>
-
+      <span class="dashboard-priority-icon">🛒</span>
       <span class="dashboard-priority-content">
         <strong>{{ stats.ready_to_order or 0 }}</strong>
-        <span>Ready to Order</span>
-        <small>Paid jobs ready for purchasing</small>
+        <span>Purchasing Queue</span>
+        <small>Paid invoices without supplier POs</small>
       </span>
+      <span class="dashboard-priority-arrow">→</span>
+    </a>
 
-      <span class="dashboard-priority-arrow" aria-hidden="true">→</span>
+    <a class="dashboard-priority-card priority-order" href="/purchasing">
+      <span class="dashboard-priority-icon">🚚</span>
+      <span class="dashboard-priority-content">
+        <strong>{{ stats.waiting_parts or 0 }}</strong>
+        <span>Waiting for Parts</span>
+        <small>Supplier orders still outstanding</small>
+      </span>
+      <span class="dashboard-priority-arrow">→</span>
+    </a>
+
+    <a class="dashboard-priority-card priority-attention" href="/jobs">
+      <span class="dashboard-priority-icon">📦</span>
+      <span class="dashboard-priority-content">
+        <strong>{{ stats.ready_delivery or 0 }}</strong>
+        <span>Ready for Delivery</span>
+        <small>Jobs fully received</small>
+      </span>
+      <span class="dashboard-priority-arrow">→</span>
     </a>
   </section>
 
@@ -109,22 +121,56 @@
 
     {% for job in recent_jobs %}
 
-      {% if job.invoice_id and job.invoice_status == "PAID" %}
-        {% set next_label = "Create Parts Order Sheet" %}
+      {% if job.status == "DELIVERED" %}
+        {% set next_label = "Job Delivered" %}
+        {% set next_button = "Open Job" %}
+        {% set next_url = "/jobs/" ~ job.id ~ "/basket" %}
+
+      {% elif job.ready_delivery_id %}
+        {% set next_label = "Confirm Customer Delivery" %}
+        {% set next_button = "Open Delivery" %}
+        {% set next_url = "/jobs/" ~ job.id ~ "/delivery" %}
+
+      {% elif job.status == "RECEIVED" %}
+        {% set next_label = "Prepare Customer Delivery" %}
+        {% set next_button = "Prepare Delivery" %}
+        {% set next_url = "/jobs/" ~ job.id ~ "/delivery" %}
+
+      {% elif job.receiving_order_id %}
+        {% set next_label = "Receive Supplier Parts" %}
+        {% set next_button = "Receive Parts" %}
+        {% set next_url = "/purchasing/orders/" ~ job.receiving_order_id %}
+
+      {% elif job.draft_order_id %}
+        {% set next_label = "Finalize Supplier Order" %}
+        {% set next_button = "Open Purchase Order" %}
+        {% set next_url = "/purchasing/orders/" ~ job.draft_order_id %}
+
+      {% elif job.invoice_id and job.invoice_status == "PAID" %}
+        {% set next_label = "Create Supplier Orders" %}
         {% set next_button = "Open Paid Invoice" %}
         {% set next_url = "/invoices/" ~ job.invoice_id ~ "/documents" %}
+
       {% elif job.invoice_id %}
-        {% set next_label = "Receive Payment" %}
-        {% set next_button = "Open & Receive Payment" %}
+        {% set next_label = "Receive Customer Payment" %}
+        {% set next_button = "Open Invoice" %}
         {% set next_url = "/invoices/" ~ job.invoice_id ~ "/documents" %}
+
+      {% elif job.quote_id and job.quote_status == "SENT" %}
+        {% set next_label = "Await Customer Decision" %}
+        {% set next_button = "Open Quote" %}
+        {% set next_url = "/quotes/" ~ job.quote_id ~ "/documents" %}
+
       {% elif job.quote_id %}
         {% set next_label = "Review Customer Quote" %}
         {% set next_button = "Open Quote" %}
         {% set next_url = "/quotes/" ~ job.quote_id ~ "/documents" %}
+
       {% elif job.selected_items %}
         {% set next_label = "Generate Quote" %}
         {% set next_button = "Continue to Quote" %}
         {% set next_url = "/jobs/" ~ job.id ~ "/basket" %}
+
       {% else %}
         {% set next_label = "Research Parts" %}
         {% set next_button = "Open Job" %}

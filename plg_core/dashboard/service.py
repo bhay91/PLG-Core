@@ -10,7 +10,7 @@ def get_recent_jobs(
     *,
     limit: int = 10,
 ) -> list[sqlite3.Row]:
-    """Return the most recent jobs with their current quote and invoice state."""
+    """Return recent jobs with their current sales and supply-chain state."""
 
     safe_limit = max(1, min(int(limit), 100))
 
@@ -23,9 +23,9 @@ def get_recent_jobs(
                 SELECT COUNT(*)
                 FROM basket_items
                 JOIN baskets
-                  ON baskets.id = basket_items.basket_id
-                WHERE baskets.job_id = jobs.id
-                  AND basket_items.selected = 1
+                  ON baskets.id=basket_items.basket_id
+                WHERE baskets.job_id=jobs.id
+                  AND basket_items.selected=1
             ) AS selected_items,
 
             (
@@ -35,16 +35,16 @@ def get_recent_jobs(
                 )
                 FROM basket_items
                 JOIN baskets
-                  ON baskets.id = basket_items.basket_id
-                WHERE baskets.job_id = jobs.id
-                  AND basket_items.selected = 1
+                  ON baskets.id=basket_items.basket_id
+                WHERE baskets.job_id=jobs.id
+                  AND basket_items.selected=1
             ) AS selected_descriptions,
 
             (
                 SELECT quotes.id
                 FROM quotes
-                WHERE quotes.job_id = jobs.id
-                  AND COALESCE(quotes.is_archived, 0) = 0
+                WHERE quotes.job_id=jobs.id
+                  AND COALESCE(quotes.is_archived,0)=0
                 ORDER BY quotes.id DESC
                 LIMIT 1
             ) AS quote_id,
@@ -52,15 +52,26 @@ def get_recent_jobs(
             (
                 SELECT quotes.quote_number
                 FROM quotes
-                WHERE quotes.job_id = jobs.id
+                WHERE quotes.job_id=jobs.id
                 ORDER BY quotes.id DESC
                 LIMIT 1
             ) AS quote_number,
 
             (
+                SELECT quotes.status
+                FROM quotes
+                WHERE quotes.job_id=jobs.id
+                ORDER BY quotes.id DESC
+                LIMIT 1
+            ) AS quote_status,
+
+            (
                 SELECT invoices.id
                 FROM invoices
-                WHERE invoices.job_id = jobs.id
+                WHERE invoices.job_id=jobs.id
+                  AND UPPER(
+                        COALESCE(invoices.status,'')
+                      ) != 'VOID'
                 ORDER BY invoices.id DESC
                 LIMIT 1
             ) AS invoice_id,
@@ -68,7 +79,10 @@ def get_recent_jobs(
             (
                 SELECT invoices.status
                 FROM invoices
-                WHERE invoices.job_id = jobs.id
+                WHERE invoices.job_id=jobs.id
+                  AND UPPER(
+                        COALESCE(invoices.status,'')
+                      ) != 'VOID'
                 ORDER BY invoices.id DESC
                 LIMIT 1
             ) AS invoice_status,
@@ -76,10 +90,78 @@ def get_recent_jobs(
             (
                 SELECT invoices.balance_due
                 FROM invoices
-                WHERE invoices.job_id = jobs.id
+                WHERE invoices.job_id=jobs.id
+                  AND UPPER(
+                        COALESCE(invoices.status,'')
+                      ) != 'VOID'
                 ORDER BY invoices.id DESC
                 LIMIT 1
-            ) AS balance_due
+            ) AS balance_due,
+
+            (
+                SELECT COUNT(*)
+                FROM supplier_orders
+                WHERE supplier_orders.job_id=jobs.id
+            ) AS supplier_order_count,
+
+            (
+                SELECT COUNT(*)
+                FROM supplier_orders
+                WHERE supplier_orders.job_id=jobs.id
+                  AND UPPER(
+                        COALESCE(supplier_orders.status,'')
+                      )='DRAFT'
+            ) AS draft_order_count,
+
+            (
+                SELECT COUNT(*)
+                FROM supplier_orders
+                WHERE supplier_orders.job_id=jobs.id
+                  AND UPPER(
+                        COALESCE(supplier_orders.status,'')
+                      ) IN ('ORDERED','PARTIAL')
+            ) AS open_order_count,
+
+            (
+                SELECT supplier_orders.id
+                FROM supplier_orders
+                WHERE supplier_orders.job_id=jobs.id
+                  AND UPPER(
+                        COALESCE(supplier_orders.status,'')
+                      )='DRAFT'
+                ORDER BY supplier_orders.id
+                LIMIT 1
+            ) AS draft_order_id,
+
+            (
+                SELECT supplier_orders.id
+                FROM supplier_orders
+                WHERE supplier_orders.job_id=jobs.id
+                  AND UPPER(
+                        COALESCE(supplier_orders.status,'')
+                      ) IN ('ORDERED','PARTIAL')
+                ORDER BY
+                    CASE
+                        WHEN UPPER(
+                            COALESCE(supplier_orders.status,'')
+                        )='PARTIAL'
+                        THEN 0
+                        ELSE 1
+                    END,
+                    supplier_orders.id
+                LIMIT 1
+            ) AS receiving_order_id,
+
+            (
+                SELECT deliveries.id
+                FROM deliveries
+                WHERE deliveries.job_id=jobs.id
+                  AND UPPER(
+                        COALESCE(deliveries.status,'')
+                      )='READY'
+                ORDER BY deliveries.id DESC
+                LIMIT 1
+            ) AS ready_delivery_id
 
         FROM jobs
         ORDER BY jobs.id DESC
@@ -92,7 +174,7 @@ def get_recent_jobs(
 def get_dashboard_stats(
     connection: sqlite3.Connection,
 ) -> sqlite3.Row:
-    """Return the current high-level dashboard counts."""
+    """Return current operational queue counts."""
 
     return connection.execute(
         """
@@ -100,7 +182,9 @@ def get_dashboard_stats(
             (
                 SELECT COUNT(*)
                 FROM jobs
-                WHERE status IN (
+                WHERE UPPER(
+                    COALESCE(status,'')
+                ) IN (
                     'REQUESTED',
                     'RESEARCHING',
                     'VERIFIED'
@@ -110,20 +194,51 @@ def get_dashboard_stats(
             (
                 SELECT COUNT(*)
                 FROM quotes
-                WHERE COALESCE(is_archived, 0) = 0
+                WHERE COALESCE(is_archived,0)=0
+                  AND UPPER(
+                        COALESCE(status,'DRAFT')
+                      ) NOT IN (
+                        'REJECTED',
+                        'INVOICE'
+                      )
             ) AS active_quotes,
 
             (
                 SELECT COUNT(*)
                 FROM invoices
-                WHERE status IN ('UNPAID', 'PARTIAL')
+                WHERE UPPER(
+                    COALESCE(status,'')
+                ) IN ('UNPAID','PARTIAL')
             ) AS waiting_payment,
 
             (
                 SELECT COUNT(*)
-                FROM invoices
-                WHERE status = 'PAID'
-            ) AS ready_to_order
+                FROM invoices i
+                WHERE UPPER(
+                        COALESCE(i.status,'')
+                      )='PAID'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM supplier_orders po
+                      WHERE po.invoice_id=i.id
+                  )
+            ) AS ready_to_order,
+
+            (
+                SELECT COUNT(DISTINCT job_id)
+                FROM supplier_orders
+                WHERE UPPER(
+                    COALESCE(status,'')
+                ) IN ('ORDERED','PARTIAL')
+            ) AS waiting_parts,
+
+            (
+                SELECT COUNT(*)
+                FROM jobs
+                WHERE UPPER(
+                    COALESCE(status,'')
+                )='RECEIVED'
+            ) AS ready_delivery
         """
     ).fetchone()
 
