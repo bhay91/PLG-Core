@@ -399,12 +399,15 @@ def _header(invoice, internal: bool):
     return table
 
 
-def _info_box(title, rows):
+def _info_box(title, rows, hide_empty=False):
     s = _styles()
     data = [[Paragraph(title, ParagraphStyle(
         f"{title}Header", parent=s["label"], fontSize=9.5, textColor=NAVY
     ))]]
     for label, value in rows:
+        if hide_empty and not str(value or "").strip():
+            continue
+
         data.append([
             Table([[
                 Paragraph(f"{label}:", s["label"]),
@@ -430,20 +433,20 @@ def _info_box(title, rows):
     return box
 
 
-def _information(invoice):
+def _information(invoice, internal=False):
     customer = _info_box("CUSTOMER INFORMATION", [
         ("Customer", _value(invoice, "customer")),
-        ("Company", _value(invoice, "company", "Individual Customer")),
-        ("Address", _value(invoice, "address", "Not Provided")),
-        ("Phone", _value(invoice, "phone", "Not Provided")),
-        ("Email", _value(invoice, "email", "Not Provided")),
-    ])
+        ("Company", _value(invoice, "company")),
+        ("Address", _value(invoice, "address")),
+        ("Phone", _value(invoice, "phone")),
+        ("Email", _value(invoice, "email")),
+    ], hide_empty=not internal)
     machine = _info_box("EQUIPMENT INFORMATION", [
-        ("Manufacturer", _value(invoice, "manufacturer", "Not Provided")),
-        ("Model", _value(invoice, "machine", "Not Provided")),
-        ("Year", _value(invoice, "year", "Not Provided")),
-        ("VIN / PIN / Serial", _value(invoice, "pin_serial", "Not Provided")),
-    ])
+        ("Manufacturer", _value(invoice, "manufacturer")),
+        ("Model", _value(invoice, "machine")),
+        ("Year", _value(invoice, "year")),
+        ("VIN / PIN / Serial", _value(invoice, "pin_serial")),
+    ], hide_empty=not internal)
     table = Table(
         [[customer, machine]],
         colWidths=[3.97 * inch, 3.97 * inch],
@@ -927,7 +930,7 @@ def build_invoice_pdf(
         ),
 
         Spacer(1, 5),
-        _information(invoice),
+        _information(invoice, internal),
         Spacer(1, 5),
 
         _section_bar(

@@ -267,12 +267,15 @@ def _header(quote, internal: bool):
     return table
 
 
-def _info_box(title, rows):
+def _info_box(title, rows, hide_empty=False):
     s = _styles()
     data = [[Paragraph(title, ParagraphStyle(
         f"{title}Header", parent=s["label"], fontSize=9.5, textColor=NAVY
     ))]]
     for label, value in rows:
+        if hide_empty and not str(value or "").strip():
+            continue
+
         data.append([
             Table([[
                 Paragraph(f"{label}:", s["label"]),
@@ -298,20 +301,20 @@ def _info_box(title, rows):
     return box
 
 
-def _information(quote):
+def _information(quote, internal=False):
     customer = _info_box("CUSTOMER INFORMATION", [
         ("Customer", _value(quote, "customer")),
-        ("Company", _value(quote, "company", "Individual Customer")),
-        ("Address", _value(quote, "address", "Not Provided")),
-        ("Phone", _value(quote, "phone", "Not Provided")),
-        ("Email", _value(quote, "email", "Not Provided")),
-    ])
+        ("Company", _value(quote, "company")),
+        ("Address", _value(quote, "address")),
+        ("Phone", _value(quote, "phone")),
+        ("Email", _value(quote, "email")),
+    ], hide_empty=not internal)
     machine = _info_box("EQUIPMENT INFORMATION", [
-        ("Manufacturer", _value(quote, "manufacturer", "Not Provided")),
-        ("Model", _value(quote, "machine", "Not Provided")),
-        ("Year", _value(quote, "year", "Not Provided")),
-        ("VIN / PIN / Serial", _value(quote, "pin_serial", "Not Provided")),
-    ])
+        ("Manufacturer", _value(quote, "manufacturer")),
+        ("Model", _value(quote, "machine")),
+        ("Year", _value(quote, "year")),
+        ("VIN / PIN / Serial", _value(quote, "pin_serial")),
+    ], hide_empty=not internal)
     table = Table([[customer, machine]], colWidths=[3.97 * inch, 3.97 * inch])
     table.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
@@ -794,7 +797,7 @@ def build_quote_pdf(quote, items: Iterable, path: Path, internal: bool):
             ("BOTTOMPADDING", (0,0), (-1,-1), 0),
         ]),
         Spacer(1, 10),
-        _information(quote),
+        _information(quote, internal),
         Spacer(1, 10),
         _section_bar("QUOTED ITEMS" if not internal else "INTERNAL COST & PROFIT DETAIL"),
         _internal_items(items) if internal else _customer_items(items),

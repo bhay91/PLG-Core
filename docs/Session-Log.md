@@ -550,3 +550,44 @@ Passed:
 ### Result
 
 The locked PPS Invoice PDF design is preserved while the two identified wrapping defects are corrected.
+
+---
+
+## 2026-08-09 — Alpha 19 Audit Remediation 9
+
+### Finding
+
+Customer-facing Quote and Invoice PDFs displayed `Not Provided` for missing optional information such as address, phone, email, equipment details, and VIN/PIN/Serial.
+
+This made otherwise complete customer documents look unfinished.
+
+Internal documents still benefit from explicitly showing missing operational information.
+
+### Resolution
+
+Updated the existing Quote and Invoice information-box rendering so:
+
+- customer PDFs omit empty optional rows
+- internal PDFs continue showing `Not Provided`
+- the existing PPS information-box layout is preserved
+- no pricing, totals, accounting, or workflow logic is changed
+
+### Verification
+
+Passed:
+
+- Python compilation
+- Git diff whitespace checks
+- disposable customer Quote rendering
+- disposable internal Quote rendering
+- disposable customer Invoice rendering
+- disposable internal Invoice rendering
+- customer PDFs contain zero `Not Provided` placeholders
+- empty optional customer-data rows are omitted
+- required customer identity still renders
+- internal PDFs continue displaying missing-data indicators
+- PPS business contact information remains unaffected
+
+### Result
+
+Customer Quote and Invoice PDFs now present missing optional information cleanly while internal PPS documents continue identifying incomplete operational data.
