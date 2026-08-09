@@ -100,6 +100,67 @@ def accounting_snapshot():
             """
         ).fetchone()
 
+        reconciled = connection.execute(
+            """
+            SELECT
+                COUNT(*) AS invoice_count,
+                COALESCE(
+                    SUM(customer_total),
+                    0
+                ) AS revenue,
+                COALESCE(
+                    SUM(booked_profit),
+                    0
+                ) AS booked_profit,
+                COALESCE(
+                    SUM(actual_supplier_cost),
+                    0
+                ) AS supplier_cost
+            FROM (
+                SELECT
+                    i.id,
+                    i.customer_total,
+                    i.profit_total AS booked_profit,
+                    (
+                        SELECT COALESCE(
+                            SUM(po.order_total),
+                            0
+                        )
+                        FROM supplier_orders po
+                        WHERE po.invoice_id=i.id
+                          AND UPPER(
+                                COALESCE(po.status,'')
+                              ) IN (
+                                'ORDERED',
+                                'PARTIAL',
+                                'RECEIVED'
+                              )
+                    ) AS actual_supplier_cost
+                FROM invoices i
+                WHERE UPPER(
+                        COALESCE(i.status,'')
+                      ) != 'VOID'
+                  AND EXISTS (
+                        SELECT 1
+                        FROM supplier_orders po
+                        WHERE po.invoice_id=i.id
+                      )
+                  AND NOT EXISTS (
+                        SELECT 1
+                        FROM supplier_orders po
+                        WHERE po.invoice_id=i.id
+                          AND UPPER(
+                                COALESCE(po.status,'')
+                              ) NOT IN (
+                                'ORDERED',
+                                'PARTIAL',
+                                'RECEIVED'
+                              )
+                      )
+            )
+            """
+        ).fetchone()
+
         month = connection.execute(
             """
             SELECT
@@ -257,6 +318,31 @@ def accounting_snapshot():
         else 0
     )
 
+    reconciled_revenue = float(
+        reconciled["revenue"] or 0
+    )
+    reconciled_booked_profit = float(
+        reconciled["booked_profit"] or 0
+    )
+    actual_supplier_cost = float(
+        reconciled["supplier_cost"] or 0
+    )
+    actual_gross_profit = (
+        reconciled_revenue
+        - actual_supplier_cost
+    )
+    actual_margin = (
+        actual_gross_profit
+        / reconciled_revenue
+        * 100
+        if reconciled_revenue > 0
+        else 0
+    )
+    profit_variance = (
+        actual_gross_profit
+        - reconciled_booked_profit
+    )
+
     return {
         "financials": {
             "invoiced_revenue": round(
@@ -265,6 +351,33 @@ def accounting_snapshot():
             ),
             "booked_profit": round(
                 booked_profit,
+                2,
+            ),
+            "actual_gross_profit": round(
+                actual_gross_profit,
+                2,
+            ),
+            "actual_gross_margin_percent": round(
+                actual_margin,
+                1,
+            ),
+            "profit_variance": round(
+                profit_variance,
+                2,
+            ),
+            "reconciled_invoice_count": int(
+                reconciled["invoice_count"] or 0
+            ),
+            "reconciled_revenue": round(
+                reconciled_revenue,
+                2,
+            ),
+            "reconciled_booked_profit": round(
+                reconciled_booked_profit,
+                2,
+            ),
+            "actual_supplier_cost": round(
+                actual_supplier_cost,
                 2,
             ),
             "gross_margin_percent": round(

@@ -138,6 +138,42 @@
     </article>
 
     <article class="accounting-card">
+      <span>Actual Gross Profit</span>
+      {% if financials.reconciled_invoice_count %}
+      <strong>
+        ${{ "%.2f"|format(financials.actual_gross_profit) }}
+      </strong>
+      <small>
+        {{ "%.1f"|format(financials.actual_gross_margin_percent) }}%
+        actual margin ·
+        {{ financials.reconciled_invoice_count }}
+        reconciled invoice{% if financials.reconciled_invoice_count != 1 %}s{% endif %}
+      </small>
+      {% else %}
+      <strong>—</strong>
+      <small>
+        Available after all supplier purchases for an invoice
+        are marked ordered
+      </small>
+      {% endif %}
+    </article>
+
+    <article class="accounting-card">
+      <span>Profit Variance</span>
+      {% if financials.reconciled_invoice_count %}
+      <strong>
+        ${{ "%+.2f"|format(financials.profit_variance) }}
+      </strong>
+      <small>
+        Actual minus booked profit on reconciled invoices
+      </small>
+      {% else %}
+      <strong>—</strong>
+      <small>No reconciled supplier purchase costs yet</small>
+      {% endif %}
+    </article>
+
+    <article class="accounting-card">
       <span>Outstanding Receivables</span>
       <strong>
         ${{ "%.2f"|format(financials.receivables) }}
@@ -158,7 +194,7 @@
       <strong>
         ${{ "%.2f"|format(financials.supplier_spend) }}
       </strong>
-      <small>Ordered, partial and received POs</small>
+      <small>Ordered, partial and received supplier purchases</small>
     </article>
 
     <article class="accounting-card">

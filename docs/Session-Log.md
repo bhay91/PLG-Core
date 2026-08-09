@@ -640,3 +640,42 @@ Internal implementation names remain unchanged, including `supplier_orders`, `su
 
 ### Result
 PPS now uses consistent Supplier Purchase terminology across both the UI and operator-visible backend messages while preserving the existing purchasing engine.
+
+## 2026-08-09 — Alpha 19 Audit Remediation 12
+
+### Finding
+Accounting correctly separated Booked Gross Profit from placed Supplier Spend, but PPS had no aggregate reconciled profit figure showing the effect of actual locked supplier purchase costs.
+
+### Product Decision
+PPS keeps both booked and actual profit because they answer different operational questions.
+
+- Booked Gross Profit is the expected profit recorded when the customer Invoice is created.
+- Actual Gross Profit is calculated only for non-void Invoices that have Supplier Purchases and where every Supplier Purchase has progressed beyond DRAFT into ORDERED, PARTIAL, or RECEIVED.
+- Profit Variance is Actual Gross Profit minus Booked Gross Profit for the same reconciled Invoices.
+- DRAFT Supplier Purchases are excluded because their costs are still editable.
+
+### Resolution
+Added read-only Accounting reconciliation metrics without changing Invoice records or database schema:
+
+Actual Gross Profit = reconciled customer revenue - locked Supplier Purchase totals
+
+Profit Variance = Actual Gross Profit - reconciled Booked Gross Profit
+
+The existing Booked Gross Profit and Placed Supplier Spend figures remain available.
+
+When there are no reconciled Invoices, the Accounting screen displays an unavailable indicator rather than a misleading zero actual profit.
+
+### Verification
+A disposable database verified that:
+- fully placed Supplier Purchases are included;
+- multiple purchases for one Invoice aggregate correctly;
+- DRAFT purchases prevent that Invoice from being treated as reconciled;
+- VOID Invoices are excluded;
+- booked profit remains unchanged;
+- actual supplier cost, actual gross profit, margin, and profit variance calculate correctly;
+- the Accounting template formats the new figures correctly;
+- `git diff --check` passes;
+- no files are staged.
+
+### Result
+PPS Accounting can now distinguish expected profitability from profitability based on final purchasing costs without rewriting historical Invoice profit or changing the purchasing database structure.
