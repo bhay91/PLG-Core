@@ -64,6 +64,11 @@
       <span>Ordered</span>
       <strong>{{ order.ordered_at or "Not yet" }}</strong>
     </div>
+
+    <div>
+      <span>Expected Arrival</span>
+      <strong>{{ order.expected_at or "Not set" }}</strong>
+    </div>
   </div>
 </section>
 
@@ -115,6 +120,13 @@
   </div>
 </section>
 
+{% if order.notes %}
+<section class="panel">
+  <p class="eyebrow">PURCHASING NOTES</p>
+  <p>{{ order.notes }}</p>
+</section>
+{% endif %}
+
 <section class="panel invoice-payment-panel">
   <p class="eyebrow">PURCHASE TOTAL</p>
 
@@ -142,6 +154,58 @@
   </div>
 
   {% if order.status == "DRAFT" %}
+  <form
+    method="post"
+    action="/purchasing/orders/{{ order.id }}/update"
+    class="invoice-payment-form"
+  >
+    <div class="invoice-payment-form-heading">
+      <h2>Finalize Purchase Order</h2>
+      <p>
+        Confirm supplier shipping, expected arrival,
+        and purchasing notes before placing the order.
+      </p>
+    </div>
+
+    <label>
+      <span>Supplier Shipping</span>
+      <input
+        type="number"
+        name="shipping_total"
+        value="{{ '%.2f'|format(order.shipping_total or 0) }}"
+        min="0"
+        step="0.01"
+        required
+      >
+    </label>
+
+    <label>
+      <span>Expected Arrival</span>
+      <input
+        type="date"
+        name="expected_at"
+        value="{{ order.expected_at or '' }}"
+      >
+    </label>
+
+    <label>
+      <span>Notes / Supplier Reference</span>
+      <textarea
+        name="notes"
+        rows="4"
+        maxlength="1000"
+        placeholder="Supplier quote, confirmation number, shipping method, or purchasing notes"
+      >{{ order.notes or "" }}</textarea>
+    </label>
+
+    <button
+      type="submit"
+      class="workspace-btn"
+    >
+      Save PO Details
+    </button>
+  </form>
+
   <form
     method="post"
     action="/purchasing/orders/{{ order.id }}/place"

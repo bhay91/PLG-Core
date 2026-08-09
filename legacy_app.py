@@ -2320,6 +2320,30 @@ def create_supplier_orders_web(
 
 
 @app.post(
+    "/purchasing/orders/{order_id}/update"
+)
+def update_supplier_order_web(
+    order_id: int,
+    shipping_total: Annotated[float, Form()] = 0,
+    expected_at: Annotated[str, Form()] = "",
+    notes: Annotated[str, Form()] = "",
+):
+    from plg_core.supply.service import update_order
+
+    update_order(
+        order_id=order_id,
+        shipping_total=shipping_total,
+        expected_at=expected_at,
+        notes=notes,
+    )
+
+    return RedirectResponse(
+        url=f"/purchasing/orders/{order_id}",
+        status_code=303,
+    )
+
+
+@app.post(
     "/purchasing/orders/{order_id}/place"
 )
 def place_supplier_order_web(

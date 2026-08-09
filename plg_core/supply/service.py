@@ -134,6 +134,116 @@ def get_order(order_id: int):
     result["receipts"] = [dict(row) for row in receipts]
     return result
 
+def update_order(
+    order_id: int,
+    shipping_total: float = 0,
+    expected_at: str = "",
+    notes: str = "",
+):
+    shipping_total = round(
+        float(shipping_total or 0),
+        2,
+    )
+    expected_at = str(expected_at or "").strip()
+    notes = str(notes or "").strip()
+
+    if shipping_total < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Shipping total cannot be negative.",
+        )
+
+    with closing(get_connection()) as connection:
+        order = connection.execute(
+            """
+            SELECT *
+            FROM supplier_orders
+            WHERE id=?
+            """,
+            (order_id,),
+        ).fetchone()
+
+        if order is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Supplier order not found.",
+            )
+
+        status = str(
+            order["status"] or ""
+        ).strip().upper()
+
+        if status != "DRAFT":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Only a draft supplier order can be edited."
+                ),
+            )
+
+        parts_total = round(
+            float(order["parts_total"] or 0),
+            2,
+        )
+
+        order_total = round(
+            parts_total + shipping_total,
+            2,
+        )
+
+        connection.execute(
+            """
+            UPDATE supplier_orders
+            SET shipping_total=?,
+                order_total=?,
+                expected_at=?,
+                notes=?,
+                updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+            """,
+            (
+                shipping_total,
+                order_total,
+                expected_at or None,
+                notes,
+                order_id,
+            ),
+        )
+
+        message = (
+            f"{order['po_number']} updated for "
+            f"{order['supplier_name']}. "
+            f"Order total ${order_total:.2f}."
+        )
+
+        write_audit(
+            connection,
+            action="SUPPLIER_ORDER_UPDATED",
+            entity_type="SUPPLIER_ORDER",
+            entity_id=order_id,
+            summary=message,
+            metadata={
+                "job_id": int(order["job_id"]),
+                "invoice_id": order["invoice_id"],
+                "shipping_total": shipping_total,
+                "expected_at": expected_at,
+                "order_total": order_total,
+            },
+        )
+
+        log_job_event(
+            connection,
+            job_id=int(order["job_id"]),
+            event_type="SUPPLIER_ORDER_UPDATED",
+            icon="✎",
+            message=message,
+        )
+
+        connection.commit()
+
+    return get_order(order_id)
+
+
 def place_order(order_id: int):
     with closing(get_connection()) as connection:
         order = connection.execute(

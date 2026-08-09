@@ -1301,6 +1301,11 @@ FILES = {
         class DeliveryCreate(BaseModel):
             recipient: str = Field(default="", max_length=200)
             notes: str = Field(default="", max_length=1000)
+
+        class SupplierOrderUpdate(BaseModel):
+            shipping_total: float = Field(default=0, ge=0)
+            expected_at: str = Field(default="", max_length=40)
+            notes: str = Field(default="", max_length=1000)
     '''),
     "plg_core/supply/service.py": block('''
         from contextlib import closing
@@ -1438,6 +1443,116 @@ FILES = {
             result["items"] = [dict(row) for row in items]
             result["receipts"] = [dict(row) for row in receipts]
             return result
+
+        def update_order(
+            order_id: int,
+            shipping_total: float = 0,
+            expected_at: str = "",
+            notes: str = "",
+        ):
+            shipping_total = round(
+                float(shipping_total or 0),
+                2,
+            )
+            expected_at = str(expected_at or "").strip()
+            notes = str(notes or "").strip()
+
+            if shipping_total < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Shipping total cannot be negative.",
+                )
+
+            with closing(get_connection()) as connection:
+                order = connection.execute(
+                    """
+                    SELECT *
+                    FROM supplier_orders
+                    WHERE id=?
+                    """,
+                    (order_id,),
+                ).fetchone()
+
+                if order is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Supplier order not found.",
+                    )
+
+                status = str(
+                    order["status"] or ""
+                ).strip().upper()
+
+                if status != "DRAFT":
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "Only a draft supplier order can be edited."
+                        ),
+                    )
+
+                parts_total = round(
+                    float(order["parts_total"] or 0),
+                    2,
+                )
+
+                order_total = round(
+                    parts_total + shipping_total,
+                    2,
+                )
+
+                connection.execute(
+                    """
+                    UPDATE supplier_orders
+                    SET shipping_total=?,
+                        order_total=?,
+                        expected_at=?,
+                        notes=?,
+                        updated_at=CURRENT_TIMESTAMP
+                    WHERE id=?
+                    """,
+                    (
+                        shipping_total,
+                        order_total,
+                        expected_at or None,
+                        notes,
+                        order_id,
+                    ),
+                )
+
+                message = (
+                    f"{order['po_number']} updated for "
+                    f"{order['supplier_name']}. "
+                    f"Order total ${order_total:.2f}."
+                )
+
+                write_audit(
+                    connection,
+                    action="SUPPLIER_ORDER_UPDATED",
+                    entity_type="SUPPLIER_ORDER",
+                    entity_id=order_id,
+                    summary=message,
+                    metadata={
+                        "job_id": int(order["job_id"]),
+                        "invoice_id": order["invoice_id"],
+                        "shipping_total": shipping_total,
+                        "expected_at": expected_at,
+                        "order_total": order_total,
+                    },
+                )
+
+                log_job_event(
+                    connection,
+                    job_id=int(order["job_id"]),
+                    event_type="SUPPLIER_ORDER_UPDATED",
+                    icon="✎",
+                    message=message,
+                )
+
+                connection.commit()
+
+            return get_order(order_id)
+
 
         def place_order(order_id: int):
             with closing(get_connection()) as connection:
@@ -1662,10 +1777,10 @@ FILES = {
     '''),
     "plg_core/supply/routes.py": block('''
         from fastapi import APIRouter
-        from plg_core.supply.models import DeliveryCreate, ReceiptCreate
+        from plg_core.supply.models import DeliveryCreate, ReceiptCreate, SupplierOrderUpdate
         from plg_core.supply.service import (
             complete_delivery, create_delivery, create_orders_from_paid_invoice,
-            get_order, list_orders, place_order, record_receipt,
+            get_order, list_orders, place_order, record_receipt, update_order,
         )
 
         router = APIRouter(prefix="/api/v1/supply", tags=["alpha14-15-supply"])
@@ -1681,6 +1796,18 @@ FILES = {
         @router.post("/orders/from-invoice/{invoice_id}")
         def orders_from_invoice(invoice_id: int):
             return {"items": create_orders_from_paid_invoice(invoice_id)}
+
+        @router.patch("/orders/{order_id}")
+        def order_update(
+            order_id: int,
+            payload: SupplierOrderUpdate,
+        ):
+            return update_order(
+                order_id=order_id,
+                shipping_total=payload.shipping_total,
+                expected_at=payload.expected_at,
+                notes=payload.notes,
+            )
 
         @router.post("/orders/{order_id}/place")
         def order_place(order_id: int):
