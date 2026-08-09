@@ -670,6 +670,41 @@ def create_job(
 
 
 
+@app.get(
+    "/search",
+    response_class=HTMLResponse,
+)
+def global_search_page(
+    request: Request,
+    q: str = "",
+):
+    from plg_core.crm.routes import search_records
+
+    result = search_records(
+        q=q,
+        limit=10,
+    )
+
+    grouped = {}
+
+    for item in result["items"]:
+        grouped.setdefault(
+            item["record_type"],
+            [],
+        ).append(item)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="search.html",
+        context={
+            "query": result["query"],
+            "groups": grouped,
+            "result_count": len(result["items"]),
+            "active_page": "search",
+        },
+    )
+
+
 @app.get("/customers", response_class=HTMLResponse)
 def list_customers(request: Request, view: str = "active"):
     if view not in {"active", "inactive", "all"}: view = "active"

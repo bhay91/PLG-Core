@@ -74,7 +74,26 @@
       </div>
 
       <div class="topbar-tools">
-        
+        <form
+          method="get"
+          action="/search"
+          style="display:flex;align-items:center;gap:8px;"
+        >
+          <input
+            type="search"
+            name="q"
+            value="{{ query if query is defined else '' }}"
+            placeholder="Search PPS..."
+            aria-label="Search customers, machines, jobs, quotes, invoices and purchase orders"
+            style="min-width:280px;"
+          >
+          <button
+            type="submit"
+            class="button ghost"
+          >
+            Search
+          </button>
+        </form>
 
         <div class="user-chip">
           <span class="user-avatar" aria-hidden="true">B</span>
