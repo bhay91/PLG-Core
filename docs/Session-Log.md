@@ -720,3 +720,13 @@ Live read-only testing against the PPS database confirmed:
 
 ### Result
 Global Search now matches the PPS operational workflow from Customer Request through Supplier Purchase without requiring new routes or a database migration.
+
+## 2026-08-09 — Alpha 19 Audit Remediation 14
+
+- Audited PPS Timeline / History coverage across Requests, Opportunities, Jobs, Quotes, Invoices, payments, Supplier Purchases, receiving, and delivery.
+- Kept the existing history architecture rather than introducing a duplicate timeline system.
+- Request and Opportunity detail pages now expose their existing Created and Last Updated timestamps for early-stage traceability.
+- Request → Opportunity → Job handoff links remain the authoritative pre-Job workflow trail.
+- Job activity continues through the central Job Timeline.
+- Quote and Invoice status/activity history continues through their existing dedicated event records.
+- Live database verification confirmed Request and Opportunity timestamp fields contain real historical values.

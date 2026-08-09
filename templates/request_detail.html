@@ -9,6 +9,12 @@
     <p class="eyebrow">CUSTOMER REQUEST</p>
     <h1>{{ record.company_name or record.individual_name or record.phone or 'Waiting for contact information' }}</h1>
     <p>{{ record.request_number }}</p>
+    <p>
+      <small>
+        Created: {{ record.created_at or '—' }}
+        · Last Updated: {{ record.updated_at or '—' }}
+      </small>
+    </p>
   </div>
   <div class="page-actions">
     <a class="button ghost" href="/requests">Back to Requests</a>

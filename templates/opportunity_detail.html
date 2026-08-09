@@ -5,6 +5,12 @@
 <h2>{{ opportunity.title }}</h2>
 
 <p><strong>Status:</strong> {{ opportunity.status }}</p>
+<p>
+  <small>
+    Created: {{ opportunity.created_at or '-' }}
+    · Last Updated: {{ opportunity.updated_at or '-' }}
+  </small>
+</p>
 <p><strong>Customer:</strong> {{ opportunity.customer_number or "-" }} — {{ opportunity.customer_name or "-" }}</p>
 {% if opportunity.converted_job_id %}<p><strong>Converted Job:</strong> <a href="/jobs/{{ opportunity.converted_job_id }}/basket">{{ opportunity.converted_job_number }}</a></p>{% endif %}
 <p><strong>Request:</strong> {{ opportunity.request_text or "-" }}</p>
