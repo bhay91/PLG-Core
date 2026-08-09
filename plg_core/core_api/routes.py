@@ -6,6 +6,7 @@ from contextlib import closing
 from fastapi import APIRouter
 
 from legacy_app import get_connection
+from plg_core.version import PPS_PHASE, PPS_VERSION
 
 
 router = APIRouter(
@@ -120,7 +121,8 @@ def ready():
                 and api_key_configured
             ),
         },
-        "roadmap": "alpha-19",
+        "roadmap": PPS_PHASE,
+        "version": PPS_VERSION,
     }
 
 

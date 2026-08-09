@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from plg_core.version import PPS_PHASE, PPS_VERSION
+
 from legacy_app import app
 
 from plg_core.basket.routes import router as basket_router
@@ -21,7 +23,8 @@ def run_modular_migrations() -> None:
 def health():
     return {
         "ok": True,
-        "version": "1.0.0-alpha.2-machine-registry",
+        "version": PPS_VERSION,
+        "phase": PPS_PHASE,
     }
 
 # BEGIN PPS ROADMAP ALPHA 12-19
