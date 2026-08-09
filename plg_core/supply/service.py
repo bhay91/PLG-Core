@@ -907,6 +907,7 @@ def get_delivery(delivery_id: int):
         ).fetchall()
 
     result = dict(delivery)
+    result["delivery_id"] = int(result["id"])
     result["items"] = [dict(row) for row in items]
     result["quantity_total"] = sum(
         int(row["quantity_delivered"] or 0)
