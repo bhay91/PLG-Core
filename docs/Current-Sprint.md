@@ -6,61 +6,57 @@ PLG Alpha 8.3
 
 ## Current Feature
 
-Revenue Adjustments
+Revenue Adjustments / Additional Charges
 
 ## Business Goal
 
-Prevent missed revenue by allowing job-level Service Charges and Sourcing Fees.
+Prevent missed revenue by allowing job-level Service Charges and Sourcing Fees and carrying them correctly through Job → Quote → Invoice.
 
-## Completed
+## Completed and Verified
 
-- Revenue Adjustments business model approved.
-- Charges assigned to the Job.
-- Migration `0008_job_revenue_adjustments` created.
-- Database fields added:
-  - `service_charge`
-  - `service_charge_description`
-  - `sourcing_fee`
-  - `sourcing_fee_description`
-- Migration tested, committed, and pushed.
+- Job-level Service Charge fields.
+- Job-level Sourcing Fee fields.
+- Descriptions for both charge types.
+- Service Charge validation.
+- Sourcing Fee validation.
+- Additional Charges panel in the Job Command Center.
+- `Service Charge Added` status.
+- `Sourcing Fee Added` status.
+- Save-success confirmation.
+- Quote Summary revenue integration.
+- Revenue Breakdown.
+- Cost & Profit review.
+- Service Charge included in Quote totals.
+- Sourcing Fee included in Quote totals.
+- Service Charge included in Invoice totals.
+- Sourcing Fee included in Invoice totals.
+- Quote PDF support.
+- Invoice PDF support.
+- Direct save test passed using a temporary database.
+- Template and PDF integration checks passed.
+- Customer-facing button renamed to `Save Additional Charges`.
+- Obsolete milestone message removed.
 
 ## Current Task
 
-Build the Revenue Adjustments panel in the Job Command Center.
+Finalize Alpha 8.3 documentation, commit the verified work, and push the checkpoint.
 
-The first UI milestone must:
+## Next Task
 
-- display current job values;
-- allow editing;
-- validate Service Charge as either $0 or at least $150;
-- allow a nonnegative Sourcing Fee;
-- save descriptions;
-- reload saved values;
-- avoid changing Quote or Invoice calculations yet.
+After the Alpha 8.3 checkpoint is protected, continue the PPS full-product-audit improvement plan from the next highest-priority unfinished item.
 
-## Next Tasks
+## Current Working Commit
 
-1. Revenue Adjustments panel and save route.
-2. Pre-quote Revenue Checklist.
-3. Sourcing Fee recommendation logic.
-4. Quote calculation integration.
-5. Quote PDF integration.
-6. Invoice calculation integration.
-7. Invoice PDF integration.
-8. Business Intelligence reporting.
-
-## Current Stable Commit
-
-`c99ad17` — PLG Alpha 8.3 job revenue adjustments foundation
+`26e77d1`
 
 ## Developer Safety Tool
 
-Before continuing Revenue Adjustments polish, build the read-only Developer Startup Tool.
+Official command:
 
-Official command: `python3 -m plg_core.devtools.startup`
+`python3 -m plg_core.devtools.startup`
 
-The tool must report documentation health, the current sprint, Git status, branch synchronization, and whether a checkpoint is required.
+Use it before development sessions to confirm documentation health, current Alpha, Git synchronization, and checkpoint status.
 
-## Command Center Layout
+## Command Center Principle
 
-The Job Timeline appears as the final section, below Quote Summary and the Complete & Generate Quote action. Active work remains above historical activity.
+The Job remains the operational command center. Additional Charges are stored on the Job and carried into downstream customer billing.
