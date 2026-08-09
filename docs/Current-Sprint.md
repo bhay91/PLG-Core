@@ -2,52 +2,60 @@
 
 ## Release
 
-PLG Alpha 8.3
+PPS Alpha 19
 
 ## Current Feature
 
-Revenue Adjustments / Additional Charges
+Full Product Audit / Reconciliation
+
+## Current Application Version
+
+`1.0.0-alpha.19`
 
 ## Business Goal
 
-Prevent missed revenue by allowing job-level Service Charges and Sourcing Fees and carrying them correctly through Job → Quote → Invoice.
+Reconcile the PPS product that exists today with the approved operational workflow and full-product-audit plan.
 
-## Completed and Verified
+The purpose is to identify real unfinished work, contradictions, duplicate systems, missing user-facing connections, and workflow gaps before adding more features.
 
-- Job-level Service Charge fields.
-- Job-level Sourcing Fee fields.
-- Descriptions for both charge types.
-- Service Charge validation.
-- Sourcing Fee validation.
-- Additional Charges panel in the Job Command Center.
-- `Service Charge Added` status.
-- `Sourcing Fee Added` status.
-- Save-success confirmation.
-- Quote Summary revenue integration.
-- Revenue Breakdown.
-- Cost & Profit review.
-- Service Charge included in Quote totals.
-- Sourcing Fee included in Quote totals.
-- Service Charge included in Invoice totals.
-- Sourcing Fee included in Invoice totals.
-- Quote PDF support.
-- Invoice PDF support.
-- Direct save test passed using a temporary database.
-- Template and PDF integration checks passed.
-- Customer-facing button renamed to `Save Additional Charges`.
-- Obsolete milestone message removed.
+## Previous Milestone
+
+Alpha 8.3 — Revenue Adjustments / Additional Charges — COMPLETE
+
+Service Charges and Sourcing Fees were verified through Job → Quote → Invoice and protected on GitHub.
+
+## Existing Alpha 12–19 Capability Areas To Audit
+
+- Quote lifecycle and approval.
+- Invoice conversion and payment handling.
+- Payment reversals and invoice voiding.
+- Supplier purchasing.
+- Receiving and partial receiving.
+- Customer delivery.
+- Customers and Machine Registry.
+- Global search.
+- Dashboard and operational follow-up.
+- Accounting and audit history.
+- Readiness and API hardening.
 
 ## Current Task
 
-Alpha 8.3 is complete and protected on GitHub.
+Audit the implemented Alpha 12–19 capabilities against the actual PPS user workflow and identify the highest-priority unfinished or disconnected milestone.
 
-## Next Task
+Do not build a new feature until the audit identifies a practical gap.
 
-Review the current PPS product against the full-product-audit plan and select the next highest-priority unfinished milestone.
+## Audit Principles
+
+- Job remains the operational command center.
+- Prefer completing or connecting existing capability over rebuilding it.
+- Every change must save time, reduce mistakes, protect revenue, or support the real PPS workflow.
+- Avoid speculative features.
+- Make small verified changes.
+- Protect stable checkpoints before moving forward.
 
 ## Current Working Commit
 
-`9a1791a`
+`f80d4fd`
 
 ## Developer Safety Tool
 
@@ -55,8 +63,4 @@ Official command:
 
 `python3 -m plg_core.devtools.startup`
 
-Use it before development sessions to confirm documentation health, current Alpha, Git synchronization, and checkpoint status.
-
-## Command Center Principle
-
-The Job remains the operational command center. Additional Charges are stored on the Job and carried into downstream customer billing.
+Use it before development sessions to verify documentation health, phase, Git state, and checkpoint status.
