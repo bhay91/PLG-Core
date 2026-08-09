@@ -836,3 +836,39 @@ def _migration_0017_part_source_compatibility(
 MIGRATIONS.append(
     ("0017_part_source_compatibility", _migration_0017_part_source_compatibility)
 )
+
+def _migration_0022_request_opportunity_link(
+    connection: sqlite3.Connection,
+) -> None:
+    """Link Opportunities back to their originating Customer Request."""
+
+    columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(opportunities)"
+        ).fetchall()
+    }
+
+    if "customer_request_id" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE opportunities
+            ADD COLUMN customer_request_id INTEGER
+            """
+        )
+
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_opportunities_customer_request
+        ON opportunities(customer_request_id)
+        """
+    )
+
+
+MIGRATIONS.append(
+    (
+        "0022_request_opportunity_link",
+        _migration_0022_request_opportunity_link,
+    )
+)
