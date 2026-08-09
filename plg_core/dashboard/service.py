@@ -306,6 +306,281 @@ def get_financial_snapshot(
     ).fetchone()
 
 
+
+def get_follow_up_data(
+    connection: sqlite3.Connection,
+    *,
+    today: date | None = None,
+    limit: int = 150,
+) -> dict[str, Any]:
+    """Return records currently waiting on a customer, supplier, payment, or delivery."""
+
+    report_date = today or date.today()
+    safe_limit = max(1, min(int(limit), 500))
+
+    rows = connection.execute(
+        """
+        SELECT *
+        FROM (
+            SELECT
+                'CUSTOMER_DECISION' AS category,
+                q.id AS record_id,
+                q.quote_number AS record_number,
+                j.customer AS title,
+                TRIM(
+                    COALESCE(j.job_number,'')
+                    || CASE
+                        WHEN TRIM(COALESCE(j.pin_serial,'')) != ''
+                        THEN ' · ' || j.pin_serial
+                        ELSE ''
+                    END
+                ) AS subtitle,
+                COALESCE(
+                    NULLIF(q.quote_date,''),
+                    q.created_at
+                ) AS waiting_since,
+                NULL AS due_date,
+                '/quotes/' || q.id || '/documents' AS url,
+                'Await customer decision' AS action_label,
+                COALESCE(q.customer_total,0) AS amount
+            FROM quotes q
+            JOIN jobs j
+              ON j.id=q.job_id
+            WHERE UPPER(
+                    COALESCE(q.status,'')
+                  )='SENT'
+              AND COALESCE(q.is_archived,0)=0
+
+            UNION ALL
+
+            SELECT
+                'PAYMENT' AS category,
+                i.id AS record_id,
+                i.invoice_number AS record_number,
+                j.customer AS title,
+                TRIM(
+                    COALESCE(j.job_number,'')
+                    || ' · '
+                    || UPPER(COALESCE(i.status,'UNPAID'))
+                ) AS subtitle,
+                COALESCE(
+                    NULLIF(i.invoice_date,''),
+                    i.created_at
+                ) AS waiting_since,
+                NULL AS due_date,
+                '/invoices/' || i.id || '/documents' AS url,
+                'Follow up on payment' AS action_label,
+                COALESCE(i.balance_due,0) AS amount
+            FROM invoices i
+            JOIN jobs j
+              ON j.id=i.job_id
+            WHERE UPPER(
+                    COALESCE(i.status,'')
+                  ) IN ('UNPAID','PARTIAL')
+
+            UNION ALL
+
+            SELECT
+                'SUPPLIER' AS category,
+                po.id AS record_id,
+                po.po_number AS record_number,
+                po.supplier_name AS title,
+                TRIM(
+                    COALESCE(j.job_number,'')
+                    || CASE
+                        WHEN TRIM(COALESCE(j.customer,'')) != ''
+                        THEN ' · ' || j.customer
+                        ELSE ''
+                    END
+                ) AS subtitle,
+                COALESCE(
+                    NULLIF(po.ordered_at,''),
+                    po.created_at
+                ) AS waiting_since,
+                NULLIF(TRIM(COALESCE(po.expected_at,'')),'') AS due_date,
+                '/purchasing/orders/' || po.id AS url,
+                CASE
+                    WHEN UPPER(COALESCE(po.status,''))='PARTIAL'
+                    THEN 'Follow up on remaining parts'
+                    ELSE 'Check supplier order'
+                END AS action_label,
+                COALESCE(po.order_total,0) AS amount
+            FROM supplier_orders po
+            JOIN jobs j
+              ON j.id=po.job_id
+            WHERE UPPER(
+                    COALESCE(po.status,'')
+                  ) IN ('ORDERED','PARTIAL')
+
+            UNION ALL
+
+            SELECT
+                'DELIVERY' AS category,
+                j.id AS record_id,
+                j.job_number AS record_number,
+                j.customer AS title,
+                TRIM(
+                    COALESCE(j.manufacturer,'')
+                    || ' '
+                    || COALESCE(j.machine,'')
+                ) AS subtitle,
+                COALESCE(
+                    (
+                        SELECT MAX(po.received_at)
+                        FROM supplier_orders po
+                        WHERE po.job_id=j.id
+                          AND UPPER(
+                                COALESCE(po.status,'')
+                              )='RECEIVED'
+                    ),
+                    j.created_date
+                ) AS waiting_since,
+                NULL AS due_date,
+                '/jobs/' || j.id || '/delivery' AS url,
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM deliveries d
+                        WHERE d.job_id=j.id
+                          AND UPPER(
+                                COALESCE(d.status,'')
+                              )='READY'
+                    )
+                    THEN 'Confirm customer delivery'
+                    ELSE 'Prepare customer delivery'
+                END AS action_label,
+                0 AS amount
+            FROM jobs j
+            WHERE UPPER(
+                    COALESCE(j.status,'')
+                  )='RECEIVED'
+        )
+        ORDER BY waiting_since ASC
+        LIMIT ?
+        """,
+        (safe_limit,),
+    ).fetchall()
+
+    items = []
+
+    for row in rows:
+        item = dict(row)
+
+        waiting_text = str(
+            item.get("waiting_since") or ""
+        ).strip()
+
+        waiting_date = None
+
+        if waiting_text:
+            try:
+                waiting_date = datetime.fromisoformat(
+                    waiting_text.replace("Z", "+00:00")
+                ).date()
+            except ValueError:
+                try:
+                    waiting_date = date.fromisoformat(
+                        waiting_text[:10]
+                    )
+                except ValueError:
+                    waiting_date = None
+
+        item["age_days"] = (
+            max(
+                (report_date - waiting_date).days,
+                0,
+            )
+            if waiting_date
+            else 0
+        )
+
+        due_text = str(
+            item.get("due_date") or ""
+        ).strip()
+
+        due = None
+
+        if due_text:
+            try:
+                due = date.fromisoformat(
+                    due_text[:10]
+                )
+            except ValueError:
+                due = None
+
+        item["is_overdue"] = bool(
+            due
+            and due < report_date
+            and item["category"] == "SUPPLIER"
+        )
+
+        if item["is_overdue"]:
+            item["priority"] = "OVERDUE"
+            item["priority_rank"] = 0
+
+        elif item["category"] == "DELIVERY":
+            item["priority"] = "ACTION"
+            item["priority_rank"] = 1
+
+        elif item["category"] == "PAYMENT":
+            item["priority"] = "PAYMENT"
+            item["priority_rank"] = 2
+
+        elif item["category"] == "CUSTOMER_DECISION":
+            item["priority"] = "CUSTOMER"
+            item["priority_rank"] = 3
+
+        else:
+            item["priority"] = "SUPPLIER"
+            item["priority_rank"] = 4
+
+        items.append(item)
+
+    items.sort(
+        key=lambda item: (
+            int(item["priority_rank"]),
+            -int(item["age_days"]),
+            str(item["record_number"] or ""),
+        )
+    )
+
+    summary = {
+        "total": len(items),
+        "customer_decisions": sum(
+            1
+            for item in items
+            if item["category"] == "CUSTOMER_DECISION"
+        ),
+        "payments": sum(
+            1
+            for item in items
+            if item["category"] == "PAYMENT"
+        ),
+        "suppliers": sum(
+            1
+            for item in items
+            if item["category"] == "SUPPLIER"
+        ),
+        "deliveries": sum(
+            1
+            for item in items
+            if item["category"] == "DELIVERY"
+        ),
+        "overdue": sum(
+            1
+            for item in items
+            if item["is_overdue"]
+        ),
+    }
+
+    return {
+        "items": items,
+        "summary": summary,
+        "report_date": report_date.isoformat(),
+    }
+
+
+
 def get_dashboard_data(
     connection: sqlite3.Connection,
     *,

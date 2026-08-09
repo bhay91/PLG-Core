@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block title %}Follow-Up Center · Pinpoint Sourcing Co.{% endblock %}
+
+{% block content %}
+<style>
+.follow-shell{
+  max-width:1240px;
+  margin:0 auto;
+  display:grid;
+  gap:18px
+}
+.follow-summary{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:12px
+}
+.follow-card{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:16px;
+  display:grid;
+  gap:4px;
+  box-shadow:var(--shadow-sm)
+}
+.follow-card strong{
+  font-size:27px;
+  color:var(--ink-strong)
+}
+.follow-card span{
+  font-weight:800
+}
+.follow-card small{
+  color:var(--muted)
+}
+.follow-alert{
+  border-color:#efb3b3
+}
+.follow-alert strong{
+  color:#b42318
+}
+.follow-list{
+  display:grid;
+  gap:10px
+}
+.follow-row{
+  display:grid;
+  grid-template-columns:145px minmax(230px,1.5fr) minmax(180px,1fr) 120px 150px;
+  gap:14px;
+  align-items:center;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:15px 17px;
+  box-shadow:var(--shadow-sm)
+}
+.follow-record{
+  display:grid;
+  gap:3px
+}
+.follow-record strong{
+  color:var(--accent-dark)
+}
+.follow-record small{
+  color:var(--muted);
+  font-weight:750
+}
+.follow-main{
+  min-width:0;
+  display:grid;
+  gap:3px
+}
+.follow-main strong{
+  color:var(--ink-strong)
+}
+.follow-main span{
+  color:var(--muted)
+}
+.follow-age{
+  display:grid;
+  gap:3px
+}
+.follow-age strong{
+  color:var(--ink-strong)
+}
+.follow-overdue{
+  color:#b42318 !important
+}
+.follow-category{
+  display:inline-flex;
+  width:max-content;
+  padding:5px 9px;
+  border-radius:999px;
+  background:#eef4ff;
+  font-size:12px;
+  font-weight:850
+}
+.follow-action{
+  text-align:right
+}
+.follow-action a{
+  white-space:nowrap
+}
+.follow-empty{
+  background:#fff;
+  border:1px dashed var(--line-strong);
+  border-radius:16px;
+  padding:55px 25px;
+  text-align:center
+}
+@media(max-width:900px){
+  .follow-summary{
+    grid-template-columns:repeat(2,minmax(0,1fr))
+  }
+  .follow-row{
+    grid-template-columns:1fr
+  }
+  .follow-action{
+    text-align:left
+  }
+}
+</style>
+
+<div class="follow-shell">
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">FOLLOW-UP CENTER</p>
+      <h1>Waiting on the next move</h1>
+      <p>
+        Customer decisions, payments, supplier arrivals,
+        and customer deliveries that still need attention.
+      </p>
+    </div>
+
+    <a class="button ghost" href="/">
+      Back to Dashboard
+    </a>
+  </section>
+
+  <section class="follow-summary">
+    <article class="follow-card">
+      <strong>{{ summary.customer_decisions }}</strong>
+      <span>Customer Decisions</span>
+      <small>Sent quotes awaiting response</small>
+    </article>
+
+    <article class="follow-card">
+      <strong>{{ summary.payments }}</strong>
+      <span>Payments</span>
+      <small>Open invoice balances</small>
+    </article>
+
+    <article class="follow-card">
+      <strong>{{ summary.suppliers }}</strong>
+      <span>Supplier Orders</span>
+      <small>Ordered or partially received</small>
+    </article>
+
+    <article class="follow-card">
+      <strong>{{ summary.deliveries }}</strong>
+      <span>Customer Delivery</span>
+      <small>Received jobs awaiting handoff</small>
+    </article>
+
+    <article class="follow-card {% if summary.overdue %}follow-alert{% endif %}">
+      <strong>{{ summary.overdue }}</strong>
+      <span>Overdue</span>
+      <small>Supplier orders past expected date</small>
+    </article>
+  </section>
+
+  {% if items %}
+  <section class="follow-list">
+    {% for item in items %}
+    <article class="follow-row">
+      <div class="follow-record">
+        <span class="follow-category">
+          {% if item.category == "CUSTOMER_DECISION" %}
+          CUSTOMER
+          {% elif item.category == "PAYMENT" %}
+          PAYMENT
+          {% elif item.category == "SUPPLIER" %}
+          SUPPLIER
+          {% else %}
+          DELIVERY
+          {% endif %}
+        </span>
+
+        <strong>{{ item.record_number }}</strong>
+      </div>
+
+      <div class="follow-main">
+        <strong>{{ item.title }}</strong>
+        <span>{{ item.subtitle or "—" }}</span>
+
+        {% if item.amount and item.category in ["PAYMENT", "CUSTOMER_DECISION"] %}
+        <small>
+          ${{ "%.2f"|format(item.amount) }}
+          {% if item.category == "PAYMENT" %}
+          outstanding
+          {% endif %}
+        </small>
+        {% endif %}
+      </div>
+
+      <div class="follow-age">
+        <strong>
+          {{ item.age_days }}
+          day{% if item.age_days != 1 %}s{% endif %} waiting
+        </strong>
+
+        {% if item.due_date %}
+        <small class="{% if item.is_overdue %}follow-overdue{% endif %}">
+          Expected: {{ item.due_date }}
+          {% if item.is_overdue %} · OVERDUE{% endif %}
+        </small>
+        {% else %}
+        <small>
+          Since: {{ item.waiting_since or "—" }}
+        </small>
+        {% endif %}
+      </div>
+
+      <div>
+        <strong class="{% if item.is_overdue %}follow-overdue{% endif %}">
+          {{ item.priority }}
+        </strong>
+      </div>
+
+      <div class="follow-action">
+        <a
+          class="workspace-primary-link"
+          href="{{ item.url }}"
+        >
+          {{ item.action_label }} →
+        </a>
+      </div>
+    </article>
+    {% endfor %}
+  </section>
+
+  {% else %}
+  <div class="follow-empty">
+    <strong>Nothing is waiting for follow-up.</strong>
+    <p>
+      PPS has no sent quotes, open payments,
+      outstanding supplier orders, or pending deliveries.
+    </p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

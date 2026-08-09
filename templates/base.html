@@ -24,6 +24,9 @@
       </a>
 
       <div class="nav-section-label">Daily Work</div>
+      <a class="{% if active_page == 'follow_up' %}active{% endif %}" href="/follow-up">
+        <span class="nav-icon" aria-hidden="true">◎</span><span>Follow-Up Center</span>
+      </a>
       <a class="{% if active_page == 'requests' %}active{% endif %}" href="/requests">
         <span class="nav-icon" aria-hidden="true">✉</span><span>Customer Requests</span>
       </a>

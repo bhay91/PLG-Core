@@ -705,6 +705,32 @@ def global_search_page(
     )
 
 
+@app.get(
+    "/follow-up",
+    response_class=HTMLResponse,
+)
+def follow_up_center(
+    request: Request,
+):
+    from plg_core.dashboard.service import (
+        get_follow_up_data,
+    )
+
+    with closing(get_connection()) as connection:
+        follow_up = get_follow_up_data(
+            connection,
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="follow_up.html",
+        context={
+            **follow_up,
+            "active_page": "follow_up",
+        },
+    )
+
+
 @app.get("/customers", response_class=HTMLResponse)
 def list_customers(request: Request, view: str = "active"):
     if view not in {"active", "inactive", "all"}: view = "active"
