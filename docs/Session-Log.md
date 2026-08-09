@@ -224,3 +224,86 @@ Future PPS workflow changes must preserve this capability.
 ### Result
 
 All current Request-based Job creation paths now feed the same working Basket architecture used by the Job Command Center.
+
+---
+
+## 2026-08-09 — Alpha 19 Audit Remediation 3
+
+### Finding
+
+Customer Requests and Opportunities were both active PPS workflows, but there was no persistent relationship between them.
+
+A Request could create a Job directly while an Opportunity could independently create another Job, leaving PPS with competing intake paths and no reliable way to know which Opportunity originated from which Request.
+
+### Resolution
+
+Added an explicit Customer Request → Opportunity relationship using `opportunities.customer_request_id`.
+
+The supported workflow is now:
+
+Customer Request
+→ Opportunity
+→ sourcing / research / evidence / follow-up
+→ Job
+→ Job Basket
+
+For straightforward requests that do not require Opportunity work, direct Request → Job remains available.
+
+Once a Request has an Opportunity, that Opportunity becomes the authoritative path and the direct Job action will not create a competing Job.
+
+### Request → Opportunity
+
+Creating an Opportunity from a Customer Request now carries forward:
+
+- customer
+- request message
+- reminder date as Opportunity follow-up
+- linked Registry item or entered equipment information
+- requested parts as Opportunity research candidates
+- permanent originating Customer Request link
+
+Repeated creation reuses the existing linked Opportunity instead of creating duplicates.
+
+### Opportunity → Job
+
+When a linked Opportunity becomes a Job:
+
+- the Opportunity records the converted Job
+- the originating Customer Request records the same Job
+- the Customer Request becomes `COMPLETED`
+- Opportunity research is transferred into the Job Basket
+- no initial duplicate `job_parts` records are created
+
+### User Interface
+
+The Customer Request workflow now displays:
+
+1. Customer
+2. Registry
+3. Opportunity
+4. Job
+
+The Request screen can create or open its Opportunity.
+
+For simple work, `Create Job Directly` remains available when no Opportunity exists.
+
+### Verification
+
+Passed:
+
+- Request → Opportunity end-to-end test
+- duplicate Opportunity prevention
+- Request → Opportunity → Job → Basket end-to-end test
+- Customer Request completion synchronization
+- Opportunity and Request pointing to the same Job
+- Basket research transfer
+- no premature `job_parts`
+- repeated Opportunity conversion does not duplicate Jobs
+- direct Job route cannot bypass an existing Opportunity
+- converted Opportunity reuses its existing Job
+- Request Jinja template loading
+- final Python syntax and Git diff checks
+
+### Result
+
+PPS now has one coherent intake architecture instead of disconnected Request and Opportunity workflows.

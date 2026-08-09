@@ -351,6 +351,32 @@ def convert_opportunity_to_job(opportunity_id: int, opportunity_machine_id: Anno
         customer = connection.execute("SELECT * FROM customers WHERE id = ? AND active = 1", (opportunity["customer_id"],)).fetchone()
         if customer is None:
             raise HTTPException(status_code=400, detail="Opportunity customer not found")
+
+        originating_request = None
+        if opportunity["customer_request_id"]:
+            originating_request = connection.execute(
+                """
+                SELECT *
+                FROM customer_requests
+                WHERE id = ?
+                """,
+                (opportunity["customer_request_id"],),
+            ).fetchone()
+
+            if originating_request is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Originating Customer Request could not be found.",
+                )
+
+            if originating_request["job_id"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Originating Customer Request already has a Job."
+                    ),
+                )
+
         machine = None
         machine_id = None
         if opportunity_machine_id:
@@ -421,6 +447,22 @@ def convert_opportunity_to_job(opportunity_id: int, opportunity_machine_id: Anno
         job_id = cursor.lastrowid
         research = connection.execute("SELECT * FROM opportunity_research WHERE opportunity_id = ? ORDER BY id", (opportunity_id,)).fetchall()
         connection.execute("UPDATE opportunities SET status = 'CONVERTED', converted_job_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (job_id, opportunity_id))
+
+        if originating_request is not None:
+            connection.execute(
+                """
+                UPDATE customer_requests
+                SET job_id = ?,
+                    status = 'COMPLETED',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (
+                    job_id,
+                    originating_request["id"],
+                ),
+            )
+
         log_job_event(
             connection,
             job_id=job_id,
