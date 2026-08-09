@@ -3,6 +3,7 @@ from contextlib import closing
 from fastapi import HTTPException
 from legacy_app import get_connection
 from plg_core.audit import write_audit
+from plg_core.timeline import log_job_event
 
 def list_quotes(limit: int = 100):
     limit = max(1, min(int(limit), 500))
@@ -49,28 +50,77 @@ def update_quote_status(quote_id: int, status: str, notes: str = ""):
     status = status.strip().upper()
     if status not in allowed:
         raise HTTPException(status_code=400, detail="Invalid quote status.")
+
+    decision_rules = {
+        "APPROVED": ("QUOTE_APPROVED", "✅", "CONFIRMED", "approved"),
+        "REVISION_REQUIRED": ("QUOTE_REVISION_REQUIRED", "↺", "QUOTED", "requires revision"),
+        "REJECTED": ("QUOTE_REJECTED", "✕", "QUOTED", "rejected"),
+    }
+
     with closing(get_connection()) as connection:
         quote = connection.execute(
-            "SELECT id, quote_number, status FROM quotes WHERE id=?",
+            "SELECT id, quote_number, job_id, status FROM quotes WHERE id=?",
             (quote_id,),
         ).fetchone()
         if quote is None:
             raise HTTPException(status_code=404, detail="Quote not found.")
-        old = str(quote["status"] or "").upper()
-        connection.execute("UPDATE quotes SET status=? WHERE id=?", (status, quote_id))
-        connection.execute("""
-            INSERT INTO quote_events (quote_id,event_type,from_status,to_status,notes)
-            VALUES (?, 'STATUS_CHANGED', ?, ?, ?)
-        """, (quote_id, old, status, notes.strip()))
-        write_audit(
-            connection,
-            action="QUOTE_STATUS_CHANGED",
-            entity_type="QUOTE",
-            entity_id=quote_id,
-            summary=f"{quote['quote_number']} changed from {old or 'UNKNOWN'} to {status}",
-            metadata={"notes": notes},
-        )
+
+        old = str(quote["status"] or "").strip().upper()
+        rule = decision_rules.get(status)
+
+        if rule:
+            event_type, icon, job_status, verb = rule
+            message = f"Quote {quote['quote_number']} {verb}"
+            connection.execute(
+                "UPDATE jobs SET status=? WHERE id=?",
+                (job_status, quote["job_id"]),
+            )
+        else:
+            event_type = "STATUS_CHANGED"
+            icon = ""
+            message = (
+                f"Quote {quote['quote_number']} changed "
+                f"from {old or 'UNKNOWN'} to {status}"
+            )
+
+        if old != status:
+            connection.execute(
+                "UPDATE quotes SET status=? WHERE id=?",
+                (status, quote_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO quote_events (
+                    quote_id,event_type,from_status,to_status,notes
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (quote_id, event_type, old, status, notes.strip() or message),
+            )
+            write_audit(
+                connection,
+                action=event_type if rule else "QUOTE_STATUS_CHANGED",
+                entity_type="QUOTE",
+                entity_id=quote_id,
+                summary=message,
+                metadata={
+                    "notes": notes,
+                    "from_status": old,
+                    "to_status": status,
+                    "job_id": int(quote["job_id"]),
+                },
+            )
+            if rule:
+                log_job_event(
+                    connection,
+                    job_id=int(quote["job_id"]),
+                    event_type=event_type,
+                    icon=icon,
+                    message=message,
+                )
+
         connection.commit()
+
     return get_quote(quote_id)
 
 def list_invoices(limit: int = 100):
