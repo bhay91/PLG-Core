@@ -23,3 +23,25 @@ def health():
         "ok": True,
         "version": "1.0.0-alpha.2-machine-registry",
     }
+
+# BEGIN PPS ROADMAP ALPHA 12-19
+from plg_core.admin.routes import router as roadmap_admin_router
+from plg_core.core_api.middleware import install_optional_api_hardening
+from plg_core.core_api.routes import router as roadmap_core_router
+from plg_core.crm.routes import router as roadmap_crm_router
+from plg_core.roadmap.migrations import run_roadmap_migrations
+from plg_core.sales.routes import router as roadmap_sales_router
+from plg_core.supply.routes import router as roadmap_supply_router
+
+app.include_router(roadmap_sales_router)
+app.include_router(roadmap_supply_router)
+app.include_router(roadmap_crm_router)
+app.include_router(roadmap_admin_router)
+app.include_router(roadmap_core_router)
+
+install_optional_api_hardening(app)
+
+@app.on_event("startup")
+def run_alpha_12_19_migrations() -> None:
+    run_roadmap_migrations()
+# END PPS ROADMAP ALPHA 12-19

@@ -2313,6 +2313,8 @@ def list_invoices(request: Request, view: str = "all"):
 
 @app.post("/quotes/{quote_id}/convert-to-invoice")
 def convert_quote_to_invoice(quote_id: int):
+    from plg_core.audit import write_audit
+
     with closing(get_connection()) as connection:
         quote, quote_items = load_quote(connection, quote_id)
         existing = connection.execute("SELECT id FROM invoices WHERE quote_id=?",(quote_id,)).fetchone()
@@ -2335,8 +2337,67 @@ def convert_quote_to_invoice(quote_id: int):
             connection.execute("""INSERT INTO invoice_items (invoice_id,quote_item_id,part_id,source_id,quantity,description,supplier_name,source_type,brand,supplier_part_number,supplier_unit_cost,customer_unit_price,supplier_line_total,customer_line_total,line_profit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_id,item["id"],item["part_id"],item["source_id"],item["quantity"],item["description"],item["supplier_name"],item["source_type"],item["brand"],item["supplier_part_number"],item["supplier_unit_cost"],item["customer_unit_price"],item["supplier_line_total"],item["customer_line_total"],item["line_profit"]))
         if job["customer_id"]:
             connection.execute("""INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,reference,reason,job_id,quote_id,invoice_id) VALUES (?,?,'INVOICE',?,?,?,?,?,?)""",(job["customer_id"],invoice_date,-customer_total,invoice_number,f"Invoice created from {quote['quote_number']}",quote["job_id"],quote_id,invoice_id))
-        connection.execute("UPDATE quotes SET is_archived=1,status='CONVERTED' WHERE id=?",(quote_id,))
-        connection.execute("UPDATE jobs SET status='CONFIRMED' WHERE id=?",(quote["job_id"],))
+        previous_quote_status = str(quote["status"] or "").strip().upper()
+
+        connection.execute(
+            "UPDATE quotes SET is_archived=1,status='CONVERTED' WHERE id=?",
+            (quote_id,),
+        )
+        connection.execute(
+            "UPDATE jobs SET status='CONFIRMED' WHERE id=?",
+            (quote["job_id"],),
+        )
+
+        connection.execute(
+            """
+            INSERT INTO quote_events (
+                quote_id,
+                event_type,
+                from_status,
+                to_status,
+                notes
+            )
+            VALUES (?, 'QUOTE_CONVERTED', ?, 'CONVERTED', ?)
+            """,
+            (
+                quote_id,
+                previous_quote_status,
+                f"Converted to invoice {invoice_number}",
+            ),
+        )
+
+        connection.execute(
+            """
+            INSERT INTO invoice_events (
+                invoice_id,
+                event_type,
+                from_status,
+                to_status,
+                notes
+            )
+            VALUES (?, 'INVOICE_CREATED', '', ?, ?)
+            """,
+            (
+                invoice_id,
+                status,
+                f"Invoice {invoice_number} created from {quote['quote_number']}",
+            ),
+        )
+
+        write_audit(
+            connection,
+            action="QUOTE_CONVERTED",
+            entity_type="QUOTE",
+            entity_id=quote_id,
+            summary=f"{quote['quote_number']} converted to {invoice_number}",
+            metadata={
+                "invoice_id": int(invoice_id),
+                "invoice_number": invoice_number,
+                "invoice_status": status,
+                "job_id": int(quote["job_id"]),
+            },
+        )
+
         connection.commit()
         invoice, items = load_invoice(connection, invoice_id)
         generate_invoice_pdfs(invoice, items)
