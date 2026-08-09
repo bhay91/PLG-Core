@@ -591,3 +591,30 @@ Passed:
 ### Result
 
 Customer Quote and Invoice PDFs now present missing optional information cleanly while internal PPS documents continue identifying incomplete operational data.
+
+## 2026-08-09 — Alpha 19 Audit Remediation 10
+
+### Finding
+The purchasing backend already provides useful supplier, cost, ordered-status, receiving, quantity, and delivery tracking, but the active UI presented every supplier purchase as a formal Purchase Order workflow.
+
+### Product Decision
+PPS requires supplier purchase tracking, but formal Purchase Order paperwork is optional.
+
+The standard operating flow is:
+
+Paid Invoice → Supplier Purchase → Ordered → Receive Parts → Delivery → Complete
+
+### Resolution
+Updated active operator-facing terminology from formal Purchase Order / Supplier Order language to Supplier Purchase / Purchase terminology.
+
+Existing backend structures remain unchanged, including `supplier_orders`, `po_number`, purchasing routes, receiving logic, delivery logic, audit history, and historical purchase identifiers.
+
+### Verification
+- All seven affected Jinja templates parse successfully.
+- New Supplier Purchase wording is present.
+- Targeted formal-PO wording is removed from the active UI.
+- `git diff --check` passes.
+- No files are staged.
+
+### Result
+PPS now presents purchasing as practical internal purchase tracking without forcing formal PO paperwork into the normal workflow. Formal PO output may remain optional where a supplier requires it.

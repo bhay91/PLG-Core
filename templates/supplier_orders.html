@@ -5,9 +5,9 @@
 <section class="workspace-heading">
   <div>
     <p class="eyebrow">PURCHASING</p>
-    <h1>Supplier Orders</h1>
+    <h1>Supplier Purchases</h1>
     <p>
-      Purchase orders created from paid customer invoices.
+      Purchase records created from paid customer invoices.
     </p>
   </div>
 </section>
@@ -16,7 +16,7 @@
 <section class="panel">
   <strong>Filtered to invoice #{{ invoice_id }}</strong>
   <a class="button ghost" href="/purchasing">
-    Show All Supplier Orders
+    Show All Supplier Purchases
   </a>
 </section>
 {% endif %}
@@ -27,7 +27,7 @@
     <table class="invoice-center-table">
       <thead>
         <tr>
-          <th>PO</th>
+          <th>Purchase #</th>
           <th>Supplier</th>
           <th>Job</th>
           <th>Invoice</th>
@@ -42,7 +42,7 @@
         {% for order in orders %}
         <tr>
           <td>
-            <strong>{{ order.po_number or "Draft PO" }}</strong>
+            <strong>{{ order.po_number or "Draft Purchase" }}</strong>
           </td>
           <td>{{ order.supplier_name }}</td>
           <td>{{ order.job_number }}</td>
@@ -69,7 +69,7 @@
   </div>
   {% else %}
   <div class="empty-state">
-    No supplier purchase orders yet.
+    No supplier purchases yet.
   </div>
   {% endif %}
 </section>

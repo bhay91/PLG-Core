@@ -152,7 +152,7 @@
 
     <article class="follow-card">
       <strong>{{ summary.suppliers }}</strong>
-      <span>Supplier Orders</span>
+      <span>Supplier Purchases</span>
       <small>Ordered or partially received</small>
     </article>
 
@@ -165,7 +165,7 @@
     <article class="follow-card {% if summary.overdue %}follow-alert{% endif %}">
       <strong>{{ summary.overdue }}</strong>
       <span>Overdue</span>
-      <small>Supplier orders past expected date</small>
+      <small>Supplier purchases past expected date</small>
     </article>
   </section>
 
@@ -244,7 +244,7 @@
     <strong>Nothing is waiting for follow-up.</strong>
     <p>
       PPS has no sent quotes, open payments,
-      outstanding supplier orders, or pending deliveries.
+      outstanding supplier purchases, or pending deliveries.
     </p>
   </div>
   {% endif %}

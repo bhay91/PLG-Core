@@ -68,7 +68,7 @@
       <span class="dashboard-priority-content">
         <strong>{{ stats.waiting_parts or 0 }}</strong>
         <span>Waiting for Parts</span>
-        <small>Supplier orders still outstanding</small>
+        <small>Supplier purchases still outstanding</small>
       </span>
       <span class="dashboard-priority-arrow">→</span>
     </a>
@@ -148,12 +148,12 @@
         {% set next_url = "/purchasing/orders/" ~ job.receiving_order_id %}
 
       {% elif job.draft_order_id %}
-        {% set next_label = "Finalize Supplier Order" %}
-        {% set next_button = "Open Purchase Order" %}
+        {% set next_label = "Review Supplier Purchase" %}
+        {% set next_button = "Open Purchase" %}
         {% set next_url = "/purchasing/orders/" ~ job.draft_order_id %}
 
       {% elif job.invoice_id and job.invoice_status == "PAID" %}
-        {% set next_label = "Create Supplier Orders" %}
+        {% set next_label = "Create Supplier Purchases" %}
         {% set next_button = "Open Paid Invoice" %}
         {% set next_url = "/invoices/" ~ job.invoice_id ~ "/documents" %}
 

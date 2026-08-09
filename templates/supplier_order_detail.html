@@ -4,7 +4,7 @@
 {% block content %}
 <section class="workspace-heading">
   <div>
-    <p class="eyebrow">SUPPLIER PURCHASE ORDER</p>
+    <p class="eyebrow">SUPPLIER PURCHASE</p>
 
     <div class="invoice-center-title">
       <h1>{{ order.po_number }}</h1>
@@ -254,7 +254,7 @@
   <div class="invoice-paid-state">
     <span class="invoice-paid-check">✓</span>
     <div>
-      <strong>Purchase Order Fully Received</strong>
+      <strong>Supplier Purchase Fully Received</strong>
       <p>
         All quantities on {{ order.po_number }}
         have been received.
@@ -341,7 +341,7 @@
     class="invoice-payment-form"
   >
     <div class="invoice-payment-form-heading">
-      <h2>Finalize Purchase Order</h2>
+      <h2>Review Supplier Purchase</h2>
       <p>
         Confirm supplier shipping, expected arrival,
         and purchasing notes before placing the order.
@@ -383,7 +383,7 @@
       type="submit"
       class="workspace-btn"
     >
-      Save PO Details
+      Save Purchase Details
     </button>
   </form>
 
@@ -396,7 +396,7 @@
       type="submit"
       class="workspace-btn workspace-btn-primary"
     >
-      Mark PO Ordered
+      Mark Purchase Ordered
     </button>
   </form>
   {% elif order.status in ["ORDERED", "PARTIAL"] %}

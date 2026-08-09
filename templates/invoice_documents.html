@@ -161,16 +161,16 @@
 
     <div class="invoice-parts-order-action">
       <div>
-        <span>SUPPLIER PURCHASE ORDERS</span>
+        <span>SUPPLIER PURCHASES</span>
 
         {% if supplier_orders %}
         <strong>
           {{ supplier_orders|length }}
-          purchase order{% if supplier_orders|length != 1 %}s{% endif %}
+          supplier purchase{% if supplier_orders|length != 1 %}s{% endif %}
           created
         </strong>
         {% else %}
-        <strong>Create supplier purchase orders</strong>
+        <strong>Create supplier purchases</strong>
         {% endif %}
       </div>
 
@@ -179,20 +179,20 @@
         class="workspace-btn invoice-parts-order-button"
         href="/purchasing?invoice_id={{ invoice.id }}"
       >
-        Open Supplier Orders
+        Open Supplier Purchases
       </a>
       {% else %}
       <form
         method="post"
         action="/invoices/{{ invoice.id }}/supplier-orders"
         class="invoice-parts-order-form"
-        onsubmit="return confirm('Create supplier purchase orders from this paid invoice?');"
+        onsubmit="return confirm('Create supplier purchase records from this paid invoice?');"
       >
         <button
           class="workspace-btn invoice-parts-order-button"
           type="submit"
         >
-          Create Supplier Orders
+          Create Supplier Purchases
         </button>
       </form>
       {% endif %}
