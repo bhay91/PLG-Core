@@ -135,7 +135,7 @@
             class="cc-manufacturer-mark"
             title="{{ job.manufacturer or 'Manufacturer' }}"
           >
-            {{ (job.manufacturer or "PLG")[:3]|upper }}
+            {{ (job.manufacturer or "PPS")[:3]|upper }}
           </div>
         </div>
 
@@ -1145,7 +1145,7 @@
         <p class="cc-label">SUPPLIER QUOTE</p>
         <h2>Add pricing from another supplier</h2>
         <p class="cc-muted">
-          PLG will copy the current selected parts. You will only
+          PPS will copy the current selected parts. You will only
           need to enter the supplier's prices.
         </p>
       </div>
@@ -1253,7 +1253,7 @@
 
     if (!currentMain || !incomingMain) {
       throw new Error(
-        "PLG could not refresh the Command Center section."
+        "PPS could not refresh the Command Center section."
       );
     }
 

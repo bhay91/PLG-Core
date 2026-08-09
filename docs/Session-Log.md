@@ -464,3 +464,50 @@ Passed:
 ### Result
 
 New Customer Request records now use PPS branding while historical Request identity remains stable.
+
+---
+
+## 2026-08-09 — Alpha 19 Audit Remediation 7
+
+### Finding
+
+Active PPS templates still contained several visible legacy `PLG` references after the product rebrand.
+
+These appeared in:
+
+- dashboard fallback labels
+- Quotes fallback labels
+- Invoices fallback labels
+- Registry helper text
+- Customer Request helper text
+- Smart Intake instructions
+- Job Command Center labels and messages
+
+The PDF rendering code also contains internal ReportLab style names such as `PLGBrand` and `PLGTagline`.
+
+### Resolution
+
+Visible application wording was updated from `PLG` to `PPS`.
+
+Internal implementation identifiers that are not rendered to users were intentionally left unchanged.
+
+Historical `PLG-Rxxxxx` Request identifiers also remain valid and unchanged.
+
+### Verification
+
+Passed:
+
+- all seven edited templates load in the real Jinja environment
+- dashboard fallback branding uses PPS
+- Quotes fallback branding uses PPS
+- Invoices fallback branding uses PPS
+- Registry helper text uses PPS
+- Request helper text uses PPS
+- Smart Intake instructions use PPS
+- Job Command Center messages use PPS
+- no remaining non-historical `PLG` references exist in active HTML templates
+- Git diff whitespace check
+
+### Result
+
+The active PPS interface now presents consistent PPS branding without risky or unnecessary internal renaming.
