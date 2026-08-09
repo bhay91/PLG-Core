@@ -79,3 +79,34 @@ Update documentation, commit the verified Alpha 8.3 state, and push.
 ### Starting Commit
 
 `26e77d1`
+
+---
+
+## 2026-08-09 — Alpha 8.3 Complete
+
+### Release
+
+PLG Alpha 8.3 — Revenue Adjustments / Additional Charges
+
+### Final Status
+
+COMPLETE
+
+### Verified
+
+- Service Charge and Sourcing Fee save correctly on the Job.
+- Additional Charges are reflected in Job revenue and profit summaries.
+- Charges flow into Quote calculations.
+- Charges flow into Invoice calculations.
+- Quote PDFs support Service Charge and Sourcing Fee.
+- Invoice PDFs support Service Charge and Sourcing Fee.
+- Customer-facing Additional Charges wording was corrected.
+- Alpha 8.3 checkpoint was committed and pushed successfully.
+
+### Protected Checkpoint
+
+`9a1791a`
+
+### Next Development Step
+
+Review the PPS full-product-audit plan and begin the highest-priority unfinished milestone.
