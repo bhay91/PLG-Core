@@ -946,7 +946,10 @@
       </div>
 
     </header>
-    <div class="cc-primary-numbers"><div class="cc-primary-number"><span>Customer Total</span><strong>${{ "%.2f"|format(basket.totals.customer_total) }}</strong></div><div class="cc-primary-number"><span>Estimated Profit</span><strong>${{ "%.2f"|format(basket.totals.estimated_profit) }}</strong></div></div>
+    {% set additional_charges = (job.service_charge or 0) + (job.sourcing_fee or 0) %}
+    {% set full_customer_total = basket.totals.customer_total + additional_charges %}
+    {% set full_estimated_profit = basket.totals.estimated_profit + additional_charges %}
+    <div class="cc-primary-numbers"><div class="cc-primary-number"><span>Customer Total</span><strong>${{ "%.2f"|format(full_customer_total) }}</strong></div><div class="cc-primary-number"><span>Estimated Profit</span><strong>${{ "%.2f"|format(full_estimated_profit) }}</strong></div></div>
     <div class="cc-costs"><div><span>Parts Cost</span><strong>${{ "%.2f"|format(basket.totals.supplier_parts_total) }}</strong></div><div><span>Shipping</span><strong>${{ "%.2f"|format(basket.totals.shipping_total) }}</strong></div><div><span>Total Cost</span><strong>${{ "%.2f"|format(basket.totals.supplier_total) }}</strong></div></div>
 
     <section class="quote-revenue-review">
