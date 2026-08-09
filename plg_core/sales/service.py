@@ -163,8 +163,235 @@ def get_invoice(invoice_id: int):
             WHERE invoice_id=? AND transaction_type='PAYMENT'
             ORDER BY transaction_date DESC,id DESC
         """, (invoice_id,)).fetchall()
+        events = connection.execute(
+            "SELECT * FROM invoice_events WHERE invoice_id=? ORDER BY id DESC",
+            (invoice_id,),
+        ).fetchall()
     result = dict(invoice)
     result["items"] = [dict(row) for row in items]
     result["payments"] = [dict(row) for row in payments]
+    result["events"] = [dict(row) for row in events]
     result["payments_received"] = round(sum(float(row["amount"] or 0) for row in payments), 2)
     return result
+
+def void_invoice(invoice_id: int, reason: str):
+    reason = str(reason or "").strip()
+
+    if not reason:
+        raise HTTPException(
+            status_code=400,
+            detail="Void reason is required.",
+        )
+
+    with closing(get_connection()) as connection:
+        invoice = connection.execute(
+            """
+            SELECT i.*, j.customer_id
+            FROM invoices i
+            JOIN jobs j
+              ON j.id = i.job_id
+            WHERE i.id = ?
+            """,
+            (invoice_id,),
+        ).fetchone()
+
+        if invoice is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Invoice not found.",
+            )
+
+        previous_status = str(
+            invoice["status"] or ""
+        ).strip().upper()
+
+        if previous_status == "VOID":
+            return get_invoice(invoice_id)
+
+        payment = connection.execute(
+            """
+            SELECT 1
+            FROM customer_transactions
+            WHERE invoice_id = ?
+              AND transaction_type = 'PAYMENT'
+            LIMIT 1
+            """,
+            (invoice_id,),
+        ).fetchone()
+
+        if payment is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Invoices with recorded customer payments cannot "
+                    "be voided. Refund or reverse the payment first."
+                ),
+            )
+
+        supplier_order = connection.execute(
+            """
+            SELECT 1
+            FROM supplier_orders
+            WHERE invoice_id = ?
+            LIMIT 1
+            """,
+            (invoice_id,),
+        ).fetchone()
+
+        purchased_part = connection.execute(
+            """
+            SELECT 1
+            FROM basket_items
+            JOIN baskets
+              ON baskets.id = basket_items.basket_id
+            WHERE baskets.job_id = ?
+              AND UPPER(COALESCE(basket_items.part_status, ''))
+                  IN ('ORDERED', 'RECEIVED')
+            LIMIT 1
+            """,
+            (invoice["job_id"],),
+        ).fetchone()
+
+        if supplier_order is not None or purchased_part is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Invoice cannot be voided because purchasing "
+                    "has already started."
+                ),
+            )
+
+        invoice_charge = connection.execute(
+            """
+            SELECT COALESCE(SUM(amount), 0) AS amount
+            FROM customer_transactions
+            WHERE invoice_id = ?
+              AND transaction_type = 'INVOICE'
+            """,
+            (invoice_id,),
+        ).fetchone()
+
+        reversal_amount = max(
+            -float(invoice_charge["amount"] or 0),
+            0.0,
+        )
+
+        if invoice["customer_id"] and reversal_amount > 0:
+            connection.execute(
+                """
+                INSERT INTO customer_transactions (
+                    customer_id,
+                    transaction_date,
+                    transaction_type,
+                    amount,
+                    reference,
+                    reason,
+                    job_id,
+                    quote_id,
+                    invoice_id
+                )
+                VALUES (?, ?, 'INVOICE_VOID', ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    invoice["customer_id"],
+                    __import__("datetime").date.today().isoformat(),
+                    round(reversal_amount, 2),
+                    invoice["invoice_number"],
+                    f"Void reversal: {reason}",
+                    invoice["job_id"],
+                    invoice["quote_id"],
+                    invoice_id,
+                ),
+            )
+
+        connection.execute(
+            """
+            UPDATE invoices
+            SET status = 'VOID',
+                balance_due = 0,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (invoice_id,),
+        )
+
+        connection.execute(
+            """
+            UPDATE jobs
+            SET status = 'QUOTED'
+            WHERE id = ?
+            """,
+            (invoice["job_id"],),
+        )
+
+        message = (
+            f"Invoice {invoice['invoice_number']} voided. "
+            f"Reason: {reason}"
+        )
+
+        connection.execute(
+            """
+            INSERT INTO invoice_events (
+                invoice_id,
+                event_type,
+                from_status,
+                to_status,
+                notes
+            )
+            VALUES (?, 'INVOICE_VOIDED', ?, 'VOID', ?)
+            """,
+            (
+                invoice_id,
+                previous_status,
+                message,
+            ),
+        )
+
+        write_audit(
+            connection,
+            action="INVOICE_VOIDED",
+            entity_type="INVOICE",
+            entity_id=invoice_id,
+            summary=message,
+            metadata={
+                "reason": reason,
+                "from_status": previous_status,
+                "to_status": "VOID",
+                "balance_due_before": float(
+                    invoice["balance_due"] or 0
+                ),
+                "ledger_reversal": round(
+                    reversal_amount,
+                    2,
+                ),
+                "job_id": int(invoice["job_id"]),
+                "quote_id": int(invoice["quote_id"]),
+            },
+        )
+
+        log_job_event(
+            connection,
+            job_id=int(invoice["job_id"]),
+            event_type="INVOICE_VOIDED",
+            icon="⊘",
+            message=message,
+        )
+
+        connection.commit()
+
+        from legacy_app import (
+            generate_invoice_pdfs,
+            load_invoice,
+        )
+
+        updated_invoice, updated_items = load_invoice(
+            connection,
+            invoice_id,
+        )
+
+        generate_invoice_pdfs(
+            updated_invoice,
+            updated_items,
+        )
+
+    return get_invoice(invoice_id)

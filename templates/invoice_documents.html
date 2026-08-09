@@ -434,6 +434,45 @@
         </button>
       </form>
       {% endif %}
+
+      {% if can_void_invoice %}
+      <form
+        method="post"
+        action="/invoices/{{ invoice.id }}/void"
+        class="invoice-payment-form"
+        onsubmit="return confirm('Void this invoice? The invoice will be cancelled and the job returned to quoting.');"
+      >
+        <div class="invoice-payment-form-heading">
+          <h2>Void Invoice</h2>
+          <p>
+            Cancel this invoice and return the job to the quoting stage.
+          </p>
+        </div>
+
+        <label>
+          <span>Void Reason</span>
+          <input
+            name="reason"
+            placeholder="Why is this invoice being voided?"
+            maxlength="1000"
+            required
+          >
+        </label>
+
+        <button
+          class="workspace-btn"
+          type="submit"
+        >
+          Void Invoice
+        </button>
+      </form>
+
+      {% elif void_block_reason %}
+      <div class="invoice-void-state">
+        <strong>Void unavailable</strong>
+        <p>{{ void_block_reason }}</p>
+      </div>
+      {% endif %}
     </aside>
 
   </section>

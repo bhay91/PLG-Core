@@ -2455,6 +2455,55 @@ def invoice_documents(request: Request, invoice_id: int):
             (invoice_id,),
         ).fetchone() is not None
 
+        has_supplier_orders = connection.execute(
+            """
+            SELECT 1
+            FROM supplier_orders
+            WHERE invoice_id = ?
+            LIMIT 1
+            """,
+            (invoice_id,),
+        ).fetchone() is not None
+
+        has_purchased_parts = connection.execute(
+            """
+            SELECT 1
+            FROM basket_items
+            JOIN baskets
+              ON baskets.id = basket_items.basket_id
+            WHERE baskets.job_id = ?
+              AND UPPER(COALESCE(basket_items.part_status, ''))
+                  IN ('ORDERED', 'RECEIVED')
+            LIMIT 1
+            """,
+            (invoice["job_id"],),
+        ).fetchone() is not None
+
+        invoice_status = str(
+            invoice["status"] or ""
+        ).strip().upper()
+
+        can_void_invoice = (
+            invoice_status != "VOID"
+            and not payments
+            and not has_supplier_orders
+            and not has_purchased_parts
+        )
+
+        void_block_reason = ""
+
+        if invoice_status != "VOID" and not can_void_invoice:
+            if payments:
+                void_block_reason = (
+                    "Void unavailable after a customer payment has "
+                    "been recorded. Refund or reverse the payment first."
+                )
+            else:
+                void_block_reason = (
+                    "Void unavailable because purchasing has "
+                    "already started for this invoice."
+                )
+
     paths = invoice_paths(
         invoice["customer"],
         invoice["invoice_number"],
@@ -2495,6 +2544,8 @@ def invoice_documents(request: Request, invoice_id: int):
                 invoice
             ).exists(),
             "custom_invoice_exists": custom_invoice_exists,
+            "can_void_invoice": can_void_invoice,
+            "void_block_reason": void_block_reason,
             "active_page": "invoices",
         },
     )
@@ -2720,6 +2771,21 @@ def receive_invoice_payment(
                 updated_invoice,
                 updated_items,
             )
+
+    return RedirectResponse(
+        url=f"/invoices/{invoice_id}/documents",
+        status_code=303,
+    )
+
+
+@app.post("/invoices/{invoice_id}/void")
+def void_invoice_web(
+    invoice_id: int,
+    reason: Annotated[str, Form()],
+):
+    from plg_core.sales.service import void_invoice
+
+    void_invoice(invoice_id, reason)
 
     return RedirectResponse(
         url=f"/invoices/{invoice_id}/documents",
