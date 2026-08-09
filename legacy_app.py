@@ -2312,7 +2312,7 @@ def list_invoices(request: Request, view: str = "all"):
 
 
 @app.post("/quotes/{quote_id}/convert-to-invoice")
-def convert_quote_to_invoice(quote_id: int):
+def convert_quote_to_invoice(quote_id: int, force: bool = False):
     from plg_core.audit import write_audit
 
     with closing(get_connection()) as connection:
@@ -2320,6 +2320,14 @@ def convert_quote_to_invoice(quote_id: int):
         existing = connection.execute("SELECT id FROM invoices WHERE quote_id=?",(quote_id,)).fetchone()
         if existing is not None:
             return RedirectResponse(url=f"/invoices/{existing['id']}/documents",status_code=303)
+
+        quote_status = str(quote["status"] or "").strip().upper()
+        if quote_status not in {"APPROVED", "ACCEPTED", "CONFIRMED"} and not force:
+            raise HTTPException(
+                status_code=409,
+                detail="Quote must be approved before conversion to invoice.",
+            )
+
         job = connection.execute("SELECT * FROM jobs WHERE id=?",(quote["job_id"],)).fetchone()
         invoice_number = next_invoice_number(connection)
         invoice_date = date.today().isoformat()

@@ -36,16 +36,22 @@
       >
         Open {{ invoice.invoice_number }}
       </a>
-      {% else %}
-      <form
-        method="post"
-        action="/quotes/{{ quote.id }}/convert-to-invoice"
-      >
-        <button class="button" type="submit">
-          Customer Accepted — Create Invoice
-        </button>
-      </form>
-      {% endif %}
+        {% else %}
+        {% if quote.status in ["APPROVED", "ACCEPTED", "CONFIRMED"] %}
+        <form
+          method="post"
+          action="/quotes/{{ quote.id }}/convert-to-invoice"
+        >
+          <button class="button" type="submit">
+            Customer Accepted — Create Invoice
+          </button>
+        </form>
+        {% else %}
+        <span class="quote-next-step-note">
+          Approve this quote before creating an invoice.
+        </span>
+        {% endif %}
+        {% endif %}
     </div>
   </section>
 
@@ -364,21 +370,27 @@
       >
         Open {{ invoice.invoice_number }}
       </a>
-      {% else %}
-      <form
-        method="post"
-        action="/quotes/{{ quote.id }}/convert-to-invoice"
-      >
-        <button class="button full-width" type="submit">
-          Customer Accepted — Create Invoice
-        </button>
-      </form>
+        {% else %}
+        {% if quote.status in ["APPROVED", "ACCEPTED", "CONFIRMED"] %}
+        <form
+          method="post"
+          action="/quotes/{{ quote.id }}/convert-to-invoice"
+        >
+          <button class="button full-width" type="submit">
+            Customer Accepted — Create Invoice
+          </button>
+        </form>
 
-      <p class="quote-next-step-note">
-        Use this after the customer approves the quote. Payment will be
-        recorded on the invoice.
-      </p>
-      {% endif %}
+        <p class="quote-next-step-note">
+          Customer approved. Creating the invoice will move this quote
+          into the converted workflow.
+        </p>
+        {% else %}
+        <p class="quote-next-step-note">
+          Approve this quote before creating an invoice.
+        </p>
+        {% endif %}
+        {% endif %}
     </aside>
   </section>
 

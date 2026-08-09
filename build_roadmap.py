@@ -404,7 +404,7 @@ FILES = {
             if status not in {"APPROVED", "ACCEPTED", "CONFIRMED"} and not force:
                 raise HTTPException(status_code=409, detail="Quote must be approved before API conversion.")
             from legacy_app import convert_quote_to_invoice
-            convert_quote_to_invoice(quote_id)
+            convert_quote_to_invoice(quote_id, force=force)
             with closing(get_connection()) as connection:
                 invoice = connection.execute(
                     "SELECT id FROM invoices WHERE quote_id=?",
