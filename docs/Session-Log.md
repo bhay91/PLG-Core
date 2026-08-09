@@ -423,3 +423,44 @@ Passed:
 ### Result
 
 Smart Intake is now a natural-language front door into the same PPS operating workflow rather than a competing Job-creation path.
+
+---
+
+## 2026-08-09 — Alpha 19 Audit Remediation 6
+
+### Finding
+
+Customer Request creation still used the legacy `PLG-Rxxxxx` numbering prefix in both normal Request entry and Smart Intake.
+
+This conflicted with the PPS product identity.
+
+### Resolution
+
+Future Customer Requests now use:
+
+`PPS-Rxxxxx`
+
+This applies to:
+
+- normal Customer Request creation
+- Smart Intake Request creation
+
+Existing historical `PLG-Rxxxxx` Request numbers are preserved unchanged.
+
+Historical record identifiers are not rewritten during rebranding.
+
+### Verification
+
+Passed:
+
+- both Request creation paths previously used `PLG-R`
+- no unexpected third Request numbering scheme was found
+- normal Request creation now produces `PPS-R`
+- Smart Intake now produces `PPS-R`
+- existing `PLG-R` records remain unchanged
+- Python syntax check
+- Git diff whitespace check
+
+### Result
+
+New Customer Request records now use PPS branding while historical Request identity remains stable.

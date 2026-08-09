@@ -254,7 +254,7 @@ async def create_request(
             SET request_number = ?
             WHERE id = ?
             """,
-            (f"PLG-R{request_id:05d}", request_id),
+            (f"PPS-R{request_id:05d}", request_id),
         )
 
         await _save_attachments(
@@ -948,7 +948,7 @@ def create_from_smart_intake(
             WHERE id = ?
             """,
             (
-                f"PLG-R{request_id:05d}",
+                f"PPS-R{request_id:05d}",
                 request_id,
             ),
         )
