@@ -955,6 +955,74 @@
     <section class="quote-revenue-review">
       <header class="quote-revenue-review-head">
         <div>
+          <p class="cc-label">REVENUE BREAKDOWN</p>
+          <h3>Where customer revenue comes from</h3>
+        </div>
+      </header>
+
+      <div class="quote-revenue-review-lines">
+        <div class="quote-revenue-review-line">
+          <div><strong>Parts Revenue</strong></div>
+          <span>${{ "%.2f"|format(basket.totals.customer_parts_total) }}</span>
+        </div>
+        <div class="quote-revenue-review-line">
+          <div><strong>Shipping Revenue</strong></div>
+          <span>${{ "%.2f"|format(basket.totals.shipping_total) }}</span>
+        </div>
+        <div class="quote-revenue-review-line">
+          <div><strong>Service Charge</strong></div>
+          <span>${{ "%.2f"|format(job.service_charge or 0) }}</span>
+        </div>
+        <div class="quote-revenue-review-line">
+          <div><strong>Sourcing Fee</strong></div>
+          <span>${{ "%.2f"|format(job.sourcing_fee or 0) }}</span>
+        </div>
+      </div>
+
+      <footer class="quote-revenue-review-total">
+        <div>
+          <span>Total Revenue</span>
+          <small>Expected customer billing for this job</small>
+        </div>
+        <strong>${{ "%.2f"|format(full_customer_total) }}</strong>
+      </footer>
+    </section>
+
+    <section class="quote-revenue-review">
+      <header class="quote-revenue-review-head">
+        <div>
+          <p class="cc-label">COST & PROFIT</p>
+          <h3>Job profitability before quote generation</h3>
+        </div>
+      </header>
+
+      <div class="quote-revenue-review-lines">
+        <div class="quote-revenue-review-line">
+          <div><strong>Parts Cost</strong></div>
+          <span>${{ "%.2f"|format(basket.totals.supplier_parts_total) }}</span>
+        </div>
+        <div class="quote-revenue-review-line">
+          <div><strong>Shipping Cost</strong></div>
+          <span>${{ "%.2f"|format(basket.totals.shipping_total) }}</span>
+        </div>
+        <div class="quote-revenue-review-line">
+          <div><strong>Total Cost</strong></div>
+          <span>${{ "%.2f"|format(basket.totals.supplier_total) }}</span>
+        </div>
+      </div>
+
+      <footer class="quote-revenue-review-total">
+        <div>
+          <span>Gross Profit</span>
+          <small>Total revenue minus direct job cost</small>
+        </div>
+        <strong>${{ "%.2f"|format(full_estimated_profit) }}</strong>
+      </footer>
+    </section>
+
+    <section class="quote-revenue-review">
+      <header class="quote-revenue-review-head">
+        <div>
           <p class="cc-label">ADDITIONAL CHARGES</p>
           <h3>Additional billable work</h3>
         </div>
