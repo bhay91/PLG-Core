@@ -96,7 +96,13 @@
 <form method="post" action="/opportunities/{{ opportunity.id }}/convert">
   <label>Primary Machine</label><br>
   <select name="opportunity_machine_id">
-    <option value="">No machine</option>
+    <option value="">
+      {% if opportunity.customer_request_id %}
+        Use linked Request machine automatically
+      {% else %}
+        No machine
+      {% endif %}
+    </option>
     {% for machine in machines %}
     <option value="{{ machine.id }}">{{ machine.manufacturer }} {{ machine.model }} — {{ machine.vin_pin_serial }}</option>
     {% endfor %}

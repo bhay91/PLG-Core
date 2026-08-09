@@ -350,3 +350,76 @@ Passed:
 ### Result
 
 Opportunities are now a first-class, directly accessible part of the PPS operating workflow rather than a hidden intermediate feature.
+
+---
+
+## 2026-08-09 — Alpha 19 Audit Remediation 5
+
+### Finding
+
+Smart Intake was still operating as a separate shortcut.
+
+It created or linked the customer, location, Registry item, and Customer Request, but then immediately created a Job and Basket instead of using the newly established Customer Request → Opportunity workflow.
+
+This meant natural-language intake could bypass the sourcing, research, evidence, and follow-up stage.
+
+### Resolution
+
+Smart Intake now uses the same PPS workflow as normal Customer Requests:
+
+Smart Intake
+→ Customer / Registry
+→ Customer Request
+→ Opportunity
+→ sourcing / research / evidence / follow-up
+→ Job
+→ Basket
+
+Smart Intake no longer creates a Job directly.
+
+After creating the Customer Request, it routes that Request through the existing Request → Opportunity bridge.
+
+### Enter Information Once
+
+When Smart Intake already links a Registry machine to the Customer Request:
+
+- the Opportunity retains that same Registry machine
+- converting the Opportunity automatically carries that machine into the Job
+- the user does not need to select the same machine again
+- an explicitly selected Opportunity machine can still override the automatic choice
+
+The Opportunity conversion screen now explains this behavior with:
+
+`Use linked Request machine automatically`
+
+### Requested Parts
+
+Requested parts entered through Smart Intake become Opportunity research records with source type `REQUEST`.
+
+When the Opportunity is converted, those records become Job Basket candidates.
+
+They are not written prematurely to `job_parts`.
+
+### Verification
+
+Passed:
+
+- Smart Intake creates or links Customer and Registry records
+- Smart Intake creates the Customer Request
+- Smart Intake no longer creates a Job immediately
+- Smart Intake redirects to a linked Opportunity
+- requested parts become Opportunity research records
+- Opportunity remains linked to its originating Request
+- Request Registry machine carries automatically into the Job
+- Opportunity conversion updates the Request to `COMPLETED`
+- Request and Opportunity reference the same Job
+- requested parts transfer into the Basket
+- no premature `job_parts` records are created
+- repeated Opportunity conversion reuses the existing Job
+- Opportunity template loads successfully
+- Python syntax checks
+- Git diff whitespace checks
+
+### Result
+
+Smart Intake is now a natural-language front door into the same PPS operating workflow rather than a competing Job-creation path.

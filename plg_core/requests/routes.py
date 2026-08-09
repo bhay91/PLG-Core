@@ -953,90 +953,9 @@ def create_from_smart_intake(
             ),
         )
 
-        job_number = next_job_number(connection)
-
-        cursor = connection.execute(
-            """
-            INSERT INTO jobs (
-                job_number,
-                created_date,
-                customer_id,
-                machine_id,
-                customer,
-                company,
-                phone,
-                email,
-                address,
-                manufacturer,
-                machine,
-                pin_serial,
-                status,
-                notes
-            )
-            VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                'REQUESTED',
-                ?
-            )
-            """,
-            (
-                job_number,
-                date.today().isoformat(),
-                customer_id,
-                machine_id,
-                customer["name"],
-                customer["company"] or "",
-                parsed["phone"] or customer["phone"] or "",
-                parsed["email"] or customer["email"] or "",
-                parsed["location"] or customer["address"] or "",
-                parsed["manufacturer"],
-                parsed["model"],
-                parsed["identifier"],
-                (
-                    f"Created from PLG-R{request_id:05d}"
-                    + (
-                        f"\n\n{parsed['request_text']}"
-                        if parsed["request_text"]
-                        else ""
-                    )
-                ),
-            ),
-        )
-
-        job_id = cursor.lastrowid
-
-        parts = [
-            line.strip(" -•\t")
-            for line in parsed["requested_parts"].splitlines()
-            if line.strip(" -•\t")
-        ]
-
-        for part in parts:
-            add_item_with_connection(
-                connection,
-                job_id,
-                BasketItemCreate(
-                    requested_description=part,
-                ),
-            )
-
-        connection.execute(
-            """
-            UPDATE customer_requests
-            SET job_id = ?,
-                status = 'COMPLETED',
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            (job_id, request_id),
-        )
-
         connection.commit()
 
-    return RedirectResponse(
-        url=f"/jobs/{job_id}/basket",
-        status_code=303,
-    )
+    return create_opportunity_from_request(request_id)
 
 
 @router.get("/{request_id}", response_class=HTMLResponse)

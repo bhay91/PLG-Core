@@ -394,6 +394,34 @@ def convert_opportunity_to_job(opportunity_id: int, opportunity_machine_id: Anno
 
         machine = None
         machine_id = None
+
+        # A Request-linked Opportunity should carry its
+        # Registry machine into the Job automatically.
+        if (
+            not opportunity_machine_id
+            and originating_request is not None
+            and originating_request["machine_id"]
+        ):
+            request_machine = connection.execute(
+                """
+                SELECT id
+                FROM opportunity_machines
+                WHERE opportunity_id = ?
+                  AND machine_id = ?
+                ORDER BY id
+                LIMIT 1
+                """,
+                (
+                    opportunity_id,
+                    originating_request["machine_id"],
+                ),
+            ).fetchone()
+
+            if request_machine is not None:
+                opportunity_machine_id = str(
+                    request_machine["id"]
+                )
+
         if opportunity_machine_id:
             machine = connection.execute("SELECT * FROM opportunity_machines WHERE id = ? AND opportunity_id = ?", (opportunity_machine_id, opportunity_id)).fetchone()
             if machine is None:
