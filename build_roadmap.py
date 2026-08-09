@@ -3163,11 +3163,45 @@ FILES = {
                 customer = connection.execute("SELECT * FROM customers WHERE id=?", (customer_id,)).fetchone()
                 if customer is None:
                     raise HTTPException(status_code=404, detail="Customer not found.")
-                machines = connection.execute("SELECT * FROM machines WHERE customer_id=? ORDER BY id DESC", (customer_id,)).fetchall()
-                jobs = connection.execute("SELECT * FROM jobs WHERE customer_id=? ORDER BY id DESC", (customer_id,)).fetchall()
+                machines = connection.execute(
+                    "SELECT * FROM machines WHERE customer_id=? ORDER BY id DESC",
+                    (customer_id,),
+                ).fetchall()
+
+                jobs = connection.execute(
+                    "SELECT * FROM jobs WHERE customer_id=? ORDER BY id DESC",
+                    (customer_id,),
+                ).fetchall()
+
+                quotes = connection.execute(
+                    """
+                    SELECT q.*
+                    FROM quotes q
+                    JOIN jobs j
+                      ON j.id=q.job_id
+                    WHERE j.customer_id=?
+                    ORDER BY q.id DESC
+                    """,
+                    (customer_id,),
+                ).fetchall()
+
+                invoices = connection.execute(
+                    """
+                    SELECT i.*
+                    FROM invoices i
+                    JOIN jobs j
+                      ON j.id=i.job_id
+                    WHERE j.customer_id=?
+                    ORDER BY i.id DESC
+                    """,
+                    (customer_id,),
+                ).fetchall()
+
             result = dict(customer)
             result["machines"] = [dict(row) for row in machines]
             result["jobs"] = [dict(row) for row in jobs]
+            result["quotes"] = [dict(row) for row in quotes]
+            result["invoices"] = [dict(row) for row in invoices]
             return result
 
         @router.get("/machines")
@@ -3195,9 +3229,39 @@ FILES = {
                 """, (machine_id,)).fetchone()
                 if machine is None:
                     raise HTTPException(status_code=404, detail="Machine not found.")
-                jobs = connection.execute("SELECT * FROM jobs WHERE machine_id=? ORDER BY id DESC", (machine_id,)).fetchall()
+                jobs = connection.execute(
+                    "SELECT * FROM jobs WHERE machine_id=? ORDER BY id DESC",
+                    (machine_id,),
+                ).fetchall()
+
+                quotes = connection.execute(
+                    """
+                    SELECT q.*
+                    FROM quotes q
+                    JOIN jobs j
+                      ON j.id=q.job_id
+                    WHERE j.machine_id=?
+                    ORDER BY q.id DESC
+                    """,
+                    (machine_id,),
+                ).fetchall()
+
+                invoices = connection.execute(
+                    """
+                    SELECT i.*
+                    FROM invoices i
+                    JOIN jobs j
+                      ON j.id=i.job_id
+                    WHERE j.machine_id=?
+                    ORDER BY i.id DESC
+                    """,
+                    (machine_id,),
+                ).fetchall()
+
             result = dict(machine)
             result["jobs"] = [dict(row) for row in jobs]
+            result["quotes"] = [dict(row) for row in quotes]
+            result["invoices"] = [dict(row) for row in invoices]
             return result
     '''),
     "plg_core/admin/__init__.py": block('''

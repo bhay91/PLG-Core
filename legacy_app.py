@@ -780,10 +780,11 @@ def customer_account(request: Request, customer_id: int):
         jobs=connection.execute("SELECT * FROM jobs WHERE customer_id=? ORDER BY id DESC",(customer_id,)).fetchall()
         machines=connection.execute("SELECT * FROM machines WHERE customer_id=? ORDER BY active DESC, name COLLATE NOCASE",(customer_id,)).fetchall()
         quotes=connection.execute("SELECT quotes.* FROM quotes JOIN jobs ON jobs.id=quotes.job_id WHERE jobs.customer_id=? ORDER BY quotes.id DESC",(customer_id,)).fetchall()
+        invoices=connection.execute("SELECT invoices.* FROM invoices JOIN jobs ON jobs.id=invoices.job_id WHERE jobs.customer_id=? ORDER BY invoices.id DESC",(customer_id,)).fetchall()
         transactions=connection.execute("SELECT * FROM customer_transactions WHERE customer_id=? ORDER BY transaction_date DESC,id DESC",(customer_id,)).fetchall()
         summary=connection.execute("SELECT COALESCE(SUM(amount),0) AS net_balance,COALESCE(SUM(CASE WHEN transaction_type='PAYMENT' THEN amount ELSE 0 END),0) AS total_payments FROM customer_transactions WHERE customer_id=?",(customer_id,)).fetchone(); connection.commit()
         net=float(summary["net_balance"] or 0); account={"available_credit":max(net,0),"outstanding_balance":max(-net,0),"total_payments":float(summary["total_payments"] or 0)}
-    return templates.TemplateResponse(request=request,name="customer_account.html",context={"customer":customer,"machines":machines,"jobs":jobs,"quotes":quotes,"transactions":transactions,"account":account,"active_page":"customers"})
+    return templates.TemplateResponse(request=request,name="customer_account.html",context={"customer":customer,"machines":machines,"jobs":jobs,"quotes":quotes,"invoices":invoices,"transactions":transactions,"account":account,"active_page":"customers"})
 
 @app.post("/customers/{customer_id}/transactions/payment")
 def record_customer_payment(customer_id: int,amount: Annotated[float,Form()],payment_method: Annotated[str,Form()],reference: Annotated[str,Form()]=""):

@@ -1,5 +1,40 @@
 {% extends "base.html" %}
-{% block title %}{{ customer.name }} · Customer Account{% endblock %}
+{% block title %}{{ customer.name }} · Customer Account
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">INVOICES</p>
+      <h2>Customer Invoices</h2>
+    </div>
+  </div>
+
+  {% if invoices %}
+  <div class="customer-record-list">
+    {% for invoice in invoices %}
+    <a
+      class="customer-record-row"
+      href="/invoices/{{ invoice.id }}/documents"
+    >
+      <div>
+        <strong>{{ invoice.invoice_number }}</strong>
+        <span>{{ invoice.invoice_date }}</span>
+      </div>
+
+      <div>
+        <strong>
+          ${{ "%.2f"|format(invoice.customer_total) }}
+        </strong>
+        <span>{{ invoice.status }}</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p>No invoices for this customer.</p>
+  {% endif %}
+</section>
+
+{% endblock %}
 {% block content %}
 <section class="workspace-heading">
   <div>
