@@ -257,34 +257,6 @@
       </div>
     </details>
 
-    {% if record.id %}
-    <section class="panel request-create-section">
-      <div class="request-create-section-head">
-        <div>
-          <p class="eyebrow">STATUS</p>
-          <h2>Request status</h2>
-        </div>
-      </div>
-
-      <label>
-        <span>Status</span>
-        <select name="status">
-          <option value="NEW" {% if record.status == 'NEW' %}selected{% endif %}>
-            New
-          </option>
-          <option value="WAITING" {% if record.status == 'WAITING' %}selected{% endif %}>
-            Waiting
-          </option>
-          <option value="READY" {% if record.status == 'READY' %}selected{% endif %}>
-            Ready
-          </option>
-          <option value="COMPLETED" {% if record.status == 'COMPLETED' %}selected{% endif %}>
-            Completed
-          </option>
-        </select>
-      </label>
-    </section>
-    {% endif %}
 
     <section class="request-create-actions">
       <a class="button ghost" href="{{ cancel_url }}">

@@ -18,6 +18,7 @@ from plg_core.machines.identifiers import find_machine_by_identifier
 router = APIRouter(prefix="/requests", tags=["customer-requests"])
 UPLOAD_ROOT = BASE_DIR / "uploads" / "requests"
 ALLOWED_STATUSES = {"NEW", "WAITING", "READY", "COMPLETED"}
+MANUAL_STATUSES = ALLOWED_STATUSES - {"COMPLETED"}
 REGISTRY_TYPES = {
     "vehicle": "Vehicle",
     "machine": "Machine",
@@ -1045,13 +1046,8 @@ async def update_request(
     identifier: str = Form(""),
     requested_parts: str = Form(""),
     reminder_date: str = Form(""),
-    status: str = Form("NEW"),
     attachments: list[UploadFile] = File(default=[]),
 ):
-    status = (status or "NEW").strip().upper()
-    if status not in ALLOWED_STATUSES:
-        status = "NEW"
-
     registry_type = (registry_type or "other").strip().lower()
     if registry_type not in REGISTRY_TYPES:
         registry_type = "other"
@@ -1105,8 +1101,7 @@ async def update_request(
                 identifier = ?,
                 requested_parts = ?,
                 reminder_date = NULLIF(?, ''),
-                status = ?,
-                updated_at = CURRENT_TIMESTAMP
+                    updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
             (
@@ -1123,8 +1118,7 @@ async def update_request(
                 identifier,
                 requested_parts,
                 reminder_date,
-                status,
-                request_id,
+                    request_id,
             ),
         )
 
@@ -1384,8 +1378,11 @@ def create_job_from_request(request_id: int):
 @router.post("/{request_id}/status")
 def update_status(request_id: int, status: str = Form(...)):
     status = status.upper().strip()
-    if status not in ALLOWED_STATUSES:
-        raise HTTPException(status_code=400, detail="Invalid status.")
+    if status not in MANUAL_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail="Request status may only be New, Waiting, or Ready.",
+        )
     with closing(get_connection()) as connection:
         _get_request_or_404(connection, request_id)
         connection.execute(
