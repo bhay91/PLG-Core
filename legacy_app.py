@@ -1719,6 +1719,28 @@ def next_quote_number(connection: sqlite3.Connection) -> str:
 
 @app.post("/jobs/{job_id}/generate-quote")
 def generate_quote(job_id: int):
+    # A Job may have only one active quote at a time.
+    # Repeated Generate Quote submissions must reopen the
+    # existing quote instead of issuing another quote number.
+    with closing(get_connection()) as connection:
+        existing_quote = connection.execute(
+            """
+            SELECT id
+            FROM quotes
+            WHERE job_id = ?
+              AND COALESCE(is_archived, 0) = 0
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (job_id,),
+        ).fetchone()
+
+    if existing_quote is not None:
+        return RedirectResponse(
+            url=f"/quotes/{existing_quote['id']}/documents",
+            status_code=303,
+        )
+
     # The basket commit is an internal step. The user should not
     # have to click Review Quote before generating the quote.
     from plg_core.basket.service import commit_basket
