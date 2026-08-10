@@ -68,7 +68,7 @@
 
 <section class="panel job-ready-panel" id="next-steps">
   <div class="panel-heading request-panel-heading">
-    <div><p class="eyebrow">NEXT STEPS</p><h2>Get Job Ready</h2><p class="muted-copy">Use the information once. PPS carries it through the customer, Registry, Opportunity, and Job.</p></div>
+    <div><p class="eyebrow">NEXT STEPS</p><h2>Get Job Ready</h2><p class="muted-copy">Use the information once. PPS carries it through the customer, Registry, and Job.</p></div>
   </div>
 
   <form method="post" action="/requests/{{ record.id }}/prepare" class="job-ready-details">
@@ -136,41 +136,19 @@
       </div>
     </article>
 
-    <article class="job-ready-step {% if opportunity %}complete{% endif %}">
-      <div class="step-number">3</div>
-      <div class="step-content">
-        <h3>Opportunity</h3>
-        {% if opportunity %}
-          <p class="step-success">✓ Linked: {{ opportunity.opportunity_number }}</p>
-          <p>Use the Opportunity for sourcing, research, evidence, and follow-up before the Job is created.</p>
-          <a class="button" href="/opportunities/{{ opportunity.id }}">Open Opportunity</a>
-        {% elif not customer %}
-          <p class="step-muted">Create or link the customer first.</p>
-        {% else %}
-          <p>Create an Opportunity when this request needs sourcing, research, verification, or follow-up before becoming a Job.</p>
-          <form method="post" action="/requests/{{ record.id }}/opportunity/create">
-            <button class="button" type="submit">Create Opportunity</button>
-          </form>
-        {% endif %}
-      </div>
-    </article>
-
     <article class="job-ready-step {% if job %}complete{% endif %}">
-      <div class="step-number">4</div>
+      <div class="step-number">3</div>
       <div class="step-content">
         <h3>Job</h3>
         {% if job %}
           <p class="step-success">✓ Created: {{ job.job_number }}</p>
           <a class="button" href="/jobs/{{ job.id }}/basket">Open Job</a>
-        {% elif opportunity %}
-          <p>Continue the Opportunity and convert it to a Job when the sourcing work is ready.</p>
-          <a class="button ghost" href="/opportunities/{{ opportunity.id }}">Continue Opportunity</a>
         {% elif not customer %}
           <p class="step-muted">Create or link the customer first.</p>
         {% else %}
-          <p>For a straightforward request that does not need Opportunity research, create the Job directly.</p>
+          <p>When this request is ready for sourcing and fulfillment, create the Job.</p>
           <form method="post" action="/requests/{{ record.id }}/job/create">
-            <button class="button ghost" type="submit">Create Job Directly</button>
+            <button class="button" type="submit">Create Job</button>
           </form>
         {% endif %}
       </div>

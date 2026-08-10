@@ -2503,8 +2503,7 @@ main,
 .accounting-section,
 .documents-table-wrap,
 .table-wrap,
-.table-scroll,
-.opportunities-table-wrap {
+.table-scroll {
   min-width: 0;
   max-width: 100%;
 }

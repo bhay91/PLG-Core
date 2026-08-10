@@ -955,7 +955,10 @@ def create_from_smart_intake(
 
         connection.commit()
 
-    return create_opportunity_from_request(request_id)
+    return RedirectResponse(
+        url=f"/requests/{request_id}",
+        status_code=303,
+    )
 
 
 @router.get("/{request_id}", response_class=HTMLResponse)
@@ -978,16 +981,6 @@ def request_detail(request: Request, request_id: int):
         customer = None
         machine = None
         job = None
-        opportunity = connection.execute(
-            """
-            SELECT *
-            FROM opportunities
-            WHERE customer_request_id = ?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (request_id,),
-        ).fetchone()
         if record["customer_id"]:
             customer = connection.execute(
                 "SELECT * FROM customers WHERE id = ?", (record["customer_id"],)
@@ -1011,7 +1004,6 @@ def request_detail(request: Request, request_id: int):
             "customer": customer,
             "machine": machine,
             "job": job,
-            "opportunity": opportunity,
             "registry_types": REGISTRY_TYPES,
             "active_page": "requests",
             "today": date.today().isoformat(),
@@ -1324,243 +1316,6 @@ def link_registry_to_request(request_id: int, machine_id: int = Form(...)):
 
 
 
-@router.post("/{request_id}/opportunity/create")
-def create_opportunity_from_request(request_id: int):
-    with closing(get_connection()) as connection:
-        record = _get_request_or_404(
-            connection,
-            request_id,
-        )
-
-        existing = connection.execute(
-            """
-            SELECT *
-            FROM opportunities
-            WHERE customer_request_id = ?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (request_id,),
-        ).fetchone()
-
-        if existing is not None:
-            return RedirectResponse(
-                url=f"/opportunities/{existing['id']}",
-                status_code=303,
-            )
-
-        # Preserve the existing direct Request -> Job path.
-        # A Request already converted directly to a Job should
-        # not create a second operational workflow.
-        if record["job_id"]:
-            return RedirectResponse(
-                url=f"/jobs/{record['job_id']}/basket",
-                status_code=303,
-            )
-
-        if not record["customer_id"]:
-            raise HTTPException(
-                status_code=400,
-                detail="Create or link a customer first.",
-            )
-
-        customer = connection.execute(
-            """
-            SELECT *
-            FROM customers
-            WHERE id = ?
-              AND active = 1
-            """,
-            (record["customer_id"],),
-        ).fetchone()
-
-        if customer is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Linked customer is unavailable.",
-            )
-
-        machine = None
-        if record["machine_id"]:
-            machine = connection.execute(
-                """
-                SELECT *
-                FROM machines
-                WHERE id = ?
-                  AND customer_id = ?
-                  AND active = 1
-                """,
-                (
-                    record["machine_id"],
-                    customer["id"],
-                ),
-            ).fetchone()
-
-        parts = [
-            line.strip(" -•\t")
-            for line in (
-                record["requested_parts"] or ""
-            ).splitlines()
-            if line.strip(" -•\t")
-        ]
-
-        manufacturer = (
-            machine["manufacturer"]
-            if machine is not None
-            else record["manufacturer"]
-        ) or ""
-
-        model = (
-            (
-                machine["model"]
-                or machine["name"]
-            )
-            if machine is not None
-            else record["model"]
-        ) or ""
-
-        equipment_title = " ".join(
-            part
-            for part in (
-                manufacturer.strip(),
-                model.strip(),
-            )
-            if part
-        ).strip()
-
-        if parts and equipment_title:
-            title = (
-                f"{equipment_title} — {parts[0]}"
-            )
-        elif parts:
-            title = parts[0]
-        elif equipment_title:
-            title = equipment_title
-        else:
-            title = (
-                record["request_number"]
-                or f"Customer Request {request_id}"
-            )
-
-        cursor = connection.execute(
-            """
-            INSERT INTO opportunities (
-                customer_id,
-                customer_request_id,
-                title,
-                request_text,
-                follow_up_date,
-                estimated_value,
-                notes
-            )
-            VALUES (
-                ?, ?, ?, ?,
-                NULLIF(?, ''),
-                0,
-                ?
-            )
-            """,
-            (
-                customer["id"],
-                request_id,
-                title,
-                record["request_text"] or "",
-                record["reminder_date"] or "",
-                (
-                    "Created from Customer Request "
-                    f"{record['request_number']}."
-                ),
-            ),
-        )
-
-        opportunity_id = cursor.lastrowid
-
-        connection.execute(
-            """
-            UPDATE opportunities
-            SET opportunity_number =
-                'PPS-OPP-' || printf('%04d', id)
-            WHERE id = ?
-            """,
-            (opportunity_id,),
-        )
-
-        identifier = (
-            machine["vin_pin_serial"]
-            if machine is not None
-            else record["identifier"]
-        ) or ""
-
-        if (
-            machine is not None
-            or manufacturer.strip()
-            or model.strip()
-            or identifier.strip()
-        ):
-            connection.execute(
-                """
-                INSERT INTO opportunity_machines (
-                    opportunity_id,
-                    machine_id,
-                    manufacturer,
-                    model,
-                    vin_pin_serial,
-                    engine,
-                    notes
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    opportunity_id,
-                    (
-                        machine["id"]
-                        if machine is not None
-                        else None
-                    ),
-                    manufacturer,
-                    model,
-                    identifier,
-                    (
-                        machine["engine"] or ""
-                        if machine is not None
-                        else ""
-                    ),
-                    (
-                        "Carried from Customer Request "
-                        f"{record['request_number']}."
-                    ),
-                ),
-            )
-
-        for part in parts:
-            connection.execute(
-                """
-                INSERT INTO opportunity_research (
-                    opportunity_id,
-                    part_description,
-                    source_type,
-                    notes
-                )
-                VALUES (?, ?, 'REQUEST', ?)
-                """,
-                (
-                    opportunity_id,
-                    part,
-                    (
-                        "Requested in Customer Request "
-                        f"{record['request_number']}."
-                    ),
-                ),
-            )
-
-        connection.commit()
-
-    return RedirectResponse(
-        url=f"/opportunities/{opportunity_id}",
-        status_code=303,
-    )
-
-
 @router.post("/{request_id}/job/create")
 def create_job_from_request(request_id: int):
     with closing(get_connection()) as connection:
@@ -1569,53 +1324,6 @@ def create_job_from_request(request_id: int):
         if record["job_id"]:
             return RedirectResponse(
                 url=f"/jobs/{record['job_id']}/basket",
-                status_code=303,
-            )
-
-        linked_opportunity = connection.execute(
-            """
-            SELECT id, converted_job_id
-            FROM opportunities
-            WHERE customer_request_id = ?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (request_id,),
-        ).fetchone()
-
-        if linked_opportunity is not None:
-            if linked_opportunity["converted_job_id"]:
-                job_id = linked_opportunity[
-                    "converted_job_id"
-                ]
-
-                connection.execute(
-                    """
-                    UPDATE customer_requests
-                    SET job_id = ?,
-                        status = 'COMPLETED',
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                      AND job_id IS NULL
-                    """,
-                    (
-                        job_id,
-                        request_id,
-                    ),
-                )
-
-                connection.commit()
-
-                return RedirectResponse(
-                    url=f"/jobs/{job_id}/basket",
-                    status_code=303,
-                )
-
-            return RedirectResponse(
-                url=(
-                    f"/opportunities/"
-                    f"{linked_opportunity['id']}"
-                ),
                 status_code=303,
             )
 
