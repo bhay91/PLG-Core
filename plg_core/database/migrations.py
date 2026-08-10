@@ -872,3 +872,69 @@ MIGRATIONS.append(
         _migration_0022_request_opportunity_link,
     )
 )
+
+def _migration_0023_machine_parts_history(
+    connection: sqlite3.Connection,
+) -> None:
+    """Store permanent verified part fitments for registry machines."""
+
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS machine_parts_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            machine_id INTEGER NOT NULL,
+
+            part_description TEXT NOT NULL DEFAULT '',
+            oem_part_number TEXT NOT NULL DEFAULT '',
+            alternate_part_number TEXT NOT NULL DEFAULT '',
+
+            source_type TEXT NOT NULL DEFAULT '',
+            brand TEXT NOT NULL DEFAULT '',
+            supplier_part_number TEXT NOT NULL DEFAULT '',
+            supplier_name TEXT NOT NULL DEFAULT '',
+
+            fitment_status TEXT NOT NULL DEFAULT 'UNVERIFIED',
+            fitment_source TEXT NOT NULL DEFAULT '',
+            fitment_note TEXT NOT NULL DEFAULT '',
+
+            source_verification_status TEXT NOT NULL DEFAULT 'UNVERIFIED',
+            source_url TEXT NOT NULL DEFAULT '',
+
+            supplier_cost REAL,
+            customer_unit_price REAL,
+            quantity INTEGER NOT NULL DEFAULT 1,
+
+            history_status TEXT NOT NULL DEFAULT 'REFERENCE',
+            original_job_number TEXT NOT NULL DEFAULT '',
+            original_job_status TEXT NOT NULL DEFAULT '',
+            original_captured_at TEXT,
+
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+            FOREIGN KEY (machine_id)
+                REFERENCES machines(id)
+                ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS
+            idx_machine_parts_history_machine
+        ON machine_parts_history(machine_id);
+
+        CREATE INDEX IF NOT EXISTS
+            idx_machine_parts_history_oem
+        ON machine_parts_history(oem_part_number);
+
+        CREATE INDEX IF NOT EXISTS
+            idx_machine_parts_history_supplier_part
+        ON machine_parts_history(supplier_part_number);
+        """
+    )
+
+
+MIGRATIONS.append(
+    (
+        "0023_machine_parts_history",
+        _migration_0023_machine_parts_history,
+    )
+)

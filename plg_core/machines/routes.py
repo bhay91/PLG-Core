@@ -229,6 +229,20 @@ def machine_detail(request: Request, machine_id: int):
                WHERE jobs.machine_id = ? ORDER BY invoices.id DESC""", (machine_id,)
         ).fetchall()
 
+        parts_history = connection.execute(
+            """
+            SELECT *
+            FROM machine_parts_history
+            WHERE machine_id = ?
+            ORDER BY
+                oem_part_number COLLATE NOCASE,
+                source_type COLLATE NOCASE,
+                brand COLLATE NOCASE,
+                id
+            """,
+            (machine_id,),
+        ).fetchall()
+
         ownership_history = connection.execute(
             """
             SELECT h.*,
@@ -250,7 +264,8 @@ def machine_detail(request: Request, machine_id: int):
         request=request, name="machine_detail.html",
         context={
             "machine": machine, "jobs": jobs, "quotes": quotes,
-            "invoices": invoices, "ownership_history": ownership_history,
+            "invoices": invoices, "parts_history": parts_history,
+            "ownership_history": ownership_history,
             "active_page": "machines",
             **_registry_type_context(machine["registry_type"] or "other"),
         },
