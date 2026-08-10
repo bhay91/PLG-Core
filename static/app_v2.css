@@ -2887,3 +2887,51 @@ main,
 .cc-result-table td {
   background: #ffffff;
 }
+
+/* PPS FULL AUDIT RESPONSIVE REPAIR */
+
+.workspace-v2 {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workspace-v2 > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 1130px) {
+  .smart-job-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    padding: 20px 20px 20px 26px;
+  }
+
+  .smart-job-row-stage {
+    display: inline-flex;
+    color: var(--stage-color);
+    font-size: 0.7rem;
+    font-weight: 850;
+    text-transform: uppercase;
+  }
+
+  .smart-job-row-action {
+    padding: 12px 0 0;
+    border-top: 1px solid #e5e9ef;
+    border-left: 0;
+  }
+
+  .smart-job-row-action > strong {
+    white-space: normal;
+  }
+
+  .smart-job-row-open {
+    display: none;
+  }
+}
+
+@media (max-width: 1000px) {
+  .smart-jobs-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
