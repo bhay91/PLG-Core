@@ -632,7 +632,7 @@ th.numeric,
 }
 
 .request-card-open {
-  font-size: 0.84rem !important;
+  font-size: 14px !important;
   font-weight: 750 !important;
 }
 
@@ -672,7 +672,7 @@ th.numeric,
 .job-stage,
 .workflow-step,
 .progress-label {
-  font-size: 0.76rem !important;
+  font-size: 12px !important;
   font-weight: 700 !important;
 }
 
@@ -697,7 +697,7 @@ th.numeric,
 
 .detail-list dt {
   color: var(--plg-muted) !important;
-  font-size: 0.76rem !important;
+  font-size: 12px !important;
   font-weight: 750 !important;
 }
 
@@ -881,14 +881,14 @@ dd {
 
 /* Uppercase section labels */
 .eyebrow {
-  font-size: 0.66rem !important;
+  font-size: 12px !important;
   font-weight: 800 !important;
   letter-spacing: 0.09em !important;
 }
 
 /* Form labels */
 label {
-  font-size: 0.76rem !important;
+  font-size: 12px !important;
   font-weight: 700 !important;
 }
 
@@ -896,7 +896,7 @@ label {
 input,
 select,
 textarea {
-  font-size: 0.87rem !important;
+  font-size: 14px !important;
 }
 
 input,
@@ -916,7 +916,7 @@ button.workspace-btn,
 input[type="submit"] {
   min-height: 42px !important;
   padding: 0.62rem 0.94rem !important;
-  font-size: 0.82rem !important;
+  font-size: 14px !important;
   font-weight: 700 !important;
 }
 
@@ -924,22 +924,22 @@ input[type="submit"] {
 .sidebar nav a,
 .sidebar a,
 nav a {
-  font-size: 0.84rem !important;
+  font-size: 14px !important;
 }
 
 /* Tables */
 table {
-  font-size: 0.82rem !important;
+  font-size: 14px !important;
 }
 
 th {
   padding: 0.7rem 0.76rem !important;
-  font-size: 0.66rem !important;
+  font-size: 12px !important;
 }
 
 td {
   padding: 0.76rem !important;
-  font-size: 0.82rem !important;
+  font-size: 14px !important;
   line-height: 1.4 !important;
 }
 
@@ -977,7 +977,7 @@ td {
 }
 
 .request-summary {
-  font-size: 0.84rem !important;
+  font-size: 14px !important;
 }
 
 /* Jobs */
@@ -1140,7 +1140,7 @@ button.workspace-btn {
 .button.compact {
   min-height: 36px !important;
   padding: 0.48rem 0.76rem !important;
-  font-size: 0.76rem !important;
+  font-size: 12px !important;
 }
 
 .button.full-width,
@@ -1328,7 +1328,7 @@ tbody tr:last-child td {
   min-height: 38px;
   padding: 0.52rem 0.82rem !important;
   border-radius: 9px !important;
-  font-size: 0.76rem !important;
+  font-size: 12px !important;
   font-weight: 700 !important;
 }
 
@@ -2325,4 +2325,566 @@ tbody tr:last-child td {
   .parts-ready-head-actions .button {
     width: 100%;
   }
+}
+
+/* PPS GLOBAL TYPOGRAPHY AUTHORITY
+   Final common UI sizing layer.
+   Preserve hierarchy while eliminating page-to-page drift.
+*/
+
+:root {
+  --pps-type-meta: 14px;
+  --pps-type-base: 16px;
+  --pps-type-emphasis: 18px;
+  --pps-type-section: 19px;
+}
+
+/* Normal application text */
+body,
+p,
+li,
+dd,
+td,
+input,
+select,
+textarea,
+.button,
+.workspace-btn,
+button.button,
+button.workspace-btn,
+input[type="submit"],
+.sidebar nav a,
+.sidebar a,
+nav a {
+  font-size: var(--pps-type-base) !important;
+}
+
+/* Small supporting/interface text */
+label,
+th,
+.eyebrow,
+.badge,
+.status-badge,
+.workspace-badge,
+.button.small,
+.workspace-btn-small,
+.button.compact,
+.status-action,
+.part-order-status,
+.part-workflow-badge,
+.part-workflow-complete,
+.dashboard-financial-label,
+.dashboard-financial-card small,
+.dashboard-priority-content small,
+.revenue-adjustments-saved,
+.revenue-adjustment-card-heading p,
+.revenue-adjustment-status,
+.revenue-adjustment-fields label > span,
+.revenue-adjustment-fields small,
+.revenue-adjustments-actions strong,
+.revenue-adjustments-actions span,
+.revenue-save-confirmation,
+.quote-review-indicator,
+.quote-revenue-review-total span,
+.quote-revenue-review-total small,
+.cc-status-heading > span,
+.cc-status-heading div > span,
+.cc-next-action > span,
+.cc-status-heading b,
+.cc-kicker,
+.cc-chip,
+.cc-step,
+.cc-label,
+.cc-muted,
+.cc-summary-line span,
+.cc-tools label,
+.cc-badge,
+.cc-count,
+.cc-primary-number span,
+.cc-costs span,
+.cc-dialog-grid label,
+.op-filter,
+.op-count,
+.op-number,
+.op-unlinked,
+.op-mini,
+.op-status,
+.op-follow-badge,
+.accounting-table th,
+.docs-table th,
+.docs-badge,
+.follow-category {
+  font-size: var(--pps-type-meta) !important;
+}
+
+/* Standard table typography */
+table,
+td,
+.cc-result-table td,
+.cc-ready-table td,
+.op-table td {
+  font-size: var(--pps-type-base) !important;
+}
+
+th,
+.cc-result-table th,
+.cc-ready-table th,
+.op-table th {
+  font-size: var(--pps-type-meta) !important;
+}
+
+/* Standard section hierarchy */
+.panel-heading h2,
+.panel h2,
+.workspace-card h2,
+.card h2,
+.command-section h2 {
+  font-size: var(--pps-type-section) !important;
+}
+
+.panel h3,
+.workspace-card h3,
+.card h3,
+.revenue-adjustment-card-heading h3,
+.quote-revenue-review-head h3 {
+  font-size: var(--pps-type-emphasis) !important;
+}
+
+/* =========================================================
+   PPS RESPONSIVE + JOB COMMAND CENTER UI AUTHORITY
+   ========================================================= */
+
+/* ---------- Shared PPS responsive shell ---------- */
+
+.main-shell {
+  width: calc(100% - var(--sidebar-width)) !important;
+  max-width: calc(100% - var(--sidebar-width)) !important;
+  min-width: 0 !important;
+}
+
+.topbar,
+.topbar-tools,
+.topbar-tools form,
+.page,
+main,
+.content,
+.workspace,
+.page-content {
+  min-width: 0;
+}
+
+.page {
+  width: auto !important;
+  max-width: none !important;
+  margin-left: clamp(14px, 2vw, 28px) !important;
+  margin-right: clamp(14px, 2vw, 28px) !important;
+}
+
+.topbar {
+  max-width: 100%;
+}
+
+.topbar-tools {
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.topbar-tools form {
+  max-width: 100%;
+}
+
+.topbar-tools input[type="search"] {
+  width: min(280px, 100%) !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+/* Known wide application areas stay inside the viewport. */
+.accounting-section,
+.documents-table-wrap,
+.table-wrap,
+.table-scroll,
+.opportunities-table-wrap {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.accounting-section {
+  overflow-x: auto;
+}
+
+/* ---------- Job Command Center structure ---------- */
+
+.cc-command-overview,
+.cc-command-overview-grid,
+.cc-command-request,
+.cc-command-summary,
+.cc-command-details,
+.cc-command-detail,
+.cc-command-activity,
+.cc-command-action,
+.cc-section,
+.cc-research-layout,
+.cc-tools,
+.cc-results {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cc-command-overview-grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+/* Job Summary is the first full-width row. */
+.cc-command-summary {
+  order: 1;
+  padding: 20px 24px !important;
+  display: grid !important;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(150px, 190px)
+    minmax(250px, 300px) !important;
+  gap: 14px !important;
+  align-items: stretch;
+  border-bottom: 1px solid var(--line);
+  background: #fbfcfe;
+}
+
+.cc-command-request {
+  order: 2;
+  border-right: 0 !important;
+}
+
+.cc-command-summary .cc-command-section-head {
+  grid-column: 1 / -1;
+  align-items: center;
+}
+
+.cc-command-summary .cc-command-section-head h2 {
+  font-size: var(--pps-type-section) !important;
+}
+
+.cc-command-details {
+  grid-column: 1;
+  grid-row: 2;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+
+.cc-command-detail {
+  padding: 12px 14px;
+}
+
+.cc-command-detail span,
+.cc-command-activity span {
+  font-size: var(--pps-type-meta) !important;
+}
+
+.cc-command-detail strong,
+.cc-command-activity strong {
+  font-size: var(--pps-type-base) !important;
+}
+
+/* Last Activity before Current Status. */
+.cc-command-activity {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: stretch;
+}
+
+/* Compact Current Status at far right. */
+.cc-command-action {
+  grid-column: 3;
+  grid-row: 2;
+  align-self: stretch;
+  padding: 10px 12px !important;
+}
+
+.cc-command-action > span {
+  font-size: var(--pps-type-meta) !important;
+}
+
+.cc-command-action > strong {
+  font-size: var(--pps-type-emphasis) !important;
+}
+
+.cc-status-heading {
+  gap: 10px;
+}
+
+.cc-status-heading > div {
+  gap: 2px;
+}
+
+.cc-status-heading > span,
+.cc-status-heading div > span,
+.cc-next-action > span {
+  font-size: var(--pps-type-meta) !important;
+}
+
+.cc-status-heading b {
+  padding: 4px 7px;
+  font-size: var(--pps-type-meta) !important;
+}
+
+.cc-status-progress {
+  height: 5px;
+  margin: 7px 0 9px;
+}
+
+.cc-next-action {
+  gap: 2px;
+  margin-bottom: 7px;
+}
+
+.cc-next-action strong {
+  line-height: 1.2;
+  font-size: var(--pps-type-base) !important;
+}
+
+/* Keep backend blocked reason, but do not display the extra sentence here. */
+.cc-next-action p {
+  display: none;
+}
+
+.cc-command-action .button {
+  min-height: 30px;
+  margin-top: 6px !important;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+/* ---------- Parts Research visual authority ---------- */
+
+#parts-research {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid #0d6ce0;
+  box-shadow: 0 8px 24px rgba(7, 89, 190, 0.10);
+}
+
+/* Make Parts Research immediately visible like Current Status. */
+#parts-research > .cc-section-head {
+  margin: -1px -1px 14px;
+  padding: 14px 16px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(135deg, #0759be, #0d6ce0);
+  color: #fff;
+}
+
+#parts-research > .cc-section-head h2,
+#parts-research > .cc-section-head p,
+#parts-research > .cc-section-head .cc-label {
+  color: #fff !important;
+}
+
+.cc-research-layout {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 14px !important;
+}
+
+/* Horizontal Verify Parts toolbar. */
+.cc-tools {
+  padding: 12px 14px !important;
+  display: grid !important;
+  grid-template-columns:
+    auto
+    minmax(300px, 1fr)
+    auto
+    minmax(180px, 0.7fr);
+  gap: 10px 12px !important;
+  align-items: end;
+  border: 1px solid #bad6f4;
+  border-radius: 11px;
+  background: #eef6ff;
+  box-shadow: none;
+}
+
+.cc-tools > .cc-label {
+  grid-column: 1;
+  margin: 0;
+  align-self: center;
+  color: #0759be !important;
+}
+
+.cc-tools form {
+  grid-column: 2;
+  display: grid !important;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 10px !important;
+  align-items: end;
+  min-width: 0;
+}
+
+.cc-tools form label {
+  min-width: 0 !important;
+  margin: 0;
+}
+
+.cc-tools form select {
+  min-width: 0 !important;
+  max-width: 100%;
+}
+
+.cc-tools form .button,
+.cc-tools > .button {
+  width: auto !important;
+  white-space: nowrap;
+}
+
+.cc-tools > .button {
+  grid-column: 3;
+}
+
+.cc-tools > .cc-muted {
+  grid-column: 4;
+  margin: 0;
+  align-self: center;
+}
+
+.cc-tools-divider {
+  display: none;
+}
+
+/* Tables may scroll inside their own area; they cannot widen the page. */
+.cc-results {
+  width: 100%;
+  overflow-x: auto;
+}
+
+#parts-ready {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* ---------- Responsive progression ---------- */
+
+@media (max-width: 1200px) {
+  .cc-command-summary {
+    grid-template-columns: minmax(0, 1fr) minmax(250px, 300px) !important;
+  }
+
+  .cc-command-details {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+
+  .cc-command-activity {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .cc-command-action {
+    grid-column: 2;
+    grid-row: auto;
+  }
+
+  .cc-tools {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  .cc-tools > .cc-label {
+    grid-column: 1 / -1;
+  }
+
+  .cc-tools form {
+    grid-column: 1 / -1;
+  }
+
+  .cc-tools > .button {
+    grid-column: 1;
+  }
+
+  .cc-tools > .cc-muted {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    flex-wrap: wrap;
+  }
+
+  .topbar-tools {
+    width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .cc-command-summary {
+    grid-template-columns: minmax(0, 1fr) !important;
+    padding: 18px !important;
+  }
+
+  .cc-command-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .cc-command-details,
+  .cc-command-activity,
+  .cc-command-action {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .cc-tools,
+  .cc-tools form {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .cc-tools > *,
+  .cc-tools form > * {
+    grid-column: 1 !important;
+  }
+
+  .cc-tools > .button,
+  .cc-tools form .button {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .main-shell {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  .page {
+    width: auto !important;
+    margin: 18px 12px 60px !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .cc-command-details {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* PPS VERIFY PARTS RESULTS TABLE */
+
+.cc-results {
+  padding: 14px;
+  border: 1px solid #9fc5ef;
+  border-radius: 12px;
+  background: #edf5ff;
+  box-shadow: 0 5px 14px rgba(7,89,190,.08);
+}
+
+.cc-result-table {
+  width: 100%;
+  border: 1px solid #d2e1f2;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.cc-result-table th {
+  background: #e3effc;
+}
+
+.cc-result-table td {
+  background: #ffffff;
 }
