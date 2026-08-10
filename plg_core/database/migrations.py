@@ -1014,3 +1014,35 @@ MIGRATIONS.append(
         _migration_0024_business_number_sequences,
     )
 )
+
+def _migration_0025_customer_price_override(
+    connection: sqlite3.Connection,
+) -> None:
+    """Allow an explicit customer selling price, including zero."""
+
+    columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(basket_items)"
+        ).fetchall()
+    }
+
+    if "customer_unit_price_override" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE basket_items
+            ADD COLUMN customer_unit_price_override REAL
+            CHECK (
+                customer_unit_price_override IS NULL
+                OR customer_unit_price_override >= 0
+            )
+            """
+        )
+
+
+MIGRATIONS.append(
+    (
+        "0025_customer_price_override",
+        _migration_0025_customer_price_override,
+    )
+)

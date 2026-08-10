@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from legacy_app import get_connection
 from plg_core.timeline import log_job_event
 from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
-from plg_core.pricing import customer_unit_price
+from plg_core.pricing import effective_customer_unit_price
 
 
 def get_or_create_basket(connection: sqlite3.Connection, job_id: int):
@@ -64,9 +64,10 @@ def serialize_basket(connection: sqlite3.Connection, basket) -> dict[str, Any]:
         for row in selected
     )
     customer_parts = sum(
-        customer_unit_price(
+        effective_customer_unit_price(
             row["supplier_unit_cost"] or 0,
             row["markup_percent"],
+            row["customer_unit_price_override"],
         ) * row["quantity"]
         for row in selected
     )
@@ -117,11 +118,12 @@ def add_item_with_connection(
             basket_id, requested_description,
             manufacturer_part_number, alternate_part_number,
             supplier_part_number, supplier_name, source_type, brand, quantity,
-            supplier_unit_cost, markup_percent, verification_status,
+            supplier_unit_cost, markup_percent,
+            customer_unit_price_override, verification_status,
             verification_note, availability, lead_time,
             selected, confidence, source_url
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             basket["id"],
@@ -135,6 +137,7 @@ def add_item_with_connection(
             payload.quantity,
             payload.supplier_unit_cost,
             payload.markup_percent,
+            payload.customer_unit_price_override,
             payload.verification_status.strip().upper() or "UNVERIFIED",
             payload.verification_note.strip(),
             payload.availability.strip(),
@@ -199,7 +202,7 @@ def update_item(
         "requested_description", "manufacturer_part_number",
         "alternate_part_number", "supplier_part_number",
         "supplier_name", "source_type",
-        "brand", "quantity", "supplier_unit_cost", "markup_percent", "part_status", "verification_status", "verification_note", "availability",
+        "brand", "quantity", "supplier_unit_cost", "markup_percent", "customer_unit_price_override", "part_status", "verification_status", "verification_note", "availability",
         "lead_time", "selected", "confidence", "source_url",
     }
 
@@ -860,9 +863,10 @@ def commit_basket(job_id: int):
                     oem_number,
                     item["alternate_part_number"] or "",
                     item["requested_description"] if oem_number else "",
-                    customer_unit_price(
+                    effective_customer_unit_price(
                         float(item["supplier_unit_cost"] or 0),
                         item["markup_percent"],
+                        item["customer_unit_price_override"],
                     ),
                     committed_verification_status,
                     committed_verification_source,

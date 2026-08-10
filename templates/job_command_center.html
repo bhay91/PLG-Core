@@ -641,12 +641,27 @@
 <td>
 {% set markup_amount = customer_unit - cost %}
 <strong class="cc-markup-dollar">
+  {% if markup_amount < 0 %}
+  -${{ "%.2f"|format(markup_amount|abs) }}
+  {% elif markup_amount > 0 %}
   +${{ "%.2f"|format(markup_amount) }}
+  {% else %}
+  $0.00
+  {% endif %}
 </strong>
 </td>
 
 <td>
-<strong style="color:var(--accent)">${{ "%.2f"|format(customer_unit) }}</strong>
+<input form="part-update-{{ item.id }}"
+       type="number"
+       name="customer_unit_price_override"
+       value="{% if item.customer_unit_price_override is not none %}{{ '%.2f'|format(item.customer_unit_price_override) }}{% endif %}"
+       step="0.01"
+       min="0"
+       placeholder="{{ '%.2f'|format(customer_unit) }}">
+<small class="cc-pricing-recommendation">
+  Blank = automatic
+</small>
 </td>
 
 <td>

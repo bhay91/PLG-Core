@@ -24,9 +24,21 @@ def customer_unit_price(
     return float(math.ceil(cost * (1 + markup)))
 
 
+def effective_customer_unit_price(
+    cost: float,
+    markup_percent: float | None = None,
+    customer_unit_price_override: float | None = None,
+) -> float:
+    if customer_unit_price_override is not None:
+        return round(float(customer_unit_price_override), 2)
+
+    return customer_unit_price(cost, markup_percent)
+
+
 def pricing_assessment(
     cost: float,
     markup_percent: float | None = None,
+    customer_unit_price_override: float | None = None,
 ) -> dict[str, float | str | bool]:
     cost = float(cost or 0)
     recommended_markup = recommended_markup_percent(cost)
@@ -37,9 +49,10 @@ def pricing_assessment(
         if markup_percent is None
         else float(markup_percent)
     )
-    current_price = customer_unit_price(
+    current_price = effective_customer_unit_price(
         cost,
         None if markup_percent is None else effective_markup,
+        customer_unit_price_override,
     )
     unit_profit = round(current_price - cost, 2)
 
@@ -49,7 +62,15 @@ def pricing_assessment(
         status = "BELOW_COST"
     elif current_price == cost:
         status = "AT_COST"
-    elif effective_markup < recommended_markup:
+    elif (
+        customer_unit_price_override is not None
+        and current_price < recommended_price
+    ):
+        status = "BELOW_RECOMMENDED"
+    elif (
+        customer_unit_price_override is None
+        and effective_markup < recommended_markup
+    ):
         status = "BELOW_RECOMMENDED"
     else:
         status = "ON_TARGET"

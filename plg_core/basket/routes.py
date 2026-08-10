@@ -219,6 +219,7 @@ def basket_page(request: Request, job_id: int):
         item["pricing"] = pricing_assessment(
             item.get("supplier_unit_cost") or 0,
             item.get("markup_percent"),
+            item.get("customer_unit_price_override"),
         )
 
     selected_status_items = [
@@ -1110,6 +1111,7 @@ def update_basket_item_form(
     quantity: int = Form(...),
     supplier_unit_cost: float = Form(...),
     markup_percent: float = Form(...),
+    customer_unit_price_override: str = Form(""),
     manufacturer_part_number: str = Form(""),
     alternate_part_number: str = Form(""),
     supplier_part_number: str = Form(""),
@@ -1146,6 +1148,24 @@ def update_basket_item_form(
             status_code=400,
             detail="Confidence must be between 0.0 and 1.0.",
         )
+
+    override_text = customer_unit_price_override.strip()
+    if override_text:
+        try:
+            parsed_customer_unit_price_override = float(override_text)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Customer Unit must be a valid dollar amount.",
+            )
+
+        if parsed_customer_unit_price_override < 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Customer Unit cannot be negative.",
+            )
+    else:
+        parsed_customer_unit_price_override = None
 
     requested_verification_note = verification_note.strip()
     if (
@@ -1205,6 +1225,7 @@ def update_basket_item_form(
             quantity=quantity,
             supplier_unit_cost=supplier_unit_cost,
             markup_percent=markup_percent,
+            customer_unit_price_override=parsed_customer_unit_price_override,
             manufacturer_part_number=manufacturer_part_number.strip(),
             alternate_part_number=alternate_part_number.strip(),
             supplier_part_number=supplier_part_number.strip(),

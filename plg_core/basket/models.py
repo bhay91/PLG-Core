@@ -14,6 +14,7 @@ class BasketItemCreate(BaseModel):
     quantity: int = Field(default=1, ge=1)
     supplier_unit_cost: float | None = Field(default=None, ge=0)
     markup_percent: float | None = Field(default=None, ge=0)
+    customer_unit_price_override: float | None = Field(default=None, ge=0)
     part_status: str | None = None
     verification_status: str = "UNVERIFIED"
     verification_note: str = ""
@@ -35,6 +36,7 @@ class BasketItemUpdate(BaseModel):
     quantity: int | None = Field(default=None, ge=1)
     supplier_unit_cost: float | None = Field(default=None, ge=0)
     markup_percent: float | None = Field(default=None, ge=0)
+    customer_unit_price_override: float | None = Field(default=None, ge=0)
     part_status: str | None = None
     verification_status: str | None = None
     verification_note: str | None = None
