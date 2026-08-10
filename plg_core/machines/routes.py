@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from legacy_app import get_connection, templates
+from legacy_app import get_connection, next_machine_number, templates
 from plg_core.machines.identifiers import find_machine_by_identifier
 
 router = APIRouter()
@@ -199,7 +199,7 @@ def create_machine(
         machine_id = cursor.lastrowid
         connection.execute(
             "UPDATE machines SET machine_number = ? WHERE id = ?",
-            (f"PPS-M-{machine_id:04d}", machine_id),
+            (next_machine_number(connection), machine_id),
         )
         connection.commit()
     return RedirectResponse(url=f"/machines/{machine_id}", status_code=303)

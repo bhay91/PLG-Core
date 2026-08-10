@@ -10,7 +10,7 @@ import uuid
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from legacy_app import BASE_DIR, get_connection, next_job_number, templates
+from legacy_app import BASE_DIR, get_connection, next_customer_number, next_job_number, next_machine_number, next_request_number, templates
 from plg_core.basket.models import BasketItemCreate
 from plg_core.basket.service import add_item_with_connection
 from plg_core.machines.identifiers import find_machine_by_identifier
@@ -254,7 +254,7 @@ async def create_request(
             SET request_number = ?
             WHERE id = ?
             """,
-            (f"PPS-R{request_id:05d}", request_id),
+            (next_request_number(connection), request_id),
         )
 
         await _save_attachments(
@@ -741,7 +741,7 @@ def create_from_smart_intake(
                 WHERE id = ?
                 """,
                 (
-                    f"PPS-C-{customer_id:04d}",
+                    next_customer_number(connection),
                     customer_id,
                 ),
             )
@@ -867,7 +867,7 @@ def create_from_smart_intake(
                 WHERE id = ?
                 """,
                 (
-                    f"PPS-M-{machine_id:04d}",
+                    next_machine_number(connection),
                     machine_id,
                 ),
             )
@@ -948,7 +948,7 @@ def create_from_smart_intake(
             WHERE id = ?
             """,
             (
-                f"PPS-R{request_id:05d}",
+                next_request_number(connection),
                 request_id,
             ),
         )
@@ -1216,7 +1216,7 @@ def create_customer_from_request(request_id: int):
             customer_id = cursor.lastrowid
             connection.execute(
                 "UPDATE customers SET customer_number = ? WHERE id = ?",
-                (f"PPS-C-{customer_id:04d}", customer_id),
+                (next_customer_number(connection), customer_id),
             )
         connection.execute(
             "UPDATE customer_requests SET customer_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -1285,7 +1285,7 @@ def create_registry_from_request(request_id: int):
             machine_id = cursor.lastrowid
             connection.execute(
                 "UPDATE machines SET machine_number = ? WHERE id = ?",
-                (f"PPS-M-{machine_id:04d}", machine_id),
+                (next_machine_number(connection), machine_id),
             )
         connection.execute(
             "UPDATE customer_requests SET machine_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",

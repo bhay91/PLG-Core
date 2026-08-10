@@ -60,6 +60,113 @@ def column_names(connection: sqlite3.Connection, table: str) -> set[str]:
     return {row["name"] for row in rows}
 
 
+def _next_business_number(
+    connection: sqlite3.Connection,
+    entity_type: str,
+    table: str,
+    column: str,
+    prefix: str,
+) -> str:
+    allowed = {
+        "CUSTOMER": ("customers", "customer_number", "PPS-C-"),
+        "MACHINE": ("machines", "machine_number", "PPS-M-"),
+        "REQUEST": ("customer_requests", "request_number", "PPS-R-"),
+        "JOB": ("jobs", "job_number", "PPS-J-"),
+        "QUOTE": ("quotes", "quote_number", "PPS-Q-"),
+    }
+
+    if allowed.get(entity_type) != (table, column, prefix):
+        raise ValueError("Unsupported business-number source")
+
+    rows = connection.execute(
+        f"""
+        SELECT {column}
+        FROM {table}
+        WHERE {column} LIKE ?
+        """,
+        (f"{prefix}%",),
+    ).fetchall()
+
+    highest = 0
+
+    for row in rows:
+        value = str(row[0] or "").strip()
+
+        if not value.startswith(prefix):
+            continue
+
+        sequence = value[len(prefix):]
+
+        if len(sequence) != 4 or not sequence.isdigit():
+            continue
+
+        highest = max(highest, int(sequence))
+
+    sequence_table_exists = connection.execute(
+        """
+        SELECT 1
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND name = 'pps_number_sequences'
+        """
+    ).fetchone() is not None
+
+    if not sequence_table_exists:
+        return f"{prefix}{highest + 1:04d}"
+
+    row = connection.execute(
+        """
+        INSERT INTO pps_number_sequences (
+            entity_type,
+            prefix,
+            last_number
+        )
+        VALUES (?, ?, ?)
+        ON CONFLICT(entity_type) DO UPDATE SET
+            prefix = excluded.prefix,
+            last_number = MAX(
+                pps_number_sequences.last_number + 1,
+                excluded.last_number
+            ),
+            updated_at = CURRENT_TIMESTAMP
+        RETURNING last_number
+        """,
+        (entity_type, prefix, highest + 1),
+    ).fetchone()
+
+    return f"{prefix}{int(row[0]):04d}"
+
+
+def next_customer_number(connection: sqlite3.Connection) -> str:
+    return _next_business_number(
+        connection,
+        "CUSTOMER",
+        "customers",
+        "customer_number",
+        "PPS-C-",
+    )
+
+
+def next_machine_number(connection: sqlite3.Connection) -> str:
+    return _next_business_number(
+        connection,
+        "MACHINE",
+        "machines",
+        "machine_number",
+        "PPS-M-",
+    )
+
+
+def next_request_number(connection: sqlite3.Connection) -> str:
+    return _next_business_number(
+        connection,
+        "REQUEST",
+        "customer_requests",
+        "request_number",
+        "PPS-R-",
+    )
+
+
 def initialize_database() -> None:
     with closing(get_connection()) as connection:
         connection.executescript(
@@ -368,7 +475,10 @@ def initialize_database() -> None:
             if row is None:
                 cur=connection.execute("INSERT INTO customers (name,company,phone,email,address) VALUES (?,?,?,?,?)",(name,old_job["company"] or "",old_job["phone"] or "",old_job["email"] or "",old_job["address"] or ""))
                 customer_id=cur.lastrowid
-                connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PPS-C-{customer_id:04d}",customer_id))
+                connection.execute(
+                    "UPDATE customers SET customer_number=? WHERE id=?",
+                    (next_customer_number(connection), customer_id),
+                )
             else:
                 customer_id=row["id"]
             connection.execute("UPDATE jobs SET customer_id=? WHERE id=?",(customer_id,old_job["id"]))
@@ -533,28 +643,13 @@ def initialize_database() -> None:
 
 
 def next_job_number(connection: sqlite3.Connection) -> str:
-    prefix = "PPS-J-"
-
-    row = connection.execute(
-        """
-        SELECT job_number
-        FROM jobs
-        WHERE job_number LIKE ?
-        ORDER BY id DESC
-        LIMIT 1
-        """,
-        (f"{prefix}%",),
-    ).fetchone()
-
-    if row is None:
-        sequence = 1
-    else:
-        try:
-            sequence = int(row["job_number"].split("-")[-1]) + 1
-        except (ValueError, IndexError):
-            sequence = 1
-
-    return f"{prefix}{sequence:04d}"
+    return _next_business_number(
+        connection,
+        "JOB",
+        "jobs",
+        "job_number",
+        "PPS-J-",
+    )
 
 
 @app.on_event("startup")
@@ -612,7 +707,10 @@ def create_job(
                 raise HTTPException(status_code=400,detail="Customer is required.")
             cur=connection.execute("INSERT INTO customers (name,company,phone,email,address) VALUES (?,?,?,?,?)",(name,company.strip(),phone.strip(),email.strip(),address.strip()))
             customer_id=cur.lastrowid
-            connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PPS-C-{customer_id:04d}",customer_id))
+            connection.execute(
+                "UPDATE customers SET customer_number=? WHERE id=?",
+                (next_customer_number(connection), customer_id),
+            )
             customer_row=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
         selected_machine = None
         if machine_id:
@@ -657,7 +755,7 @@ def create_job(
                 machine_id = machine_cursor.lastrowid
                 connection.execute(
                     "UPDATE machines SET machine_number=? WHERE id=?",
-                    (f"PPS-M-{machine_id:04d}", machine_id),
+                    (next_machine_number(connection), machine_id),
                 )
         job_number=next_job_number(connection)
         cur=connection.execute("""
@@ -843,7 +941,11 @@ def create_customer(request: Request,name: Annotated[str,Form()],company: Annota
             return templates.TemplateResponse(request=request,name="customer_form.html",context={"title":"New Customer","subtitle":"Review the possible duplicate.","form_action":"/customers/new","cancel_url":"/customers","submit_label":"Save Customer","duplicate":duplicate,"form":{"name":name,"company":company,"phone":phone,"email":email,"address":address},"active_page":"customers"})
         cur=connection.execute("INSERT INTO customers (name,company,phone,email,address,active) VALUES (?,?,?,?,?,1)",(name,company,phone,email,address))
         customer_id=cur.lastrowid
-        connection.execute("UPDATE customers SET customer_number=? WHERE id=?",(f"PPS-C-{customer_id:04d}",customer_id)); connection.commit()
+        connection.execute(
+            "UPDATE customers SET customer_number=? WHERE id=?",
+            (next_customer_number(connection), customer_id),
+        )
+        connection.commit()
     return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
 
 @app.get("/customers/{customer_id}/edit", response_class=HTMLResponse)
@@ -1606,28 +1708,13 @@ def delete_job_part(part_id: int):
 
 
 def next_quote_number(connection: sqlite3.Connection) -> str:
-    prefix = "PPS-Q-"
-
-    row = connection.execute(
-        """
-        SELECT quote_number
-        FROM quotes
-        WHERE quote_number LIKE ?
-        ORDER BY id DESC
-        LIMIT 1
-        """,
-        (f"{prefix}%",),
-    ).fetchone()
-
-    if row is None:
-        sequence = 1
-    else:
-        try:
-            sequence = int(row["quote_number"].split("-")[-1]) + 1
-        except (ValueError, IndexError):
-            sequence = 1
-
-    return f"{prefix}{sequence:04d}"
+    return _next_business_number(
+        connection,
+        "QUOTE",
+        "quotes",
+        "quote_number",
+        "PPS-Q-",
+    )
 
 
 @app.post("/jobs/{job_id}/generate-quote")
@@ -1966,17 +2053,25 @@ def load_quote(connection: sqlite3.Connection, quote_id: int):
 
 
 
-def next_invoice_number(connection: sqlite3.Connection) -> str:
-    prefix = "PPS-INV-"
-    row = connection.execute("SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY id DESC LIMIT 1", (f"{prefix}%",)).fetchone()
-    if row is None:
-        sequence = 1
-    else:
-        try:
-            sequence = int(row["invoice_number"].split("-")[-1]) + 1
-        except (ValueError, IndexError):
-            sequence = 1
-    return f"{prefix}{sequence:04d}"
+def invoice_number_from_quote(quote_number: str) -> str:
+    quote_number = str(quote_number or "").strip()
+    prefix = "PPS-Q-"
+
+    if not quote_number.startswith(prefix):
+        raise HTTPException(
+            status_code=409,
+            detail="Quote number is not a valid PPS quote number.",
+        )
+
+    sequence = quote_number[len(prefix):]
+
+    if len(sequence) != 4 or not sequence.isdigit():
+        raise HTTPException(
+            status_code=409,
+            detail="Quote number is not a valid PPS quote number.",
+        )
+
+    return f"PPS-INV-{sequence}"
 
 
 def load_invoice(
@@ -2758,7 +2853,7 @@ def convert_quote_to_invoice(quote_id: int, force: bool = False):
             )
 
         job = connection.execute("SELECT * FROM jobs WHERE id=?",(quote["job_id"],)).fetchone()
-        invoice_number = next_invoice_number(connection)
+        invoice_number = invoice_number_from_quote(quote["quote_number"])
         invoice_date = date.today().isoformat()
         customer_total = float(quote["customer_total"] or 0)
         available_credit = 0.0

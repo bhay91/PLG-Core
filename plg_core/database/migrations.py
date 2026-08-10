@@ -938,3 +938,79 @@ MIGRATIONS.append(
         _migration_0023_machine_parts_history,
     )
 )
+
+def _migration_0024_business_number_sequences(
+    connection: sqlite3.Connection,
+) -> None:
+    """Persist PPS business-number sequences independently of row IDs."""
+
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pps_number_sequences (
+            entity_type TEXT PRIMARY KEY,
+            prefix TEXT NOT NULL UNIQUE,
+            last_number INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    sources = (
+        ("CUSTOMER", "customers", "customer_number", "PPS-C-"),
+        ("MACHINE", "machines", "machine_number", "PPS-M-"),
+        ("REQUEST", "customer_requests", "request_number", "PPS-R-"),
+        ("JOB", "jobs", "job_number", "PPS-J-"),
+        ("QUOTE", "quotes", "quote_number", "PPS-Q-"),
+    )
+
+    for entity_type, table, column, prefix in sources:
+        highest = 0
+
+        rows = connection.execute(
+            f"""
+            SELECT {column}
+            FROM {table}
+            WHERE {column} LIKE ?
+            """,
+            (f"{prefix}%",),
+        ).fetchall()
+
+        for row in rows:
+            value = str(row[0] or "").strip()
+
+            if not value.startswith(prefix):
+                continue
+
+            sequence = value[len(prefix):]
+
+            if len(sequence) != 4 or not sequence.isdigit():
+                continue
+
+            highest = max(highest, int(sequence))
+
+        connection.execute(
+            """
+            INSERT INTO pps_number_sequences (
+                entity_type,
+                prefix,
+                last_number
+            )
+            VALUES (?, ?, ?)
+            ON CONFLICT(entity_type) DO UPDATE SET
+                prefix = excluded.prefix,
+                last_number = MAX(
+                    pps_number_sequences.last_number,
+                    excluded.last_number
+                ),
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (entity_type, prefix, highest),
+        )
+
+
+MIGRATIONS.append(
+    (
+        "0024_business_number_sequences",
+        _migration_0024_business_number_sequences,
+    )
+)
