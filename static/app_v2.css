@@ -2935,3 +2935,61 @@ main,
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* JCC MANUAL ADD PART */
+.cc-tools .cc-manual-part-form {
+  grid-column: 1 / -1;
+  display: grid !important;
+  grid-template-columns:
+    auto
+    minmax(240px, 1fr)
+    90px
+    auto;
+  gap: 10px 12px !important;
+  align-items: center;
+  min-width: 0;
+}
+
+.cc-tools .cc-manual-part-form > .cc-label {
+  margin: 0;
+  color: #0759be !important;
+  white-space: nowrap;
+}
+
+.cc-manual-part-description {
+  width: 100%;
+  min-width: 0;
+}
+
+.cc-manual-part-qty {
+  width: 90px;
+  min-width: 0;
+}
+
+.cc-tools .cc-manual-part-form > .button {
+  width: auto !important;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .cc-tools .cc-manual-part-form {
+    grid-template-columns: 1fr 90px;
+  }
+
+  .cc-tools .cc-manual-part-form > .cc-label {
+    grid-column: 1 / -1;
+  }
+
+  .cc-manual-part-description {
+    grid-column: 1;
+  }
+
+  .cc-manual-part-qty {
+    grid-column: 2;
+  }
+
+  .cc-tools .cc-manual-part-form > .button {
+    grid-column: 1 / -1;
+    width: 100% !important;
+  }
+}

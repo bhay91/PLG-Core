@@ -281,7 +281,40 @@
 
         <div class="cc-tools-divider"></div>
 
-        <button
+        {% if not quote_ready %}
+    <form
+      class="cc-manual-part-form"
+      method="post"
+      action="/jobs/{{ job.id }}/basket/items"
+    >
+      <label class="cc-label">ADD PART</label>
+
+      <input
+        class="cc-manual-part-description"
+        name="requested_description"
+        placeholder="Part description"
+        required
+      >
+
+      <input
+        class="cc-manual-part-qty"
+        type="number"
+        name="quantity"
+        value="1"
+        min="1"
+        aria-label="Quantity"
+        required
+      >
+
+      <button class="button" type="submit">
+        ＋ Add Part
+      </button>
+    </form>
+
+    <div class="cc-tools-divider"></div>
+    {% endif %}
+
+    <button
           class="button ghost full-width"
           type="button"
           data-dialog-open="supplier-quote-dialog"
