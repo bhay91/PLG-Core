@@ -20,6 +20,7 @@ from plg_core.basket.service import (
     clear_basket,
     commit_basket,
     delete_item,
+    ensure_basket_mutable,
     get_basket,
     get_or_create_basket,
     import_cart,
@@ -916,6 +917,7 @@ def clone_supplier_quote(
 
     with closing(get_connection()) as connection:
         basket = get_or_create_basket(connection, job_id)
+        ensure_basket_mutable(basket)
 
         source = connection.execute(
             """
@@ -1158,7 +1160,9 @@ def update_supplier_quote_item(
     with closing(get_connection()) as connection:
         item = connection.execute(
             """
-            SELECT basket_items.id
+            SELECT
+                basket_items.id,
+                baskets.status AS status
             FROM basket_items
             JOIN baskets
               ON baskets.id = basket_items.basket_id
@@ -1173,6 +1177,8 @@ def update_supplier_quote_item(
                 status_code=404,
                 detail="Supplier quote item not found.",
             )
+
+        ensure_basket_mutable(item)
 
         connection.execute(
             """
@@ -1228,7 +1234,9 @@ def save_supplier_quote_bulk(
     with closing(get_connection()) as connection:
         source = connection.execute(
             """
-            SELECT basket_sources.id
+            SELECT
+                basket_sources.id,
+                baskets.status AS status
             FROM basket_sources
             JOIN baskets
               ON baskets.id = basket_sources.basket_id
@@ -1244,6 +1252,8 @@ def save_supplier_quote_bulk(
                 status_code=404,
                 detail="Supplier quote was not found.",
             )
+
+        ensure_basket_mutable(source)
 
         for row_id, raw_cost, row_availability, row_lead_time in zip(
             item_id,
@@ -1339,6 +1349,7 @@ def add_manual_vendor_line(
 
     with closing(get_connection()) as connection:
         basket = get_or_create_basket(connection, job_id)
+        ensure_basket_mutable(basket)
 
         source = connection.execute(
             """
@@ -1458,6 +1469,7 @@ def toggle_item(
     update_item(
         item_id,
         BasketItemUpdate(selected=bool(selected)),
+        expected_job_id=job_id,
     )
     return RedirectResponse(
         url=f"/jobs/{job_id}/basket",
@@ -1475,6 +1487,7 @@ def update_item_quantity(
     update_item(
         item_id,
         BasketItemUpdate(quantity=max(1, quantity)),
+        expected_job_id=job_id,
     )
     return RedirectResponse(
         url=f"/jobs/{job_id}/basket",
@@ -1519,7 +1532,7 @@ def advance_part_workflow_form(
 
 @router.post("/jobs/{job_id}/basket/items/{item_id}/delete")
 def delete_item_form(job_id: int, item_id: int):
-    delete_item(item_id)
+    delete_item(item_id, expected_job_id=job_id)
     return RedirectResponse(
         url=f"/jobs/{job_id}/basket",
         status_code=303,
@@ -1795,6 +1808,7 @@ def update_basket_item_form(
             verification_note=requested_verification_note,
             confidence=confidence,
         ),
+        expected_job_id=job_id,
     )
 
     if (

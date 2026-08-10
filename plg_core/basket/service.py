@@ -35,6 +35,19 @@ def get_or_create_basket(connection: sqlite3.Connection, job_id: int):
     return basket
 
 
+def ensure_basket_mutable(basket) -> None:
+    """Reject changes after the basket has been committed to Job Parts."""
+    status = (basket["status"] or "").strip().upper()
+    if status == "COMMITTED":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Committed basket is locked. "
+                "Use the committed job parts workflow instead."
+            ),
+        )
+
+
 def serialize_basket(connection: sqlite3.Connection, basket) -> dict[str, Any]:
     items = connection.execute(
         "SELECT * FROM basket_items WHERE basket_id = ? ORDER BY id",
@@ -96,6 +109,7 @@ def add_item_with_connection(
     """Add one item using an existing database transaction."""
 
     basket = get_or_create_basket(connection, job_id)
+    ensure_basket_mutable(basket)
 
     connection.execute(
         """
@@ -172,7 +186,11 @@ def add_item(job_id: int, payload: BasketItemCreate):
         connection.commit()
         return result
 
-def update_item(item_id: int, payload: BasketItemUpdate):
+def update_item(
+    item_id: int,
+    payload: BasketItemUpdate,
+    expected_job_id: int | None = None,
+):
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields supplied.")
@@ -190,7 +208,8 @@ def update_item(item_id: int, payload: BasketItemUpdate):
             """
             SELECT
                 basket_items.*,
-                baskets.job_id
+                baskets.job_id,
+                baskets.status AS basket_status
             FROM basket_items
             JOIN baskets
               ON baskets.id = basket_items.basket_id
@@ -200,6 +219,24 @@ def update_item(item_id: int, payload: BasketItemUpdate):
         ).fetchone()
         if item is None:
             raise HTTPException(status_code=404, detail="Basket item not found.")
+
+        if (
+            expected_job_id is not None
+            and int(item["job_id"]) != expected_job_id
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail="Basket item not found for this job.",
+            )
+
+        if (item["basket_status"] or "").strip().upper() == "COMMITTED":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Committed basket is locked. "
+                    "Use the committed job parts workflow instead."
+                ),
+            )
 
         assignments = []
         values: list[Any] = []
@@ -532,13 +569,17 @@ def advance_all_parts_workflow(
 
         return serialize_basket(connection, basket)
 
-def delete_item(item_id: int):
+def delete_item(
+    item_id: int,
+    expected_job_id: int | None = None,
+):
     with closing(get_connection()) as connection:
         item = connection.execute(
             """
             SELECT
                 basket_items.*,
-                baskets.job_id
+                baskets.job_id,
+                baskets.status AS status
             FROM basket_items
             JOIN baskets
               ON baskets.id = basket_items.basket_id
@@ -552,6 +593,17 @@ def delete_item(item_id: int):
                 status_code=404,
                 detail="Basket item not found.",
             )
+
+        if (
+            expected_job_id is not None
+            and int(item["job_id"]) != expected_job_id
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail="Basket item not found for this job.",
+            )
+
+        ensure_basket_mutable(item)
 
         description = (
             item["requested_description"]
@@ -581,6 +633,7 @@ def delete_item(item_id: int):
 def clear_basket(job_id: int):
     with closing(get_connection()) as connection:
         basket = get_or_create_basket(connection, job_id)
+        ensure_basket_mutable(basket)
         connection.execute(
             "DELETE FROM basket_items WHERE basket_id=?", (basket["id"],)
         )
@@ -628,6 +681,7 @@ def import_cart(job_id: int, payload: dict[str, Any]):
 
     with closing(get_connection()) as connection:
         basket = get_or_create_basket(connection, job_id)
+        ensure_basket_mutable(basket)
         cursor = connection.execute(
             """
             INSERT INTO basket_sources (
