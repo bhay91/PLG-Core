@@ -232,6 +232,26 @@ def _header(quote, internal: bool):
         Paragraph(title, s["doc_title"]),
         Spacer(1, 1),
         Paragraph(str(_value(quote, "quote_number")), quote_number_style),
+    ]
+    predecessor = str(
+        _value(quote, "supersedes_quote_number", "") or ""
+    ).strip()
+    if predecessor:
+        meta.extend([
+            Spacer(1, 2),
+            Paragraph(
+                f"Revision of {predecessor}",
+                ParagraphStyle(
+                    "PPSQuoteRevision",
+                    parent=s["small"],
+                    fontSize=7.5,
+                    textColor=MUTED,
+                    alignment=TA_RIGHT,
+                    rightIndent=4,
+                ),
+            ),
+        ])
+    meta.extend([
         Spacer(1, 5),
         Table(
             meta_rows_display,
@@ -252,7 +272,7 @@ def _header(quote, internal: bool):
                 ("FONTNAME", (2,-1), (2,-1), "Helvetica-Bold"),
             ],
         ),
-    ]
+    ])
 
     company_block = logo_flow + [Spacer(1, 5)] + business
 

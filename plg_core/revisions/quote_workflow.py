@@ -1,0 +1,477 @@
+from __future__ import annotations
+
+from contextlib import closing
+from datetime import date
+import hashlib
+from pathlib import Path
+import sqlite3
+
+from fastapi import HTTPException
+
+from legacy_app import get_connection
+from plg_core.audit import write_audit
+from plg_core.timeline import log_job_event
+from plg_core.revisions.service import (
+    cancel_work_revision,
+    commit_work_revision,
+    start_work_revision,
+)
+
+
+REVISABLE_ISSUED = {
+    "SENT",
+    "REJECTED",
+    "REVISION_REQUIRED",
+    "APPROVED",
+}
+
+
+def _quote(connection, quote_id: int):
+    row = connection.execute(
+        "SELECT * FROM quotes WHERE id=?", (quote_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Quote not found.")
+    return row
+
+
+def _ensure_no_downstream_history(connection, job_id: int) -> None:
+    checks = (
+        ("invoices", "SELECT 1 FROM invoices WHERE job_id=? LIMIT 1"),
+        ("supplier order", "SELECT 1 FROM supplier_orders WHERE job_id=? LIMIT 1"),
+        (
+            "receipt",
+            "SELECT 1 FROM receiving_events r "
+            "JOIN supplier_orders o ON o.id=r.order_id "
+            "WHERE o.job_id=? LIMIT 1",
+        ),
+        ("delivery", "SELECT 1 FROM deliveries WHERE job_id=? LIMIT 1"),
+    )
+    for label, sql in checks:
+        if connection.execute(sql, (job_id,)).fetchone():
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"This Job has {label} history. Ordinary quote revision "
+                    "cannot change downstream business records."
+                ),
+            )
+
+
+def start_quote_revision(quote_id: int, reason: str) -> dict:
+    reason = str(reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="Reason for changes is required.")
+    with closing(get_connection()) as connection:
+        quote = _quote(connection, quote_id)
+        status = str(quote["status"] or "DRAFT").upper()
+        if status not in {"DRAFT", *REVISABLE_ISSUED}:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{status.title()} quote cannot be revised.",
+            )
+        _ensure_no_downstream_history(connection, int(quote["job_id"]))
+        if not int(quote["is_current"] or 0):
+            raise HTTPException(
+                status_code=409,
+                detail="This quote is historical. Revise the current quote instead.",
+            )
+        purpose = "DRAFT_CORRECTION" if status == "DRAFT" else "QUOTE_REVISION"
+        job_id = int(quote["job_id"])
+
+    revision = start_work_revision(
+        job_id, reason=reason, based_on_quote_id=quote_id
+    )
+    with closing(get_connection()) as connection:
+        connection.execute(
+            """
+            UPDATE work_revisions
+            SET purpose=?, source_quote_status=?, updated_at=CURRENT_TIMESTAMP
+            WHERE id=? AND state='EDITABLE'
+            """,
+            (purpose, status, revision["id"]),
+        )
+        if status == "APPROVED":
+            write_audit(
+                connection,
+                action="APPROVED_QUOTE_REVISION_STARTED",
+                entity_type="QUOTE",
+                entity_id=quote_id,
+                summary=(
+                    f"Revision started for approved quote {quote['quote_number']}; "
+                    "a revised quote will require new approval"
+                ),
+                metadata={"reason": reason, "work_revision_id": revision["id"]},
+            )
+        connection.commit()
+        return dict(connection.execute(
+            "SELECT * FROM work_revisions WHERE id=?", (revision["id"],)
+        ).fetchone())
+
+
+def _revision_quote_rows(connection, revision_id: int):
+    rows = connection.execute(
+        """
+        SELECT
+            jp.id AS part_id, ps.id AS source_id, jp.quantity,
+            jp.requested_description AS description,
+            ps.supplier_name, ps.source_type, COALESCE(ps.brand,'') AS brand,
+            COALESCE(ps.supplier_part_number,'') AS supplier_part_number,
+            COALESCE(ps.supplier_cost,0) AS supplier_unit_cost,
+            COALESCE(jp.customer_unit_price,0) AS customer_unit_price,
+            wri.pricing_mode, wri.customer_unit_price_override,
+            wri.recommended_markup_percent, wri.revision_source_id
+        FROM job_parts jp
+        JOIN part_sources ps
+          ON ps.part_id=jp.id AND ps.selected_for_quote=1
+        JOIN work_revision_items wri
+          ON wri.id=jp.work_revision_item_id
+        WHERE jp.work_revision_id=?
+        ORDER BY wri.id
+        """,
+        (revision_id,),
+    ).fetchall()
+    if not rows:
+        raise HTTPException(
+            status_code=400,
+            detail="Revised work has no selected quoted parts.",
+        )
+    return rows
+
+
+def _totals(connection, revision, rows):
+    parts = round(sum(
+        float(row["customer_unit_price"] or 0) * int(row["quantity"] or 1)
+        for row in rows
+    ), 2)
+    supplier_parts = round(sum(
+        float(row["supplier_unit_cost"] or 0) * int(row["quantity"] or 1)
+        for row in rows
+    ), 2)
+    source_ids = {
+        int(row["revision_source_id"])
+        for row in rows if row["revision_source_id"] is not None
+    }
+    shipping = 0.0
+    if source_ids:
+        placeholders = ",".join("?" for _ in source_ids)
+        shipping = round(sum(float(row[0] or 0) for row in connection.execute(
+            f"SELECT shipping_total FROM work_revision_sources "
+            f"WHERE id IN ({placeholders})",
+            tuple(sorted(source_ids)),
+        ).fetchall()), 2)
+    service = float(revision["service_charge"] or 0)
+    sourcing = float(revision["sourcing_fee"] or 0)
+    customer = round(parts + shipping + service + sourcing, 2)
+    supplier = round(supplier_parts + shipping, 2)
+    return {
+        "parts_subtotal": parts,
+        "shipping_total": shipping,
+        "service_charge": service,
+        "sourcing_fee": sourcing,
+        "customer_total": customer,
+        "supplier_total": supplier,
+        "profit_total": round(customer - supplier, 2),
+    }
+
+
+def _insert_quote_items(connection, quote_id: int, rows) -> None:
+    for row in rows:
+        quantity = int(row["quantity"] or 1)
+        cost = float(row["supplier_unit_cost"] or 0)
+        price = float(row["customer_unit_price"] or 0)
+        connection.execute(
+            """
+            INSERT INTO quote_items (
+                quote_id, part_id, source_id, quantity, description,
+                supplier_name, source_type, brand, supplier_part_number,
+                supplier_unit_cost, customer_unit_price, supplier_line_total,
+                customer_line_total, line_profit, pricing_mode,
+                customer_unit_price_override, recommended_markup_percent
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                quote_id, row["part_id"], row["source_id"], quantity,
+                row["description"], row["supplier_name"], row["source_type"],
+                row["brand"], row["supplier_part_number"], cost, price,
+                round(cost * quantity, 2), round(price * quantity, 2),
+                round((price - cost) * quantity, 2),
+                row["pricing_mode"], row["customer_unit_price_override"],
+                row["recommended_markup_percent"],
+            ),
+        )
+
+
+def _write_documents(quote_id: int) -> None:
+    from legacy_app import load_quote
+    from plg_core.documents.quote_pdf import generate_quote_pdfs
+
+    with closing(get_connection()) as connection:
+        quote, items = load_quote(connection, quote_id)
+        paths = generate_quote_pdfs(quote, items)
+        for audience, path in paths.items():
+            digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+            connection.execute(
+                """
+                INSERT INTO quote_documents_manifest (
+                    quote_id,audience,document_kind,file_path,sha256,is_issued
+                ) VALUES (?,?, 'QUOTE',?,?,0)
+                ON CONFLICT(quote_id,audience,document_kind,is_issued)
+                DO UPDATE SET file_path=excluded.file_path,
+                              sha256=excluded.sha256,
+                              generated_at=CURRENT_TIMESTAMP
+                """,
+                (quote_id, audience.upper(), path, digest),
+            )
+        connection.commit()
+
+
+def generate_quote_from_revision(
+    revision_id: int,
+    *,
+    expected_version: int,
+) -> dict:
+    with closing(get_connection()) as connection:
+        revision = connection.execute(
+            "SELECT * FROM work_revisions WHERE id=?", (revision_id,)
+        ).fetchone()
+        if revision is None:
+            raise HTTPException(status_code=404, detail="Work Revision not found.")
+        job_id = int(revision["job_id"])
+        source_quote_id = int(revision["based_on_quote_id"] or 0)
+        existing = connection.execute(
+            "SELECT * FROM quotes WHERE work_revision_id=?",
+            (revision_id,),
+        ).fetchone()
+        if existing is not None:
+            return dict(existing)
+        if not source_quote_id:
+            raise HTTPException(status_code=409, detail="Revision has no source quote.")
+        revision_state = str(revision["state"] or "").upper()
+        if revision_state not in {"EDITABLE", "COMMITTED"}:
+            raise HTTPException(
+                status_code=409,
+                detail="These changes are no longer editable and cannot generate a quote.",
+            )
+
+    if revision_state == "EDITABLE":
+        commit_work_revision(
+            job_id,
+            expected_revision_id=revision_id,
+            expected_version=expected_version,
+        )
+
+    with closing(get_connection()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        existing = connection.execute(
+            "SELECT * FROM quotes WHERE work_revision_id=?", (revision_id,)
+        ).fetchone()
+        if existing is not None:
+            connection.commit()
+            return dict(existing)
+        revision = connection.execute(
+            "SELECT * FROM work_revisions WHERE id=? AND state='COMMITTED'",
+            (revision_id,),
+        ).fetchone()
+        source = _quote(connection, source_quote_id)
+        _ensure_no_downstream_history(connection, job_id)
+        rows = _revision_quote_rows(connection, revision_id)
+        totals = _totals(connection, revision, rows)
+        purpose = str(revision["purpose"] or "QUOTE_REVISION").upper()
+
+        if purpose == "DRAFT_CORRECTION":
+            if str(source["status"] or "").upper() != "DRAFT":
+                raise HTTPException(
+                    status_code=409,
+                    detail="The source quote is no longer an editable draft.",
+                )
+            connection.execute("DELETE FROM quote_items WHERE quote_id=?", (source_quote_id,))
+            superseded = connection.execute(
+                """
+                UPDATE quotes SET
+                    work_revision_id=?, content_version=content_version+1,
+                    parts_subtotal=?, shipping_total=?, service_charge=?,
+                    sourcing_fee=?, customer_total=?, supplier_total=?,
+                    profit_total=?
+                WHERE id=? AND status='DRAFT'
+                """,
+                (
+                    revision_id, totals["parts_subtotal"], totals["shipping_total"],
+                    totals["service_charge"], totals["sourcing_fee"],
+                    totals["customer_total"], totals["supplier_total"],
+                    totals["profit_total"], source_quote_id,
+                ),
+            )
+            _insert_quote_items(connection, source_quote_id, rows)
+            quote_id = source_quote_id
+            action = "DRAFT_QUOTE_CORRECTED"
+        else:
+            from legacy_app import next_quote_number
+            job = connection.execute(
+                "SELECT * FROM jobs WHERE id=?", (job_id,)
+            ).fetchone()
+            quote_number = next_quote_number(connection)
+            superseded = connection.execute(
+                """
+                UPDATE quotes
+                SET status='SUPERSEDED',is_current=0,
+                    superseded_at=CURRENT_TIMESTAMP,
+                    supersession_reason=?
+                WHERE id=? AND is_current=1
+                """,
+                (revision["reason"], source_quote_id),
+            )
+            if superseded.rowcount != 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail="The source quote is no longer current. Refresh the Job.",
+                )
+            connection.execute(
+                """
+                INSERT INTO quote_events (
+                    quote_id,event_type,from_status,to_status,notes
+                ) VALUES (?,'QUOTE_SUPERSEDED',?,'SUPERSEDED',?)
+                """,
+                (
+                    source_quote_id,
+                    str(source["status"] or ""),
+                    (
+                        "Approved quote superseded before invoicing: "
+                        if str(source["status"] or "").upper() == "APPROVED"
+                        else "Quote superseded: "
+                    ) + str(revision["reason"] or "revision generated"),
+                ),
+            )
+            cursor = connection.execute(
+                """
+                INSERT INTO quotes (
+                    quote_number,job_id,quote_date,status,parts_subtotal,
+                    shipping_total,service_charge,sourcing_fee,customer_total,
+                    supplier_total,profit_total,work_revision_id,
+                    supersedes_quote_id,is_current,
+                    customer_name_snapshot,company_snapshot,phone_snapshot,
+                    email_snapshot,address_snapshot,manufacturer_snapshot,
+                    machine_snapshot,pin_serial_snapshot
+                ) VALUES (?,?,?,'DRAFT',?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    quote_number, job_id, date.today().isoformat(),
+                    totals["parts_subtotal"], totals["shipping_total"],
+                    totals["service_charge"], totals["sourcing_fee"],
+                    totals["customer_total"], totals["supplier_total"],
+                    totals["profit_total"], revision_id, source_quote_id,
+                    job["customer"], job["company"], job["phone"], job["email"],
+                    job["address"], job["manufacturer"], job["machine"],
+                    job["pin_serial"],
+                ),
+            )
+            quote_id = int(cursor.lastrowid)
+            _insert_quote_items(connection, quote_id, rows)
+            action = "REVISED_QUOTE_GENERATED"
+        connection.execute(
+            "UPDATE jobs SET status='QUOTED' WHERE id=?", (job_id,)
+        )
+        write_audit(
+            connection, action=action, entity_type="QUOTE", entity_id=quote_id,
+            summary=(
+                f"Quote {source['quote_number']} corrected"
+                if quote_id == source_quote_id
+                else f"Revised quote generated from {source['quote_number']}"
+            ),
+            metadata={
+                "job_id": job_id,
+                "work_revision_id": revision_id,
+                "source_quote_id": source_quote_id,
+            },
+        )
+        log_job_event(
+            connection, job_id=job_id, event_type=action, icon="📄",
+            message=(
+                f"Draft {source['quote_number']} updated"
+                if quote_id == source_quote_id
+                else f"New quote revises {source['quote_number']}"
+            ),
+        )
+        connection.commit()
+
+    _write_documents(quote_id)
+    with closing(get_connection()) as connection:
+        return dict(_quote(connection, quote_id))
+
+
+def cancel_quote_revision(
+    revision_id: int,
+    *,
+    reason: str,
+    expected_version: int,
+) -> dict:
+    return cancel_work_revision(
+        revision_id, reason=reason, expected_version=expected_version
+    )
+
+
+def reopen_job_for_revision(job_id: int, reason: str) -> dict:
+    reason = str(reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="Reopen reason is required.")
+    with closing(get_connection()) as connection:
+        job = connection.execute(
+            "SELECT * FROM jobs WHERE id=?", (job_id,)
+        ).fetchone()
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found.")
+        existing = connection.execute(
+            "SELECT * FROM work_revisions WHERE job_id=? AND state='EDITABLE'",
+            (job_id,),
+        ).fetchone()
+        if str(job["status"] or "").upper() != "CANCELLED":
+            if existing is not None:
+                return dict(existing)
+            raise HTTPException(
+                status_code=409, detail="Only a cancelled Job can be reopened."
+            )
+        _ensure_no_downstream_history(connection, job_id)
+        quote = connection.execute(
+            """
+            SELECT * FROM quotes
+            WHERE job_id=? AND is_current=1
+              AND status IN ('DRAFT','SENT','REJECTED','REVISION_REQUIRED','APPROVED')
+            ORDER BY id DESC LIMIT 1
+            """,
+            (job_id,),
+        ).fetchone()
+        if quote is None:
+            raise HTTPException(
+                status_code=409,
+                detail="No current quote is available to reopen and revise.",
+            )
+    revision = start_work_revision(
+        job_id,
+        reason=reason,
+        based_on_quote_id=int(quote["id"]),
+        _allow_cancelled=True,
+    )
+    with closing(get_connection()) as connection:
+        connection.execute(
+            "UPDATE work_revisions SET purpose='REOPEN_REVISION', "
+            "source_quote_status=? WHERE id=?",
+            (quote["status"], revision["id"]),
+        )
+        connection.execute(
+            "UPDATE jobs SET status='QUOTED',cancelled_at=NULL,"
+            "cancellation_reason='' WHERE id=?",
+            (job_id,),
+        )
+        write_audit(
+            connection, action="JOB_REOPENED_FOR_REVISION",
+            entity_type="JOB", entity_id=job_id,
+            summary=f"Job {job['job_number']} reopened for quote revision",
+            metadata={"reason": reason, "work_revision_id": revision["id"]},
+        )
+        log_job_event(
+            connection, job_id=job_id,
+            event_type="JOB_REOPENED_FOR_REVISION", icon="↺",
+            message=f"Job reopened to revise {quote['quote_number']}: {reason}",
+        )
+        connection.commit()
+    return revision

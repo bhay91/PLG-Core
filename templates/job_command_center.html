@@ -28,15 +28,70 @@
 }
 </style>
 
-<div class="cc-shell">
-  {% set has_request = customer_request is not none %}
-  {% set has_parts = basket.totals.selected_items > 0 %}
-  {% set quote_ready = basket.status == "COMMITTED" %}
-
+{% set has_request = customer_request is not none %}
+{% set has_parts = basket.totals.selected_items > 0 %}
+{% set quote_ready = basket.status == "COMMITTED" %}
+{% set work_editable = active_revision and active_revision.state == "EDITABLE" %}
+{% set governed_revision = work_editable and not active_revision.is_synthetic %}
+<div class="cc-shell"
+     data-revision-id="{{ active_revision.id if work_editable else '' }}"
+     data-revision-version="{{ active_revision.lock_version if work_editable else '' }}">
   {% if job.status == "CANCELLED" %}
   <section class="panel lifecycle-warning">
     <strong>This Job is cancelled.</strong>
     <p>{{ job.cancellation_reason or "No cancellation reason recorded." }} Existing history remains available, but new parts, quotes, invoices, and purchasing are blocked.</p>
+  </section>
+  {% endif %}
+
+  {% if governed_revision %}
+  <section class="panel revision-work-banner">
+    <div>
+      <strong>
+        Editing changes for {{ active_revision.source_quote_number }}
+      </strong>
+      <p>
+        Work normally below. The original quote stays protected until
+        the revised quote is generated.
+      </p>
+    </div>
+    <div class="cc-actions">
+      <form method="post"
+            action="/work-revisions/{{ active_revision.id }}/generate-quote">
+        <input type="hidden" name="expected_version"
+               value="{{ active_revision.lock_version }}">
+        <button class="button" type="submit">
+          Generate Revised Quote
+        </button>
+      </form>
+      <form method="post"
+            action="/work-revisions/{{ active_revision.id }}/cancel"
+            onsubmit="return confirm('Abandon these changes and restore the previous quote?');">
+        <input type="hidden" name="expected_version"
+               value="{{ active_revision.lock_version }}">
+        <label class="sr-only" for="cancel-revision-reason">Reason</label>
+        <input id="cancel-revision-reason" name="reason" required
+               placeholder="Why are these changes being cancelled?">
+        <button class="button ghost" type="submit">Cancel Changes</button>
+      </form>
+    </div>
+  </section>
+  {% elif quote and not invoice %}
+  <section class="panel revision-action-panel">
+    {% if quote.status == "DRAFT" %}
+      <strong>Need to correct this unissued draft?</strong>
+      <p>The quote number can be retained because it has not been issued.</p>
+      <form method="post" action="/quotes/{{ quote.id }}/revise">
+        <input name="reason" required placeholder="What needs to change?">
+        <button class="button" type="submit">Edit Draft</button>
+      </form>
+    {% elif quote.status in ["SENT","REJECTED","REVISION_REQUIRED","APPROVED"] %}
+      <strong>Need to change this protected quote?</strong>
+      <p>A new quote number will be created and {{ quote.quote_number }} will remain in history.</p>
+      <form method="post" action="/quotes/{{ quote.id }}/revise">
+        <input name="reason" required placeholder="What did the customer or operator change?">
+        <button class="button" type="submit">Revise Quote</button>
+      </form>
+    {% endif %}
   </section>
   {% endif %}
 
@@ -288,7 +343,9 @@
     {% if job.status == "CANCELLED" %}
     <form class="lifecycle-reason-form" method="post" action="/jobs/{{ job.id }}/reopen">
       <label>Reason for reopening<input name="reason" required placeholder="Why is this Job being reopened?"></label>
-      <button class="button" type="submit">Reopen Job</button>
+      <button class="button" type="submit">
+        {% if quote %}Reopen / Revise{% else %}Reopen Job{% endif %}
+      </button>
     </form>
     {% else %}
     <form class="lifecycle-reason-form" method="post" action="/jobs/{{ job.id }}/cancel" onsubmit="return confirm('Cancel this Job? All history and the Job number will be retained.');">
@@ -307,6 +364,7 @@
     </details>
   </section>
 
+  {% if work_editable %}
   <section class="cc-card cc-section" id="parts-research">
     <div class="cc-section-head">
       <div><p class="cc-label">PARTS RESEARCH</p><h2>Find and compare parts</h2><p class="cc-muted">Use the standard Verify Parts workflow or add a quote received directly from another supplier.</p></div>
@@ -1190,7 +1248,7 @@
       </footer>
     </section>
 
-    {% if has_parts %}
+    {% if has_parts and not governed_revision %}
     <form
       class="quote-summary-generate-form"
       method="post"
@@ -1202,6 +1260,36 @@
     </form>
     {% endif %}
   </section>
+  {% endif %}
+
+  {% if quote_history %}
+  <section class="cc-card cc-section quote-history-panel" id="quote-history">
+    <div class="cc-section-head">
+      <div>
+        <p class="cc-label">QUOTE HISTORY</p>
+        <h2>Customer quote record</h2>
+      </div>
+    </div>
+    {% for history_quote in quote_history %}
+    <div class="quote-document-row">
+      <div>
+        <strong>{{ history_quote.quote_number }}</strong>
+        {% if history_quote.predecessor_number %}
+        <p class="cc-muted">Revision of {{ history_quote.predecessor_number }}</p>
+        {% endif %}
+      </div>
+      <div>
+        <span class="cc-badge">
+          {% if history_quote.is_current %}Current · {% endif %}
+          {{ history_quote.status|replace("_"," ")|title }}
+        </span>
+        <a class="button ghost small"
+           href="/quotes/{{ history_quote.id }}/documents">Open</a>
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
 
 <section class="cc-card cc-section" id="job-timeline">
     <div class="cc-section-head">
@@ -1304,6 +1392,29 @@
 </dialog>
 <script>
 (() => {
+  function applyRevisionTokens() {
+    const shell = document.querySelector(".cc-shell");
+    const revisionId = shell?.dataset.revisionId || "";
+    const revisionVersion = shell?.dataset.revisionVersion || "";
+    if (!revisionId) return;
+    document.querySelectorAll("form[method='post']").forEach((form) => {
+      if (!form.querySelector("[name='expected_revision_id']")) {
+        const revisionInput = document.createElement("input");
+        revisionInput.type = "hidden";
+        revisionInput.name = "expected_revision_id";
+        revisionInput.value = revisionId;
+        form.appendChild(revisionInput);
+      }
+      if (!form.querySelector("[name='expected_version']")) {
+        const versionInput = document.createElement("input");
+        versionInput.type = "hidden";
+        versionInput.name = "expected_version";
+        versionInput.value = revisionVersion;
+        form.appendChild(versionInput);
+      }
+    });
+  }
+  applyRevisionTokens();
   const ASYNC_ACTIONS = [
     /\/basket\/items\/\d+\/toggle$/,
     /\/basket\/items\/\d+\/update$/,
@@ -1364,6 +1475,7 @@
     const scrollPosition = window.scrollY;
 
     currentMain.replaceWith(incomingMain);
+    applyRevisionTokens();
 
     requestAnimationFrame(() => {
       window.scrollTo({

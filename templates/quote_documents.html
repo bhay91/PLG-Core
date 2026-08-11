@@ -18,6 +18,9 @@
 
       <p class="quote-review-subtitle">
         Review what was quoted before continuing to the invoice.
+        {% if quote.supersedes_quote_number %}
+        <br>Revision of {{ quote.supersedes_quote_number }}.
+        {% endif %}
       </p>
     </div>
 
@@ -78,13 +81,19 @@
       {% elif quote.status == "REVISION_REQUIRED" %}
       <div class="quote-decision-result revision">
         <strong>↺ Customer requested changes</strong>
-        <p>The request is recorded and this issued quote is preserved. Governed quote revision will be enabled in Lifecycle Batch 2.</p>
+        <p>The request is recorded and this quote is preserved. Use Revise Quote to create corrected work.</p>
       </div>
 
       {% elif quote.status == "REJECTED" %}
       <div class="quote-decision-result rejected">
         <strong>✕ Customer rejected this quote</strong>
-        <p>This decision is locked. Cancel the Job if work is ending; reconsideration and quote revision are deferred to Lifecycle Batch 2.</p>
+        <p>This decision is preserved. Use Revise Quote if the customer changes their mind.</p>
+      </div>
+
+      {% elif quote.status == "SUPERSEDED" %}
+      <div class="quote-decision-result waiting">
+        <strong>Historical superseded quote</strong>
+        <p>This quote remains protected and viewable. Open the Job to see the current quote.</p>
       </div>
 
       {% elif quote.status == "DRAFT" %}
@@ -97,6 +106,22 @@
       <div class="quote-decision-result waiting">
         <strong>Awaiting customer response</strong>
         <p>Record the customer’s decision when it is received.</p>
+      </div>
+      {% endif %}
+
+      {% if not invoice and quote.is_current and quote.status in ["DRAFT","SENT","REJECTED","REVISION_REQUIRED","APPROVED"] %}
+      <div class="quote-decision-actions">
+        <form method="post" action="/quotes/{{ quote.id }}/revise"
+              onsubmit="return confirm('{% if quote.status == "DRAFT" %}Edit this unissued draft?{% else %}Create editable changes while preserving this quote?{% endif %}');">
+          <label>
+            {% if quote.status == "DRAFT" %}Draft correction reason{% else %}Revision reason{% endif %}
+            <input name="reason" required
+                   placeholder="What needs to change?">
+          </label>
+          <button class="button ghost" type="submit">
+            {% if quote.status == "DRAFT" %}Edit Draft{% else %}Revise Quote{% endif %}
+          </button>
+        </form>
       </div>
       {% endif %}
 

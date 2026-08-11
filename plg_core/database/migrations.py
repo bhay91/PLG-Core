@@ -611,6 +611,36 @@ MIGRATIONS.append(
 )
 
 
+def _migration_0033_operator_quote_revisions(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add the minimal operator-workflow metadata for Batch 2B."""
+    _add_columns(
+        connection,
+        "work_revisions",
+        {
+            "purpose": (
+                "TEXT NOT NULL DEFAULT 'INITIAL' "
+                "CHECK (purpose IN ('INITIAL','DRAFT_CORRECTION','QUOTE_REVISION','REOPEN_REVISION'))"
+            ),
+            "source_quote_status": "TEXT NOT NULL DEFAULT ''",
+        },
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_quotes_one_per_work_revision
+        ON quotes(work_revision_id)
+        WHERE work_revision_id IS NOT NULL
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_quotes_supersedes
+        ON quotes(supersedes_quote_id)
+        """
+    )
+
+
 def _migration_0032_quote_identity_snapshot_foundation(
     connection: sqlite3.Connection,
 ) -> None:
@@ -1608,4 +1638,8 @@ MIGRATIONS.append(
         "0032_quote_identity_snapshot_foundation",
         _migration_0032_quote_identity_snapshot_foundation,
     )
+)
+
+MIGRATIONS.append(
+    ("0033_operator_quote_revisions", _migration_0033_operator_quote_revisions)
 )

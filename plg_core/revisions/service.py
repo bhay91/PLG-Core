@@ -386,6 +386,7 @@ def start_work_revision(
     reason: str,
     based_on_quote_id: int | None = None,
     _source_revision_id: int | None = None,
+    _allow_cancelled: bool = False,
 ) -> dict[str, Any]:
     normalized_reason = str(reason or "").strip()
     if not normalized_reason:
@@ -394,7 +395,10 @@ def start_work_revision(
         try:
             _begin_immediate(connection)
             job = _job(connection, job_id)
-            if str(job["status"] or "").upper() == "CANCELLED":
+            if (
+                str(job["status"] or "").upper() == "CANCELLED"
+                and not _allow_cancelled
+            ):
                 raise HTTPException(status_code=409, detail="Reopen the cancelled Job first.")
             existing = connection.execute(
                 "SELECT * FROM work_revisions WHERE job_id=? AND state='EDITABLE'",
@@ -489,7 +493,7 @@ def start_work_revision(
             )
             log_job_event(
                 connection, job_id=job_id, event_type="WORK_REVISION_STARTED",
-                icon="✏️", message=f"Work Revision {next_number} started: {normalized_reason}",
+                icon="✏️", message=f"Quote changes started: {normalized_reason}",
             )
             connection.commit()
             return dict(connection.execute(
@@ -650,7 +654,7 @@ def commit_work_revision(
         )
         log_job_event(
             connection, job_id=job_id, event_type="WORK_REVISION_COMMITTED", icon="✅",
-            message=f"Work Revision {revision['revision_number']} committed with {created} part(s)",
+            message=f"Updated work saved with {created} part(s)",
         )
         connection.commit()
         return {"ok": True, "job_id": job_id, "created_parts": created,
@@ -689,6 +693,35 @@ def cancel_work_revision(
             "UPDATE baskets SET status='COMMITTED', committed_at=CURRENT_TIMESTAMP, "
             "updated_at=CURRENT_TIMESTAMP WHERE id=?", (basket["id"],)
         )
+        parent_id = revision["parent_revision_id"]
+        if parent_id:
+            _clear_projection(connection, int(basket["id"]))
+            _clone_snapshot_to_basket(
+                connection, int(parent_id), int(basket["id"])
+            )
+            connection.execute(
+                """
+                UPDATE jobs
+                SET active_work_revision_id=?,
+                    service_charge=(
+                        SELECT service_charge FROM work_revisions WHERE id=?
+                    ),
+                    service_charge_description=(
+                        SELECT service_charge_description FROM work_revisions WHERE id=?
+                    ),
+                    sourcing_fee=(
+                        SELECT sourcing_fee FROM work_revisions WHERE id=?
+                    ),
+                    sourcing_fee_description=(
+                        SELECT sourcing_fee_description FROM work_revisions WHERE id=?
+                    )
+                WHERE id=?
+                """,
+                (
+                    parent_id, parent_id, parent_id, parent_id, parent_id,
+                    revision["job_id"],
+                ),
+            )
         write_audit(
             connection, action="WORK_REVISION_CANCELLED", entity_type="WORK_REVISION",
             entity_id=revision_id, summary="Cancelled Work Revision",
@@ -696,7 +729,7 @@ def cancel_work_revision(
         )
         log_job_event(
             connection, job_id=int(revision["job_id"]), event_type="WORK_REVISION_CANCELLED",
-            icon="↩️", message=f"Work Revision cancelled: {normalized_reason}",
+            icon="↩️", message=f"Quote changes cancelled: {normalized_reason}",
         )
         connection.commit()
         return dict(connection.execute(

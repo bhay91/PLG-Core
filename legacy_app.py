@@ -2246,16 +2246,19 @@ def load_quote(connection: sqlite3.Connection, quote_id: int):
         SELECT
             quotes.*,
             jobs.job_number,
-            jobs.customer,
-            jobs.company,
-            jobs.phone,
-            jobs.email,
-            jobs.address,
-            jobs.manufacturer,
-            jobs.machine,
-            jobs.pin_serial
+            COALESCE(NULLIF(quotes.customer_name_snapshot,''),jobs.customer) AS customer,
+            COALESCE(NULLIF(quotes.company_snapshot,''),jobs.company) AS company,
+            COALESCE(NULLIF(quotes.phone_snapshot,''),jobs.phone) AS phone,
+            COALESCE(NULLIF(quotes.email_snapshot,''),jobs.email) AS email,
+            COALESCE(NULLIF(quotes.address_snapshot,''),jobs.address) AS address,
+            COALESCE(NULLIF(quotes.manufacturer_snapshot,''),jobs.manufacturer) AS manufacturer,
+            COALESCE(NULLIF(quotes.machine_snapshot,''),jobs.machine) AS machine,
+            COALESCE(NULLIF(quotes.pin_serial_snapshot,''),jobs.pin_serial) AS pin_serial,
+            predecessor.quote_number AS supersedes_quote_number
         FROM quotes
         JOIN jobs ON jobs.id = quotes.job_id
+        LEFT JOIN quotes predecessor
+          ON predecessor.id=quotes.supersedes_quote_id
         WHERE quotes.id = ?
         """,
         (quote_id,),
@@ -3070,6 +3073,31 @@ def convert_quote_to_invoice(quote_id: int):
         existing = connection.execute("SELECT id FROM invoices WHERE quote_id=?",(quote_id,)).fetchone()
         if existing is not None:
             return RedirectResponse(url=f"/invoices/{existing['id']}/documents",status_code=303)
+        if connection.execute(
+            """
+            SELECT 1 FROM work_revisions wr
+            WHERE wr.based_on_quote_id=?
+              AND (
+                wr.state='EDITABLE'
+                OR (
+                  wr.state='COMMITTED'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM quotes generated
+                    WHERE generated.work_revision_id=wr.id
+                  )
+                )
+              )
+            LIMIT 1
+            """,
+            (quote_id,),
+        ).fetchone():
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "This quote has changes in progress. Finish or cancel "
+                    "the revision before creating an invoice."
+                ),
+            )
 
         quote_status = str(quote["status"] or "").strip().upper()
         if quote_status not in {"APPROVED", "ACCEPTED", "CONFIRMED"}:
@@ -3684,7 +3712,10 @@ def list_quotes(request: Request, view: str = "active"):
         view = "active"
 
     where = {
-        "active": "WHERE COALESCE(quotes.is_archived, 0) = 0",
+        "active": (
+            "WHERE COALESCE(quotes.is_archived, 0) = 0 "
+            "AND COALESCE(quotes.is_current, 1) = 1"
+        ),
         "archived": "WHERE COALESCE(quotes.is_archived, 0) = 1",
     }.get(view, "")
 
@@ -3803,11 +3834,76 @@ def mark_quote_sent(quote_id: int):
     from plg_core.sales.service import update_quote_status
 
     update_quote_status(quote_id, "SENT")
+    with closing(get_connection()) as connection:
+        connection.execute(
+            "UPDATE quotes SET issued_at=COALESCE(issued_at,CURRENT_TIMESTAMP) "
+            "WHERE id=?",
+            (quote_id,),
+        )
+        connection.execute(
+            "UPDATE quote_documents_manifest SET is_issued=1 "
+            "WHERE quote_id=? AND is_issued=0",
+            (quote_id,),
+        )
+        connection.commit()
 
     return RedirectResponse(
         url=f"/quotes/{quote_id}/documents",
         status_code=303,
     )
+
+
+@app.post("/quotes/{quote_id}/revise")
+def revise_quote_web(
+    quote_id: int,
+    reason: Annotated[str, Form()],
+):
+    from plg_core.revisions import start_quote_revision
+    revision = start_quote_revision(quote_id, reason)
+    return RedirectResponse(
+        url=f"/jobs/{revision['job_id']}/basket?revision_started=1",
+        status_code=303,
+    )
+
+
+@app.post("/work-revisions/{revision_id}/generate-quote")
+def generate_revised_quote_web(
+    revision_id: int,
+    expected_version: Annotated[int, Form()],
+):
+    from plg_core.revisions import generate_quote_from_revision
+    quote = generate_quote_from_revision(
+        revision_id, expected_version=expected_version
+    )
+    return RedirectResponse(
+        url=f"/quotes/{quote['id']}/documents",
+        status_code=303,
+    )
+
+
+@app.post("/work-revisions/{revision_id}/cancel")
+def cancel_quote_revision_web(
+    revision_id: int,
+    reason: Annotated[str, Form()],
+    expected_version: Annotated[int, Form()],
+):
+    from plg_core.revisions import cancel_quote_revision
+    with closing(get_connection()) as connection:
+        revision = connection.execute(
+            "SELECT based_on_quote_id,job_id FROM work_revisions WHERE id=?",
+            (revision_id,),
+        ).fetchone()
+    if revision is None:
+        raise HTTPException(status_code=404, detail="Work Revision not found.")
+    cancel_quote_revision(
+        revision_id, reason=reason, expected_version=expected_version
+    )
+    target = (
+        f"/quotes/{revision['based_on_quote_id']}/documents"
+        if revision["based_on_quote_id"]
+        else f"/jobs/{revision['job_id']}/basket"
+    )
+    return RedirectResponse(url=target, status_code=303)
 
 
 @app.post("/quotes/{quote_id}/decision")
@@ -3853,8 +3949,23 @@ def quote_documents(request: Request, quote_id: int):
             (quote_id,),
         ).fetchall()
     paths = quote_paths(quote["customer"],quote["quote_number"])
-    if not paths["customer"].exists() or not paths["internal"].exists():
+    if (
+        (not paths["customer"].exists() or not paths["internal"].exists())
+        and str(quote["status"] or "").upper()
+        not in {
+            "SENT", "APPROVED", "REJECTED", "REVISION_REQUIRED",
+            "SUPERSEDED", "CONVERTED",
+        }
+    ):
         generate_quote_pdfs(quote,items)
+    elif not paths["customer"].exists() or not paths["internal"].exists():
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "An issued quote document is missing and cannot be "
+                "regenerated silently."
+            ),
+        )
     customer_path = Path("documents")/"Customers"/sanitize_path_name(quote["customer"])/"Quotes"
     return templates.TemplateResponse(request=request,name="quote_documents.html",context={"quote":quote,"items":items,"invoice":invoice,"quote_events":quote_events,"customer_path":str(customer_path),"active_page":"quotes"})
 
@@ -3865,6 +3976,14 @@ def customer_quote_pdf(quote_id: int, download: int = 0):
         quote, items = load_quote(connection, quote_id)
     path = quote_paths(quote["customer"], quote["quote_number"])["customer"]
     if not path.exists():
+        if str(quote["status"] or "").upper() in {
+            "SENT", "APPROVED", "REJECTED", "REVISION_REQUIRED",
+            "SUPERSEDED", "CONVERTED",
+        }:
+            raise HTTPException(
+                status_code=409,
+                detail="Issued quote PDF is missing and cannot be regenerated silently.",
+            )
         generate_quote_pdfs(quote, items)
     return FileResponse(path=path, media_type="application/pdf", filename=path.name, content_disposition_type="attachment" if download else "inline")
 
@@ -3874,6 +3993,14 @@ def internal_quote_pdf(quote_id: int, download: int = 0):
         quote, items = load_quote(connection, quote_id)
     path = quote_paths(quote["customer"], quote["quote_number"])["internal"]
     if not path.exists():
+        if str(quote["status"] or "").upper() in {
+            "SENT", "APPROVED", "REJECTED", "REVISION_REQUIRED",
+            "SUPERSEDED", "CONVERTED",
+        }:
+            raise HTTPException(
+                status_code=409,
+                detail="Issued quote PDF is missing and cannot be regenerated silently.",
+            )
         generate_quote_pdfs(quote, items)
     return FileResponse(path=path, media_type="application/pdf", filename=path.name, content_disposition_type="attachment" if download else "inline")
 
@@ -3944,8 +4071,14 @@ def restore_job_web(job_id: int):
 
 @app.post("/jobs/{job_id}/reopen")
 def reopen_job_web(job_id: int, reason: Annotated[str, Form()]):
-    from plg_core.lifecycle import reopen_job
-    reopen_job(job_id, reason)
+    from plg_core.lifecycle import job_has_durable_history, reopen_job
+    with closing(get_connection()) as connection:
+        durable = job_has_durable_history(connection, job_id)
+    if durable:
+        from plg_core.revisions import reopen_job_for_revision
+        reopen_job_for_revision(job_id, reason)
+    else:
+        reopen_job(job_id, reason)
     return RedirectResponse(url=f"/jobs/{job_id}/basket", status_code=303)
 
 

@@ -140,7 +140,13 @@
             </button>
           </form>
         {% else %}
-          <strong>Customer Accepted</strong>
+          <strong>
+            {% if quote.status == "SUPERSEDED" %}
+              Historical Quote
+            {% else %}
+              Continue Quote
+            {% endif %}
+          </strong>
 
           <a
             class="workspace-btn workspace-btn-primary"

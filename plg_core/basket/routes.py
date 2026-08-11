@@ -141,11 +141,33 @@ def basket_page(request: Request, job_id: int):
             """
             SELECT *
             FROM quotes
-            WHERE job_id = ? AND COALESCE(is_archived, 0) = 0
+            WHERE job_id = ? AND COALESCE(is_current, 1) = 1
             ORDER BY id DESC
             LIMIT 1
             """,
             (job_id,),
+        ).fetchone()
+        quote_history = connection.execute(
+            """
+            SELECT q.*, predecessor.quote_number AS predecessor_number
+            FROM quotes q
+            LEFT JOIN quotes predecessor ON predecessor.id=q.supersedes_quote_id
+            WHERE q.job_id=?
+            ORDER BY q.id DESC
+            """,
+            (job_id,),
+        ).fetchall()
+        active_revision = connection.execute(
+            """
+            SELECT wr.*, q.quote_number AS source_quote_number
+            FROM work_revisions wr
+            LEFT JOIN quotes q ON q.id=wr.based_on_quote_id
+            WHERE wr.id=?
+            """,
+            (
+                basket["work_revision"]["id"]
+                if basket.get("work_revision") else 0,
+            ),
         ).fetchone()
 
         invoice = connection.execute(
@@ -291,6 +313,8 @@ def basket_page(request: Request, job_id: int):
             "customer_request": customer_request,
             "request_attachment_count": request_attachment_count,
             "quote": quote,
+            "quote_history": quote_history,
+            "active_revision": active_revision,
             "invoice": invoice,
             "intelligence": intelligence,
             "active_page": "jobs",
@@ -303,6 +327,8 @@ def clone_supplier_quote(
     job_id: int,
     vendor_name: Annotated[str, Form()],
     source_type: Annotated[str, Form()] = "AFTERMARKET",
+    expected_revision_id: Annotated[int | None, Form()] = None,
+    expected_version: Annotated[int | None, Form()] = None,
 ):
     vendor_name = vendor_name.strip()
     source_type = source_type.strip().upper()
@@ -323,7 +349,11 @@ def clone_supplier_quote(
 
     with closing(get_connection()) as connection:
         basket = get_or_create_basket(connection, job_id)
-        revision = ensure_basket_mutable(basket, connection)
+        revision = ensure_basket_mutable(
+            basket, connection,
+            expected_revision_id=expected_revision_id,
+            expected_version=expected_version,
+        )
 
         source = connection.execute(
             """
@@ -548,6 +578,8 @@ def update_supplier_quote_item(
     supplier_unit_cost: Annotated[str, Form()] = "",
     availability: Annotated[str, Form()] = "",
     lead_time: Annotated[str, Form()] = "",
+    expected_revision_id: Annotated[int | None, Form()] = None,
+    expected_version: Annotated[int | None, Form()] = None,
 ):
     raw_cost = supplier_unit_cost.strip()
 
@@ -586,7 +618,11 @@ def update_supplier_quote_item(
                 detail="Supplier quote item not found.",
             )
 
-        revision = ensure_basket_mutable(item, connection)
+        revision = ensure_basket_mutable(
+            item, connection,
+            expected_revision_id=expected_revision_id,
+            expected_version=expected_version,
+        )
 
         connection.execute(
             """
@@ -625,6 +661,8 @@ def save_supplier_quote_bulk(
     supplier_unit_cost: Annotated[list[str], Form()],
     availability: Annotated[list[str], Form()],
     lead_time: Annotated[list[str], Form()],
+    expected_revision_id: Annotated[int | None, Form()] = None,
+    expected_version: Annotated[int | None, Form()] = None,
 ):
     field_lengths = {
         len(item_id),
@@ -663,7 +701,11 @@ def save_supplier_quote_bulk(
                 detail="Supplier quote was not found.",
             )
 
-        revision = ensure_basket_mutable(source, connection)
+        revision = ensure_basket_mutable(
+            source, connection,
+            expected_revision_id=expected_revision_id,
+            expected_version=expected_version,
+        )
 
         for row_id, raw_cost, row_availability, row_lead_time in zip(
             item_id,
@@ -756,12 +798,18 @@ def add_manual_vendor_line(
     brand: Annotated[str, Form()] = "",
     availability: Annotated[str, Form()] = "",
     lead_time: Annotated[str, Form()] = "",
+    expected_revision_id: Annotated[int | None, Form()] = None,
+    expected_version: Annotated[int | None, Form()] = None,
 ):
     vendor_name = vendor_name.strip() or "Manual Vendor"
 
     with closing(get_connection()) as connection:
         basket = get_or_create_basket(connection, job_id)
-        revision = ensure_basket_mutable(basket, connection)
+        revision = ensure_basket_mutable(
+            basket, connection,
+            expected_revision_id=expected_revision_id,
+            expected_version=expected_version,
+        )
 
         source = connection.execute(
             """
@@ -855,6 +903,8 @@ def add_manual_item(
     supplier_part_number: Annotated[str, Form()] = "",
     supplier_unit_cost: Annotated[float | None, Form()] = None,
     source_type: Annotated[str, Form()] = "AFTERMARKET",
+    expected_revision_id: Annotated[int | None, Form()] = None,
+    expected_version: Annotated[int | None, Form()] = None,
 ):
     add_item(
         job_id,
@@ -867,6 +917,8 @@ def add_manual_item(
             source_type=source_type,
             selected=False,
         ),
+        expected_revision_id=expected_revision_id,
+        expected_version=expected_version,
     )
     return RedirectResponse(
         url=f"/jobs/{job_id}/basket",
@@ -879,11 +931,15 @@ def toggle_item(
     job_id: int,
     item_id: int,
     selected: Annotated[int, Form()],
+    expected_revision_id: Annotated[int | None, Form()] = None,
+    expected_version: Annotated[int | None, Form()] = None,
 ):
     update_item(
         item_id,
         BasketItemUpdate(selected=bool(selected)),
         expected_job_id=job_id,
+        expected_revision_id=expected_revision_id,
+        expected_version=expected_version,
     )
     return RedirectResponse(
         url=f"/jobs/{job_id}/basket",
@@ -897,11 +953,15 @@ def update_item_quantity(
     job_id: int,
     item_id: int,
     quantity: Annotated[int, Form()],
+    expected_revision_id: Annotated[int | None, Form()] = None,
+    expected_version: Annotated[int | None, Form()] = None,
 ):
     update_item(
         item_id,
         BasketItemUpdate(quantity=max(1, quantity)),
         expected_job_id=job_id,
+        expected_revision_id=expected_revision_id,
+        expected_version=expected_version,
     )
     return RedirectResponse(
         url=f"/jobs/{job_id}/basket",
@@ -945,8 +1005,16 @@ def advance_part_workflow_form(
 
 
 @router.post("/jobs/{job_id}/basket/items/{item_id}/delete")
-def delete_item_form(job_id: int, item_id: int):
-    delete_item(item_id, expected_job_id=job_id)
+def delete_item_form(
+    job_id: int, item_id: int,
+    expected_revision_id: Annotated[int | None, Form()] = None,
+    expected_version: Annotated[int | None, Form()] = None,
+):
+    delete_item(
+        item_id, expected_job_id=job_id,
+        expected_revision_id=expected_revision_id,
+        expected_version=expected_version,
+    )
     return RedirectResponse(
         url=f"/jobs/{job_id}/basket",
         status_code=303,
@@ -954,8 +1022,16 @@ def delete_item_form(job_id: int, item_id: int):
 
 
 @router.post("/jobs/{job_id}/basket/clear")
-def clear_form(job_id: int):
-    clear_basket(job_id)
+def clear_form(
+    job_id: int,
+    expected_revision_id: Annotated[int | None, Form()] = None,
+    expected_version: Annotated[int | None, Form()] = None,
+):
+    clear_basket(
+        job_id,
+        expected_revision_id=expected_revision_id,
+        expected_version=expected_version,
+    )
     return RedirectResponse(
         url=f"/jobs/{job_id}/basket",
         status_code=303,
@@ -970,6 +1046,8 @@ def update_revenue_adjustments(
     service_charge_description: Annotated[str, Form()] = "",
     sourcing_fee: Annotated[str, Form()] = "0",
     sourcing_fee_description: Annotated[str, Form()] = "",
+    expected_revision_id: Annotated[int | None, Form()] = None,
+    expected_version: Annotated[int | None, Form()] = None,
 ):
     """Save optional job-level Service Charge and Sourcing Fee values."""
 
@@ -1014,7 +1092,11 @@ def update_revenue_adjustments(
 
     with closing(get_connection()) as connection:
         basket = get_or_create_basket(connection, job_id)
-        revision = ensure_basket_mutable(basket, connection)
+        revision = ensure_basket_mutable(
+            basket, connection,
+            expected_revision_id=expected_revision_id,
+            expected_version=expected_version,
+        )
         job = connection.execute(
             """
             SELECT
@@ -1114,8 +1196,15 @@ def update_revenue_adjustments(
 
 
 @router.post("/jobs/{job_id}/basket/checkout")
-def checkout_basket(job_id: int):
-    commit_basket(job_id)
+def checkout_basket(
+    job_id: int,
+    expected_revision_id: Annotated[int | None, Form()] = None,
+    expected_version: Annotated[int | None, Form()] = None,
+):
+    commit_basket(
+        job_id, expected_revision_id=expected_revision_id,
+        expected_version=expected_version,
+    )
     return RedirectResponse(
         url=f"/jobs/{job_id}/basket",
         status_code=303,
@@ -1123,8 +1212,15 @@ def checkout_basket(job_id: int):
 
 
 @router.post("/jobs/{job_id}/basket/commit")
-def commit_form(job_id: int):
-    commit_basket(job_id)
+def commit_form(
+    job_id: int,
+    expected_revision_id: Annotated[int | None, Form()] = None,
+    expected_version: Annotated[int | None, Form()] = None,
+):
+    commit_basket(
+        job_id, expected_revision_id=expected_revision_id,
+        expected_version=expected_version,
+    )
     return RedirectResponse(
         url=f"/jobs/{job_id}/basket",
         status_code=303,
@@ -1146,6 +1242,8 @@ def update_basket_item_form(
     verification_status: str = Form("UNVERIFIED"),
     verification_note: str = Form(""),
     confidence: float | None = Form(None),
+    expected_revision_id: int | None = Form(None),
+    expected_version: int | None = Form(None),
 ):
     valid_statuses = {
         "RESEARCH",
@@ -1262,6 +1360,8 @@ def update_basket_item_form(
             confidence=confidence,
         ),
         expected_job_id=job_id,
+        expected_revision_id=expected_revision_id,
+        expected_version=expected_version,
     )
 
     if (

@@ -119,6 +119,31 @@ def transition_quote(quote_id: int, target_status: str, notes: str = ""):
                 status_code=409,
                 detail="Quote decisions are locked because an invoice already exists.",
             )
+        if connection.execute(
+            """
+            SELECT 1 FROM work_revisions wr
+            WHERE wr.based_on_quote_id=?
+              AND (
+                wr.state='EDITABLE'
+                OR (
+                  wr.state='COMMITTED'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM quotes generated
+                    WHERE generated.work_revision_id=wr.id
+                  )
+                )
+              )
+            LIMIT 1
+            """,
+            (quote_id,),
+        ).fetchone():
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Quote decisions are locked while changes are in progress. "
+                    "Finish or cancel the revision first."
+                ),
+            )
         ensure_job_allows_new_business(connection, int(quote["job_id"]), "change quote status")
         if target not in QUOTE_TRANSITIONS.get(old, set()):
             extra = (
