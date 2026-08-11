@@ -611,6 +611,114 @@ MIGRATIONS.append(
 )
 
 
+def _migration_0032_quote_identity_snapshot_foundation(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add immutable identity slots for newly-created quote snapshots."""
+    _add_columns(
+        connection,
+        "quotes",
+        {
+            "customer_name_snapshot": "TEXT",
+            "company_snapshot": "TEXT",
+            "phone_snapshot": "TEXT",
+            "email_snapshot": "TEXT",
+            "address_snapshot": "TEXT",
+            "manufacturer_snapshot": "TEXT",
+            "machine_snapshot": "TEXT",
+            "pin_serial_snapshot": "TEXT",
+        },
+    )
+
+
+def _migration_0030_legacy_revision_snapshots(
+    connection: sqlite3.Connection,
+) -> None:
+    """Complete synthetic snapshots created by the already-applied 0029 migration."""
+    connection.execute(
+        """
+        INSERT INTO work_revision_sources (
+            work_revision_id, source_key, source_name, source_url,
+            trust_level, shipping_total, currency, original_basket_source_id
+        )
+        SELECT wr.id, bs.source_key, bs.source_name, COALESCE(bs.source_url, ''),
+               bs.trust_level, COALESCE(bs.shipping_total, 0), bs.currency, bs.id
+        FROM work_revisions wr
+        JOIN baskets b ON b.job_id=wr.job_id
+        JOIN basket_sources bs ON bs.basket_id=b.id
+        WHERE wr.is_synthetic=1
+          AND NOT EXISTS (
+              SELECT 1 FROM work_revision_sources existing
+              WHERE existing.work_revision_id=wr.id
+                AND existing.original_basket_source_id=bs.id
+          )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO work_revision_items (
+            work_revision_id, revision_source_id,
+            requested_description, manufacturer_part_number,
+            alternate_part_number, supplier_part_number, supplier_name,
+            source_type, brand, quantity, supplier_unit_cost, markup_percent,
+            pricing_mode, customer_unit_price_override,
+            effective_customer_unit_price, recommended_markup_percent,
+            part_status, verification_status, verification_note,
+            availability, lead_time, selected, confidence, source_url
+        )
+        SELECT wr.id, wrs.id,
+               bi.requested_description, COALESCE(bi.manufacturer_part_number, ''),
+               COALESCE(bi.alternate_part_number, ''),
+               COALESCE(bi.supplier_part_number, ''), COALESCE(bi.supplier_name, ''),
+               COALESCE(bi.source_type, 'AFTERMARKET'), COALESCE(bi.brand, ''),
+               bi.quantity, bi.supplier_unit_cost, bi.markup_percent,
+               CASE WHEN bi.customer_unit_price_override IS NULL
+                    THEN 'AUTO' ELSE 'OVERRIDE' END,
+               bi.customer_unit_price_override,
+               CASE WHEN bi.customer_unit_price_override IS NOT NULL
+                    THEN bi.customer_unit_price_override
+                    ELSE ROUND(COALESCE(bi.supplier_unit_cost, 0) *
+                         (1 + COALESCE(bi.markup_percent, 30) / 100.0), 2) END,
+               bi.markup_percent,
+               COALESCE(bi.part_status, 'RESEARCH'),
+               COALESCE(bi.verification_status, 'UNVERIFIED'),
+               COALESCE(bi.verification_note, ''), COALESCE(bi.availability, ''),
+               COALESCE(bi.lead_time, ''), bi.selected, bi.confidence,
+               COALESCE(bi.source_url, '')
+        FROM work_revisions wr
+        JOIN baskets b ON b.job_id=wr.job_id
+        JOIN basket_items bi ON bi.basket_id=b.id
+        LEFT JOIN work_revision_sources wrs
+          ON wrs.work_revision_id=wr.id
+         AND wrs.original_basket_source_id=bi.source_id
+        WHERE wr.is_synthetic=1
+          AND NOT EXISTS (
+              SELECT 1 FROM work_revision_items existing
+              WHERE existing.work_revision_id=wr.id
+          )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO work_revision_attachments (
+            work_revision_id, original_basket_attachment_id,
+            original_filename, stored_filename, file_path, media_type, source_name
+        )
+        SELECT wr.id, ba.id, ba.original_filename, ba.stored_filename,
+               ba.file_path, COALESCE(ba.media_type, ''), COALESCE(ba.source_name, '')
+        FROM work_revisions wr
+        JOIN baskets b ON b.job_id=wr.job_id
+        JOIN basket_attachments ba ON ba.basket_id=b.id
+        WHERE wr.is_synthetic=1
+          AND NOT EXISTS (
+              SELECT 1 FROM work_revision_attachments existing
+              WHERE existing.work_revision_id=wr.id
+                AND existing.original_basket_attachment_id=ba.id
+          )
+        """
+    )
+
+
 def _migration_0011_machine_ownership_history(
     connection: sqlite3.Connection,
 ) -> None:
@@ -1160,4 +1268,344 @@ def _migration_0028_one_active_quote_per_job(
 
 MIGRATIONS.append(
     ("0028_one_active_quote_per_job", _migration_0028_one_active_quote_per_job)
+)
+
+
+def _table_columns(
+    connection: sqlite3.Connection,
+    table: str,
+) -> set[str]:
+    return {
+        row["name"]
+        for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+
+
+def _add_columns(
+    connection: sqlite3.Connection,
+    table: str,
+    additions: dict[str, str],
+) -> None:
+    existing = _table_columns(connection, table)
+    for name, definition in additions.items():
+        if name not in existing:
+            connection.execute(
+                f"ALTER TABLE {table} ADD COLUMN {name} {definition}"
+            )
+
+
+def _preflight_0029_work_revisions(
+    connection: sqlite3.Connection,
+) -> None:
+    """Refuse ambiguous legacy quote lineage rather than inventing history."""
+    duplicate = connection.execute(
+        """
+        SELECT job_id, COUNT(*) AS quote_count
+        FROM quotes
+        WHERE COALESCE(is_archived, 0) = 0
+        GROUP BY job_id
+        HAVING COUNT(*) > 1
+        LIMIT 1
+        """
+    ).fetchone()
+    if duplicate is not None:
+        raise RuntimeError(
+            "Batch 2A migration cannot determine the current quote for Job "
+            f"{duplicate['job_id']}: {duplicate['quote_count']} unarchived quotes "
+            "require manual review. No lineage changes were applied."
+        )
+
+    duplicate_basket = connection.execute(
+        """
+        SELECT job_id, COUNT(*) AS basket_count
+        FROM baskets
+        GROUP BY job_id
+        HAVING COUNT(*) > 1
+        LIMIT 1
+        """
+    ).fetchone()
+    if duplicate_basket is not None:
+        raise RuntimeError(
+            "Batch 2A migration found multiple active basket projections for Job "
+            f"{duplicate_basket['job_id']}; manual review is required."
+        )
+
+
+def _migration_0029_work_quote_revision_foundation(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add the immutable Work Revision foundation without rewriting history."""
+    _preflight_0029_work_revisions(connection)
+
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS work_revisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL,
+            revision_number INTEGER NOT NULL,
+            state TEXT NOT NULL CHECK (state IN ('EDITABLE', 'COMMITTED', 'CANCELLED')),
+            parent_revision_id INTEGER,
+            based_on_quote_id INTEGER,
+            reason TEXT NOT NULL DEFAULT '',
+            lock_version INTEGER NOT NULL DEFAULT 1 CHECK (lock_version >= 1),
+            is_synthetic INTEGER NOT NULL DEFAULT 0 CHECK (is_synthetic IN (0, 1)),
+            service_charge REAL NOT NULL DEFAULT 0,
+            service_charge_description TEXT NOT NULL DEFAULT '',
+            sourcing_fee REAL NOT NULL DEFAULT 0,
+            sourcing_fee_description TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            committed_at TEXT,
+            cancelled_at TEXT,
+            UNIQUE(job_id, revision_number),
+            FOREIGN KEY (job_id) REFERENCES jobs(id),
+            FOREIGN KEY (parent_revision_id) REFERENCES work_revisions(id),
+            FOREIGN KEY (based_on_quote_id) REFERENCES quotes(id)
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_work_revisions_one_editable
+            ON work_revisions(job_id) WHERE state = 'EDITABLE';
+        CREATE INDEX IF NOT EXISTS idx_work_revisions_job_state
+            ON work_revisions(job_id, state, revision_number DESC);
+
+        CREATE TABLE IF NOT EXISTS work_revision_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            work_revision_id INTEGER NOT NULL,
+            source_key TEXT NOT NULL DEFAULT '',
+            source_name TEXT NOT NULL DEFAULT '',
+            source_url TEXT NOT NULL DEFAULT '',
+            trust_level TEXT NOT NULL DEFAULT 'NEEDS_REVIEW',
+            shipping_total REAL NOT NULL DEFAULT 0,
+            currency TEXT NOT NULL DEFAULT 'USD',
+            original_basket_source_id INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (work_revision_id) REFERENCES work_revisions(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_work_revision_sources_revision
+            ON work_revision_sources(work_revision_id);
+
+        CREATE TABLE IF NOT EXISTS work_revision_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            work_revision_id INTEGER NOT NULL,
+            revision_source_id INTEGER,
+            source_revision_item_id INTEGER,
+            origin_quote_item_id INTEGER,
+            generated_job_part_id INTEGER,
+            disposition TEXT NOT NULL DEFAULT 'ACTIVE'
+                CHECK (disposition IN ('ACTIVE', 'REMOVED', 'REPLACED')),
+            replacement_for_item_id INTEGER,
+            requested_description TEXT NOT NULL,
+            manufacturer_part_number TEXT NOT NULL DEFAULT '',
+            alternate_part_number TEXT NOT NULL DEFAULT '',
+            supplier_part_number TEXT NOT NULL DEFAULT '',
+            supplier_name TEXT NOT NULL DEFAULT '',
+            source_type TEXT NOT NULL DEFAULT 'AFTERMARKET',
+            brand TEXT NOT NULL DEFAULT '',
+            quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 1),
+            supplier_unit_cost REAL,
+            markup_percent REAL,
+            pricing_mode TEXT NOT NULL DEFAULT 'AUTO'
+                CHECK (pricing_mode IN ('AUTO', 'OVERRIDE', 'LEGACY_FIXED')),
+            customer_unit_price_override REAL,
+            effective_customer_unit_price REAL NOT NULL DEFAULT 0,
+            recommended_markup_percent REAL,
+            part_status TEXT NOT NULL DEFAULT 'RESEARCH',
+            verification_status TEXT NOT NULL DEFAULT 'UNVERIFIED',
+            verification_note TEXT NOT NULL DEFAULT '',
+            availability TEXT NOT NULL DEFAULT '',
+            lead_time TEXT NOT NULL DEFAULT '',
+            selected INTEGER NOT NULL DEFAULT 1 CHECK (selected IN (0, 1)),
+            confidence REAL,
+            source_url TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (work_revision_id) REFERENCES work_revisions(id),
+            FOREIGN KEY (revision_source_id) REFERENCES work_revision_sources(id),
+            FOREIGN KEY (source_revision_item_id) REFERENCES work_revision_items(id),
+            FOREIGN KEY (generated_job_part_id) REFERENCES job_parts(id),
+            FOREIGN KEY (replacement_for_item_id) REFERENCES work_revision_items(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_work_revision_items_revision
+            ON work_revision_items(work_revision_id);
+
+        CREATE TABLE IF NOT EXISTS work_revision_attachments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            work_revision_id INTEGER NOT NULL,
+            original_basket_attachment_id INTEGER,
+            original_filename TEXT NOT NULL,
+            stored_filename TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            media_type TEXT NOT NULL DEFAULT '',
+            source_name TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (work_revision_id) REFERENCES work_revisions(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS quote_documents_manifest (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            quote_id INTEGER NOT NULL,
+            audience TEXT NOT NULL CHECK (audience IN ('CUSTOMER', 'INTERNAL')),
+            document_kind TEXT NOT NULL DEFAULT 'QUOTE',
+            file_path TEXT NOT NULL,
+            sha256 TEXT NOT NULL DEFAULT '',
+            generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            is_issued INTEGER NOT NULL DEFAULT 0 CHECK (is_issued IN (0, 1)),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(quote_id, audience, document_kind, is_issued),
+            FOREIGN KEY (quote_id) REFERENCES quotes(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_quote_documents_manifest_quote
+            ON quote_documents_manifest(quote_id);
+        """
+    )
+
+    _add_columns(
+        connection,
+        "jobs",
+        {"active_work_revision_id": "INTEGER REFERENCES work_revisions(id)"},
+    )
+    _add_columns(
+        connection,
+        "job_parts",
+        {
+            "work_revision_id": "INTEGER REFERENCES work_revisions(id)",
+            "work_revision_item_id": "INTEGER REFERENCES work_revision_items(id)",
+        },
+    )
+    _add_columns(
+        connection,
+        "part_sources",
+        {
+            "work_revision_source_id": (
+                "INTEGER REFERENCES work_revision_sources(id)"
+            )
+        },
+    )
+    _add_columns(
+        connection,
+        "quotes",
+        {
+            "work_revision_id": "INTEGER REFERENCES work_revisions(id)",
+            "supersedes_quote_id": "INTEGER REFERENCES quotes(id)",
+            "is_current": "INTEGER NOT NULL DEFAULT 1 CHECK (is_current IN (0, 1))",
+            "issued_at": "TEXT",
+            "superseded_at": "TEXT",
+            "supersession_reason": "TEXT NOT NULL DEFAULT ''",
+            "content_version": "INTEGER NOT NULL DEFAULT 1",
+        },
+    )
+    _add_columns(
+        connection,
+        "quote_items",
+        {
+            "pricing_mode": (
+                "TEXT NOT NULL DEFAULT 'LEGACY_FIXED' "
+                "CHECK (pricing_mode IN ('AUTO', 'OVERRIDE', 'LEGACY_FIXED'))"
+            ),
+            "customer_unit_price_override": "REAL",
+            "recommended_markup_percent": "REAL",
+        },
+    )
+
+    # Archive visibility is not quote lineage. Existing archived quotes are
+    # historical; the one unarchived quote (preflighted above) is current.
+    connection.execute(
+        "UPDATE quotes SET is_current = CASE WHEN is_archived = 0 THEN 1 ELSE 0 END"
+    )
+    connection.execute("DROP INDEX IF EXISTS uq_quotes_one_active_per_job")
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_quotes_one_current_per_job "
+        "ON quotes(job_id) WHERE is_current = 1"
+    )
+
+    # Synthetic Revision 1 records let legacy and initial work participate in
+    # the new invariants without changing quote/invoice/item values.
+    connection.execute(
+        """
+        INSERT INTO work_revisions (
+            job_id, revision_number, state, reason, is_synthetic,
+            service_charge, service_charge_description,
+            sourcing_fee, sourcing_fee_description, committed_at
+        )
+        SELECT b.job_id, 1,
+               CASE WHEN b.status = 'COMMITTED' THEN 'COMMITTED' ELSE 'EDITABLE' END,
+               'Legacy work compatibility record', 1,
+               COALESCE(j.service_charge, 0),
+               COALESCE(j.service_charge_description, ''),
+               COALESCE(j.sourcing_fee, 0),
+               COALESCE(j.sourcing_fee_description, ''),
+               CASE WHEN b.status = 'COMMITTED'
+                    THEN COALESCE(b.committed_at, CURRENT_TIMESTAMP) END
+        FROM baskets b
+        JOIN jobs j ON j.id = b.job_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM work_revisions wr WHERE wr.job_id = b.job_id
+        )
+        """
+    )
+    connection.execute(
+        """
+        UPDATE jobs
+        SET active_work_revision_id = (
+            SELECT wr.id FROM work_revisions wr
+            WHERE wr.job_id = jobs.id
+            ORDER BY wr.revision_number DESC LIMIT 1
+        )
+        WHERE active_work_revision_id IS NULL
+          AND EXISTS (SELECT 1 FROM work_revisions wr WHERE wr.job_id = jobs.id)
+        """
+    )
+
+
+MIGRATIONS.append(
+    (
+        "0029_work_quote_revision_foundation",
+        _migration_0029_work_quote_revision_foundation,
+    )
+)
+
+MIGRATIONS.append(
+    ("0030_legacy_revision_snapshots", _migration_0030_legacy_revision_snapshots)
+)
+
+
+def _migration_0031_active_work_pricing_provenance(
+    connection: sqlite3.Connection,
+) -> None:
+    """Retain AUTO/OVERRIDE/LEGACY_FIXED intent in the active projection."""
+    _add_columns(
+        connection,
+        "basket_items",
+        {
+            "pricing_mode": (
+                "TEXT NOT NULL DEFAULT 'AUTO' "
+                "CHECK (pricing_mode IN ('AUTO', 'OVERRIDE', 'LEGACY_FIXED'))"
+            )
+        },
+    )
+    connection.execute(
+        """
+        UPDATE basket_items
+        SET pricing_mode = CASE
+            WHEN customer_unit_price_override IS NULL THEN 'AUTO'
+            ELSE 'OVERRIDE'
+        END
+        WHERE pricing_mode IS NULL OR pricing_mode NOT IN (
+            'AUTO', 'OVERRIDE', 'LEGACY_FIXED'
+        )
+        """
+    )
+
+
+MIGRATIONS.append(
+    (
+        "0031_active_work_pricing_provenance",
+        _migration_0031_active_work_pricing_provenance,
+    )
+)
+
+MIGRATIONS.append(
+    (
+        "0032_quote_identity_snapshot_foundation",
+        _migration_0032_quote_identity_snapshot_foundation,
+    )
 )

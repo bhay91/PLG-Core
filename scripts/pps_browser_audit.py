@@ -4,6 +4,11 @@ import shutil
 import sqlite3
 import sys
 import os
+import socket
+import subprocess
+import tempfile
+import time
+from urllib.request import urlopen
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,8 +76,8 @@ def _first_id(connection, table):
     return int(row[0]) if row else None
 
 
-def _dynamic_candidates():
-    db_path = ROOT / "data" / "plg_core.db"
+def _dynamic_candidates(db_path=None):
+    db_path = Path(db_path or ROOT / "data" / "plg_core.db")
     if not db_path.exists():
         return []
 
@@ -167,7 +172,7 @@ def _probe_html(page, url):
     return True, None
 
 
-def run_browser_audit(base_url=BASE_URL):
+def _audit_server(base_url, db_path):
     executable = _browser_path()
     if not executable:
         return {
@@ -177,7 +182,9 @@ def run_browser_audit(base_url=BASE_URL):
             "failures": ["No Chromium browser executable found"],
         }
 
-    candidates = sorted(set(_static_candidates() + _dynamic_candidates()))
+    candidates = sorted(
+        set(_static_candidates() + _dynamic_candidates(db_path))
+    )
     shard = os.getenv("PPS_BROWSER_SHARD", "").strip()
     if shard:
         try:
@@ -288,6 +295,120 @@ def run_browser_audit(base_url=BASE_URL):
         "warnings": warnings,
         "failures": failures,
     }
+
+
+def _sqlite_backup(source_path: Path, destination_path: Path) -> None:
+    """Create a transaction-consistent SQLite snapshot without touching source."""
+    source = sqlite3.connect(
+        "file:" + source_path.resolve().as_posix() + "?mode=ro",
+        uri=True,
+    )
+    destination = sqlite3.connect(destination_path)
+    try:
+        source.backup(destination)
+        integrity = destination.execute("PRAGMA integrity_check").fetchone()
+        if integrity is None or str(integrity[0]).lower() != "ok":
+            raise RuntimeError(
+                f"Disposable browser-audit DB failed integrity_check: {integrity}"
+            )
+    finally:
+        destination.close()
+        source.close()
+
+
+def _available_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+def _wait_for_server(base_url: str, process: subprocess.Popen) -> None:
+    deadline = time.monotonic() + 20
+    last_error = ""
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(
+                f"Isolated audit server exited with code {process.returncode}."
+            )
+        try:
+            with urlopen(base_url + "/health", timeout=1) as response:
+                if response.status == 200:
+                    return
+        except Exception as exc:
+            last_error = str(exc)
+        time.sleep(0.1)
+    raise RuntimeError(
+        "Isolated audit server did not become ready"
+        + (f": {last_error}" if last_error else ".")
+    )
+
+
+def run_browser_audit(
+    base_url=None,
+    *,
+    source_db_path=None,
+):
+    """Audit production-shaped data through an isolated DB/document environment."""
+    source_path = Path(
+        source_db_path or ROOT / "data" / "plg_core.db"
+    ).resolve()
+    if not source_path.exists():
+        return {
+            "tested_pages": [],
+            "tested_viewports": 0,
+            "warnings": [],
+            "failures": [f"Source database not found: {source_path}"],
+        }
+
+    # An explicit URL remains available for specialized manual use. The full
+    # product audit never supplies one, so its normal path is always isolated.
+    if base_url:
+        return _audit_server(base_url, source_path)
+
+    with tempfile.TemporaryDirectory(prefix="pps-browser-audit-") as temp:
+        temp_root = Path(temp)
+        audit_db = temp_root / "plg_core.audit.db"
+        document_root = temp_root / "documents"
+        document_root.mkdir()
+        _sqlite_backup(source_path, audit_db)
+
+        port = _available_port()
+        isolated_url = f"http://127.0.0.1:{port}"
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "PPS_DB_PATH": str(audit_db),
+                "PPS_DOCUMENT_ROOT": str(document_root),
+            }
+        )
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "app:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--log-level",
+                "warning",
+            ],
+            cwd=ROOT,
+            env=environment,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            _wait_for_server(isolated_url, process)
+            return _audit_server(isolated_url, audit_db)
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
 
 
 def main():

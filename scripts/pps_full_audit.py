@@ -670,9 +670,9 @@ else:
 try:
     from pps_browser_audit import run_browser_audit
 
-    browser_result = run_browser_audit(
-        os.getenv("PPS_AUDIT_BASE_URL", "http://127.0.0.1:8000")
-    )
+    # Browser routes always run against a transaction-consistent disposable
+    # copy. Never point the routine at a live PPS server/database.
+    browser_result = run_browser_audit(source_db_path=db_path)
 
     for warning in browser_result["warnings"]:
         audit.warn("Browser", warning)

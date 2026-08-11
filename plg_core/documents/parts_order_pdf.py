@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from datetime import date
 from pathlib import Path
+import os
 from typing import Iterable
 import re
 
@@ -79,7 +80,7 @@ def parts_order_sheet_path(invoice) -> Path:
     number = _safe_name(_value(invoice, "invoice_number", "Invoice"))
 
     return (
-        Path("documents")
+        Path(os.getenv("PPS_DOCUMENT_ROOT", "documents"))
         / "Customers"
         / customer
         / "Parts Order Sheets"

@@ -6,6 +6,7 @@ from plg_core.documents.invoice_pdf import generate_invoice_pdfs, invoice_paths
 from fastapi import File, UploadFile
 
 import sqlite3
+import os
 from contextlib import closing
 from datetime import date
 from pathlib import Path
@@ -23,7 +24,10 @@ from plg_core.pricing import customer_unit_price as calculate_customer_unit_pric
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
-DB_PATH = DATA_DIR / "plg_core.db"
+DB_PATH = Path(os.getenv("PPS_DB_PATH", str(DATA_DIR / "plg_core.db"))).resolve()
+DOCUMENTS_DIR = Path(
+    os.getenv("PPS_DOCUMENT_ROOT", str(BASE_DIR / "documents"))
+).resolve()
 
 from plg_core.documents.parts_order_pdf import (
     generate_parts_order_sheet,
@@ -885,7 +889,7 @@ def document_center(
     )
 
     data = scan_documents(
-        BASE_DIR / "documents",
+        DOCUMENTS_DIR,
         q=q,
     )
 
@@ -908,7 +912,7 @@ def open_pps_document(
     )
 
     document = resolve_document_path(
-        BASE_DIR / "documents",
+        DOCUMENTS_DIR,
         path,
     )
 
@@ -1860,7 +1864,7 @@ def generate_quote(job_id: int):
             SELECT id
             FROM quotes
             WHERE job_id = ?
-              AND COALESCE(is_archived, 0) = 0
+              AND COALESCE(is_current, 1) = 1
             ORDER BY id DESC
             LIMIT 1
             """,
@@ -1884,7 +1888,7 @@ def generate_quote(job_id: int):
         from plg_core.lifecycle import ensure_job_allows_new_business
         ensure_job_allows_new_business(connection, job_id, "create a quote")
         winning_quote = connection.execute(
-            "SELECT id FROM quotes WHERE job_id=? AND is_archived=0 ORDER BY id DESC LIMIT 1",
+            "SELECT id FROM quotes WHERE job_id=? AND is_current=1 ORDER BY id DESC LIMIT 1",
             (job_id,),
         ).fetchone()
         if winning_quote is not None:
@@ -1911,6 +1915,10 @@ def generate_quote(job_id: int):
                 job_parts.oem_description,
                 job_parts.quantity,
                 job_parts.customer_unit_price,
+                job_parts.work_revision_id,
+                work_revision_items.pricing_mode,
+                work_revision_items.customer_unit_price_override,
+                work_revision_items.recommended_markup_percent,
                 part_sources.id AS source_id,
                 part_sources.supplier_name,
                 part_sources.source_type,
@@ -1921,10 +1929,15 @@ def generate_quote(job_id: int):
             JOIN part_sources
               ON part_sources.part_id = job_parts.id
              AND part_sources.selected_for_quote = 1
+            LEFT JOIN work_revision_items
+              ON work_revision_items.id = job_parts.work_revision_item_id
             WHERE job_parts.job_id = ?
+              AND job_parts.work_revision_id = (
+                  SELECT active_work_revision_id FROM jobs WHERE id=?
+              )
             ORDER BY job_parts.id
             """,
-            (job_id,),
+            (job_id, job_id),
         ).fetchall()
 
         # Count only quote-ready parts that have supplier-source
@@ -1936,8 +1949,11 @@ def generate_quote(job_id: int):
             JOIN part_sources
               ON part_sources.part_id = job_parts.id
             WHERE job_parts.job_id = ?
+              AND job_parts.work_revision_id = (
+                  SELECT active_work_revision_id FROM jobs WHERE id=?
+              )
             """,
-            (job_id,),
+            (job_id, job_id),
         ).fetchone()["count"]
 
         if total_parts == 0:
@@ -1958,6 +1974,9 @@ def generate_quote(job_id: int):
                 JOIN part_sources
                   ON part_sources.part_id = job_parts.id
                 WHERE job_parts.job_id = ?
+                  AND job_parts.work_revision_id = (
+                      SELECT active_work_revision_id FROM jobs WHERE id=?
+                  )
                   AND NOT EXISTS (
                       SELECT 1
                       FROM part_sources selected_source
@@ -1966,7 +1985,7 @@ def generate_quote(job_id: int):
                   )
                 ORDER BY job_parts.id
                 """,
-                (job_id,),
+                (job_id, job_id),
             ).fetchall()
 
             missing_names = [
@@ -2070,6 +2089,9 @@ def generate_quote(job_id: int):
                     supplier_line_total,
                     customer_line_total,
                     line_profit,
+                    row["pricing_mode"] or "LEGACY_FIXED",
+                    row["customer_unit_price_override"],
+                    row["recommended_markup_percent"],
                 )
             )
 
@@ -2101,10 +2123,19 @@ def generate_quote(job_id: int):
                 sourcing_fee,
                 customer_total,
                 supplier_total,
-                profit_total
+                profit_total,
+                work_revision_id,
+                customer_name_snapshot,
+                company_snapshot,
+                phone_snapshot,
+                email_snapshot,
+                address_snapshot,
+                manufacturer_snapshot,
+                machine_snapshot,
+                pin_serial_snapshot
             )
             VALUES (
-                ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
                 """,
                 (
@@ -2118,12 +2149,21 @@ def generate_quote(job_id: int):
                 customer_total,
                 supplier_total,
                 profit_total,
+                job["active_work_revision_id"],
+                job["customer"],
+                job["company"],
+                job["phone"],
+                job["email"],
+                job["address"],
+                job["manufacturer"],
+                job["machine"],
+                job["pin_serial"],
                 ),
             )
         except sqlite3.IntegrityError as error:
             connection.rollback()
             winning_quote = connection.execute(
-                "SELECT id FROM quotes WHERE job_id=? AND is_archived=0 ORDER BY id DESC LIMIT 1",
+                "SELECT id FROM quotes WHERE job_id=? AND is_current=1 ORDER BY id DESC LIMIT 1",
                 (job_id,),
             ).fetchone()
             if winning_quote is not None:
@@ -2155,10 +2195,13 @@ def generate_quote(job_id: int):
                     customer_unit_price,
                     supplier_line_total,
                     customer_line_total,
-                    line_profit
+                    line_profit,
+                    pricing_mode,
+                    customer_unit_price_override,
+                    recommended_markup_percent
                 )
                 VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 (quote_id, *item),

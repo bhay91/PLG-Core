@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from pathlib import Path
+import os
 import re
 from typing import Iterable
 
@@ -25,7 +26,10 @@ from reportlab.platypus import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DOCUMENT_ROOT = PROJECT_ROOT / "documents" / "Customers"
+DOCUMENT_ROOT = (
+    Path(os.getenv("PPS_DOCUMENT_ROOT", str(PROJECT_ROOT / "documents")))
+    / "Customers"
+)
 LOGO_CANDIDATES = [
     PROJECT_ROOT / "static" / "pps-logo.png",
     PROJECT_ROOT / "static" / "plg-logo.webp",

@@ -19,6 +19,15 @@ def get_or_create_basket(connection: sqlite3.Connection, job_id: int):
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found.")
 
+    basket = connection.execute(
+        "SELECT * FROM baskets WHERE job_id = ?", (job_id,)
+    ).fetchone()
+    if basket is not None:
+        return basket
+
+    # The second concurrent creator may still win between SELECT and INSERT.
+    # The unique job_id constraint is authoritative; ordinary reads no longer
+    # perform a pointless AUTOINCREMENT-consuming insert.
     connection.execute(
         """
         INSERT INTO baskets (job_id)
@@ -35,22 +44,39 @@ def get_or_create_basket(connection: sqlite3.Connection, job_id: int):
     return basket
 
 
-def ensure_basket_mutable(basket) -> None:
-    """Reject changes after the basket has been committed to Job Parts."""
-    with closing(get_connection()) as connection:
-        from plg_core.lifecycle import ensure_job_allows_new_business
-        ensure_job_allows_new_business(
-            connection, int(basket["job_id"]), "change its working basket"
-        )
-    status = (basket["status"] or "").strip().upper()
-    if status == "COMMITTED":
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Committed basket is locked. "
-                "Use the committed job parts workflow instead."
-            ),
-        )
+def ensure_basket_mutable(
+    basket,
+    connection: sqlite3.Connection | None = None,
+    *,
+    expected_revision_id: int | None = None,
+    expected_version: int | None = None,
+):
+    """Enforce Job lifecycle plus the active Work Revision token."""
+    from plg_core.lifecycle import ensure_job_allows_new_business
+    from plg_core.revisions.service import ensure_revision_mutable
+
+    if connection is None:
+        with closing(get_connection()) as owned_connection:
+            ensure_job_allows_new_business(
+                owned_connection, int(basket["job_id"]), "change its working basket"
+            )
+            revision = ensure_revision_mutable(
+                owned_connection,
+                int(basket["job_id"]),
+                expected_revision_id=expected_revision_id,
+                expected_version=expected_version,
+            )
+            owned_connection.commit()
+            return revision
+    ensure_job_allows_new_business(
+        connection, int(basket["job_id"]), "change its working basket"
+    )
+    return ensure_revision_mutable(
+        connection,
+        int(basket["job_id"]),
+        expected_revision_id=expected_revision_id,
+        expected_version=expected_version,
+    )
 
 
 def serialize_basket(connection: sqlite3.Connection, basket) -> dict[str, Any]:
@@ -79,12 +105,23 @@ def serialize_basket(connection: sqlite3.Connection, basket) -> dict[str, Any]:
     shipping = sum(row["shipping_total"] or 0 for row in sources)
     supplier_total = supplier_parts + shipping
     customer_total = customer_parts + shipping
+    revision = connection.execute(
+        """
+        SELECT wr.id, wr.revision_number, wr.state, wr.lock_version,
+               wr.is_synthetic
+        FROM jobs j
+        LEFT JOIN work_revisions wr ON wr.id=j.active_work_revision_id
+        WHERE j.id=?
+        """,
+        (basket["job_id"],),
+    ).fetchone()
 
     return {
         "id": basket["id"],
         "job_id": basket["job_id"],
         "status": basket["status"],
         "currency": basket["currency"],
+        "work_revision": dict(revision) if revision is not None else None,
         "items": [dict(row) for row in items],
         "sources": [dict(row) for row in sources],
         "totals": {
@@ -103,6 +140,8 @@ def serialize_basket(connection: sqlite3.Connection, basket) -> dict[str, Any]:
 def get_basket(job_id: int):
     with closing(get_connection()) as connection:
         basket = get_or_create_basket(connection, job_id)
+        from plg_core.revisions.service import ensure_initial_revision
+        ensure_initial_revision(connection, job_id)
         connection.commit()
         return serialize_basket(connection, basket)
 
@@ -111,11 +150,19 @@ def add_item_with_connection(
     connection: sqlite3.Connection,
     job_id: int,
     payload: BasketItemCreate,
+    *,
+    expected_revision_id: int | None = None,
+    expected_version: int | None = None,
 ):
     """Add one item using an existing database transaction."""
 
     basket = get_or_create_basket(connection, job_id)
-    ensure_basket_mutable(basket)
+    revision = ensure_basket_mutable(
+        basket,
+        connection,
+        expected_revision_id=expected_revision_id,
+        expected_version=expected_version,
+    )
 
     connection.execute(
         """
@@ -124,11 +171,11 @@ def add_item_with_connection(
             manufacturer_part_number, alternate_part_number,
             supplier_part_number, supplier_name, source_type, brand, quantity,
             supplier_unit_cost, markup_percent,
-            customer_unit_price_override, verification_status,
+            customer_unit_price_override, pricing_mode, verification_status,
             verification_note, availability, lead_time,
             selected, confidence, source_url
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             basket["id"],
@@ -143,6 +190,7 @@ def add_item_with_connection(
             payload.supplier_unit_cost,
             payload.markup_percent,
             payload.customer_unit_price_override,
+            "OVERRIDE" if payload.customer_unit_price_override is not None else "AUTO",
             payload.verification_status.strip().upper() or "UNVERIFIED",
             payload.verification_note.strip(),
             payload.availability.strip(),
@@ -152,6 +200,9 @@ def add_item_with_connection(
             payload.source_url.strip(),
         ),
     )
+
+    from plg_core.revisions.service import touch_revision
+    touch_revision(connection, int(revision["id"]), int(revision["lock_version"]))
 
     connection.execute(
         """
@@ -184,12 +235,20 @@ def add_item_with_connection(
     return serialize_basket(connection, basket)
 
 
-def add_item(job_id: int, payload: BasketItemCreate):
+def add_item(
+    job_id: int,
+    payload: BasketItemCreate,
+    *,
+    expected_revision_id: int | None = None,
+    expected_version: int | None = None,
+):
     with closing(get_connection()) as connection:
         result = add_item_with_connection(
             connection,
             job_id,
             payload,
+            expected_revision_id=expected_revision_id,
+            expected_version=expected_version,
         )
         connection.commit()
         return result
@@ -198,6 +257,9 @@ def update_item(
     item_id: int,
     payload: BasketItemUpdate,
     expected_job_id: int | None = None,
+    *,
+    expected_revision_id: int | None = None,
+    expected_version: int | None = None,
 ):
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
@@ -237,14 +299,12 @@ def update_item(
                 detail="Basket item not found for this job.",
             )
 
-        if (item["basket_status"] or "").strip().upper() == "COMMITTED":
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "Committed basket is locked. "
-                    "Use the committed job parts workflow instead."
-                ),
-            )
+        revision = ensure_basket_mutable(
+            item,
+            connection,
+            expected_revision_id=expected_revision_id,
+            expected_version=expected_version,
+        )
 
         assignments = []
         values: list[Any] = []
@@ -258,12 +318,22 @@ def update_item(
             assignments.append(f"{field}=?")
             values.append(value)
 
+        if "customer_unit_price_override" in updates:
+            assignments.append("pricing_mode=?")
+            values.append(
+                "OVERRIDE"
+                if updates["customer_unit_price_override"] is not None
+                else "AUTO"
+            )
+
         assignments.append("updated_at=CURRENT_TIMESTAMP")
         values.append(item_id)
         connection.execute(
             f"UPDATE basket_items SET {', '.join(assignments)} WHERE id=?",
             values,
         )
+        from plg_core.revisions.service import touch_revision
+        touch_revision(connection, int(revision["id"]), int(revision["lock_version"]))
 
         if "selected" in updates:
             old_selected = bool(item["selected"])
@@ -580,6 +650,9 @@ def advance_all_parts_workflow(
 def delete_item(
     item_id: int,
     expected_job_id: int | None = None,
+    *,
+    expected_revision_id: int | None = None,
+    expected_version: int | None = None,
 ):
     with closing(get_connection()) as connection:
         item = connection.execute(
@@ -611,7 +684,12 @@ def delete_item(
                 detail="Basket item not found for this job.",
             )
 
-        ensure_basket_mutable(item)
+        revision = ensure_basket_mutable(
+            item,
+            connection,
+            expected_revision_id=expected_revision_id,
+            expected_version=expected_version,
+        )
 
         description = (
             item["requested_description"]
@@ -622,6 +700,8 @@ def delete_item(
             "DELETE FROM basket_items WHERE id=?",
             (item_id,),
         )
+        from plg_core.revisions.service import touch_revision
+        touch_revision(connection, int(revision["id"]), int(revision["lock_version"]))
 
         log_job_event(
             connection,
@@ -638,10 +718,20 @@ def delete_item(
         return serialize_basket(connection, basket)
 
 
-def clear_basket(job_id: int):
+def clear_basket(
+    job_id: int,
+    *,
+    expected_revision_id: int | None = None,
+    expected_version: int | None = None,
+):
     with closing(get_connection()) as connection:
         basket = get_or_create_basket(connection, job_id)
-        ensure_basket_mutable(basket)
+        revision = ensure_basket_mutable(
+            basket,
+            connection,
+            expected_revision_id=expected_revision_id,
+            expected_version=expected_version,
+        )
         connection.execute(
             "DELETE FROM basket_items WHERE basket_id=?", (basket["id"],)
         )
@@ -656,6 +746,8 @@ def clear_basket(job_id: int):
             """,
             (basket["id"],),
         )
+        from plg_core.revisions.service import touch_revision
+        touch_revision(connection, int(revision["id"]), int(revision["lock_version"]))
         connection.commit()
         basket = connection.execute(
             "SELECT * FROM baskets WHERE id=?", (basket["id"],)
@@ -663,7 +755,13 @@ def clear_basket(job_id: int):
         return serialize_basket(connection, basket)
 
 
-def import_cart(job_id: int, payload: dict[str, Any]):
+def import_cart(
+    job_id: int,
+    payload: dict[str, Any],
+    *,
+    expected_revision_id: int | None = None,
+    expected_version: int | None = None,
+):
     source_key = str(payload.get("source_key", "")).strip()
     source_name = str(payload.get("source_name", "")).strip()
     source_url = str(payload.get("source_url", "")).strip()
@@ -689,7 +787,12 @@ def import_cart(job_id: int, payload: dict[str, Any]):
 
     with closing(get_connection()) as connection:
         basket = get_or_create_basket(connection, job_id)
-        ensure_basket_mutable(basket)
+        revision = ensure_basket_mutable(
+            basket,
+            connection,
+            expected_revision_id=expected_revision_id,
+            expected_version=expected_version,
+        )
         cursor = connection.execute(
             """
             INSERT INTO basket_sources (
@@ -759,6 +862,8 @@ def import_cart(job_id: int, payload: dict[str, Any]):
             """,
             (basket["id"], f"{source_name}: {imported} item(s)"),
         )
+        from plg_core.revisions.service import touch_revision
+        touch_revision(connection, int(revision["id"]), int(revision["lock_version"]))
         connection.commit()
         basket = connection.execute(
             "SELECT * FROM baskets WHERE id=?", (basket["id"],)
@@ -958,3 +1063,21 @@ def commit_basket(job_id: int):
         )
         connection.commit()
         return {"ok": True, "job_id": job_id, "created_parts": created}
+
+
+# Batch 2A uses the revision service as the authoritative commit transaction.
+# Keeping the compatibility implementation above during this staged foundation
+# avoids a risky mechanical rewrite; this final definition is the exported one.
+def commit_basket(
+    job_id: int,
+    *,
+    expected_revision_id: int | None = None,
+    expected_version: int | None = None,
+):
+    from plg_core.revisions.service import commit_work_revision
+
+    return commit_work_revision(
+        job_id,
+        expected_revision_id=expected_revision_id,
+        expected_version=expected_version,
+    )

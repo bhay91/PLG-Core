@@ -60,6 +60,8 @@ class LifecycleBatch1Tests(unittest.TestCase):
         with closing(self.connection()) as c:
             c.execute("PRAGMA foreign_keys=OFF")
             for table in (
+                "quote_documents_manifest", "work_revision_attachments",
+                "work_revision_items", "work_revision_sources", "work_revisions",
                 "delivery_items", "deliveries", "receiving_event_items", "receiving_events",
                 "supplier_order_items", "supplier_orders", "invoice_events", "invoice_items",
                 "invoices", "quote_events", "quote_items", "quotes", "customer_transactions",

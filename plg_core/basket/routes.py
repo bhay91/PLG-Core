@@ -323,7 +323,7 @@ def clone_supplier_quote(
 
     with closing(get_connection()) as connection:
         basket = get_or_create_basket(connection, job_id)
-        ensure_basket_mutable(basket)
+        revision = ensure_basket_mutable(basket, connection)
 
         source = connection.execute(
             """
@@ -529,6 +529,8 @@ def clone_supplier_quote(
             (basket["id"],),
         )
 
+        from plg_core.revisions.service import touch_revision
+        touch_revision(connection, int(revision["id"]), int(revision["lock_version"]))
         connection.commit()
 
     return RedirectResponse(
@@ -584,7 +586,7 @@ def update_supplier_quote_item(
                 detail="Supplier quote item not found.",
             )
 
-        ensure_basket_mutable(item)
+        revision = ensure_basket_mutable(item, connection)
 
         connection.execute(
             """
@@ -603,6 +605,8 @@ def update_supplier_quote_item(
             ),
         )
 
+        from plg_core.revisions.service import touch_revision
+        touch_revision(connection, int(revision["id"]), int(revision["lock_version"]))
         connection.commit()
 
     return RedirectResponse(
@@ -659,7 +663,7 @@ def save_supplier_quote_bulk(
                 detail="Supplier quote was not found.",
             )
 
-        ensure_basket_mutable(source)
+        revision = ensure_basket_mutable(source, connection)
 
         for row_id, raw_cost, row_availability, row_lead_time in zip(
             item_id,
@@ -727,6 +731,8 @@ def save_supplier_quote_bulk(
             (job_id,),
         )
 
+        from plg_core.revisions.service import touch_revision
+        touch_revision(connection, int(revision["id"]), int(revision["lock_version"]))
         connection.commit()
 
     return JSONResponse(
@@ -755,7 +761,7 @@ def add_manual_vendor_line(
 
     with closing(get_connection()) as connection:
         basket = get_or_create_basket(connection, job_id)
-        ensure_basket_mutable(basket)
+        revision = ensure_basket_mutable(basket, connection)
 
         source = connection.execute(
             """
@@ -830,6 +836,8 @@ def add_manual_vendor_line(
             """,
             (basket["id"],),
         )
+        from plg_core.revisions.service import touch_revision
+        touch_revision(connection, int(revision["id"]), int(revision["lock_version"]))
         connection.commit()
 
     return RedirectResponse(
@@ -1005,8 +1013,8 @@ def update_revenue_adjustments(
         )
 
     with closing(get_connection()) as connection:
-        from plg_core.lifecycle import ensure_job_pre_document_work
-        ensure_job_pre_document_work(connection, job_id, "change revenue adjustments")
+        basket = get_or_create_basket(connection, job_id)
+        revision = ensure_basket_mutable(basket, connection)
         job = connection.execute(
             """
             SELECT
@@ -1040,6 +1048,21 @@ def update_revenue_adjustments(
                 parsed_sourcing_fee,
                 sourcing_fee_description.strip(),
                 job_id,
+            ),
+        )
+        connection.execute(
+            """
+            UPDATE work_revisions
+            SET service_charge=?, service_charge_description=?,
+                sourcing_fee=?, sourcing_fee_description=?
+            WHERE id=?
+            """,
+            (
+                parsed_service_charge,
+                service_charge_description.strip(),
+                parsed_sourcing_fee,
+                sourcing_fee_description.strip(),
+                revision["id"],
             ),
         )
 
@@ -1080,6 +1103,8 @@ def update_revenue_adjustments(
                 message=sourcing_message,
             )
 
+        from plg_core.revisions.service import touch_revision
+        touch_revision(connection, int(revision["id"]), int(revision["lock_version"]))
         connection.commit()
 
     return RedirectResponse(
