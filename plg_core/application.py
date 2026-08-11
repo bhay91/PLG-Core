@@ -12,6 +12,7 @@ from plg_core.assets.routes import router as assets_router
 from plg_core.commercial.routes import router as commercial_router
 from plg_core.verification.routes import router as verification_router
 from plg_core.research.routes import router as research_router
+from plg_core.intake.routes import router as intake_router
 from plg_core.database.migrations import run_migrations
 
 app.include_router(basket_router)
@@ -22,6 +23,7 @@ app.include_router(assets_router)
 app.include_router(commercial_router)
 app.include_router(verification_router)
 app.include_router(research_router)
+app.include_router(intake_router)
 
 
 @app.on_event("startup")

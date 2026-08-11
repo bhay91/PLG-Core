@@ -1,0 +1,235 @@
+from __future__ import annotations
+
+from contextlib import closing
+from pathlib import Path
+import shutil
+import tempfile
+import threading
+import unittest
+from unittest.mock import patch
+
+import legacy_app
+from plg_core.database.migrations import run_migrations
+from plg_core.intake.identifiers import classify_identifier, decoder_route_contract
+from plg_core.intake.parser import parse_intake
+from plg_core.intake.service import confirm_proposal, create_proposal, load_proposal
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class SmartIntakeBatch3DTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="pps-batch3d-")
+        self.db_path = Path(self.temp.name) / "test.db"
+        shutil.copy2(ROOT / "data" / "plg_core.db", self.db_path)
+        self.db_patch = patch.object(legacy_app, "DB_PATH", self.db_path)
+        self.db_patch.start()
+        run_migrations()
+
+    def tearDown(self):
+        self.db_patch.stop()
+        self.temp.cleanup()
+
+    def connection(self):
+        return legacy_app.get_connection()
+
+    def test_original_failure_and_three_unlabeled_forms(self):
+        original = "Norman Frater Tropical Real Estate Development Montego Bay, Jamaica John Deere 350D PIN: 1FF350DXTA0806941 Need: Fuel Filter Kit"
+        multiline = "Norman Frater\nTropical Real Estate Development\nMontego Bay Jamaica\nJohn Deere 350D\n1FF350DXTA0806941\nFuel Filter Kit"
+        sentence = "Norman from Tropical Real Estate Development in Montego Bay needs a fuel filter kit for their John Deere 350D. The machine PIN is 1FF350DXTA0806941."
+        for text in (original, multiline, sentence):
+            proposal = parse_intake(text)
+            self.assertTrue(proposal["contact_name"].startswith("Norman"))
+            self.assertEqual(proposal["company_name"], "Tropical Real Estate Development")
+            self.assertEqual(proposal["assets"][0]["manufacturer"], "John Deere")
+            self.assertEqual(proposal["assets"][0]["model"], "350D")
+            self.assertEqual(proposal["assets"][0]["identifiers"][0]["identifier_type"], "PIN")
+            self.assertIn("fuel filter kit", proposal["assets"][0]["needs"][0]["wording"].lower())
+
+    def test_multi_machine_needs_do_not_leak(self):
+        proposal = parse_intake("""PPS-BATCH3D-TEST-001
+Norman Frater
+Tropical Real Estate Development
+Montego Bay, Jamaica
+John Deere 350D
+PIN 1FF350DXTA0806941
+needs:
+Fuel Filter Kit
+Hydraulic Filter
+JCB 3CX
+PIN TEST-JCB-3CX-002
+needs:
+Boom Cylinder Seal Kit
+Engine Oil Filter
+2022 Toyota Hilux
+VIN TEST-TOYOTA-HILUX-003
+needs:
+Left Headlight
+Right Headlight""")
+        self.assertEqual(len(proposal["assets"]), 3)
+        grouped = {asset["manufacturer"]: [need["wording"] for need in asset["needs"]] for asset in proposal["assets"]}
+        self.assertEqual(grouped["John Deere"], ["Fuel Filter Kit", "Hydraulic Filter"])
+        self.assertEqual(grouped["JCB"], ["Boom Cylinder Seal Kit", "Engine Oil Filter"])
+        self.assertEqual(grouped["Toyota"], ["Left Headlight", "Right Headlight"])
+        self.assertEqual(proposal["assets"][2]["year"], "2022")
+        self.assertEqual(proposal["assets"][1]["year"], "")
+
+    def test_ambiguous_and_zero_machine_needs_remain_unassigned(self):
+        ambiguous = parse_intake("Norman Frater\nJohn Deere 350D\nJCB 3CX\nNeed starter")
+        self.assertEqual(len(ambiguous["assets"]), 2)
+        self.assertEqual(ambiguous["unassigned_needs"][0]["wording"].lower(), "starter")
+        self.assertFalse(any(asset["needs"] for asset in ambiguous["assets"]))
+        zero = parse_intake("Norman needs a starter but hasn't sent the machine information yet.")
+        self.assertEqual(zero["assets"], [])
+        self.assertEqual(zero["contact_name"], "Norman")
+        self.assertEqual(zero["unassigned_needs"][0]["wording"].lower(), "starter")
+
+    def test_global_vin_market_location_separation_and_equipment_context(self):
+        vin = "1HGCM82633A004352"
+        proposal = parse_intake(f"Kareen Blake\nMontego Bay Jamaica\n2022 Toyota Hilux\nVIN {vin}\nNeeds Left Headlight and Right Headlight")
+        asset = proposal["assets"][0]
+        self.assertEqual(asset["identifiers"][0]["identifier_type"], "AUTOMOTIVE_VIN")
+        self.assertEqual(asset["market_region"], "UNKNOWN")
+        self.assertEqual(classify_identifier(vin, manufacturer="John Deere", asset_category="machine"), "PIN")
+
+    def test_jdm_frame_model_code_and_component_identifier_are_independent(self):
+        proposal = parse_intake("Kareen Blake\nToyota Prius\nFrame: ZVW30-TEST123\nModel Code: DAA-ZVW30\nEngine Serial: ENG-TEST123\nNeeds left headlight")
+        asset = proposal["assets"][0]
+        identifiers = {(item["identifier_type"], item["value"]) for item in asset["identifiers"]}
+        self.assertIn(("JDM_FRAME", "ZVW30-TEST123"), identifiers)
+        self.assertIn(("ENGINE_SERIAL", "ENG-TEST123"), identifiers)
+        self.assertEqual(asset["model_code"], "DAA-ZVW30")
+        self.assertEqual(asset["market_region"], "UNKNOWN")
+
+    def test_decoder_router_is_a_non_network_contract(self):
+        result = decoder_route_contract({"identifier_type":"JDM_FRAME", "identifier":"ZVW30-TEST123", "manufacturer":"Toyota"})
+        self.assertEqual(result["decoder_family"], "JDM_FRAME_CHASSIS")
+        self.assertFalse(result["external_lookup_performed"])
+
+    def test_proposal_persistence_correction_and_atomic_confirm(self):
+        with closing(self.connection()) as connection:
+            proposal_id = create_proposal(connection, "Norman Frater\nJohn Deere 350D\nPIN TEST-PIN-3D\nNeeds wrong part")
+        with closing(self.connection()) as connection:
+            proposal = load_proposal(connection, proposal_id)
+            asset_id = proposal["assets"][0]["id"]
+            need_id = proposal["assets"][0]["needs"][0]["id"]
+            connection.execute("UPDATE intake_proposals SET company_name='Correct Company',location='Nassau, Bahamas',matched_customer_id=NULL WHERE id=?", (proposal_id,))
+            connection.execute("UPDATE intake_proposal_assets SET manufacturer='JCB',model='3CX' WHERE id=?", (asset_id,))
+            connection.execute("UPDATE intake_proposal_needs SET wording='Correct Seal Kit' WHERE id=?", (need_id,))
+            connection.commit()
+            version = connection.execute("SELECT lock_version FROM intake_proposals WHERE id=?", (proposal_id,)).fetchone()[0]
+            job_id = confirm_proposal(connection, proposal_id, version)
+        with closing(self.connection()) as connection:
+            job = connection.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+            request = connection.execute("SELECT * FROM customer_requests WHERE job_id=?", (job_id,)).fetchone()
+            asset = connection.execute("SELECT * FROM job_assets WHERE job_id=?", (job_id,)).fetchone()
+            need = connection.execute("SELECT * FROM requested_needs WHERE job_id=?", (job_id,)).fetchone()
+            self.assertEqual((job["company"], asset["manufacturer"], asset["model"]), ("Correct Company", "JCB", "3CX"))
+            self.assertEqual(need["wording"], "Correct Seal Kit")
+            self.assertEqual(request["request_text"], "Norman Frater\nJohn Deere 350D\nPIN TEST-PIN-3D\nNeeds wrong part")
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM basket_items bi JOIN baskets b ON b.id=bi.basket_id WHERE b.job_id=?", (job_id,)).fetchone()[0], 0)
+
+    def test_end_to_end_three_machine_work_queue_is_populated(self):
+        raw = """Disposable Contact
+Disposable Company Limited
+Nassau, Bahamas
+John Deere 350D
+PIN TEST-DEERE-3D
+Needs Fuel Filter Kit and Hydraulic Filter
+JCB 3CX
+PIN TEST-JCB-3D
+Needs Boom Seal Kit and Engine Oil Filter
+2022 Toyota Hilux
+VIN TEST-TOYOTA-3D
+Needs Left Headlight and Right Headlight"""
+        with closing(self.connection()) as connection:
+            proposal_id = create_proposal(connection, raw)
+            proposal = load_proposal(connection, proposal_id)
+            job_id = confirm_proposal(connection, proposal_id, proposal["lock_version"])
+        with closing(self.connection()) as connection:
+            rows = connection.execute(
+                """SELECT a.manufacturer,n.wording FROM job_assets a
+                LEFT JOIN requested_needs n ON n.job_asset_id=a.id
+                WHERE a.job_id=? ORDER BY a.id,n.id""", (job_id,),
+            ).fetchall()
+            grouped = {}
+            for row in rows:
+                grouped.setdefault(row["manufacturer"], []).append(row["wording"])
+            self.assertEqual(grouped["John Deere"], ["Fuel Filter Kit", "Hydraulic Filter"])
+            self.assertEqual(grouped["JCB"], ["Boom Seal Kit", "Engine Oil Filter"])
+            self.assertEqual(grouped["Toyota"], ["Left Headlight", "Right Headlight"])
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM basket_items bi JOIN baskets b ON b.id=bi.basket_id WHERE b.job_id=?", (job_id,)).fetchone()[0], 0)
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM requested_needs WHERE job_id=?", (job_id,)).fetchone()[0], 6)
+
+    def test_confirm_is_idempotent_and_stale_version_is_blocked(self):
+        with closing(self.connection()) as connection:
+            proposal_id = create_proposal(connection, "Norman Frater\nJohn Deere 350D\nNeeds Fuel Filter")
+        with closing(self.connection()) as connection:
+            version = connection.execute("SELECT lock_version FROM intake_proposals WHERE id=?", (proposal_id,)).fetchone()[0]
+            job_id = confirm_proposal(connection, proposal_id, version)
+        with closing(self.connection()) as connection:
+            self.assertEqual(confirm_proposal(connection, proposal_id, version), job_id)
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM jobs WHERE id=?", (job_id,)).fetchone()[0], 1)
+
+    def test_concurrent_confirm_creates_one_complete_job(self):
+        with closing(self.connection()) as connection:
+            proposal_id = create_proposal(connection, "Concurrent Person\nJohn Deere 350D\nNeeds Fuel Filter")
+            version = connection.execute("SELECT lock_version FROM intake_proposals WHERE id=?", (proposal_id,)).fetchone()[0]
+        results, errors = [], []
+        barrier = threading.Barrier(2)
+        def worker():
+            connection = self.connection()
+            try:
+                barrier.wait()
+                results.append(confirm_proposal(connection, proposal_id, version))
+            except Exception as exc:  # pragma: no cover - diagnostic collection
+                errors.append(exc)
+                connection.rollback()
+            finally:
+                connection.close()
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        for thread in threads: thread.start()
+        for thread in threads: thread.join()
+        self.assertEqual(errors, [])
+        self.assertEqual(len(set(results)), 1)
+        with closing(self.connection()) as connection:
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM jobs WHERE id=?", (results[0],)).fetchone()[0], 1)
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM requested_needs WHERE job_id=?", (results[0],)).fetchone()[0], 1)
+
+    def test_confirmation_failure_rolls_back_every_business_record(self):
+        with closing(self.connection()) as connection:
+            proposal_id = create_proposal(connection, "Rollback Person\nJohn Deere 350D\nNeeds Fuel Filter")
+            version = connection.execute("SELECT lock_version FROM intake_proposals WHERE id=?", (proposal_id,)).fetchone()[0]
+            before = {table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                      for table in ("customers", "customer_requests", "jobs", "machines", "job_assets", "requested_needs")}
+            connection.execute("CREATE TRIGGER batch3d_test_abort BEFORE INSERT ON requested_needs BEGIN SELECT RAISE(ABORT,'test rollback'); END")
+            connection.commit()
+            with self.assertRaises(Exception):
+                confirm_proposal(connection, proposal_id, version)
+            connection.rollback()
+            after = {table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                     for table in before}
+            self.assertEqual(after, before)
+            self.assertEqual(connection.execute("SELECT status FROM intake_proposals WHERE id=?", (proposal_id,)).fetchone()[0], "DRAFT")
+
+    def test_existing_asset_strong_identifier_is_proposed_without_overwrite(self):
+        with closing(self.connection()) as connection:
+            customer_id = connection.execute("INSERT INTO customers(customer_number,name,active) VALUES ('3D-C','Existing Customer',1)").lastrowid
+            machine_id = connection.execute("INSERT INTO machines(customer_id,machine_number,name,manufacturer,model,vin_pin_serial,active) VALUES (?,'3D-M','350D','John Deere','350D','MATCH-3D-PIN',1)", (customer_id,)).lastrowid
+            connection.commit()
+            proposal_id = create_proposal(connection, "Existing Customer\nJohn Deere 350D\nPIN MATCH-3D-PIN\nNeeds Filter")
+            proposal = load_proposal(connection, proposal_id)
+            self.assertEqual(proposal["assets"][0]["matched_machine_id"], machine_id)
+            self.assertEqual(proposal["matched_customer_id"], customer_id)
+
+    def test_migration_is_idempotent_and_integrity_clean(self):
+        run_migrations(); run_migrations()
+        with closing(self.connection()) as connection:
+            self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+            self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM schema_migrations WHERE migration_id='0039_smart_intake_proposals'").fetchone()[0], 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

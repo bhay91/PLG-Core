@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from legacy_app import BASE_DIR, get_connection, next_customer_number, next_job_number, next_machine_number, next_request_number, templates
 from plg_core.machines.identifiers import find_machine_by_identifier
+from plg_core.intake.service import create_proposal
 
 router = APIRouter(prefix="/requests", tags=["customer-requests"])
 UPLOAD_ROOT = BASE_DIR / "uploads" / "requests"
@@ -632,43 +633,11 @@ def analyze_smart_intake(
     request: Request,
     raw_text: str = Form(...),
 ):
-    parsed = _parse_smart_intake(raw_text)
-
+    if not raw_text.strip():
+        raise HTTPException(status_code=400, detail="Paste the customer request before analyzing it.")
     with closing(get_connection()) as connection:
-        customer_match = _find_existing_customer(
-            connection,
-            parsed,
-        )
-
-        location_match = None
-        machine_match = None
-
-        if customer_match is not None:
-            location_match = _find_existing_location(
-                connection,
-                customer_match["id"],
-                parsed.get("location", ""),
-            )
-
-            machine_match = _find_existing_machine(
-                connection,
-                customer_match["id"],
-                parsed,
-            )
-
-    return templates.TemplateResponse(
-        request=request,
-        name="smart_intake.html",
-        context={
-            "active_page": "requests",
-            "raw_text": raw_text,
-            "parsed": parsed,
-            "customer_match": customer_match,
-            "location_match": location_match,
-            "machine_match": machine_match,
-            "registry_types": REGISTRY_TYPES,
-        },
-    )
+        proposal_id = create_proposal(connection, raw_text)
+    return RedirectResponse(url=f"/requests/smart-intake/proposals/{proposal_id}", status_code=303)
 
 
 @router.post("/smart-intake/create")
@@ -688,6 +657,22 @@ def create_from_smart_intake(
     requested_parts: str = Form(""),
     request_text: str = Form(""),
 ):
+    # Compatibility endpoint: even an old/stale form must cross the proposal
+    # review boundary; it may never create authoritative records directly.
+    if raw_text.strip():
+        with closing(get_connection()) as connection:
+            proposal_id = create_proposal(connection, raw_text)
+        return RedirectResponse(
+            url=f"/requests/smart-intake/proposals/{proposal_id}",
+            status_code=303,
+        )
+    raise HTTPException(
+        status_code=400,
+        detail="Paste the original customer request and analyze it before creating a Job.",
+    )
+
+    # Historical implementation retained temporarily below for source-level
+    # compatibility reference; it is unreachable by design.
     parsed = {
         "individual_name": individual_name.strip(),
         "company_name": company_name.strip(),

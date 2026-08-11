@@ -2254,3 +2254,182 @@ def _migration_0038_machine_research_context_completion(connection: sqlite3.Conn
 
 
 MIGRATIONS.append(("0038_machine_research_context_completion", _migration_0038_machine_research_context_completion))
+
+
+def _migration_0039_smart_intake_proposals(connection: sqlite3.Connection) -> None:
+    """Persistent, reviewable Smart Intake proposals; no business records are backfilled."""
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS intake_proposals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            raw_input TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'DRAFT'
+                CHECK (status IN ('DRAFT','CONFIRMED','CANCELLED')),
+            contact_name TEXT NOT NULL DEFAULT '',
+            company_name TEXT NOT NULL DEFAULT '',
+            location TEXT NOT NULL DEFAULT '',
+            phone TEXT NOT NULL DEFAULT '',
+            email TEXT NOT NULL DEFAULT '',
+            review_state TEXT NOT NULL DEFAULT 'REVIEW'
+                CHECK (review_state IN ('CONFIDENT','REVIEW','UNASSIGNED')),
+            matched_customer_id INTEGER,
+            created_request_id INTEGER,
+            created_job_id INTEGER,
+            lock_version INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            confirmed_at TEXT,
+            FOREIGN KEY (matched_customer_id) REFERENCES customers(id),
+            FOREIGN KEY (created_request_id) REFERENCES customer_requests(id),
+            FOREIGN KEY (created_job_id) REFERENCES jobs(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_intake_proposals_status
+            ON intake_proposals(status,id);
+
+        CREATE TABLE IF NOT EXISTS intake_proposal_assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            proposal_id INTEGER NOT NULL,
+            sequence INTEGER NOT NULL DEFAULT 1,
+            asset_category TEXT NOT NULL DEFAULT 'other',
+            manufacturer TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            year TEXT NOT NULL DEFAULT '',
+            market_region TEXT NOT NULL DEFAULT 'UNKNOWN'
+                CHECK (market_region IN ('JDM','USDM','EDM','UK','GLOBAL','UNKNOWN')),
+            model_code TEXT NOT NULL DEFAULT '',
+            review_state TEXT NOT NULL DEFAULT 'REVIEW'
+                CHECK (review_state IN ('CONFIDENT','REVIEW','UNASSIGNED')),
+            matched_machine_id INTEGER,
+            included INTEGER NOT NULL DEFAULT 1 CHECK (included IN (0,1)),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (proposal_id) REFERENCES intake_proposals(id) ON DELETE CASCADE,
+            FOREIGN KEY (matched_machine_id) REFERENCES machines(id),
+            UNIQUE(proposal_id,sequence)
+        );
+        CREATE INDEX IF NOT EXISTS idx_intake_assets_proposal
+            ON intake_proposal_assets(proposal_id,included,sequence,id);
+
+        CREATE TABLE IF NOT EXISTS intake_proposal_identifiers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            proposal_id INTEGER NOT NULL,
+            proposal_asset_id INTEGER,
+            identifier_type TEXT NOT NULL DEFAULT 'UNKNOWN'
+                CHECK (identifier_type IN ('AUTOMOTIVE_VIN','JDM_FRAME','JDM_CHASSIS','MODEL_CODE','PIN','MACHINE_SERIAL','ENGINE_SERIAL','COMPONENT_SERIAL','OTHER_IDENTIFIER','UNKNOWN')),
+            identifier_value TEXT NOT NULL,
+            component_label TEXT NOT NULL DEFAULT '',
+            is_primary INTEGER NOT NULL DEFAULT 0 CHECK (is_primary IN (0,1)),
+            review_state TEXT NOT NULL DEFAULT 'REVIEW'
+                CHECK (review_state IN ('CONFIDENT','REVIEW','UNASSIGNED')),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (proposal_id) REFERENCES intake_proposals(id) ON DELETE CASCADE,
+            FOREIGN KEY (proposal_asset_id) REFERENCES intake_proposal_assets(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_intake_identifiers_asset
+            ON intake_proposal_identifiers(proposal_id,proposal_asset_id,id);
+
+        CREATE TABLE IF NOT EXISTS intake_proposal_needs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            proposal_id INTEGER NOT NULL,
+            proposal_asset_id INTEGER,
+            sequence INTEGER NOT NULL DEFAULT 1,
+            wording TEXT NOT NULL,
+            original_wording TEXT NOT NULL DEFAULT '',
+            quantity REAL,
+            position TEXT NOT NULL DEFAULT '',
+            review_state TEXT NOT NULL DEFAULT 'REVIEW'
+                CHECK (review_state IN ('CONFIDENT','REVIEW','UNASSIGNED')),
+            included INTEGER NOT NULL DEFAULT 1 CHECK (included IN (0,1)),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (proposal_id) REFERENCES intake_proposals(id) ON DELETE CASCADE,
+            FOREIGN KEY (proposal_asset_id) REFERENCES intake_proposal_assets(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_intake_needs_proposal
+            ON intake_proposal_needs(proposal_id,included,proposal_asset_id,sequence,id);
+
+        CREATE TABLE IF NOT EXISTS intake_proposal_attachments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            proposal_id INTEGER NOT NULL,
+            original_filename TEXT NOT NULL,
+            stored_path TEXT NOT NULL DEFAULT '',
+            media_type TEXT NOT NULL DEFAULT '',
+            proposal_asset_id INTEGER,
+            proposal_need_id INTEGER,
+            extraction_status TEXT NOT NULL DEFAULT 'PENDING'
+                CHECK (extraction_status IN ('PENDING','PROPOSED','REVIEWED','UNAVAILABLE')),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (proposal_id) REFERENCES intake_proposals(id) ON DELETE CASCADE,
+            FOREIGN KEY (proposal_asset_id) REFERENCES intake_proposal_assets(id) ON DELETE SET NULL,
+            FOREIGN KEY (proposal_need_id) REFERENCES intake_proposal_needs(id) ON DELETE SET NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS intake_proposal_contributions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            proposal_id INTEGER NOT NULL,
+            contributor_type TEXT NOT NULL
+                CHECK (contributor_type IN ('DETERMINISTIC','AI','IMAGE','DECODER','OPERATOR')),
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            evidence TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (proposal_id) REFERENCES intake_proposals(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS machine_identifiers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            machine_id INTEGER NOT NULL,
+            identifier_type TEXT NOT NULL,
+            identifier_value TEXT NOT NULL,
+            component_label TEXT NOT NULL DEFAULT '',
+            is_primary INTEGER NOT NULL DEFAULT 0 CHECK (is_primary IN (0,1)),
+            source TEXT NOT NULL DEFAULT 'OPERATOR_CONFIRMED',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (machine_id) REFERENCES machines(id),
+            UNIQUE(machine_id,identifier_type,identifier_value,component_label)
+        );
+        CREATE INDEX IF NOT EXISTS idx_machine_identifiers_value
+            ON machine_identifiers(identifier_value,identifier_type);
+        """
+    )
+    _add_columns(
+        connection,
+        "machines",
+        {
+            "market_region": "TEXT NOT NULL DEFAULT 'UNKNOWN'",
+            "model_code": "TEXT NOT NULL DEFAULT ''",
+        },
+    )
+    _add_columns(
+        connection,
+        "job_assets",
+        {
+            "market_region": "TEXT NOT NULL DEFAULT 'UNKNOWN'",
+            "model_code": "TEXT NOT NULL DEFAULT ''",
+        },
+    )
+
+
+MIGRATIONS.append(("0039_smart_intake_proposals", _migration_0039_smart_intake_proposals))
+
+
+def _migration_0040_smart_intake_identifier_completion(connection: sqlite3.Connection) -> None:
+    """Complete 0039 safely if an auto-reload applied it before source editing finished."""
+    _add_columns(
+        connection,
+        "machines",
+        {
+            "market_region": "TEXT NOT NULL DEFAULT 'UNKNOWN'",
+            "model_code": "TEXT NOT NULL DEFAULT ''",
+        },
+    )
+    _add_columns(
+        connection,
+        "job_assets",
+        {
+            "market_region": "TEXT NOT NULL DEFAULT 'UNKNOWN'",
+            "model_code": "TEXT NOT NULL DEFAULT ''",
+        },
+    )
+
+
+MIGRATIONS.append(("0040_smart_intake_identifier_completion", _migration_0040_smart_intake_identifier_completion))

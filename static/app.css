@@ -746,6 +746,32 @@ textarea[readonly] {
   text-align: center;
 }
 
+.smart-proposal-heading { align-items: center; }
+.smart-raw-request pre { white-space: pre-wrap; margin: 1rem 0 0; font: inherit; color: var(--text-muted); }
+.smart-field-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .85rem; }
+.smart-proposal-assets { margin: 1.25rem 0; }
+.smart-proposal-asset-list { display: grid; gap: 1rem; }
+.smart-proposal-asset { border-left: 4px solid var(--brand-blue, #174c78); }
+.smart-existing-match { padding: .65rem .8rem; border-radius: .5rem; background: #edf8f2; color: #17613b; }
+.smart-asset-needs { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color, #d9e1e8); }
+.smart-need-row { display: grid; grid-template-columns: minmax(12rem, 2fr) minmax(11rem, 1fr) auto auto; gap: .55rem; align-items: center; margin-top: .55rem; }
+.smart-add-need { display: grid; grid-template-columns: minmax(12rem, 1.4fr) minmax(12rem, 1fr) minmax(10rem, 1fr) auto; gap: .75rem; align-items: end; }
+.smart-proposal-confirm { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border: 2px solid var(--brand-blue, #174c78); }
+.status-pill.review, .status-pill.unassigned { background: #fff3d2; color: #785300; }
+.status-pill.confident { background: #e7f6ee; color: #17613b; }
+@media (max-width: 900px) {
+  .smart-field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .smart-need-row { grid-template-columns: minmax(0, 1fr) minmax(10rem, 1fr) auto; }
+  .smart-need-row button:last-child { grid-column: 3; }
+  .smart-add-need { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 620px) {
+  .smart-field-grid, .smart-need-row, .smart-add-need { grid-template-columns: 1fr; }
+  .smart-need-row button:last-child { grid-column: auto; }
+  .smart-proposal-confirm { align-items: stretch; flex-direction: column; }
+  .smart-proposal-confirm .button { width: 100%; }
+}
+
 .smart-intake-future-drop strong { color: var(--ink); }
 
 

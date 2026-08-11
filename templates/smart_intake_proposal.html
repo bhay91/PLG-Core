@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Review Smart Intake · Pinpoint Sourcing Co.{% endblock %}
+{% block content %}
+<section class="workspace-heading smart-proposal-heading">
+  <div>
+    <p class="eyebrow">SMART INTAKE · OPERATOR REVIEW</p>
+    <h1>Confirm what PPS understood</h1>
+    <p>Correct anything uncertain. No Job or quoteable part exists until you confirm.</p>
+  </div>
+  <span class="status-pill {{ proposal.review_state|lower }}">{{ proposal.review_state }}</span>
+</section>
+
+<details class="panel smart-raw-request">
+  <summary><strong>Original customer request</strong> · preserved exactly</summary>
+  <pre>{{ proposal.raw_input }}</pre>
+</details>
+
+<form class="panel smart-proposal-customer" method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/customer">
+  <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
+  <div class="panel-heading"><div><p class="eyebrow">CUSTOMER</p><h2>Contact and account</h2></div></div>
+  <div class="smart-field-grid">
+    <label>Contact name<input name="contact_name" value="{{ proposal.contact_name }}"></label>
+    <label>Company<input name="company_name" value="{{ proposal.company_name }}"></label>
+    <label>Location<input name="location" value="{{ proposal.location }}"></label>
+    <label>Phone<input name="phone" value="{{ proposal.phone }}"></label>
+    <label>Email<input type="email" name="email" value="{{ proposal.email }}"></label>
+    <label>Customer record
+      <select name="matched_customer_id">
+        <option value="">Create a new customer</option>
+        {% for customer in customers %}
+        <option value="{{ customer.id }}" {% if proposal.matched_customer_id == customer.id %}selected{% endif %}>
+          {{ customer.name }}{% if customer.company %} · {{ customer.company }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+  <div class="form-actions"><button class="button ghost" type="submit">Save Customer Details</button></div>
+</form>
+
+<section class="smart-proposal-assets">
+  <div class="section-title-row">
+    <div><p class="eyebrow">MACHINES / ASSETS</p><h2>Machines identified</h2><p>Each requested need should belong to the correct asset.</p></div>
+    <form method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/assets/add"><input type="hidden" name="lock_version" value="{{ proposal.lock_version }}"><button class="button ghost" type="submit">＋ Add Machine</button></form>
+  </div>
+  <div class="smart-proposal-asset-list">
+  {% for asset in proposal.assets %}
+    {% set primary_identifier = asset.identifiers|selectattr('is_primary')|first %}
+    {% set engine_identifier = asset.identifiers|selectattr('identifier_type','equalto','ENGINE_SERIAL')|first %}
+    <article class="panel smart-proposal-asset">
+      <form method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/assets/{{ asset.id }}">
+        <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
+        <div class="panel-heading">
+          <div><p class="eyebrow">ASSET {{ loop.index }}</p><h3>{{ asset.manufacturer or "Manufacturer needs review" }} {{ asset.model }}</h3></div>
+          <span class="status-pill {{ asset.review_state|lower }}">{{ asset.review_state }}</span>
+        </div>
+        {% if asset.matched_machine_id %}<p class="smart-existing-match">✓ Strong identifier match found. PPS will reuse the existing asset without overwriting it.</p>{% endif %}
+        <div class="smart-field-grid">
+          <label>Manufacturer<input name="manufacturer" value="{{ asset.manufacturer }}"></label>
+          <label>Model<input name="model" value="{{ asset.model }}"></label>
+          <label>Year<input name="year" inputmode="numeric" value="{{ asset.year }}"></label>
+          <label>Asset type
+            <select name="asset_category">
+              {% for value,label in {'vehicle':'Vehicle','machine':'Equipment / Machine','engine':'Engine','component':'Component','other':'Other'}.items() %}
+              <option value="{{ value }}" {% if asset.asset_category == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Identifier type
+            <select name="identifier_type">
+              {% for value in identifier_types %}{% if value != 'MODEL_CODE' %}<option value="{{ value }}" {% if primary_identifier and primary_identifier.identifier_type == value %}selected{% endif %}>{{ value|replace('_',' ')|title }}</option>{% endif %}{% endfor %}
+            </select>
+          </label>
+          <label>Identifier<input name="identifier_value" value="{{ primary_identifier.identifier_value if primary_identifier else '' }}"></label>
+          <label>Model code <span class="muted">optional</span><input name="model_code" value="{{ asset.model_code }}"></label>
+          <label>Market / region <span class="muted">only if known</span>
+            <select name="market_region">{% for value in markets %}<option value="{{ value }}" {% if asset.market_region == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
+          </label>
+          <label>Engine serial <span class="muted">optional component context</span><input name="engine_serial" value="{{ engine_identifier.identifier_value if engine_identifier else '' }}"></label>
+        </div>
+        <div class="form-actions split-actions">
+          <button class="button ghost" name="action" value="save" type="submit">Save Asset</button>
+          <button class="button danger ghost" name="action" value="remove" type="submit">Remove Detected Asset</button>
+        </div>
+      </form>
+      <div class="smart-asset-needs">
+        <p class="eyebrow">PARTS NEEDED</p>
+        {% if asset.needs %}
+          {% for need in asset.needs %}
+          <form class="smart-need-row" method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/needs/{{ need.id }}">
+            <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
+            <input aria-label="Requested need" name="wording" value="{{ need.wording }}">
+            <select aria-label="Assign machine" name="proposal_asset_id">
+              <option value="">Unassigned / needs review</option>
+              {% for target in proposal.assets %}<option value="{{ target.id }}" {% if need.proposal_asset_id == target.id %}selected{% endif %}>{{ target.manufacturer }} {{ target.model }}</option>{% endfor %}
+            </select>
+            <button class="button ghost compact" name="action" value="save">Save</button>
+            <button class="button ghost compact" name="action" value="remove">Remove</button>
+          </form>
+          {% endfor %}
+        {% else %}<p class="empty-state compact">No requested needs assigned to this asset.</p>{% endif %}
+      </div>
+    </article>
+  {% endfor %}
+  </div>
+</section>
+
+{% if proposal.unassigned_needs %}
+<section class="panel smart-unassigned">
+  <p class="eyebrow">NEEDS REVIEW · UNASSIGNED</p><h2>Choose the correct machine</h2>
+  {% for need in proposal.unassigned_needs %}
+  <form class="smart-need-row" method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/needs/{{ need.id }}">
+    <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
+    <input name="wording" value="{{ need.wording }}">
+    <select name="proposal_asset_id"><option value="">Keep unassigned</option>{% for asset in proposal.assets %}<option value="{{ asset.id }}">{{ asset.manufacturer }} {{ asset.model }}</option>{% endfor %}</select>
+    <button class="button ghost compact" name="action" value="save">Assign / Save</button>
+    <button class="button ghost compact" name="action" value="remove">Remove</button>
+  </form>
+  {% endfor %}
+</section>
+{% endif %}
+
+<form class="panel smart-add-need" method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/needs/add">
+  <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
+  <div><p class="eyebrow">ADD REQUESTED NEED</p><p>Add customer wording without creating a quoteable part.</p></div>
+  <input name="wording" required placeholder="Example: Fuel Filter Kit">
+  <select name="proposal_asset_id"><option value="">Unassigned / machine unknown</option>{% for asset in proposal.assets %}<option value="{{ asset.id }}">{{ asset.manufacturer }} {{ asset.model }}</option>{% endfor %}</select>
+  <button class="button ghost" type="submit">＋ Add Need</button>
+</form>
+
+<section class="smart-proposal-confirm panel">
+  <div><p class="eyebrow">AUTHORITY BOUNDARY</p><h2>Ready to create the Job?</h2><p>Confirmation creates the Request, Job, assets, and Requested Needs in one transaction. It does not create parts or prices.</p></div>
+  <form method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/confirm">
+    <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
+    <button class="button" type="submit">Confirm &amp; Create Job</button>
+  </form>
+</section>
+
+<section class="panel smart-attachment-foundation" aria-disabled="true">
+  <p class="eyebrow">ATTACHMENTS · FOUNDATION READY</p>
+  <h2>Photos and documents</h2>
+  <p>Future image, plate, tag, and supplier-document extraction will contribute proposed fields here for operator review. No automatic extraction is active in this batch.</p>
+</section>
+{% endblock %}
