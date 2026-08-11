@@ -787,8 +787,9 @@ def create_job(
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'REQUESTED',?)
         """,(job_number,date.today().isoformat(),customer_row["id"],machine_id,customer_row["name"],customer_row["company"] or "",customer_row["phone"] or "",customer_row["email"] or "",customer_row["address"] or "",manufacturer.strip(),machine.strip(),pin_serial.strip(),notes.strip()))
         job_id=cur.lastrowid
+        job_asset_id = None
         if machine_id or any((manufacturer.strip(), machine.strip(), pin_serial.strip())):
-            connection.execute(
+            asset_cursor = connection.execute(
                 """
                 INSERT INTO job_assets (
                     job_id,machine_id,customer_id,asset_type,name,manufacturer,
@@ -805,6 +806,15 @@ def create_job(
                     pin_serial.strip(),
                 ),
             )
+            job_asset_id = int(asset_cursor.lastrowid)
+        for wording in (
+            line.strip(" -•\t") for line in str(requested_parts or "").splitlines()
+        ):
+            if wording:
+                connection.execute(
+                    "INSERT INTO requested_needs(job_id,job_asset_id,wording) VALUES (?,?,?)",
+                    (job_id, job_asset_id, wording),
+                )
         connection.commit()
     return RedirectResponse(url=f"/jobs/{job_id}/basket",status_code=303)
 

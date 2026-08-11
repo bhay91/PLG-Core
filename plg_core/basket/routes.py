@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from legacy_app import get_connection, next_job_number, templates
 from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
 from plg_core.jobs.engine import JobEngine
+from plg_core.jobs.workflow import derive_machine_work_status, summarize_job_work
 from plg_core.machines.identifiers import find_machine_by_identifier
 from plg_core.timeline import log_job_event
 from plg_core.pricing import pricing_assessment
@@ -140,6 +141,44 @@ def basket_page(request: Request, job_id: int, asset_id: int | None = None):
                 "SELECT * FROM requested_needs WHERE job_id=? AND job_asset_id=? "
                 "AND state!='ARCHIVED' ORDER BY id", (job_id, item["id"]),
             ).fetchall()]
+            item["need_count"] = len(item["needs"])
+            item["open_need_count"] = sum(
+                1 for need in item["needs"] if need["state"] == "OPEN"
+            )
+            item["parts_found_count"] = int(connection.execute(
+                "SELECT COUNT(*) FROM basket_items WHERE basket_id=? AND job_asset_id=? "
+                "AND research_state IN ('RESEARCH_RESULT','QUOTE_CANDIDATE','LEGACY_CANDIDATE')",
+                (basket["id"], item["id"]),
+            ).fetchone()[0])
+            item["quote_candidate_count"] = int(connection.execute(
+                "SELECT COUNT(*) FROM basket_items WHERE basket_id=? AND job_asset_id=? "
+                "AND selected=1 AND research_state IN ('QUOTE_CANDIDATE','LEGACY_CANDIDATE')",
+                (basket["id"], item["id"]),
+            ).fetchone()[0])
+            item["covered_need_count"] = int(connection.execute(
+                """
+                SELECT COUNT(DISTINCT links.requested_need_id)
+                FROM basket_item_need_links links
+                JOIN basket_items bi ON bi.id=links.basket_item_id
+                JOIN requested_needs rn ON rn.id=links.requested_need_id
+                WHERE bi.basket_id=? AND bi.job_asset_id=? AND bi.selected=1
+                  AND bi.research_state IN ('QUOTE_CANDIDATE','LEGACY_CANDIDATE')
+                  AND rn.state!='ARCHIVED'
+                """,
+                (basket["id"], item["id"]),
+            ).fetchone()[0])
+            active_research = connection.execute(
+                "SELECT 1 FROM verification_sessions WHERE job_id=? AND job_asset_id=? "
+                "AND status='ACTIVE' LIMIT 1",
+                (job_id, item["id"]),
+            ).fetchone() is not None
+            item["work_status"], item["work_status_label"] = derive_machine_work_status(
+                need_count=item["need_count"],
+                parts_found_count=item["parts_found_count"],
+                quote_candidate_count=item["quote_candidate_count"],
+                covered_need_count=item["covered_need_count"],
+                active_research=active_research,
+            )
             job_assets.append(item)
         selected_asset = next(
             (item for item in job_assets if int(item["id"]) == int(asset_id or 0)),
@@ -295,6 +334,15 @@ def basket_page(request: Request, job_id: int, asset_id: int | None = None):
         and str(item.get("research_state") or "LEGACY_CANDIDATE") == "RESEARCH_RESULT"
     ]
     shipping_by_item = {int(row["basket_item_id"]): dict(row) for row in shipping_rows}
+    unassigned_parts_found_count = sum(
+        1 for item in basket["items"]
+        if item.get("job_asset_id") is None
+        and str(item.get("research_state") or "LEGACY_CANDIDATE")
+        in {"RESEARCH_RESULT", "QUOTE_CANDIDATE", "LEGACY_CANDIDATE"}
+    )
+    job_summary = summarize_job_work(
+        job_assets, len(all_quote_candidates), unassigned_parts_found_count
+    )
 
     for item in basket_items:
         item["pricing"] = pricing_assessment(
@@ -379,6 +427,7 @@ def basket_page(request: Request, job_id: int, asset_id: int | None = None):
             "previous_asset": previous_asset,
             "next_asset": next_asset,
             "requested_needs": requested_needs,
+            "job_summary": job_summary,
             "request_attachment_count": request_attachment_count,
             "quote": quote,
             "quote_history": quote_history,

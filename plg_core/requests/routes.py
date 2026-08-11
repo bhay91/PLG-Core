@@ -11,8 +11,6 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from legacy_app import BASE_DIR, get_connection, next_customer_number, next_job_number, next_machine_number, next_request_number, templates
-from plg_core.basket.models import BasketItemCreate
-from plg_core.basket.service import add_item_with_connection
 from plg_core.machines.identifiers import find_machine_by_identifier
 
 router = APIRouter(prefix="/requests", tags=["customer-requests"])
@@ -1369,15 +1367,33 @@ def create_job_from_request(request_id: int):
              customer["email"] or "", customer["address"] or "", manufacturer,
              model, identifier, "\n\n".join(note_parts)),
         )
-        job_id = cursor.lastrowid
+        job_id = int(cursor.lastrowid)
+        job_asset_id = None
+        if record["machine_id"] or any((manufacturer.strip(), model.strip(), identifier.strip())):
+            asset_cursor = connection.execute(
+                """
+                INSERT INTO job_assets (
+                    job_id,machine_id,customer_id,asset_type,name,manufacturer,
+                    model,year,vin_pin_serial,is_primary
+                ) VALUES (?,?,?,?,?,?,?,?,?,1)
+                """,
+                (
+                    job_id, record["machine_id"], customer["id"],
+                    (machine["registry_type"] if machine else "") or "",
+                    (machine["name"] if machine else "") or
+                    " ".join(value for value in (manufacturer.strip(), model.strip()) if value),
+                    manufacturer.strip(), model.strip(),
+                    (machine["year"] if machine else record["year"]) or "",
+                    identifier.strip(),
+                ),
+            )
+            job_asset_id = int(asset_cursor.lastrowid)
         parts = [line.strip(" -•\t") for line in (record["requested_parts"] or "").splitlines()]
         for part in (part for part in parts if part):
-            add_item_with_connection(
-                connection,
-                job_id,
-                BasketItemCreate(
-                    requested_description=part,
-                ),
+            connection.execute(
+                "INSERT INTO requested_needs "
+                "(job_id,job_asset_id,customer_request_id,wording) VALUES (?,?,?,?)",
+                (job_id, job_asset_id, request_id, part),
             )
         connection.execute(
             """
