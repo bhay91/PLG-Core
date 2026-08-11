@@ -177,10 +177,16 @@ def add_item_with_connection(
     if not internal_part_number and not payload.manufacturer_part_number.strip():
         internal_part_number = _next_internal_part_number(connection)
 
+    if payload.job_asset_id is not None and connection.execute(
+        "SELECT 1 FROM job_assets WHERE id=? AND job_id=? AND state='ACTIVE'",
+        (payload.job_asset_id, job_id),
+    ).fetchone() is None:
+        raise HTTPException(status_code=409, detail="Select an active asset from this Job.")
+
     connection.execute(
         """
         INSERT INTO basket_items (
-            basket_id, requested_description, internal_part_number,
+            basket_id, job_asset_id, requested_description, internal_part_number,
             manufacturer_part_number, alternate_part_number,
             supplier_part_number, supplier_name, source_type, brand, quantity,
             supplier_unit_cost, markup_percent,
@@ -188,10 +194,11 @@ def add_item_with_connection(
             verification_note, availability, lead_time,
             selected, confidence, source_url
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             basket["id"],
+            payload.job_asset_id,
             payload.requested_description.strip(),
             internal_part_number,
             payload.manufacturer_part_number.strip(),
@@ -280,7 +287,7 @@ def update_item(
         raise HTTPException(status_code=400, detail="No fields supplied.")
 
     allowed = {
-        "requested_description", "manufacturer_part_number",
+        "requested_description", "job_asset_id", "manufacturer_part_number",
         "alternate_part_number", "supplier_part_number",
         "supplier_name", "source_type",
         "brand", "quantity", "supplier_unit_cost", "markup_percent", "customer_unit_price_override", "part_status", "verification_status", "verification_note", "availability",
@@ -319,6 +326,13 @@ def update_item(
             expected_revision_id=expected_revision_id,
             expected_version=expected_version,
         )
+
+        if "job_asset_id" in updates and updates["job_asset_id"] is not None:
+            if connection.execute(
+                "SELECT 1 FROM job_assets WHERE id=? AND job_id=? AND state='ACTIVE'",
+                (updates["job_asset_id"], item["job_id"]),
+            ).fetchone() is None:
+                raise HTTPException(status_code=409, detail="Select an active asset from this Job.")
 
         assignments = []
         values: list[Any] = []

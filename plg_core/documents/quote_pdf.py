@@ -327,11 +327,11 @@ def _info_box(title, rows, hide_empty=False):
 
 def _information(quote, internal=False):
     customer = _info_box("CUSTOMER INFORMATION", [
-        ("Customer", _value(quote, "customer")),
-        ("Company", _value(quote, "company")),
-        ("Address", _value(quote, "address")),
-        ("Phone", _value(quote, "phone")),
-        ("Email", _value(quote, "email")),
+        ("Bill To", _value(quote, "bill_to_name_snapshot") or _value(quote, "customer")),
+        ("Company", _value(quote, "bill_to_company_snapshot") or ""),
+        ("Address", _value(quote, "bill_to_address_snapshot") or _value(quote, "address")),
+        ("Phone", _value(quote, "bill_to_phone_snapshot") or _value(quote, "phone")),
+        ("Email", _value(quote, "bill_to_email_snapshot") or _value(quote, "email")),
     ], hide_empty=not internal)
     machine = _info_box("EQUIPMENT INFORMATION", [
         ("Manufacturer", _value(quote, "manufacturer")),
@@ -347,6 +347,43 @@ def _information(quote, internal=False):
         ("LEFTPADDING", (1,0), (1,0), 8),
     ]))
     return table
+
+
+def _asset_key(item):
+    return tuple(str(_value(item, field, "") or "") for field in (
+        "asset_name_snapshot", "asset_type_snapshot", "asset_manufacturer_snapshot",
+        "asset_model_snapshot", "asset_year_snapshot", "asset_serial_snapshot",
+    ))
+
+
+def _group_items_by_asset(items):
+    groups = []
+    lookup = {}
+    for item in items:
+        key = _asset_key(item)
+        if key not in lookup:
+            lookup[key] = []
+            groups.append((key, lookup[key]))
+        lookup[key].append(item)
+    return groups
+
+
+def _asset_heading(key):
+    name, asset_type, manufacturer, model, year, serial = key
+    title = " ".join(value for value in (year, manufacturer, model) if value).strip()
+    title = title or name or (asset_type.title() if asset_type else "Unassigned Job Parts")
+    s = _styles()
+    content = [Paragraph(title.upper(), s["value"])]
+    if serial:
+        content.append(Paragraph(f"VIN / PIN / Serial: {serial}", s["small"]))
+    return Table([[content]], colWidths=[7.94 * inch], style=[
+        ("BACKGROUND", (0, 0), (-1, -1), PALE_BLUE),
+        ("BOX", (0, 0), (-1, -1), 0.55, LINE),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ])
 
 
 
@@ -827,12 +864,18 @@ def build_quote_pdf(quote, items: Iterable, path: Path, internal: bool):
         _information(quote, internal),
         Spacer(1, 10),
         _section_bar("QUOTED ITEMS" if not internal else "INTERNAL COST & PROFIT DETAIL"),
-        _internal_items(items) if internal else _customer_items(items),
+    ]
+    groups = _group_items_by_asset(items)
+    for key, group_items in groups:
+        if len(groups) > 1:
+            story.extend([Spacer(1, 5), _asset_heading(key), Spacer(1, 3)])
+        story.append(_internal_items(group_items) if internal else _customer_items(group_items))
+    story.extend([
         Spacer(1, 10),
         _quote_notice(internal),
         Spacer(1, 10),
         _bottom_blocks(quote, internal),
-    ]
+    ])
     doc.build(story)
 
 

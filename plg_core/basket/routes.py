@@ -126,6 +126,12 @@ def basket_page(request: Request, job_id: int):
             (job_id,),
         ).fetchone()
 
+        job_assets = connection.execute(
+            "SELECT * FROM job_assets WHERE job_id=? AND state='ACTIVE' "
+            "ORDER BY is_primary DESC,id",
+            (job_id,),
+        ).fetchall()
+
         request_attachment_count = 0
         if customer_request is not None:
             request_attachment_count = connection.execute(
@@ -321,6 +327,7 @@ def basket_page(request: Request, job_id: int):
             "source_lookup": source_lookup,
             "connectors": connectors,
             "customer_request": customer_request,
+            "job_assets": job_assets,
             "request_attachment_count": request_attachment_count,
             "quote": quote,
             "quote_history": quote_history,
@@ -911,6 +918,7 @@ def add_manual_item(
     job_id: int,
     requested_description: Annotated[str, Form()],
     manufacturer_part_number: Annotated[str, Form()] = "",
+    job_asset_id: Annotated[int | None, Form()] = None,
     quantity: Annotated[int, Form()] = 1,
     supplier_name: Annotated[str, Form()] = "",
     supplier_part_number: Annotated[str, Form()] = "",
@@ -923,6 +931,7 @@ def add_manual_item(
         job_id,
         BasketItemCreate(
             requested_description=requested_description,
+            job_asset_id=job_asset_id,
             manufacturer_part_number=manufacturer_part_number,
             quantity=quantity,
             supplier_name=supplier_name,

@@ -538,9 +538,12 @@ def get_follow_up_data(
 
     manual_follow_ups = connection.execute(
         """
-        SELECT f.*,j.job_number,j.customer,j.manufacturer,j.machine
+        SELECT f.*,j.job_number,j.customer,j.manufacturer,j.machine,
+               a.manufacturer AS asset_manufacturer,a.model AS asset_model,
+               a.vin_pin_serial AS asset_serial
         FROM job_follow_ups f
         JOIN jobs j ON j.id=f.job_id
+        LEFT JOIN job_assets a ON a.id=f.job_asset_id
         WHERE f.status IN ('OPEN','RECEIVED')
         ORDER BY f.requested_at,f.id
         """
@@ -565,7 +568,10 @@ def get_follow_up_data(
             "record_id": item["id"],
             "record_number": item["job_number"],
             "title": item["customer"],
-            "subtitle": item["summary"],
+            "subtitle": " · ".join(filter(None, [
+                " ".join(filter(None, [item["asset_manufacturer"], item["asset_model"]])).strip(),
+                item["summary"],
+            ])),
             "detail": item["resolution"] if received else item["reason"],
             "waiting_since": item["received_at"] if received else item["requested_at"],
             "due_date": None,

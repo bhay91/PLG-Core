@@ -113,7 +113,7 @@ def _revision_quote_rows(connection, revision_id: int):
     rows = connection.execute(
         """
         SELECT
-            jp.id AS part_id, ps.id AS source_id, jp.quantity,
+            jp.id AS part_id, ps.id AS source_id, jp.quantity, jp.job_asset_id,
             jp.internal_part_number,
             jp.requested_description AS description,
             ps.supplier_name, ps.source_type, COALESCE(ps.brand,'') AS brand,
@@ -121,12 +121,20 @@ def _revision_quote_rows(connection, revision_id: int):
             COALESCE(ps.supplier_cost,0) AS supplier_unit_cost,
             COALESCE(jp.customer_unit_price,0) AS customer_unit_price,
             wri.pricing_mode, wri.customer_unit_price_override,
-            wri.recommended_markup_percent, wri.revision_source_id
+            wri.recommended_markup_percent, wri.revision_source_id,
+            wri.id AS origin_work_revision_item_id,
+            COALESCE(a.name,'') AS asset_name_snapshot,
+            COALESCE(a.asset_type,'') AS asset_type_snapshot,
+            COALESCE(a.manufacturer,'') AS asset_manufacturer_snapshot,
+            COALESCE(a.model,'') AS asset_model_snapshot,
+            COALESCE(a.year,'') AS asset_year_snapshot,
+            COALESCE(a.vin_pin_serial,'') AS asset_serial_snapshot
         FROM job_parts jp
         JOIN part_sources ps
           ON ps.part_id=jp.id AND ps.selected_for_quote=1
         JOIN work_revision_items wri
           ON wri.id=jp.work_revision_item_id
+        LEFT JOIN job_assets a ON a.id=jp.job_asset_id
         WHERE jp.work_revision_id=?
         ORDER BY wri.id
         """,
@@ -184,16 +192,20 @@ def _insert_quote_items(connection, quote_id: int, rows) -> None:
         connection.execute(
             """
             INSERT INTO quote_items (
-                quote_id, part_id, source_id, quantity, description,
+                quote_id, part_id, source_id, job_asset_id,
+                origin_work_revision_item_id, quantity, description,
                 internal_part_number,
                 supplier_name, source_type, brand, supplier_part_number,
                 supplier_unit_cost, customer_unit_price, supplier_line_total,
                 customer_line_total, line_profit, pricing_mode,
-                customer_unit_price_override, recommended_markup_percent
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                customer_unit_price_override, recommended_markup_percent,
+                asset_name_snapshot,asset_type_snapshot,asset_manufacturer_snapshot,
+                asset_model_snapshot,asset_year_snapshot,asset_serial_snapshot
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
-                quote_id, row["part_id"], row["source_id"], quantity,
+                quote_id, row["part_id"], row["source_id"], row["job_asset_id"],
+                row["origin_work_revision_item_id"], quantity,
                 row["description"], row["internal_part_number"] or "",
                 row["supplier_name"], row["source_type"],
                 row["brand"], row["supplier_part_number"], cost, price,
@@ -201,6 +213,9 @@ def _insert_quote_items(connection, quote_id: int, rows) -> None:
                 round((price - cost) * quantity, 2),
                 row["pricing_mode"], row["customer_unit_price_override"],
                 row["recommended_markup_percent"],
+                row["asset_name_snapshot"], row["asset_type_snapshot"],
+                row["asset_manufacturer_snapshot"], row["asset_model_snapshot"],
+                row["asset_year_snapshot"], row["asset_serial_snapshot"],
             ),
         )
 
@@ -351,18 +366,24 @@ def generate_quote_from_revision(
                     quote_number,job_id,quote_date,status,parts_subtotal,
                     shipping_total,service_charge,sourcing_fee,customer_total,
                     supplier_total,profit_total,work_revision_id,
-                    supersedes_quote_id,is_current,
+                    supersedes_quote_id,is_current,quote_track_id,commercial_kind,
+                    bill_to_kind,bill_to_name_snapshot,bill_to_company_snapshot,
+                    bill_to_address_snapshot,bill_to_phone_snapshot,bill_to_email_snapshot,
                     customer_name_snapshot,company_snapshot,phone_snapshot,
                     email_snapshot,address_snapshot,manufacturer_snapshot,
                     machine_snapshot,pin_serial_snapshot
-                ) VALUES (?,?,?,'DRAFT',?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
-                    quote_number, job_id, date.today().isoformat(),
+                    quote_number, job_id, date.today().isoformat(), "DRAFT",
                     totals["parts_subtotal"], totals["shipping_total"],
                     totals["service_charge"], totals["sourcing_fee"],
                     totals["customer_total"], totals["supplier_total"],
-                    totals["profit_total"], revision_id, source_quote_id,
+                    totals["profit_total"], revision_id, source_quote_id, 1,
+                    source["quote_track_id"], "REVISION",
+                    source["bill_to_kind"], source["bill_to_name_snapshot"],
+                    source["bill_to_company_snapshot"], source["bill_to_address_snapshot"],
+                    source["bill_to_phone_snapshot"], source["bill_to_email_snapshot"],
                     job["customer"], job["company"], job["phone"], job["email"],
                     job["address"], job["manufacturer"], job["machine"],
                     job["pin_serial"],

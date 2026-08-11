@@ -233,7 +233,7 @@ def _snapshot_revision(
         cursor = connection.execute(
             """
             INSERT INTO work_revision_items (
-                work_revision_id, revision_source_id, source_revision_item_id,
+                work_revision_id, revision_source_id, source_revision_item_id, job_asset_id,
                 requested_description, internal_part_number, manufacturer_part_number,
                 alternate_part_number, supplier_part_number, supplier_name,
                 source_type, brand, quantity, supplier_unit_cost, markup_percent,
@@ -241,12 +241,13 @@ def _snapshot_revision(
                 effective_customer_unit_price, recommended_markup_percent,
                 part_status, verification_status, verification_note,
                 availability, lead_time, selected, confidence, source_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 revision_id,
                 revision_source_id,
-                None,
+                item["origin_work_revision_item_id"],
+                item["job_asset_id"],
                 item["requested_description"], item["internal_part_number"] or "",
                 item["manufacturer_part_number"] or "",
                 item["alternate_part_number"] or "", item["supplier_part_number"] or "",
@@ -321,18 +322,21 @@ def _clone_snapshot_to_basket(
         connection.execute(
             """
             INSERT INTO basket_items (
-                basket_id, source_id, requested_description, internal_part_number,
+                basket_id, source_id, job_asset_id, origin_work_revision_item_id,
+                requested_description, internal_part_number,
                 manufacturer_part_number, alternate_part_number,
                 supplier_part_number, supplier_name, source_type, brand,
                 quantity, supplier_unit_cost, markup_percent,
                 customer_unit_price_override, pricing_mode, part_status,
                 verification_status, verification_note, availability,
                 lead_time, selected, confidence, source_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 basket_id, source_map.get(int(item["revision_source_id"]))
                 if item["revision_source_id"] else None,
+                item["job_asset_id"],
+                item["id"],
                 item["requested_description"], item["internal_part_number"],
                 item["manufacturer_part_number"],
                 item["alternate_part_number"], item["supplier_part_number"],
@@ -359,17 +363,17 @@ def _clone_quote_to_basket(
         connection.execute(
             """
             INSERT INTO basket_items (
-                basket_id, requested_description, internal_part_number,
+                basket_id, job_asset_id, requested_description, internal_part_number,
                 supplier_part_number,
                 supplier_name, source_type, brand, quantity,
                 supplier_unit_cost, markup_percent,
                 customer_unit_price_override, pricing_mode, part_status,
                 verification_status, verification_note, selected, source_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'LEGACY_FIXED', 'QUOTED',
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'LEGACY_FIXED', 'QUOTED',
                       'VERIFIED', 'Cloned from historical quote', 1, '')
             """,
             (
-                basket_id, item["description"], item["internal_part_number"],
+                basket_id, item["job_asset_id"], item["description"], item["internal_part_number"],
                 item["supplier_part_number"],
                 item["supplier_name"], item["source_type"], item["brand"],
                 item["quantity"], item["supplier_unit_cost"], item["customer_unit_price"],
@@ -409,6 +413,16 @@ def start_work_revision(
                 (job_id,),
             ).fetchone()
             if existing is not None and not bool(existing["is_synthetic"]):
+                requested_quote = int(based_on_quote_id or 0)
+                existing_quote = int(existing["based_on_quote_id"] or 0)
+                if requested_quote and existing_quote != requested_quote:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "This Job already has different editable work. Finish or cancel "
+                            "that work before editing this Draft Quote; PPS will not mix them."
+                        ),
+                    )
                 connection.commit()
                 return dict(existing)
 
@@ -579,18 +593,18 @@ def commit_work_revision(
             part_cursor = connection.execute(
                 """
                 INSERT INTO job_parts (
-                    job_id, requested_description, internal_part_number,
+                    job_id, job_asset_id, requested_description, internal_part_number,
                     quantity, oem_part_number,
                     alternate_part_number, oem_description, customer_unit_price,
                     verification_status, verification_source, verification_notes,
                     oem_dealer_name, oem_dealer_price, oem_dealer_availability,
                     source_url, product_url, captured_at,
                     work_revision_id, work_revision_item_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'VERIFIED', ?, ?, ?, ?, ?, ?, ?,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'VERIFIED', ?, ?, ?, ?, ?, ?, ?,
                           CURRENT_TIMESTAMP, ?, ?)
                 """,
                 (
-                    job_id, item["requested_description"],
+                    job_id, item["job_asset_id"], item["requested_description"],
                     item["internal_part_number"], item["quantity"],
                     item["manufacturer_part_number"] if source_type == "OEM" else "",
                     item["alternate_part_number"] or "",

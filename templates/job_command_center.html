@@ -28,13 +28,14 @@
 }
 .part-editor-list{display:grid;gap:14px}.part-editor-card{border:1px solid var(--line);border-radius:13px;background:#fff;overflow:hidden}.part-editor-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 17px;background:var(--surface-soft);border-bottom:1px solid var(--line)}.part-editor-header h3{margin:6px 0 2px;font-size:17px}.part-editor-header p{margin:0;color:var(--muted);font-size:12px}.part-editor-primary-actions{display:flex;gap:8px;flex-wrap:wrap}.part-editor-grid{display:grid;grid-template-columns:repeat(5,minmax(125px,1fr));gap:12px;padding:16px}.part-editor-grid label,.part-editor-metric{display:grid;align-content:start;gap:6px;min-width:0}.part-editor-grid label>span,.part-editor-metric>span{font-size:10px;font-weight:850;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.part-editor-grid input{width:100%;min-width:0}.part-editor-metric{padding:9px 10px;border-radius:9px;background:var(--surface-soft)}.part-editor-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 16px;border-top:1px solid var(--line);color:var(--muted)}.parts-ready-head-actions{display:flex;align-items:center;gap:8px}.verification-launch-actions{display:grid;grid-template-columns:1fr auto;gap:8px}.manual-part-trigger{white-space:nowrap}@media(max-width:1100px){.part-editor-grid{grid-template-columns:repeat(3,minmax(130px,1fr))}}@media(max-width:720px){.part-editor-header,.part-editor-footer{align-items:stretch;flex-direction:column}.part-editor-primary-actions{display:grid;grid-template-columns:1fr 1fr}.part-editor-grid{grid-template-columns:1fr 1fr;padding:13px}.verification-launch-actions{grid-template-columns:1fr}.part-editor-primary-actions .button,.part-editor-footer .button{width:100%}}@media(max-width:430px){.part-editor-grid{grid-template-columns:1fr}.part-editor-primary-actions{grid-template-columns:1fr}}
 .job-followup-layout{display:grid;grid-template-columns:minmax(280px,.75fr) minmax(0,1.25fr);gap:16px}.job-followup-create{display:grid;gap:10px;padding:15px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft)}.job-followup-create label{display:grid;gap:5px;font-size:11px;font-weight:800}.job-followup-list{display:grid;gap:10px}.job-followup-item{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.7fr);gap:14px;padding:14px;border:1px solid var(--line);border-radius:12px}.job-followup-item.attention{border-left:4px solid var(--danger)}.job-followup-item>div,.job-followup-item form{display:grid;gap:6px}.job-followup-item small{color:var(--muted)}@media(max-width:850px){.job-followup-layout,.job-followup-item{grid-template-columns:1fr}}
+.job-assets-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.job-asset-card{padding:15px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft);display:grid;gap:8px}.job-asset-card header{display:flex;justify-content:space-between;gap:10px}.job-asset-card h3{margin:0;font-size:17px}.job-asset-card p{margin:0;color:var(--muted);font-size:12px}.job-asset-actions{display:flex;gap:7px;flex-wrap:wrap}.asset-assignment{display:flex;gap:7px;align-items:end}.asset-assignment label{display:grid;gap:4px;min-width:180px}.part-verification{display:grid;grid-template-columns:minmax(160px,1fr) auto auto;gap:8px;align-items:end}.quote-builder-panel{display:grid;grid-template-columns:minmax(220px,.6fr) minmax(0,1.4fr);gap:16px;padding:16px;border:1px solid #bfd6f1;border-radius:12px;background:#f5f9ff}.quote-builder-panel label{display:grid;gap:5px}.quote-line-select{display:flex;align-items:center;gap:7px;font-weight:800;color:var(--accent-dark)}@media(max-width:1000px){.job-assets-grid{grid-template-columns:1fr 1fr}.quote-builder-panel{grid-template-columns:1fr}}@media(max-width:720px){.job-assets-grid{grid-template-columns:1fr}.asset-assignment,.part-verification{grid-template-columns:1fr;display:grid}.asset-assignment label{min-width:0}}
 </style>
 
 {% set has_request = customer_request is not none %}
 {% set has_parts = basket.totals.selected_items > 0 %}
 {% set quote_ready = basket.status == "COMMITTED" %}
 {% set work_editable = active_revision and active_revision.state == "EDITABLE" %}
-{% set governed_revision = work_editable and not active_revision.is_synthetic %}
+{% set governed_revision = work_editable and not active_revision.is_synthetic and active_revision.based_on_quote_id %}
 {% set customer_waiting = follow_ups|selectattr('category','equalto','CUSTOMER_INFORMATION')|selectattr('status','equalto','OPEN')|list %}
 {% set operator_attention = (follow_ups|rejectattr('status','equalto','OPEN')|list) + (follow_ups|selectattr('category','equalto','OPERATOR_ATTENTION')|list) %}
 {% if operator_attention %}
@@ -132,7 +133,9 @@
         <h1>{{ job.customer or "Customer not linked" }}</h1>
 
         <p class="cc-subtitle">
-          {% if job.manufacturer or job.machine %}
+          {% if job_assets|length > 1 %}
+            {{ job_assets|length }} Job assets
+          {% elif job.manufacturer or job.machine %}
             {{ job.manufacturer }} {{ job.machine }}
           {% else %}
             No machine information provided
@@ -361,6 +364,26 @@
     </nav>
   </section>
 
+  <section class="cc-card cc-section" id="job-assets">
+    <div class="cc-section-head">
+      <div><p class="cc-label">JOB ASSETS</p><h2>Machines and equipment</h2><p class="cc-muted">Parts can be assigned to one asset or left unassigned until fitment is known.</p></div>
+      {% if work_editable %}<button class="button ghost" type="button" data-dialog-open="job-asset-dialog">＋ Add Asset</button>{% endif %}
+    </div>
+    {% if job_assets %}<div class="job-assets-grid">
+      {% for asset in job_assets %}
+      <article class="job-asset-card">
+        <header><span class="cc-badge">{{ asset.asset_type|replace('_',' ')|title if asset.asset_type else 'Asset' }}</span>{% if asset.is_primary %}<span class="cc-badge">Primary</span>{% endif %}</header>
+        <h3>{{ asset.year }} {{ asset.manufacturer }} {{ asset.model or asset.name }}</h3>
+        <p>{{ asset.vin_pin_serial or 'No VIN / PIN / serial recorded' }}</p>
+        {% if work_editable %}<div class="job-asset-actions">
+          {% if not asset.is_primary %}<form method="post" action="/jobs/{{ job.id }}/assets/{{ asset.id }}/primary"><button class="button small ghost" type="submit">Make Primary</button></form>{% endif %}
+          <details><summary>Edit / archive</summary><form method="post" action="/jobs/{{ job.id }}/assets/{{ asset.id }}/edit"><input name="manufacturer" value="{{ asset.manufacturer }}" placeholder="Manufacturer"><input name="model" value="{{ asset.model }}" placeholder="Model"><input name="year" value="{{ asset.year }}" placeholder="Year"><input name="vin_pin_serial" value="{{ asset.vin_pin_serial }}" placeholder="VIN / PIN / serial"><input name="asset_type" value="{{ asset.asset_type }}" placeholder="Asset type"><input name="name" value="{{ asset.name }}" placeholder="Name"><textarea name="notes" placeholder="Notes">{{ asset.notes }}</textarea><button class="button small" type="submit">Save Asset</button></form><form method="post" action="/jobs/{{ job.id }}/assets/{{ asset.id }}/archive" onsubmit="return confirm('Archive this unused Job asset?');"><input name="reason" required placeholder="Archive reason"><button class="button small danger-outline" type="submit">Archive Unused Asset</button></form></details>
+        </div>{% endif %}
+      </article>
+      {% endfor %}
+    </div>{% else %}<div class="cc-empty">No asset is assigned. This is valid for general or still-unidentified parts work.</div>{% endif %}
+  </section>
+
   <section class="cc-card cc-section lifecycle-controls" id="lifecycle-controls">
     <div class="cc-section-head">
       <div><p class="cc-label">JOB LIFECYCLE</p><h2>Safety and organization</h2><p class="cc-muted">Cancellation preserves history. Archive only changes list visibility. Permanent deletion is restricted to empty accidental Jobs.</p></div>
@@ -405,17 +428,16 @@
     </div>
     <div class="cc-research-layout">
       <aside class="cc-tools">
-        <p class="cc-label">VERIFY PARTS</p>
-        <form method="post" action="/jobs/{{ job.id }}/start-source-import" target="_blank">
+        <p class="cc-label">VERIFICATION SOURCE DIRECTORY</p>
+        <div>
           <label>Verification Source
             <select id="verification-source" name="source_key" required>{% for connector in connectors %}<option value="{{ connector.connector_key }}" data-launch-url="{{ connector.launch_url }}">{{ connector.display_name }}</option>{% endfor %}</select>
           </label>
           <div class="verification-launch-actions">
-            <button class="button" type="submit">Start Verification</button>
             <a class="button ghost" id="open-verification-source" target="_blank" rel="noopener">Open Source</a>
           </div>
-        </form>
-        <p class="cc-muted">Open the selected verification source, then import its evidence or candidate results.</p>
+        </div>
+        <p class="cc-muted">Open Source only launches the external catalog. Use Verify Part on the relevant line to record Job, asset, part, and source context.</p>
 
         <div class="cc-tools-divider"></div>
 
@@ -636,6 +658,7 @@
       <header class="part-editor-header">
         <div>
           <span class="cc-badge">{{ item.source_type }}</span>
+          {% if job_assets|length > 1 %}{% set assigned_asset = job_assets|selectattr('id','equalto',item.job_asset_id)|first %}<span class="cc-badge">{% if assigned_asset %}{{ assigned_asset.manufacturer }} {{ assigned_asset.model or assigned_asset.name }}{% else %}Unassigned{% endif %}</span>{% endif %}
           <h3>{{ item.requested_description }}</h3>
           <p>{{ item.supplier_name or "Manual source" }}{% if item.internal_part_number %} · PPS Ref {{ item.internal_part_number }}{% endif %}</p>
         </div>
@@ -646,6 +669,7 @@
       </header>
       <form id="part-update-{{ item.id }}" class="cc-inline-edit-form" method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/update"></form>
       <div class="part-editor-grid">
+      {% if job_assets %}<div class="asset-assignment"><label><span>Job Asset</span><select form="asset-assign-{{ item.id }}" name="job_asset_id"><option value="">Unassigned</option>{% for asset in job_assets %}<option value="{{ asset.id }}" {% if item.job_asset_id == asset.id %}selected{% endif %}>{{ asset.manufacturer }} {{ asset.model or asset.name }}{% if asset.vin_pin_serial %} · {{ asset.vin_pin_serial }}{% endif %}</option>{% endfor %}</select></label><form id="asset-assign-{{ item.id }}" method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/asset"><button class="button small ghost" type="submit">Assign</button></form></div>{% endif %}
       <label><span>Manufacturer / OEM #</span>
   <input
     form="part-update-{{ item.id }}"
@@ -775,7 +799,8 @@
     value="{{ item.verification_note or '' }}"
   >
       <footer class="part-editor-footer">
-        <small>Verification evidence remains stored with this part.</small>
+        <div><label class="quote-line-select"><input form="quote-builder-form" type="checkbox" name="basket_item_ids" value="{{ item.id }}" checked> Include in this Draft Quote</label><small>Verification evidence remains stored with this part.</small></div>
+        <form class="part-verification" method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/verify"><label><span>Verification Source</span><select class="verification-source-select" name="connector_profile_id" required>{% for connector in connectors %}<option value="{{ connector.id }}" data-launch-url="{{ connector.launch_url }}">{{ connector.display_name }}</option>{% endfor %}</select></label><button class="button small" type="submit">Verify Part</button><a class="button small ghost verification-source-link" target="_blank" rel="noopener">Open Source</a></form>
   <form
     method="post"
     action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/toggle"
@@ -1137,14 +1162,9 @@
     </section>
 
     {% if has_parts and not governed_revision %}
-    <form
-      class="quote-summary-generate-form"
-      method="post"
-      action="/jobs/{{ job.id }}/generate-quote"
-    >
-      <button class="button" type="submit">
-        Complete &amp; Generate Quote
-      </button>
+    <form id="quote-builder-form" class="quote-builder-panel" method="post" action="/jobs/{{ job.id }}/quote-builder">
+      <div><p class="cc-label">QUOTE BUILDER</p><h3>Create a Draft from selected lines</h3><p class="cc-muted">Unchecked lines stay on the Job in a new editable workspace.</p></div>
+      <div><label>Bill To<select name="bill_to_kind"><option value="CONTACT">Contact · {{ job.customer }}</option>{% if job.company %}<option value="COMPANY">Company · {{ job.company }}</option>{% endif %}<option value="CUSTOM">Custom Bill To</option></select></label><div class="cc-dialog-grid"><label>Custom name<input name="bill_to_name" placeholder="Optional unless Custom"></label><label>Custom company<input name="bill_to_company" placeholder="Optional unless Custom"></label><label class="full">Billing address<input name="bill_to_address" value="{{ job.address or '' }}"></label></div><button class="button" type="submit">Generate Selected Draft Quote</button></div>
     </form>
     {% endif %}
   </section>
@@ -1199,6 +1219,7 @@
           <select name="category"><option value="CUSTOMER_INFORMATION">Customer information</option><option value="OPERATOR_ATTENTION">PPS / operator action</option></select>
         </label>
         <label>What is needed<input name="summary" required placeholder="Example: Photo of headlight connector"></label>
+        {% if job_assets %}<label>Relevant asset<select name="job_asset_id"><option value="">Whole Job / not assigned</option>{% for asset in job_assets %}<option value="{{ asset.id }}">{{ asset.year }} {{ asset.manufacturer }} {{ asset.model or asset.name }}</option>{% endfor %}</select></label>{% endif %}
         <label>Why / context<input name="reason" placeholder="Needed to confirm halogen vs HID fitment"></label>
         <button class="button" type="submit">Create Follow-Up</button>
       </form>
@@ -1264,12 +1285,33 @@
     </div>
     <div class="cc-dialog-grid">
       <label class="full">Part description<input name="requested_description" required placeholder="Example: Left headlight assembly"></label>
+      {% if job_assets %}<label class="full">Job asset<select name="job_asset_id"><option value="">Unassigned / not known yet</option>{% for asset in job_assets %}<option value="{{ asset.id }}" {% if asset.is_primary %}selected{% endif %}>{{ asset.year }} {{ asset.manufacturer }} {{ asset.model or asset.name }}{% if asset.vin_pin_serial %} · {{ asset.vin_pin_serial }}{% endif %}</option>{% endfor %}</select></label>{% endif %}
       <label>Quantity<input type="number" name="quantity" value="1" min="1" required></label>
       <label>Manufacturer / OEM # (optional)<input name="manufacturer_part_number" placeholder="Leave blank if unknown"></label>
       <label>Supplier (optional)<input name="supplier_name" placeholder="Supplier name"></label>
       <label>Supplier part # (optional)<input name="supplier_part_number" placeholder="Supplier reference"></label>
     </div>
     <div class="cc-dialog-actions"><button class="button ghost" type="button" data-dialog-close>Cancel</button><button class="button" type="submit">Add Part</button></div>
+  </form>
+</dialog>
+
+<dialog class="cc-dialog" id="job-asset-dialog">
+  <form method="post" action="/jobs/{{ job.id }}/assets">
+    <div class="cc-dialog-head">
+      <div><p class="cc-label">JOB ASSET</p><h2>Add a machine or asset</h2><p class="cc-muted">Only record what is known. Automotive and heavy-equipment identifiers are both supported.</p></div>
+      <button type="button" class="cc-remove" data-dialog-close>×</button>
+    </div>
+    <div class="cc-dialog-grid">
+      <label>Manufacturer<input name="manufacturer" placeholder="John Deere"></label>
+      <label>Model<input name="model" placeholder="350D"></label>
+      <label>Year<input name="year" placeholder="Optional"></label>
+      <label>VIN / PIN / serial<input name="vin_pin_serial" placeholder="Optional"></label>
+      <label>Asset type<input name="asset_type" placeholder="Excavator, vehicle, engine..."></label>
+      <label>Internal name<input name="name" placeholder="Optional fleet name"></label>
+      <label class="full">Notes<textarea name="notes" placeholder="Configuration or identifying notes"></textarea></label>
+      <label class="full"><input type="checkbox" name="is_primary" value="1"> Use as the primary/default asset</label>
+    </div>
+    <div class="cc-dialog-actions"><button class="button ghost" type="button" data-dialog-close>Cancel</button><button class="button" type="submit">Add Asset</button></div>
   </form>
 </dialog>
 
@@ -1345,9 +1387,16 @@
     const url = select.selectedOptions[0]?.dataset.launchUrl || "";
     link.href = url || "#";
     link.hidden = !url;
+    document.querySelectorAll(".verification-source-select").forEach((partSelect) => {
+      const partLink = partSelect.closest(".part-verification-controls")?.querySelector(".verification-source-link");
+      if (!partLink) return;
+      const partUrl = partSelect.selectedOptions[0]?.dataset.launchUrl || "";
+      partLink.href = partUrl || "#";
+      partLink.hidden = !partUrl;
+    });
   }
   document.addEventListener("change", (event) => {
-    if (event.target?.id === "verification-source") syncVerificationSourceLink();
+    if (event.target?.id === "verification-source" || event.target?.classList?.contains("verification-source-select")) syncVerificationSourceLink();
   });
   syncVerificationSourceLink();
   function applyRevisionTokens() {

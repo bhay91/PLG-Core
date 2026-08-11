@@ -58,12 +58,13 @@ def create_orders_from_paid_invoice(invoice_id: int):
                 connection.execute("""
                     INSERT INTO supplier_order_items (
                         order_id,invoice_item_id,description,supplier_part_number,
-                        quantity_ordered,unit_cost,line_cost
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        quantity_ordered,unit_cost,line_cost,job_asset_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     order_id, item["id"], item["description"],
                     item["supplier_part_number"] or "", qty, unit,
                     round(unit * qty, 2),
+                    item["job_asset_id"],
                 ))
             write_audit(
                 connection,

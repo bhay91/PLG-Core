@@ -1708,3 +1708,359 @@ MIGRATIONS.append(
         _migration_0034_workflow_followups_and_internal_parts,
     )
 )
+
+
+def _migration_0035_multi_asset_commercial_foundation(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add multi-asset Jobs and independent commercial quote lineages."""
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS job_assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL,
+            machine_id INTEGER,
+            customer_id INTEGER,
+            asset_type TEXT NOT NULL DEFAULT '',
+            name TEXT NOT NULL DEFAULT '',
+            manufacturer TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            year TEXT NOT NULL DEFAULT '',
+            vin_pin_serial TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            is_primary INTEGER NOT NULL DEFAULT 0 CHECK (is_primary IN (0,1)),
+            state TEXT NOT NULL DEFAULT 'ACTIVE'
+                CHECK (state IN ('ACTIVE','ARCHIVED')),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (job_id) REFERENCES jobs(id),
+            FOREIGN KEY (machine_id) REFERENCES machines(id),
+            FOREIGN KEY (customer_id) REFERENCES customers(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_job_assets_job
+            ON job_assets(job_id,state,id);
+        CREATE INDEX IF NOT EXISTS idx_job_assets_machine
+            ON job_assets(machine_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_job_assets_machine_membership
+            ON job_assets(job_id,machine_id) WHERE machine_id IS NOT NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_job_assets_primary
+            ON job_assets(job_id) WHERE is_primary=1 AND state='ACTIVE';
+
+        CREATE TABLE IF NOT EXISTS quote_tracks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL,
+            root_quote_id INTEGER,
+            purpose TEXT NOT NULL DEFAULT 'INDEPENDENT'
+                CHECK (purpose IN ('INDEPENDENT','REVISION','SPLIT_SUCCESSOR')),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (job_id) REFERENCES jobs(id),
+            FOREIGN KEY (root_quote_id) REFERENCES quotes(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_quote_tracks_job ON quote_tracks(job_id,id);
+
+        CREATE TABLE IF NOT EXISTS quote_splits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_quote_id INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (source_quote_id) REFERENCES quotes(id)
+        );
+        CREATE TABLE IF NOT EXISTS quote_split_successors (
+            split_id INTEGER NOT NULL,
+            successor_quote_id INTEGER NOT NULL UNIQUE,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (split_id,successor_quote_id),
+            FOREIGN KEY (split_id) REFERENCES quote_splits(id),
+            FOREIGN KEY (successor_quote_id) REFERENCES quotes(id)
+        );
+        CREATE TABLE IF NOT EXISTS quote_item_lineage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            split_id INTEGER,
+            predecessor_quote_item_id INTEGER NOT NULL,
+            successor_quote_item_id INTEGER,
+            successor_quote_id INTEGER,
+            disposition TEXT NOT NULL DEFAULT 'MOVED'
+                CHECK (disposition IN ('MOVED','ACCEPTED','DECLINED','DEFERRED')),
+            quantity REAL NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(split_id,predecessor_quote_item_id,successor_quote_id,disposition),
+            FOREIGN KEY (split_id) REFERENCES quote_splits(id),
+            FOREIGN KEY (predecessor_quote_item_id) REFERENCES quote_items(id),
+            FOREIGN KEY (successor_quote_item_id) REFERENCES quote_items(id),
+            FOREIGN KEY (successor_quote_id) REFERENCES quotes(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_quote_item_lineage_predecessor
+            ON quote_item_lineage(predecessor_quote_item_id);
+
+        CREATE TABLE IF NOT EXISTS quote_item_decisions (
+            quote_item_id INTEGER PRIMARY KEY,
+            decision TEXT NOT NULL DEFAULT 'PENDING'
+                CHECK (decision IN ('PENDING','ACCEPTED','DECLINED','DEFERRED')),
+            accepted_quantity REAL NOT NULL DEFAULT 0,
+            reason TEXT NOT NULL DEFAULT '',
+            decided_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (quote_item_id) REFERENCES quote_items(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS verification_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL,
+            job_asset_id INTEGER,
+            basket_item_id INTEGER,
+            job_part_id INTEGER,
+            connector_profile_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'ACTIVE'
+                CHECK (status IN ('ACTIVE','COMPLETED','CANCELLED')),
+            started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            completed_at TEXT,
+            notes TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY (job_id) REFERENCES jobs(id),
+            FOREIGN KEY (job_asset_id) REFERENCES job_assets(id),
+            FOREIGN KEY (basket_item_id) REFERENCES basket_items(id),
+            FOREIGN KEY (job_part_id) REFERENCES job_parts(id),
+            FOREIGN KEY (connector_profile_id) REFERENCES connector_profiles(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_verification_sessions_context
+            ON verification_sessions(job_id,job_asset_id,basket_item_id,status);
+        """
+    )
+
+    # Preserve legacy identity verbatim while exposing it as the default asset.
+    connection.execute(
+        """
+        INSERT INTO job_assets (
+            job_id,machine_id,customer_id,asset_type,name,manufacturer,model,
+            vin_pin_serial,is_primary
+        )
+        SELECT j.id,j.machine_id,j.customer_id,
+               COALESCE(m.registry_type,''),
+               COALESCE(NULLIF(m.name,''),TRIM(COALESCE(j.manufacturer,'') || ' ' || COALESCE(j.machine,''))),
+               COALESCE(NULLIF(j.manufacturer,''),m.manufacturer,''),
+               COALESCE(NULLIF(j.machine,''),m.model,m.name,''),
+               COALESCE(NULLIF(j.pin_serial,''),m.vin_pin_serial,''),1
+        FROM jobs j
+        LEFT JOIN machines m ON m.id=j.machine_id
+        WHERE (j.machine_id IS NOT NULL
+               OR TRIM(COALESCE(j.manufacturer,''))!=''
+               OR TRIM(COALESCE(j.machine,''))!=''
+               OR TRIM(COALESCE(j.pin_serial,''))!='')
+          AND NOT EXISTS (SELECT 1 FROM job_assets a WHERE a.job_id=j.id)
+        """
+    )
+
+    asset_columns = {
+        "job_asset_id": "INTEGER REFERENCES job_assets(id)",
+    }
+    for table in (
+        "basket_items", "work_revision_items", "job_parts", "quote_items",
+        "invoice_items", "supplier_order_items",
+    ):
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ).fetchone():
+            _add_columns(connection, table, asset_columns)
+    _add_columns(
+        connection,
+        "basket_items",
+        {"origin_work_revision_item_id": "INTEGER REFERENCES work_revision_items(id)"},
+    )
+
+    _add_columns(
+        connection,
+        "quote_items",
+        {
+            "origin_work_revision_item_id": "INTEGER REFERENCES work_revision_items(id)",
+            "asset_name_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "asset_type_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "asset_manufacturer_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "asset_model_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "asset_year_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "asset_serial_snapshot": "TEXT NOT NULL DEFAULT ''",
+        },
+    )
+    _add_columns(
+        connection,
+        "invoice_items",
+        {
+            "asset_name_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "asset_type_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "asset_manufacturer_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "asset_model_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "asset_year_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "asset_serial_snapshot": "TEXT NOT NULL DEFAULT ''",
+        },
+    )
+    _add_columns(
+        connection,
+        "quotes",
+        {
+            "quote_track_id": "INTEGER REFERENCES quote_tracks(id)",
+            "commercial_kind": (
+                "TEXT NOT NULL DEFAULT 'INDEPENDENT' "
+                "CHECK (commercial_kind IN ('INDEPENDENT','REVISION','SPLIT_SUCCESSOR'))"
+            ),
+            "split_from_quote_id": "INTEGER REFERENCES quotes(id)",
+            "bill_to_kind": (
+                "TEXT NOT NULL DEFAULT 'CONTACT' "
+                "CHECK (bill_to_kind IN ('CONTACT','COMPANY','CUSTOM'))"
+            ),
+            "bill_to_name_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "bill_to_company_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "bill_to_address_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "bill_to_phone_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "bill_to_email_snapshot": "TEXT NOT NULL DEFAULT ''",
+        },
+    )
+    _add_columns(
+        connection,
+        "invoices",
+        {
+            "bill_to_kind": "TEXT NOT NULL DEFAULT 'CONTACT'",
+            "bill_to_name_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "bill_to_company_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "bill_to_address_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "bill_to_phone_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "bill_to_email_snapshot": "TEXT NOT NULL DEFAULT ''",
+        },
+    )
+    _add_columns(
+        connection,
+        "job_follow_ups",
+        {
+            "job_asset_id": "INTEGER REFERENCES job_assets(id)",
+            "basket_item_id": "INTEGER REFERENCES basket_items(id)",
+            "job_part_id": "INTEGER REFERENCES job_parts(id)",
+        },
+    )
+    _add_columns(
+        connection,
+        "connector_profiles",
+        {
+            "manufacturer_applicability": "TEXT NOT NULL DEFAULT ''",
+            "notes": "TEXT NOT NULL DEFAULT ''",
+        },
+    )
+    _add_columns(
+        connection,
+        "active_source_import",
+        {
+            "job_asset_id": "INTEGER REFERENCES job_assets(id)",
+            "basket_item_id": "INTEGER REFERENCES basket_items(id)",
+            "verification_session_id": "INTEGER REFERENCES verification_sessions(id)",
+        },
+    )
+
+    # Legacy line records inherit the Job's primary compatibility asset where
+    # no issued line-level snapshot existed. Existing quote values are untouched.
+    for table, job_expression in (
+        ("basket_items", "(SELECT b.job_id FROM baskets b WHERE b.id=basket_items.basket_id)"),
+        ("work_revision_items", "(SELECT wr.job_id FROM work_revisions wr WHERE wr.id=work_revision_items.work_revision_id)"),
+        ("job_parts", "job_parts.job_id"),
+        ("quote_items", "(SELECT q.job_id FROM quotes q WHERE q.id=quote_items.quote_id)"),
+        ("invoice_items", "(SELECT i.job_id FROM invoices i WHERE i.id=invoice_items.invoice_id)"),
+    ):
+        connection.execute(
+            f"""
+            UPDATE {table} SET job_asset_id=(
+                SELECT a.id FROM job_assets a
+                WHERE a.job_id={job_expression} AND a.is_primary=1 AND a.state='ACTIVE'
+                ORDER BY a.id LIMIT 1
+            ) WHERE job_asset_id IS NULL
+            """
+        )
+
+    # Create one lineage track for each legacy root and attach descendants.
+    quotes = connection.execute(
+        "SELECT id,job_id,supersedes_quote_id,quote_track_id FROM quotes ORDER BY id"
+    ).fetchall()
+    tracks: dict[int, int] = {}
+    for quote in quotes:
+        if quote["quote_track_id"] is not None:
+            tracks[int(quote["id"])] = int(quote["quote_track_id"])
+            continue
+        predecessor = quote["supersedes_quote_id"]
+        track_id = tracks.get(int(predecessor)) if predecessor else None
+        if track_id is None:
+            cursor = connection.execute(
+                "INSERT INTO quote_tracks(job_id,root_quote_id,purpose) VALUES (?,?,?)",
+                (
+                    quote["job_id"], quote["id"],
+                    "REVISION" if predecessor else "INDEPENDENT",
+                ),
+            )
+            track_id = int(cursor.lastrowid)
+        tracks[int(quote["id"])] = track_id
+        connection.execute(
+            "UPDATE quotes SET quote_track_id=? WHERE id=? AND quote_track_id IS NULL",
+            (track_id, quote["id"]),
+        )
+
+    connection.execute(
+        """
+        UPDATE quotes SET
+            bill_to_name_snapshot=COALESCE(NULLIF(customer_name_snapshot,''),''),
+            bill_to_company_snapshot=COALESCE(NULLIF(company_snapshot,''),''),
+            bill_to_address_snapshot=COALESCE(NULLIF(address_snapshot,''),''),
+            bill_to_phone_snapshot=COALESCE(NULLIF(phone_snapshot,''),''),
+            bill_to_email_snapshot=COALESCE(NULLIF(email_snapshot,''),'')
+        WHERE bill_to_name_snapshot=''
+        """
+    )
+    connection.execute(
+        """
+        UPDATE invoices SET
+            bill_to_kind=COALESCE((SELECT q.bill_to_kind FROM quotes q WHERE q.id=invoices.quote_id),'CONTACT'),
+            bill_to_name_snapshot=COALESCE((SELECT q.bill_to_name_snapshot FROM quotes q WHERE q.id=invoices.quote_id),''),
+            bill_to_company_snapshot=COALESCE((SELECT q.bill_to_company_snapshot FROM quotes q WHERE q.id=invoices.quote_id),''),
+            bill_to_address_snapshot=COALESCE((SELECT q.bill_to_address_snapshot FROM quotes q WHERE q.id=invoices.quote_id),''),
+            bill_to_phone_snapshot=COALESCE((SELECT q.bill_to_phone_snapshot FROM quotes q WHERE q.id=invoices.quote_id),''),
+            bill_to_email_snapshot=COALESCE((SELECT q.bill_to_email_snapshot FROM quotes q WHERE q.id=invoices.quote_id),'')
+        WHERE bill_to_name_snapshot=''
+        """
+    )
+    connection.execute("DROP INDEX IF EXISTS uq_quotes_one_current_per_job")
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_quotes_one_current_per_track "
+        "ON quotes(quote_track_id) WHERE is_current=1 AND quote_track_id IS NOT NULL"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_quotes_job_current ON quotes(job_id,is_current,status)"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_quote_items_asset ON quote_items(quote_id,job_asset_id,id)"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_basket_items_asset ON basket_items(basket_id,job_asset_id,id)"
+    )
+
+
+MIGRATIONS.append(
+    (
+        "0035_multi_asset_commercial_foundation",
+        _migration_0035_multi_asset_commercial_foundation,
+    )
+)
+
+
+def _migration_0036_multi_asset_completion(connection: sqlite3.Connection) -> None:
+    """Complete columns if 0035 was applied during an earlier development rehearsal."""
+    additions = {
+        "basket_items": {
+            "job_asset_id": "INTEGER REFERENCES job_assets(id)",
+            "origin_work_revision_item_id": "INTEGER REFERENCES work_revision_items(id)",
+        },
+        "work_revision_items": {"job_asset_id": "INTEGER REFERENCES job_assets(id)"},
+        "job_parts": {"job_asset_id": "INTEGER REFERENCES job_assets(id)"},
+        "quote_items": {"job_asset_id": "INTEGER REFERENCES job_assets(id)"},
+        "invoice_items": {"job_asset_id": "INTEGER REFERENCES job_assets(id)"},
+        "supplier_order_items": {"job_asset_id": "INTEGER REFERENCES job_assets(id)"},
+    }
+    for table, columns in additions.items():
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ).fetchone():
+            _add_columns(connection, table, columns)
+
+
+MIGRATIONS.append(("0036_multi_asset_completion", _migration_0036_multi_asset_completion))

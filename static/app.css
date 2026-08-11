@@ -26,6 +26,14 @@
   --sidebar-width: 238px;
 }
 
+.quote-review-table .quote-asset-group td {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  border-top: 2px solid var(--accent);
+  padding-block: 10px;
+}
+.quote-review-table .quote-asset-group small { color: var(--muted); }
+
 * { box-sizing: border-box; }
 
 html { min-width: 320px; }

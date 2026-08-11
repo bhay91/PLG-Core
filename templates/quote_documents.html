@@ -21,6 +21,7 @@
         {% if quote.supersedes_quote_number %}
         <br>Revision of {{ quote.supersedes_quote_number }}.
         {% endif %}
+        {% if split_predecessor %}<br>Split successor of {{ split_predecessor.quote_number }}.{% endif %}
       </p>
     </div>
 
@@ -57,6 +58,19 @@
         {% endif %}
     </div>
   </section>
+
+  {% if quote.status == 'DRAFT' %}
+  <section class="panel">
+    <header class="quote-review-section-head"><div><p class="eyebrow">COMMERCIAL IDENTITY</p><h2>Bill To</h2><p>Changing Bill To on this unissued draft does not change the Job contact, company, or asset ownership.</p></div></header>
+    <form class="quote-decision-actions" method="post" action="/quotes/{{ quote.id }}/bill-to">
+      <label>Bill To<select name="bill_to_kind"><option value="CONTACT" {% if quote.bill_to_kind == 'CONTACT' %}selected{% endif %}>Contact</option><option value="COMPANY" {% if quote.bill_to_kind == 'COMPANY' %}selected{% endif %}>Company / account</option><option value="CUSTOM" {% if quote.bill_to_kind == 'CUSTOM' %}selected{% endif %}>Custom identity</option></select></label>
+      <label>Custom name<input name="bill_to_name" value="{{ quote.bill_to_name_snapshot or '' }}"></label>
+      <label>Custom company<input name="bill_to_company" value="{{ quote.bill_to_company_snapshot or '' }}"></label>
+      <label>Address<input name="bill_to_address" value="{{ quote.bill_to_address_snapshot or '' }}"></label>
+      <button class="button ghost" type="submit">Update Draft Bill To</button>
+    </form>
+  </section>
+  {% endif %}
 
   <section class="panel quote-decision-center">
     <header class="quote-review-section-head">
@@ -215,11 +229,11 @@
   <section class="panel quote-review-identity">
     <div class="quote-review-identity-grid">
       <div>
-        <span>Customer</span>
-        <strong>{{ quote.customer or "Not provided" }}</strong>
+        <span>Bill To</span>
+        <strong>{{ quote.bill_to_name_snapshot or quote.customer or "Not provided" }}</strong>
 
-        {% if quote.company %}
-        <small>{{ quote.company }}</small>
+        {% if quote.bill_to_company_snapshot or quote.company %}
+        <small>{{ quote.bill_to_company_snapshot or quote.company }}</small>
         {% endif %}
       </div>
 
@@ -284,7 +298,13 @@
         </thead>
 
         <tbody>
+          {% set ns = namespace(asset='') %}
           {% for item in items %}
+          {% set asset_key = (item.asset_manufacturer_snapshot or '') ~ '|' ~ (item.asset_model_snapshot or '') ~ '|' ~ (item.asset_serial_snapshot or '') %}
+          {% if asset_key != ns.asset and (item.asset_manufacturer_snapshot or item.asset_model_snapshot or item.asset_serial_snapshot) %}
+          <tr class="quote-asset-group"><td colspan="6"><strong>{{ item.asset_year_snapshot }} {{ item.asset_manufacturer_snapshot }} {{ item.asset_model_snapshot }}</strong>{% if item.asset_serial_snapshot %}<small> · VIN / PIN / Serial: {{ item.asset_serial_snapshot }}</small>{% endif %}</td></tr>
+          {% set ns.asset = asset_key %}
+          {% endif %}
           <tr>
             <td>{{ item.quantity }}</td>
 
@@ -322,6 +342,19 @@
     </div>
     {% endif %}
   </section>
+
+  {% if not invoice and quote.status in ['SENT','REJECTED','REVISION_REQUIRED','APPROVED'] and quote.is_current and items|length > 1 %}
+  <section class="panel">
+    <header class="quote-review-section-head"><div><p class="eyebrow">SPLIT ISSUED QUOTE</p><h2>Create protected successor quotes</h2><p>The original remains unchanged and becomes superseded. Assign every line to either the contact or company successor.</p></div></header>
+    <form method="post" action="/quotes/{{ quote.id }}/split" onsubmit="return confirm('Create new numbered successor quotes and supersede this issued quote?');">
+      <label>Reason<input name="reason" required placeholder="Why is this quote being split?"></label>
+      <div class="quote-review-table-wrap"><table class="quote-review-table"><thead><tr><th>Part</th><th>Contact quote</th><th>Company quote</th></tr></thead><tbody>{% for item in items %}<tr><td>{{ item.description }}</td><td><input type="radio" name="line-{{ item.id }}" value="contact" onclick="this.form.querySelector('[data-contact=\'{{ item.id }}\']').disabled=false;this.form.querySelector('[data-company=\'{{ item.id }}\']').disabled=true" required><input type="hidden" data-contact="{{ item.id }}" name="contact_item_ids" value="{{ item.id }}" disabled></td><td><input type="radio" name="line-{{ item.id }}" value="company" onclick="this.form.querySelector('[data-company=\'{{ item.id }}\']').disabled=false;this.form.querySelector('[data-contact=\'{{ item.id }}\']').disabled=true"><input type="hidden" data-company="{{ item.id }}" name="company_item_ids" value="{{ item.id }}" disabled></td></tr>{% endfor %}</tbody></table></div>
+      <button class="button" type="submit">Create Split Successors</button>
+    </form>
+  </section>
+  {% endif %}
+
+  {% if split_successors %}<section class="panel"><header class="quote-review-section-head"><div><p class="eyebrow">SPLIT LINEAGE</p><h2>Successor quotes</h2></div></header>{% for successor in split_successors %}<div class="quote-document-row"><div><strong>{{ successor.quote_number }}</strong><p>{{ successor.bill_to_name_snapshot or successor.bill_to_company_snapshot }}</p></div><a class="button ghost small" href="/quotes/{{ successor.id }}/documents">Open · {{ successor.status }}</a></div>{% endfor %}</section>{% endif %}
 
   <section class="quote-review-lower-grid">
     <article class="panel quote-review-documents">

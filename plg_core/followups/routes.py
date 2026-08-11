@@ -27,6 +27,9 @@ def create_job_follow_up(
     summary: Annotated[str, Form()],
     reason: Annotated[str, Form()] = "",
     category: Annotated[str, Form()] = "CUSTOMER_INFORMATION",
+    job_asset_id: Annotated[int | None, Form()] = None,
+    basket_item_id: Annotated[int | None, Form()] = None,
+    job_part_id: Annotated[int | None, Form()] = None,
 ):
     summary = _required(summary, "Information or action needed")
     category = str(category or "CUSTOMER_INFORMATION").strip().upper()
@@ -38,10 +41,24 @@ def create_job_follow_up(
         ).fetchone()
         if job is None:
             raise HTTPException(status_code=404, detail="Job not found.")
+        for table, value in (("job_assets", job_asset_id), ("basket_items", basket_item_id), ("job_parts", job_part_id)):
+            if value is None:
+                continue
+            if table == "basket_items":
+                valid = connection.execute(
+                    "SELECT 1 FROM basket_items bi JOIN baskets b ON b.id=bi.basket_id WHERE bi.id=? AND b.job_id=?",
+                    (value, job_id),
+                ).fetchone()
+            else:
+                valid = connection.execute(
+                    f"SELECT 1 FROM {table} WHERE id=? AND job_id=?", (value, job_id)
+                ).fetchone()
+            if valid is None:
+                raise HTTPException(status_code=409, detail="Follow-up context does not belong to this Job.")
         cursor = connection.execute(
-            "INSERT INTO job_follow_ups(job_id,category,summary,reason) "
-            "VALUES (?,?,?,?)",
-            (job_id, category, summary, str(reason or "").strip()),
+            "INSERT INTO job_follow_ups(job_id,category,summary,reason,job_asset_id,basket_item_id,job_part_id) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (job_id, category, summary, str(reason or "").strip(),job_asset_id,basket_item_id,job_part_id),
         )
         follow_up_id = int(cursor.lastrowid)
         action = (

@@ -787,6 +787,24 @@ def create_job(
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'REQUESTED',?)
         """,(job_number,date.today().isoformat(),customer_row["id"],machine_id,customer_row["name"],customer_row["company"] or "",customer_row["phone"] or "",customer_row["email"] or "",customer_row["address"] or "",manufacturer.strip(),machine.strip(),pin_serial.strip(),notes.strip()))
         job_id=cur.lastrowid
+        if machine_id or any((manufacturer.strip(), machine.strip(), pin_serial.strip())):
+            connection.execute(
+                """
+                INSERT INTO job_assets (
+                    job_id,machine_id,customer_id,asset_type,name,manufacturer,
+                    model,year,vin_pin_serial,is_primary
+                ) VALUES (?,?,?,?,?,?,?,?,?,1)
+                """,
+                (
+                    job_id,machine_id,customer_row["id"],
+                    (selected_machine["registry_type"] if selected_machine else "") or "",
+                    (selected_machine["name"] if selected_machine else "") or
+                    " ".join(v for v in (manufacturer.strip(),machine.strip()) if v),
+                    manufacturer.strip(),machine.strip(),
+                    (selected_machine["year"] if selected_machine else "") or "",
+                    pin_serial.strip(),
+                ),
+            )
         connection.commit()
     return RedirectResponse(url=f"/jobs/{job_id}/basket",status_code=303)
 
@@ -1698,6 +1716,35 @@ def update_job(
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Job not found.")
 
+        primary_asset = connection.execute(
+            "SELECT id FROM job_assets WHERE job_id=? AND is_primary=1 AND state='ACTIVE'",
+            (job_id,),
+        ).fetchone()
+        if machine_row:
+            if primary_asset:
+                connection.execute(
+                    """
+                    UPDATE job_assets SET machine_id=?,customer_id=?,name=?,manufacturer=?,
+                        model=?,year=?,vin_pin_serial=?,asset_type=?,updated_at=CURRENT_TIMESTAMP
+                    WHERE id=?
+                    """,
+                    (
+                        machine_id,customer_id,machine_row["name"] or machine_name,
+                        manufacturer or "",machine_name or "",machine_row["year"] or "",
+                        serial or "",machine_row["registry_type"] or "",primary_asset["id"],
+                    ),
+                )
+            else:
+                connection.execute(
+                    "INSERT INTO job_assets(job_id,machine_id,customer_id,name,manufacturer,model,year,vin_pin_serial,asset_type,is_primary) VALUES (?,?,?,?,?,?,?,?,?,1)",
+                    (job_id,machine_id,customer_id,machine_row["name"] or machine_name,manufacturer or "",machine_name or "",machine_row["year"] or "",serial or "",machine_row["registry_type"] or ""),
+                )
+        elif primary_asset:
+            connection.execute(
+                "UPDATE job_assets SET state='ARCHIVED',is_primary=0,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (primary_asset["id"],),
+            )
+
         changes = {
             "customer_id": [job["customer_id"], customer_id],
             "machine_id": [job["machine_id"], machine_id],
@@ -1717,6 +1764,7 @@ def add_job_part(
     job_id: int,
     requested_description: Annotated[str, Form()],
     quantity: Annotated[int, Form()] = 1,
+    job_asset_id: Annotated[int | None, Form()] = None,
 ):
     description = requested_description.strip()
     if not description:
@@ -1734,15 +1782,20 @@ def add_job_part(
 
         if job is None:
             raise HTTPException(status_code=404, detail="Job not found.")
+        if job_asset_id is not None and connection.execute(
+            "SELECT 1 FROM job_assets WHERE id=? AND job_id=? AND state='ACTIVE'",
+            (job_asset_id, job_id),
+        ).fetchone() is None:
+            raise HTTPException(status_code=409, detail="Select an active asset from this Job.")
 
         connection.execute(
             """
             INSERT INTO job_parts (
-                job_id, requested_description, quantity, verification_status
+                job_id, job_asset_id, requested_description, quantity, verification_status
             )
-            VALUES (?, ?, ?, 'PENDING')
+            VALUES (?, ?, ?, ?, 'PENDING')
             """,
-            (job_id, description, quantity),
+            (job_id, job_asset_id, description, quantity),
         )
         connection.commit()
 
@@ -1911,6 +1964,7 @@ def generate_quote(job_id: int):
             """
             SELECT
                 job_parts.id AS part_id,
+                job_parts.job_asset_id,
                 job_parts.requested_description,
                 job_parts.internal_part_number,
                 job_parts.oem_description,
@@ -1925,13 +1979,21 @@ def generate_quote(job_id: int):
                 part_sources.source_type,
                 part_sources.brand,
                 part_sources.supplier_part_number,
-                part_sources.supplier_cost
+                part_sources.supplier_cost,
+                work_revision_items.id AS origin_work_revision_item_id,
+                COALESCE(job_assets.name,'') AS asset_name_snapshot,
+                COALESCE(job_assets.asset_type,'') AS asset_type_snapshot,
+                COALESCE(job_assets.manufacturer,'') AS asset_manufacturer_snapshot,
+                COALESCE(job_assets.model,'') AS asset_model_snapshot,
+                COALESCE(job_assets.year,'') AS asset_year_snapshot,
+                COALESCE(job_assets.vin_pin_serial,'') AS asset_serial_snapshot
             FROM job_parts
             JOIN part_sources
               ON part_sources.part_id = job_parts.id
              AND part_sources.selected_for_quote = 1
             LEFT JOIN work_revision_items
               ON work_revision_items.id = job_parts.work_revision_item_id
+            LEFT JOIN job_assets ON job_assets.id=job_parts.job_asset_id
             WHERE job_parts.job_id = ?
               AND job_parts.work_revision_id = (
                   SELECT active_work_revision_id FROM jobs WHERE id=?
@@ -2079,6 +2141,8 @@ def generate_quote(job_id: int):
                 (
                     row["part_id"],
                     row["source_id"],
+                    row["job_asset_id"],
+                    row["origin_work_revision_item_id"],
                     quantity,
                     description,
                     row["internal_part_number"] or "",
@@ -2094,6 +2158,12 @@ def generate_quote(job_id: int):
                     row["pricing_mode"] or "LEGACY_FIXED",
                     row["customer_unit_price_override"],
                     row["recommended_markup_percent"],
+                    row["asset_name_snapshot"],
+                    row["asset_type_snapshot"],
+                    row["asset_manufacturer_snapshot"],
+                    row["asset_model_snapshot"],
+                    row["asset_year_snapshot"],
+                    row["asset_serial_snapshot"],
                 )
             )
 
@@ -2135,9 +2205,12 @@ def generate_quote(job_id: int):
                 manufacturer_snapshot,
                 machine_snapshot,
                 pin_serial_snapshot
+                ,bill_to_kind,bill_to_name_snapshot,bill_to_company_snapshot,
+                bill_to_address_snapshot,bill_to_phone_snapshot,bill_to_email_snapshot
             )
             VALUES (
-                ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                'CONTACT',?,?,?,?,?
             )
                 """,
                 (
@@ -2160,6 +2233,8 @@ def generate_quote(job_id: int):
                 job["manufacturer"],
                 job["machine"],
                 job["pin_serial"],
+                job["customer"],job["company"] or "",job["address"] or "",
+                job["phone"] or "",job["email"] or "",
                 ),
             )
         except sqlite3.IntegrityError as error:
@@ -2179,6 +2254,13 @@ def generate_quote(job_id: int):
             ) from error
 
         quote_id = cursor.lastrowid
+        track_id = connection.execute(
+            "INSERT INTO quote_tracks(job_id,root_quote_id,purpose) VALUES (?,?, 'INDEPENDENT')",
+            (job_id, quote_id),
+        ).lastrowid
+        connection.execute(
+            "UPDATE quotes SET quote_track_id=? WHERE id=?", (track_id, quote_id)
+        )
 
         for item in item_rows:
             connection.execute(
@@ -2187,6 +2269,8 @@ def generate_quote(job_id: int):
                     quote_id,
                     part_id,
                     source_id,
+                    job_asset_id,
+                    origin_work_revision_item_id,
                     quantity,
                     description,
                     internal_part_number,
@@ -2202,9 +2286,12 @@ def generate_quote(job_id: int):
                     pricing_mode,
                     customer_unit_price_override,
                     recommended_markup_percent
+                    ,asset_name_snapshot,asset_type_snapshot,
+                    asset_manufacturer_snapshot,asset_model_snapshot,
+                    asset_year_snapshot,asset_serial_snapshot
                 )
                 VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 (quote_id, *item),
@@ -2320,11 +2407,11 @@ def load_invoice(
             invoices.*,
             jobs.customer_id,
             jobs.job_number,
-            jobs.customer,
-            jobs.company,
-            jobs.phone,
-            jobs.email,
-            jobs.address,
+            COALESCE(NULLIF(invoices.bill_to_name_snapshot,''),jobs.customer) AS customer,
+            COALESCE(NULLIF(invoices.bill_to_company_snapshot,''),jobs.company) AS company,
+            COALESCE(NULLIF(invoices.bill_to_phone_snapshot,''),jobs.phone) AS phone,
+            COALESCE(NULLIF(invoices.bill_to_email_snapshot,''),jobs.email) AS email,
+            COALESCE(NULLIF(invoices.bill_to_address_snapshot,''),jobs.address) AS address,
             jobs.manufacturer,
             jobs.machine,
             jobs.pin_serial,
@@ -3127,10 +3214,10 @@ def convert_quote_to_invoice(quote_id: int):
         credit_applied = min(available_credit,customer_total)
         balance_due = max(customer_total-credit_applied,0.0)
         status = "PAID" if balance_due == 0 else ("PARTIAL" if credit_applied > 0 else "UNPAID")
-        cur = connection.execute("""INSERT INTO invoices (invoice_number,quote_id,job_id,invoice_date,status,parts_subtotal,shipping_total,service_charge,sourcing_fee,customer_total,supplier_total,profit_total,credit_applied,balance_due) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_number,quote_id,quote["job_id"],invoice_date,status,float(quote["parts_subtotal"] or 0),float(quote["shipping_total"] or 0),float(quote["service_charge"] or 0),float(quote["sourcing_fee"] or 0),customer_total,float(quote["supplier_total"] or 0),float(quote["profit_total"] or 0),credit_applied,balance_due))
+        cur = connection.execute("""INSERT INTO invoices (invoice_number,quote_id,job_id,invoice_date,status,parts_subtotal,shipping_total,service_charge,sourcing_fee,customer_total,supplier_total,profit_total,credit_applied,balance_due,bill_to_kind,bill_to_name_snapshot,bill_to_company_snapshot,bill_to_address_snapshot,bill_to_phone_snapshot,bill_to_email_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_number,quote_id,quote["job_id"],invoice_date,status,float(quote["parts_subtotal"] or 0),float(quote["shipping_total"] or 0),float(quote["service_charge"] or 0),float(quote["sourcing_fee"] or 0),customer_total,float(quote["supplier_total"] or 0),float(quote["profit_total"] or 0),credit_applied,balance_due,quote["bill_to_kind"],quote["bill_to_name_snapshot"],quote["bill_to_company_snapshot"],quote["bill_to_address_snapshot"],quote["bill_to_phone_snapshot"],quote["bill_to_email_snapshot"]))
         invoice_id = cur.lastrowid
         for item in quote_items:
-            connection.execute("""INSERT INTO invoice_items (invoice_id,quote_item_id,part_id,source_id,quantity,description,internal_part_number,supplier_name,source_type,brand,supplier_part_number,supplier_unit_cost,customer_unit_price,supplier_line_total,customer_line_total,line_profit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_id,item["id"],item["part_id"],item["source_id"],item["quantity"],item["description"],item["internal_part_number"] or "",item["supplier_name"],item["source_type"],item["brand"],item["supplier_part_number"],item["supplier_unit_cost"],item["customer_unit_price"],item["supplier_line_total"],item["customer_line_total"],item["line_profit"]))
+            connection.execute("""INSERT INTO invoice_items (invoice_id,quote_item_id,part_id,source_id,job_asset_id,quantity,description,internal_part_number,supplier_name,source_type,brand,supplier_part_number,supplier_unit_cost,customer_unit_price,supplier_line_total,customer_line_total,line_profit,asset_name_snapshot,asset_type_snapshot,asset_manufacturer_snapshot,asset_model_snapshot,asset_year_snapshot,asset_serial_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_id,item["id"],item["part_id"],item["source_id"],item["job_asset_id"],item["quantity"],item["description"],item["internal_part_number"] or "",item["supplier_name"],item["source_type"],item["brand"],item["supplier_part_number"],item["supplier_unit_cost"],item["customer_unit_price"],item["supplier_line_total"],item["customer_line_total"],item["line_profit"],item["asset_name_snapshot"],item["asset_type_snapshot"],item["asset_manufacturer_snapshot"],item["asset_model_snapshot"],item["asset_year_snapshot"],item["asset_serial_snapshot"]))
         if job["customer_id"]:
             connection.execute("""INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,reference,reason,job_id,quote_id,invoice_id) VALUES (?,?,'INVOICE',?,?,?,?,?,?)""",(job["customer_id"],invoice_date,-customer_total,invoice_number,f"Invoice created from {quote['quote_number']}",quote["job_id"],quote_id,invoice_id))
         previous_quote_status = str(quote["status"] or "").strip().upper()
@@ -3956,6 +4043,21 @@ def quote_documents(request: Request, quote_id: int):
             """,
             (quote_id,),
         ).fetchall()
+        split_predecessor = connection.execute(
+            "SELECT q.id,q.quote_number FROM quotes q WHERE q.id=?",
+            (quote["split_from_quote_id"] or 0,),
+        ).fetchone()
+        split_successors = connection.execute(
+            """
+            SELECT q.id,q.quote_number,q.status,q.bill_to_name_snapshot,
+                   q.bill_to_company_snapshot
+            FROM quote_split_successors successor
+            JOIN quotes q ON q.id=successor.successor_quote_id
+            JOIN quote_splits split ON split.id=successor.split_id
+            WHERE split.source_quote_id=? ORDER BY successor.successor_quote_id
+            """,
+            (quote_id,),
+        ).fetchall()
     paths = quote_paths(quote["customer"],quote["quote_number"])
     if (
         (not paths["customer"].exists() or not paths["internal"].exists())
@@ -3975,7 +4077,7 @@ def quote_documents(request: Request, quote_id: int):
             ),
         )
     customer_path = Path("documents")/"Customers"/sanitize_path_name(quote["customer"])/"Quotes"
-    return templates.TemplateResponse(request=request,name="quote_documents.html",context={"quote":quote,"items":items,"invoice":invoice,"quote_events":quote_events,"customer_path":str(customer_path),"active_page":"quotes"})
+    return templates.TemplateResponse(request=request,name="quote_documents.html",context={"quote":quote,"items":items,"invoice":invoice,"quote_events":quote_events,"split_predecessor":split_predecessor,"split_successors":split_successors,"customer_path":str(customer_path),"active_page":"quotes"})
 
 
 @app.get("/quotes/{quote_id}/customer/pdf")
@@ -5570,9 +5672,9 @@ def new_connector_form(request: Request):
     return templates.TemplateResponse(request=request,name="connector_form.html",context={"title":"New Connector","subtitle":"Add a source connector.","form_action":"/connectors/new","submit_label":"Save Connector","connector":{"display_name":"","launch_url":"","category":"Supplier","trust_level":"SUPPLIER_VERIFIED","connector_type":"CART"},"active_page":"connectors"})
 
 @app.post("/connectors/new")
-def add_connector(display_name: Annotated[str, Form()], launch_url: Annotated[str, Form()] = "", category: Annotated[str, Form()] = "Supplier", trust_level: Annotated[str, Form()] = "SUPPLIER_VERIFIED", connector_type: Annotated[str, Form()] = "CART"):
+def add_connector(display_name: Annotated[str, Form()], launch_url: Annotated[str, Form()] = "", category: Annotated[str, Form()] = "Supplier", trust_level: Annotated[str, Form()] = "SUPPLIER_VERIFIED", connector_type: Annotated[str, Form()] = "CART", manufacturer_applicability: Annotated[str, Form()] = "", notes: Annotated[str, Form()] = ""):
     key=re.sub(r"[^a-z0-9]+","_",display_name.lower()).strip("_")
-    with closing(get_connection()) as connection: connection.execute("INSERT INTO connector_profiles (connector_key,display_name,category,trust_level,launch_url,connector_type,parser_key,is_enabled,is_archived,sort_order) VALUES (?,?,?,?,?,?,'',1,0,100)",(key,display_name.strip(),category.strip(),trust_level.strip(),launch_url.strip(),connector_type.strip())); connection.commit()
+    with closing(get_connection()) as connection: connection.execute("INSERT INTO connector_profiles (connector_key,display_name,category,trust_level,launch_url,connector_type,parser_key,is_enabled,is_archived,sort_order,manufacturer_applicability,notes) VALUES (?,?,?,?,?,?,'',1,0,100,?,?)",(key,display_name.strip(),category.strip(),trust_level.strip(),launch_url.strip(),connector_type.strip(),manufacturer_applicability.strip(),notes.strip())); connection.commit()
     return RedirectResponse(url="/connectors",status_code=303)
 
 @app.get("/connectors/{connector_id}/edit", response_class=HTMLResponse)
@@ -5581,8 +5683,8 @@ def edit_connector_form(request: Request, connector_id: int):
     return templates.TemplateResponse(request=request,name="connector_form.html",context={"title":"Edit Connector","subtitle":c["display_name"],"form_action":f"/connectors/{connector_id}/edit","submit_label":"Save Changes","connector":c,"active_page":"connectors"})
 
 @app.post("/connectors/{connector_id}/edit")
-def update_connector(connector_id: int, display_name: Annotated[str, Form()], launch_url: Annotated[str, Form()] = "", category: Annotated[str, Form()] = "Supplier", trust_level: Annotated[str, Form()] = "SUPPLIER_VERIFIED", connector_type: Annotated[str, Form()] = "CART"):
-    with closing(get_connection()) as connection: connection.execute("UPDATE connector_profiles SET display_name=?,launch_url=?,category=?,trust_level=?,connector_type=? WHERE id=?",(display_name.strip(),launch_url.strip(),category.strip(),trust_level.strip(),connector_type.strip(),connector_id)); connection.commit()
+def update_connector(connector_id: int, display_name: Annotated[str, Form()], launch_url: Annotated[str, Form()] = "", category: Annotated[str, Form()] = "Supplier", trust_level: Annotated[str, Form()] = "SUPPLIER_VERIFIED", connector_type: Annotated[str, Form()] = "CART", manufacturer_applicability: Annotated[str, Form()] = "", notes: Annotated[str, Form()] = ""):
+    with closing(get_connection()) as connection: connection.execute("UPDATE connector_profiles SET display_name=?,launch_url=?,category=?,trust_level=?,connector_type=?,manufacturer_applicability=?,notes=? WHERE id=?",(display_name.strip(),launch_url.strip(),category.strip(),trust_level.strip(),connector_type.strip(),manufacturer_applicability.strip(),notes.strip(),connector_id)); connection.commit()
     return RedirectResponse(url="/connectors",status_code=303)
 
 @app.post("/connectors/{connector_id}/toggle")
@@ -5619,6 +5721,10 @@ def api_active_source_import():
             """
             SELECT
                 active_source_import.job_id,
+                active_source_import.job_asset_id,
+                active_source_import.basket_item_id,
+                active_source_import.job_part_id,
+                active_source_import.verification_session_id,
                 active_source_import.source_key,
                 active_source_import.source_name,
                 active_source_import.activated_at,
