@@ -30,6 +30,7 @@ def create_job_follow_up(
     job_asset_id: Annotated[int | None, Form()] = None,
     basket_item_id: Annotated[int | None, Form()] = None,
     job_part_id: Annotated[int | None, Form()] = None,
+    requested_need_id: Annotated[int | None, Form()] = None,
 ):
     summary = _required(summary, "Information or action needed")
     category = str(category or "CUSTOMER_INFORMATION").strip().upper()
@@ -55,10 +56,15 @@ def create_job_follow_up(
                 ).fetchone()
             if valid is None:
                 raise HTTPException(status_code=409, detail="Follow-up context does not belong to this Job.")
+        if requested_need_id is not None and connection.execute(
+            "SELECT 1 FROM requested_needs WHERE id=? AND job_id=?",
+            (requested_need_id, job_id),
+        ).fetchone() is None:
+            raise HTTPException(status_code=409, detail="Requested Need does not belong to this Job.")
         cursor = connection.execute(
-            "INSERT INTO job_follow_ups(job_id,category,summary,reason,job_asset_id,basket_item_id,job_part_id) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (job_id, category, summary, str(reason or "").strip(),job_asset_id,basket_item_id,job_part_id),
+            "INSERT INTO job_follow_ups(job_id,category,summary,reason,job_asset_id,basket_item_id,job_part_id,requested_need_id) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (job_id, category, summary, str(reason or "").strip(),job_asset_id,basket_item_id,job_part_id,requested_need_id),
         )
         follow_up_id = int(cursor.lastrowid)
         action = (

@@ -2064,3 +2064,193 @@ def _migration_0036_multi_asset_completion(connection: sqlite3.Connection) -> No
 
 
 MIGRATIONS.append(("0036_multi_asset_completion", _migration_0036_multi_asset_completion))
+
+
+def _migration_0037_machine_first_research(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS requested_needs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL,
+            job_asset_id INTEGER,
+            customer_request_id INTEGER,
+            wording TEXT NOT NULL,
+            notes TEXT NOT NULL DEFAULT '',
+            state TEXT NOT NULL DEFAULT 'OPEN'
+                CHECK (state IN ('OPEN','SATISFIED','ARCHIVED')),
+            resolution TEXT NOT NULL DEFAULT '',
+            lock_version INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TEXT,
+            FOREIGN KEY (job_id) REFERENCES jobs(id),
+            FOREIGN KEY (job_asset_id) REFERENCES job_assets(id),
+            FOREIGN KEY (customer_request_id) REFERENCES customer_requests(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_requested_needs_job_asset
+            ON requested_needs(job_id,job_asset_id,state,id);
+
+        CREATE TABLE IF NOT EXISTS basket_item_need_links (
+            basket_item_id INTEGER NOT NULL,
+            requested_need_id INTEGER NOT NULL,
+            relationship TEXT NOT NULL DEFAULT 'ADDRESSES'
+                CHECK (relationship IN ('ADDRESSES','SATISFIES','POSSIBLE_MATCH')),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (basket_item_id,requested_need_id),
+            FOREIGN KEY (basket_item_id) REFERENCES basket_items(id) ON DELETE CASCADE,
+            FOREIGN KEY (requested_need_id) REFERENCES requested_needs(id)
+        );
+        CREATE TABLE IF NOT EXISTS work_revision_item_need_links (
+            work_revision_item_id INTEGER NOT NULL,
+            requested_need_id INTEGER NOT NULL,
+            relationship TEXT NOT NULL DEFAULT 'ADDRESSES',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (work_revision_item_id,requested_need_id),
+            FOREIGN KEY (work_revision_item_id) REFERENCES work_revision_items(id),
+            FOREIGN KEY (requested_need_id) REFERENCES requested_needs(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS manufacturer_brands (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            canonical_name TEXT NOT NULL UNIQUE,
+            normalized_key TEXT NOT NULL UNIQUE,
+            aliases TEXT NOT NULL DEFAULT '',
+            local_logo_path TEXT NOT NULL DEFAULT '',
+            active INTEGER NOT NULL DEFAULT 1,
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS part_shipping_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            basket_item_id INTEGER,
+            work_revision_item_id INTEGER,
+            job_part_id INTEGER,
+            manufacturer_part_number TEXT NOT NULL DEFAULT '',
+            unit_weight REAL,
+            weight_unit TEXT NOT NULL DEFAULT 'lb'
+                CHECK (weight_unit IN ('lb','kg','oz','g')),
+            length REAL,
+            width REAL,
+            height REAL,
+            dimension_unit TEXT NOT NULL DEFAULT 'in'
+                CHECK (dimension_unit IN ('in','cm','mm','m')),
+            quality TEXT NOT NULL DEFAULT 'MANUAL'
+                CHECK (quality IN ('ACTUAL','VERIFIED','ESTIMATED_HIGH','ESTIMATED_MEDIUM','ESTIMATED_LOW','MANUAL')),
+            provenance TEXT NOT NULL DEFAULT '',
+            confidence REAL CHECK (confidence IS NULL OR (confidence>=0 AND confidence<=1)),
+            measured_at TEXT,
+            notes TEXT NOT NULL DEFAULT '',
+            is_current INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CHECK (basket_item_id IS NOT NULL OR work_revision_item_id IS NOT NULL OR job_part_id IS NOT NULL OR manufacturer_part_number!=''),
+            CHECK (unit_weight IS NULL OR unit_weight>=0),
+            CHECK (length IS NULL OR length>=0),
+            CHECK (width IS NULL OR width>=0),
+            CHECK (height IS NULL OR height>=0),
+            FOREIGN KEY (basket_item_id) REFERENCES basket_items(id) ON DELETE CASCADE,
+            FOREIGN KEY (work_revision_item_id) REFERENCES work_revision_items(id),
+            FOREIGN KEY (job_part_id) REFERENCES job_parts(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_part_shipping_basket
+            ON part_shipping_data(basket_item_id,is_current,id);
+        CREATE INDEX IF NOT EXISTS idx_part_shipping_part_number
+            ON part_shipping_data(manufacturer_part_number,is_current,quality);
+
+        CREATE TABLE IF NOT EXISTS consolidated_shipments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL,
+            invoice_id INTEGER,
+            status TEXT NOT NULL DEFAULT 'ESTIMATE'
+                CHECK (status IN ('ESTIMATE','PACKED','SHIPPED','VOID')),
+            package_count INTEGER NOT NULL DEFAULT 1,
+            total_weight REAL,
+            weight_unit TEXT NOT NULL DEFAULT 'lb',
+            length REAL,
+            width REAL,
+            height REAL,
+            dimension_unit TEXT NOT NULL DEFAULT 'in',
+            quality TEXT NOT NULL DEFAULT 'MANUAL',
+            provenance TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            measured_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (job_id) REFERENCES jobs(id),
+            FOREIGN KEY (invoice_id) REFERENCES invoices(id)
+        );
+        """
+    )
+    additions = {
+        "basket_items": {
+            "research_state": "TEXT NOT NULL DEFAULT 'LEGACY_CANDIDATE' CHECK (research_state IN ('RESEARCH_RESULT','QUOTE_CANDIDATE','LEGACY_CANDIDATE'))",
+            "primary_requested_need_id": "INTEGER REFERENCES requested_needs(id)",
+        },
+        "work_revision_items": {
+            "research_state": "TEXT NOT NULL DEFAULT 'LEGACY_CANDIDATE'",
+            "primary_requested_need_id": "INTEGER REFERENCES requested_needs(id)",
+        },
+        "job_parts": {"primary_requested_need_id": "INTEGER REFERENCES requested_needs(id)"},
+        "quote_items": {"primary_requested_need_id": "INTEGER REFERENCES requested_needs(id)"},
+        "invoice_items": {"primary_requested_need_id": "INTEGER REFERENCES requested_needs(id)"},
+        "verification_sessions": {"requested_need_id": "INTEGER REFERENCES requested_needs(id)"},
+        "active_source_import": {
+            "requested_need_id": "INTEGER REFERENCES requested_needs(id)",
+            "job_part_id": "INTEGER REFERENCES job_parts(id)",
+        },
+        "job_follow_ups": {"requested_need_id": "INTEGER REFERENCES requested_needs(id)"},
+    }
+    for table, columns in additions.items():
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ).fetchone():
+            _add_columns(connection, table, columns)
+
+    # Existing selectable work remains quote-compatible; only new research results
+    # begin outside the Quote Candidate state.
+    connection.execute(
+        "UPDATE basket_items SET research_state='LEGACY_CANDIDATE' "
+        "WHERE research_state IS NULL OR research_state=''"
+    )
+    for canonical, key, aliases in (
+        ("John Deere", "john_deere", "deere,john deere"),
+        ("JCB", "jcb", "jcb"),
+        ("Caterpillar", "caterpillar", "cat,caterpillar"),
+        ("Cummins", "cummins", "cummins"),
+        ("Komatsu", "komatsu", "komatsu"),
+        ("BOMAG", "bomag", "bomag"),
+        ("HAMM", "hamm", "hamm"),
+        ("Toyota", "toyota", "toyota"),
+        ("Honda", "honda", "honda"),
+        ("BMW", "bmw", "bmw"),
+        ("Mack", "mack", "mack"),
+        ("Volvo", "volvo", "volvo"),
+        ("Isuzu", "isuzu", "isuzu"),
+    ):
+        connection.execute(
+            "INSERT INTO manufacturer_brands (canonical_name,normalized_key,aliases) "
+            "SELECT ?,?,? WHERE NOT EXISTS ("
+            "SELECT 1 FROM manufacturer_brands WHERE normalized_key=? OR canonical_name=?"
+            ")",
+            (canonical, key, aliases, key, canonical),
+        )
+
+
+MIGRATIONS.append(("0037_machine_first_research", _migration_0037_machine_first_research))
+
+
+def _migration_0038_machine_research_context_completion(connection: sqlite3.Connection) -> None:
+    """Complete the legacy active-import context without rewriting migration 0037."""
+    if connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='active_source_import'"
+    ).fetchone():
+        _add_columns(
+            connection,
+            "active_source_import",
+            {"job_part_id": "INTEGER REFERENCES job_parts(id)"},
+        )
+
+
+MIGRATIONS.append(("0038_machine_research_context_completion", _migration_0038_machine_research_context_completion))

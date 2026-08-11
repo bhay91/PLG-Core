@@ -1965,6 +1965,7 @@ def generate_quote(job_id: int):
             SELECT
                 job_parts.id AS part_id,
                 job_parts.job_asset_id,
+                job_parts.primary_requested_need_id,
                 job_parts.requested_description,
                 job_parts.internal_part_number,
                 job_parts.oem_description,
@@ -2143,6 +2144,7 @@ def generate_quote(job_id: int):
                     row["source_id"],
                     row["job_asset_id"],
                     row["origin_work_revision_item_id"],
+                    row["primary_requested_need_id"],
                     quantity,
                     description,
                     row["internal_part_number"] or "",
@@ -2271,6 +2273,7 @@ def generate_quote(job_id: int):
                     source_id,
                     job_asset_id,
                     origin_work_revision_item_id,
+                    primary_requested_need_id,
                     quantity,
                     description,
                     internal_part_number,
@@ -2291,7 +2294,7 @@ def generate_quote(job_id: int):
                     asset_year_snapshot,asset_serial_snapshot
                 )
                 VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 (quote_id, *item),
@@ -3217,7 +3220,7 @@ def convert_quote_to_invoice(quote_id: int):
         cur = connection.execute("""INSERT INTO invoices (invoice_number,quote_id,job_id,invoice_date,status,parts_subtotal,shipping_total,service_charge,sourcing_fee,customer_total,supplier_total,profit_total,credit_applied,balance_due,bill_to_kind,bill_to_name_snapshot,bill_to_company_snapshot,bill_to_address_snapshot,bill_to_phone_snapshot,bill_to_email_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_number,quote_id,quote["job_id"],invoice_date,status,float(quote["parts_subtotal"] or 0),float(quote["shipping_total"] or 0),float(quote["service_charge"] or 0),float(quote["sourcing_fee"] or 0),customer_total,float(quote["supplier_total"] or 0),float(quote["profit_total"] or 0),credit_applied,balance_due,quote["bill_to_kind"],quote["bill_to_name_snapshot"],quote["bill_to_company_snapshot"],quote["bill_to_address_snapshot"],quote["bill_to_phone_snapshot"],quote["bill_to_email_snapshot"]))
         invoice_id = cur.lastrowid
         for item in quote_items:
-            connection.execute("""INSERT INTO invoice_items (invoice_id,quote_item_id,part_id,source_id,job_asset_id,quantity,description,internal_part_number,supplier_name,source_type,brand,supplier_part_number,supplier_unit_cost,customer_unit_price,supplier_line_total,customer_line_total,line_profit,asset_name_snapshot,asset_type_snapshot,asset_manufacturer_snapshot,asset_model_snapshot,asset_year_snapshot,asset_serial_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_id,item["id"],item["part_id"],item["source_id"],item["job_asset_id"],item["quantity"],item["description"],item["internal_part_number"] or "",item["supplier_name"],item["source_type"],item["brand"],item["supplier_part_number"],item["supplier_unit_cost"],item["customer_unit_price"],item["supplier_line_total"],item["customer_line_total"],item["line_profit"],item["asset_name_snapshot"],item["asset_type_snapshot"],item["asset_manufacturer_snapshot"],item["asset_model_snapshot"],item["asset_year_snapshot"],item["asset_serial_snapshot"]))
+            connection.execute("""INSERT INTO invoice_items (invoice_id,quote_item_id,part_id,source_id,job_asset_id,primary_requested_need_id,quantity,description,internal_part_number,supplier_name,source_type,brand,supplier_part_number,supplier_unit_cost,customer_unit_price,supplier_line_total,customer_line_total,line_profit,asset_name_snapshot,asset_type_snapshot,asset_manufacturer_snapshot,asset_model_snapshot,asset_year_snapshot,asset_serial_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_id,item["id"],item["part_id"],item["source_id"],item["job_asset_id"],item["primary_requested_need_id"],item["quantity"],item["description"],item["internal_part_number"] or "",item["supplier_name"],item["source_type"],item["brand"],item["supplier_part_number"],item["supplier_unit_cost"],item["customer_unit_price"],item["supplier_line_total"],item["customer_line_total"],item["line_profit"],item["asset_name_snapshot"],item["asset_type_snapshot"],item["asset_manufacturer_snapshot"],item["asset_model_snapshot"],item["asset_year_snapshot"],item["asset_serial_snapshot"]))
         if job["customer_id"]:
             connection.execute("""INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,reference,reason,job_id,quote_id,invoice_id) VALUES (?,?,'INVOICE',?,?,?,?,?,?)""",(job["customer_id"],invoice_date,-customer_total,invoice_number,f"Invoice created from {quote['quote_number']}",quote["job_id"],quote_id,invoice_id))
         previous_quote_status = str(quote["status"] or "").strip().upper()
@@ -5724,6 +5727,7 @@ def api_active_source_import():
                 active_source_import.job_asset_id,
                 active_source_import.basket_item_id,
                 active_source_import.job_part_id,
+                active_source_import.requested_need_id,
                 active_source_import.verification_session_id,
                 active_source_import.source_key,
                 active_source_import.source_name,

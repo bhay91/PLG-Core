@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 
 class BasketItemCreate(BaseModel):
     job_asset_id: int | None = None
+    primary_requested_need_id: int | None = None
+    research_state: str = "LEGACY_CANDIDATE"
     requested_description: str = Field(min_length=1)
     internal_part_number: str = ""
     manufacturer_part_number: str = ""
@@ -29,6 +31,8 @@ class BasketItemCreate(BaseModel):
 
 class BasketItemUpdate(BaseModel):
     job_asset_id: int | None = None
+    primary_requested_need_id: int | None = None
+    research_state: str | None = None
     requested_description: str | None = Field(default=None, min_length=1)
     internal_part_number: str | None = None
     manufacturer_part_number: str | None = None

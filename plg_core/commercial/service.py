@@ -278,7 +278,7 @@ def _copy_quote_items(connection, source_quote_id: int, quote_id: int, item_ids:
         raise HTTPException(status_code=409,detail="Split selection contains stale quote lines.")
     new_ids=[]
     columns=[
-        "part_id","source_id","job_asset_id","origin_work_revision_item_id","quantity",
+        "part_id","source_id","job_asset_id","origin_work_revision_item_id","primary_requested_need_id","quantity",
         "description","internal_part_number","supplier_name","source_type","brand",
         "supplier_part_number","supplier_unit_cost","customer_unit_price",
         "supplier_line_total","customer_line_total","line_profit","pricing_mode",

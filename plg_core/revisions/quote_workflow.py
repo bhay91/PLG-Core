@@ -123,6 +123,7 @@ def _revision_quote_rows(connection, revision_id: int):
             wri.pricing_mode, wri.customer_unit_price_override,
             wri.recommended_markup_percent, wri.revision_source_id,
             wri.id AS origin_work_revision_item_id,
+            wri.primary_requested_need_id,
             COALESCE(a.name,'') AS asset_name_snapshot,
             COALESCE(a.asset_type,'') AS asset_type_snapshot,
             COALESCE(a.manufacturer,'') AS asset_manufacturer_snapshot,
@@ -193,7 +194,7 @@ def _insert_quote_items(connection, quote_id: int, rows) -> None:
             """
             INSERT INTO quote_items (
                 quote_id, part_id, source_id, job_asset_id,
-                origin_work_revision_item_id, quantity, description,
+                origin_work_revision_item_id,primary_requested_need_id, quantity, description,
                 internal_part_number,
                 supplier_name, source_type, brand, supplier_part_number,
                 supplier_unit_cost, customer_unit_price, supplier_line_total,
@@ -201,11 +202,11 @@ def _insert_quote_items(connection, quote_id: int, rows) -> None:
                 customer_unit_price_override, recommended_markup_percent,
                 asset_name_snapshot,asset_type_snapshot,asset_manufacturer_snapshot,
                 asset_model_snapshot,asset_year_snapshot,asset_serial_snapshot
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 quote_id, row["part_id"], row["source_id"], row["job_asset_id"],
-                row["origin_work_revision_item_id"], quantity,
+                row["origin_work_revision_item_id"], row["primary_requested_need_id"], quantity,
                 row["description"], row["internal_part_number"] or "",
                 row["supplier_name"], row["source_type"],
                 row["brand"], row["supplier_part_number"], cost, price,

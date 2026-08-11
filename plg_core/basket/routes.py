@@ -97,7 +97,7 @@ async def import_sis_cart(request: Request):
 
 
 @router.get("/jobs/{job_id}/basket", response_class=HTMLResponse)
-def basket_page(request: Request, job_id: int):
+def basket_page(request: Request, job_id: int, asset_id: int | None = None):
     basket = get_basket(job_id)
 
     with closing(get_connection()) as connection:
@@ -126,11 +126,41 @@ def basket_page(request: Request, job_id: int):
             (job_id,),
         ).fetchone()
 
-        job_assets = connection.execute(
+        asset_rows = connection.execute(
             "SELECT * FROM job_assets WHERE job_id=? AND state='ACTIVE' "
             "ORDER BY is_primary DESC,id",
             (job_id,),
         ).fetchall()
+        from plg_core.research.branding import manufacturer_brand
+        job_assets = []
+        for row in asset_rows:
+            item = dict(row)
+            item["brand"] = manufacturer_brand(connection, item["manufacturer"])
+            item["needs"] = [dict(need) for need in connection.execute(
+                "SELECT * FROM requested_needs WHERE job_id=? AND job_asset_id=? "
+                "AND state!='ARCHIVED' ORDER BY id", (job_id, item["id"]),
+            ).fetchall()]
+            job_assets.append(item)
+        selected_asset = next(
+            (item for item in job_assets if int(item["id"]) == int(asset_id or 0)),
+            job_assets[0] if job_assets else None,
+        )
+        selected_asset_id = int(selected_asset["id"]) if selected_asset else None
+        selected_asset_index = next(
+            (index for index, item in enumerate(job_assets) if item["id"] == selected_asset_id),
+            0,
+        )
+        previous_asset = job_assets[selected_asset_index - 1] if selected_asset_index > 0 else None
+        next_asset = (
+            job_assets[selected_asset_index + 1]
+            if selected_asset_index + 1 < len(job_assets) else None
+        )
+        requested_needs = [dict(row) for row in connection.execute(
+            "SELECT * FROM requested_needs WHERE job_id=? AND "
+            "((? IS NULL AND job_asset_id IS NULL) OR job_asset_id=?) "
+            "AND state!='ARCHIVED' ORDER BY CASE state WHEN 'OPEN' THEN 0 ELSE 1 END,id",
+            (job_id, selected_asset_id, selected_asset_id),
+        ).fetchall()]
 
         request_attachment_count = 0
         if customer_request is not None:
@@ -208,6 +238,10 @@ def basket_page(request: Request, job_id: int):
             """,
             (job_id,),
         ).fetchall()
+        shipping_rows = connection.execute(
+            "SELECT * FROM part_shipping_data WHERE basket_item_id IS NOT NULL "
+            "AND is_current=1 ORDER BY id DESC"
+        ).fetchall()
 
     source_lookup = {
         source["id"]: source
@@ -223,6 +257,7 @@ def basket_page(request: Request, job_id: int):
                     item
                     for item in basket["items"]
                     if item["source_id"] == source["id"]
+                    and item.get("job_asset_id") == selected_asset_id
                 ],
             }
         )
@@ -230,7 +265,7 @@ def basket_page(request: Request, job_id: int):
     unassigned_items = [
         item
         for item in basket["items"]
-        if item["source_id"] is None
+        if item["source_id"] is None and item.get("job_asset_id") == selected_asset_id
     ]
     if unassigned_items:
         vendor_carts.append(
@@ -248,10 +283,18 @@ def basket_page(request: Request, job_id: int):
             }
         )
 
-    basket_items = [
+    all_quote_candidates = [
         item for item in basket["items"]
-        if item["selected"]
+        if item["selected"] and str(item.get("research_state") or "LEGACY_CANDIDATE")
+        in {"QUOTE_CANDIDATE", "LEGACY_CANDIDATE"}
     ]
+    basket_items = [item for item in all_quote_candidates if item.get("job_asset_id") == selected_asset_id]
+    research_results = [
+        item for item in basket["items"]
+        if item.get("job_asset_id") == selected_asset_id
+        and str(item.get("research_state") or "LEGACY_CANDIDATE") == "RESEARCH_RESULT"
+    ]
+    shipping_by_item = {int(row["basket_item_id"]): dict(row) for row in shipping_rows}
 
     for item in basket_items:
         item["pricing"] = pricing_assessment(
@@ -323,11 +366,19 @@ def basket_page(request: Request, job_id: int):
             "job": job,
             "basket": basket,
             "basket_items": basket_items,
+            "all_quote_candidates": all_quote_candidates,
+            "research_results": research_results,
+            "shipping_by_item": shipping_by_item,
             "vendor_carts": vendor_carts,
             "source_lookup": source_lookup,
             "connectors": connectors,
             "customer_request": customer_request,
             "job_assets": job_assets,
+            "selected_asset": selected_asset,
+            "selected_asset_id": selected_asset_id,
+            "previous_asset": previous_asset,
+            "next_asset": next_asset,
+            "requested_needs": requested_needs,
             "request_attachment_count": request_attachment_count,
             "quote": quote,
             "quote_history": quote_history,
@@ -345,6 +396,7 @@ def clone_supplier_quote(
     job_id: int,
     vendor_name: Annotated[str, Form()],
     source_type: Annotated[str, Form()] = "AFTERMARKET",
+    job_asset_id: Annotated[int | None, Form()] = None,
     expected_revision_id: Annotated[int | None, Form()] = None,
     expected_version: Annotated[int | None, Form()] = None,
 ):
@@ -427,13 +479,14 @@ def clone_supplier_quote(
             FROM basket_items
             WHERE basket_id = ?
               AND selected = 1
+              AND ((? IS NULL AND job_asset_id IS NULL) OR job_asset_id=?)
               AND (
                     source_id IS NULL
                     OR source_id != ?
                   )
             ORDER BY id
             """,
-            (basket["id"], source_id),
+            (basket["id"], job_asset_id, job_asset_id, source_id),
         ).fetchall()
 
         # If nothing is selected yet, copy all researched options.
@@ -443,13 +496,14 @@ def clone_supplier_quote(
                 SELECT *
                 FROM basket_items
                 WHERE basket_id = ?
+                  AND ((? IS NULL AND job_asset_id IS NULL) OR job_asset_id=?)
                   AND (
                         source_id IS NULL
                         OR source_id != ?
                       )
                 ORDER BY id
                 """,
-                (basket["id"], source_id),
+                (basket["id"], job_asset_id, job_asset_id, source_id),
             ).fetchall()
 
         if not base_items:
@@ -533,6 +587,9 @@ def clone_supplier_quote(
                 INSERT INTO basket_items (
                     basket_id,
                     source_id,
+                    job_asset_id,
+                    primary_requested_need_id,
+                    research_state,
                     requested_description,
                     manufacturer_part_number,
                     supplier_part_number,
@@ -546,13 +603,15 @@ def clone_supplier_quote(
                     selected
                 )
                 VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, 'RESEARCH_RESULT', ?, ?, ?, ?, ?, ?, ?,
                     NULL, '', '', 0
                 )
                 """,
                 (
                     basket["id"],
                     source_id,
+                    item["job_asset_id"],
+                    item["primary_requested_need_id"],
                     description,
                     (
                         item["manufacturer_part_number"]
@@ -919,6 +978,7 @@ def add_manual_item(
     requested_description: Annotated[str, Form()],
     manufacturer_part_number: Annotated[str, Form()] = "",
     job_asset_id: Annotated[int | None, Form()] = None,
+    requested_need_id: Annotated[int | None, Form()] = None,
     quantity: Annotated[int, Form()] = 1,
     supplier_name: Annotated[str, Form()] = "",
     supplier_part_number: Annotated[str, Form()] = "",
@@ -932,6 +992,8 @@ def add_manual_item(
         BasketItemCreate(
             requested_description=requested_description,
             job_asset_id=job_asset_id,
+            primary_requested_need_id=requested_need_id,
+            research_state="RESEARCH_RESULT",
             manufacturer_part_number=manufacturer_part_number,
             quantity=quantity,
             supplier_name=supplier_name,
@@ -944,7 +1006,7 @@ def add_manual_item(
         expected_version=expected_version,
     )
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket",
+        url=f"/jobs/{job_id}/basket" + (f"?asset_id={job_asset_id}" if job_asset_id else ""),
         status_code=303,
     )
 

@@ -234,6 +234,7 @@ def _snapshot_revision(
             """
             INSERT INTO work_revision_items (
                 work_revision_id, revision_source_id, source_revision_item_id, job_asset_id,
+                primary_requested_need_id,research_state,
                 requested_description, internal_part_number, manufacturer_part_number,
                 alternate_part_number, supplier_part_number, supplier_name,
                 source_type, brand, quantity, supplier_unit_cost, markup_percent,
@@ -241,13 +242,14 @@ def _snapshot_revision(
                 effective_customer_unit_price, recommended_markup_percent,
                 part_status, verification_status, verification_note,
                 availability, lead_time, selected, confidence, source_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 revision_id,
                 revision_source_id,
                 item["origin_work_revision_item_id"],
                 item["job_asset_id"],
+                item["primary_requested_need_id"], item["research_state"],
                 item["requested_description"], item["internal_part_number"] or "",
                 item["manufacturer_part_number"] or "",
                 item["alternate_part_number"] or "", item["supplier_part_number"] or "",
@@ -261,7 +263,27 @@ def _snapshot_revision(
                 item["source_url"] or "",
             ),
         )
-        item_map[int(item["id"])] = int(cursor.lastrowid)
+        revision_item_id = int(cursor.lastrowid)
+        item_map[int(item["id"])] = revision_item_id
+        connection.execute(
+            "INSERT OR IGNORE INTO work_revision_item_need_links "
+            "(work_revision_item_id,requested_need_id,relationship) "
+            "SELECT ?,requested_need_id,relationship FROM basket_item_need_links "
+            "WHERE basket_item_id=?",
+            (revision_item_id, item["id"]),
+        )
+        connection.execute(
+            """
+            INSERT INTO part_shipping_data (
+                work_revision_item_id,manufacturer_part_number,unit_weight,weight_unit,
+                length,width,height,dimension_unit,quality,provenance,confidence,
+                measured_at,notes,is_current
+            )
+            SELECT ?,manufacturer_part_number,unit_weight,weight_unit,length,width,height,
+                   dimension_unit,quality,provenance,confidence,measured_at,notes,is_current
+            FROM part_shipping_data WHERE basket_item_id=? AND is_current=1
+            """, (revision_item_id, item["id"]),
+        )
 
     attachments = connection.execute(
         "SELECT * FROM basket_attachments WHERE basket_id=? ORDER BY id", (basket["id"],)
@@ -323,6 +345,7 @@ def _clone_snapshot_to_basket(
             """
             INSERT INTO basket_items (
                 basket_id, source_id, job_asset_id, origin_work_revision_item_id,
+                primary_requested_need_id,research_state,
                 requested_description, internal_part_number,
                 manufacturer_part_number, alternate_part_number,
                 supplier_part_number, supplier_name, source_type, brand,
@@ -330,13 +353,14 @@ def _clone_snapshot_to_basket(
                 customer_unit_price_override, pricing_mode, part_status,
                 verification_status, verification_note, availability,
                 lead_time, selected, confidence, source_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 basket_id, source_map.get(int(item["revision_source_id"]))
                 if item["revision_source_id"] else None,
                 item["job_asset_id"],
                 item["id"],
+                item["primary_requested_need_id"], item["research_state"],
                 item["requested_description"], item["internal_part_number"],
                 item["manufacturer_part_number"],
                 item["alternate_part_number"], item["supplier_part_number"],
@@ -347,6 +371,24 @@ def _clone_snapshot_to_basket(
                 item["availability"], item["lead_time"], item["selected"],
                 item["confidence"], item["source_url"],
             ),
+        )
+        basket_item_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+        connection.execute(
+            "INSERT OR IGNORE INTO basket_item_need_links "
+            "(basket_item_id,requested_need_id,relationship) "
+            "SELECT ?,requested_need_id,relationship FROM work_revision_item_need_links "
+            "WHERE work_revision_item_id=?", (basket_item_id, item["id"]),
+        )
+        connection.execute(
+            """
+            INSERT INTO part_shipping_data (
+                basket_item_id,manufacturer_part_number,unit_weight,weight_unit,
+                length,width,height,dimension_unit,quality,provenance,confidence,
+                measured_at,notes,is_current
+            ) SELECT ?,manufacturer_part_number,unit_weight,weight_unit,length,width,height,
+                     dimension_unit,quality,provenance,confidence,measured_at,notes,is_current
+              FROM part_shipping_data WHERE work_revision_item_id=? AND is_current=1
+            """, (basket_item_id, item["id"]),
         )
 
 
@@ -363,22 +405,58 @@ def _clone_quote_to_basket(
         connection.execute(
             """
             INSERT INTO basket_items (
-                basket_id, job_asset_id, requested_description, internal_part_number,
+                basket_id, job_asset_id, primary_requested_need_id,research_state,
+                requested_description, internal_part_number,
                 supplier_part_number,
                 supplier_name, source_type, brand, quantity,
                 supplier_unit_cost, markup_percent,
                 customer_unit_price_override, pricing_mode, part_status,
                 verification_status, verification_note, selected, source_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'LEGACY_FIXED', 'QUOTED',
+            ) VALUES (?, ?, ?, 'LEGACY_CANDIDATE', ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'LEGACY_FIXED', 'QUOTED',
                       'VERIFIED', 'Cloned from historical quote', 1, '')
             """,
             (
-                basket_id, item["job_asset_id"], item["description"], item["internal_part_number"],
+                basket_id, item["job_asset_id"], item["primary_requested_need_id"],
+                item["description"], item["internal_part_number"],
                 item["supplier_part_number"],
                 item["supplier_name"], item["source_type"], item["brand"],
                 item["quantity"], item["supplier_unit_cost"], item["customer_unit_price"],
             ),
         )
+        basket_item_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+        origin_item_id = item["origin_work_revision_item_id"]
+        if origin_item_id is not None:
+            origin = connection.execute(
+                "SELECT research_state FROM work_revision_items WHERE id=?",
+                (origin_item_id,),
+            ).fetchone()
+            if origin is not None and str(origin["research_state"] or "") in {
+                "QUOTE_CANDIDATE", "LEGACY_CANDIDATE"
+            }:
+                connection.execute(
+                    "UPDATE basket_items SET research_state=? WHERE id=?",
+                    (origin["research_state"], basket_item_id),
+                )
+            connection.execute(
+                "INSERT OR IGNORE INTO basket_item_need_links "
+                "(basket_item_id,requested_need_id,relationship) "
+                "SELECT ?,requested_need_id,relationship FROM work_revision_item_need_links "
+                "WHERE work_revision_item_id=?",
+                (basket_item_id, origin_item_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO part_shipping_data (
+                    basket_item_id,manufacturer_part_number,unit_weight,weight_unit,
+                    length,width,height,dimension_unit,quality,provenance,confidence,
+                    measured_at,notes,is_current
+                ) SELECT ?,manufacturer_part_number,unit_weight,weight_unit,length,width,height,
+                         dimension_unit,quality,provenance,confidence,measured_at,notes,is_current
+                  FROM part_shipping_data
+                 WHERE work_revision_item_id=? AND is_current=1
+                """,
+                (basket_item_id, origin_item_id),
+            )
 
 
 def get_revision_context(job_id: int) -> dict[str, Any]:
@@ -593,18 +671,20 @@ def commit_work_revision(
             part_cursor = connection.execute(
                 """
                 INSERT INTO job_parts (
-                    job_id, job_asset_id, requested_description, internal_part_number,
+                    job_id, job_asset_id, primary_requested_need_id,
+                    requested_description, internal_part_number,
                     quantity, oem_part_number,
                     alternate_part_number, oem_description, customer_unit_price,
                     verification_status, verification_source, verification_notes,
                     oem_dealer_name, oem_dealer_price, oem_dealer_availability,
                     source_url, product_url, captured_at,
                     work_revision_id, work_revision_item_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'VERIFIED', ?, ?, ?, ?, ?, ?, ?,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'VERIFIED', ?, ?, ?, ?, ?, ?, ?,
                           CURRENT_TIMESTAMP, ?, ?)
                 """,
                 (
-                    job_id, item["job_asset_id"], item["requested_description"],
+                    job_id, item["job_asset_id"], item["primary_requested_need_id"],
+                    item["requested_description"],
                     item["internal_part_number"], item["quantity"],
                     item["manufacturer_part_number"] if source_type == "OEM" else "",
                     item["alternate_part_number"] or "",
@@ -644,6 +724,10 @@ def commit_work_revision(
             )
             connection.execute(
                 "UPDATE work_revision_items SET generated_job_part_id=? WHERE id=?",
+                (part_id, revision_item_id),
+            )
+            connection.execute(
+                "UPDATE part_shipping_data SET job_part_id=? WHERE work_revision_item_id=? AND is_current=1",
                 (part_id, revision_item_id),
             )
             supplier_name = str(item["supplier_name"] or "Basket Source").strip()

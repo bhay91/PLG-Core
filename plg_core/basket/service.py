@@ -182,11 +182,20 @@ def add_item_with_connection(
         (payload.job_asset_id, job_id),
     ).fetchone() is None:
         raise HTTPException(status_code=409, detail="Select an active asset from this Job.")
+    research_state = str(payload.research_state or "LEGACY_CANDIDATE").upper()
+    if research_state not in {"RESEARCH_RESULT", "QUOTE_CANDIDATE", "LEGACY_CANDIDATE"}:
+        raise HTTPException(status_code=400, detail="Invalid research-result state.")
+    if payload.primary_requested_need_id is not None and connection.execute(
+        "SELECT 1 FROM requested_needs WHERE id=? AND job_id=?",
+        (payload.primary_requested_need_id, job_id),
+    ).fetchone() is None:
+        raise HTTPException(status_code=409, detail="Requested Need does not belong to this Job.")
 
     connection.execute(
         """
         INSERT INTO basket_items (
-            basket_id, job_asset_id, requested_description, internal_part_number,
+            basket_id, job_asset_id, primary_requested_need_id, research_state,
+            requested_description, internal_part_number,
             manufacturer_part_number, alternate_part_number,
             supplier_part_number, supplier_name, source_type, brand, quantity,
             supplier_unit_cost, markup_percent,
@@ -194,11 +203,13 @@ def add_item_with_connection(
             verification_note, availability, lead_time,
             selected, confidence, source_url
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             basket["id"],
             payload.job_asset_id,
+            payload.primary_requested_need_id,
+            research_state,
             payload.requested_description.strip(),
             internal_part_number,
             payload.manufacturer_part_number.strip(),
@@ -221,6 +232,13 @@ def add_item_with_connection(
             payload.source_url.strip(),
         ),
     )
+    item_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+    if payload.primary_requested_need_id is not None:
+        connection.execute(
+            "INSERT OR IGNORE INTO basket_item_need_links "
+            "(basket_item_id,requested_need_id) VALUES (?,?)",
+            (item_id, payload.primary_requested_need_id),
+        )
 
     from plg_core.revisions.service import touch_revision
     touch_revision(connection, int(revision["id"]), int(revision["lock_version"]))
@@ -287,7 +305,7 @@ def update_item(
         raise HTTPException(status_code=400, detail="No fields supplied.")
 
     allowed = {
-        "requested_description", "job_asset_id", "manufacturer_part_number",
+        "requested_description", "job_asset_id", "primary_requested_need_id", "research_state", "manufacturer_part_number",
         "alternate_part_number", "supplier_part_number",
         "supplier_name", "source_type",
         "brand", "quantity", "supplier_unit_cost", "markup_percent", "customer_unit_price_override", "part_status", "verification_status", "verification_note", "availability",
@@ -320,13 +338,30 @@ def update_item(
                 detail="Basket item not found for this job.",
             )
 
+        if "research_state" in updates:
+            state = str(updates["research_state"] or "").upper()
+            if state not in {"RESEARCH_RESULT", "QUOTE_CANDIDATE", "LEGACY_CANDIDATE"}:
+                raise HTTPException(status_code=400, detail="Invalid research-result state.")
+            updates["research_state"] = state
+        if updates.get("selected") and str(
+            updates.get("research_state") or item["research_state"] or "LEGACY_CANDIDATE"
+        ).upper() == "RESEARCH_RESULT":
+            raise HTTPException(
+                status_code=409,
+                detail="Confirm this Research Result as a Quote Candidate before selecting it.",
+            )
+        if updates.get("primary_requested_need_id") is not None and connection.execute(
+            "SELECT 1 FROM requested_needs WHERE id=? AND job_id=?",
+            (updates["primary_requested_need_id"], item["job_id"]),
+        ).fetchone() is None:
+            raise HTTPException(status_code=409, detail="Requested Need does not belong to this Job.")
+
         revision = ensure_basket_mutable(
             item,
             connection,
             expected_revision_id=expected_revision_id,
             expected_version=expected_version,
         )
-
         if "job_asset_id" in updates and updates["job_asset_id"] is not None:
             if connection.execute(
                 "SELECT 1 FROM job_assets WHERE id=? AND job_id=? AND state='ACTIVE'",
@@ -821,6 +856,13 @@ def import_cart(
             expected_revision_id=expected_revision_id,
             expected_version=expected_version,
         )
+        import_context = connection.execute(
+            "SELECT job_asset_id,requested_need_id FROM active_source_import "
+            "WHERE id=1 AND job_id=?",
+            (job_id,),
+        ).fetchone()
+        import_asset_id = import_context["job_asset_id"] if import_context else None
+        import_need_id = import_context["requested_need_id"] if import_context else None
         cursor = connection.execute(
             """
             INSERT INTO basket_sources (
@@ -863,16 +905,17 @@ def import_cart(
             connection.execute(
                 """
                 INSERT INTO basket_items (
-                    basket_id, source_id, requested_description,
+                    basket_id, source_id, job_asset_id, primary_requested_need_id,
+                    research_state, requested_description,
                     manufacturer_part_number, supplier_part_number,
                     supplier_name, source_type, brand, quantity,
                     supplier_unit_cost, availability, lead_time,
                     selected, confidence, source_url
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1.0, ?)
+                VALUES (?, ?, ?, ?, 'RESEARCH_RESULT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1.0, ?)
                 """,
                 (
-                    basket["id"], source_id, description,
+                    basket["id"], source_id, import_asset_id, import_need_id, description,
                     manufacturer_part, supplier_part, source_name,
                     source_type, str(raw.get("brand", "")).strip(),
                     quantity, cost,
@@ -881,6 +924,13 @@ def import_cart(
                     str(raw.get("source_url", source_url)).strip(),
                 ),
             )
+            item_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+            if import_need_id is not None:
+                connection.execute(
+                    "INSERT OR IGNORE INTO basket_item_need_links "
+                    "(basket_item_id,requested_need_id) VALUES (?,?)",
+                    (item_id, import_need_id),
+                )
             imported += 1
 
         connection.execute(
