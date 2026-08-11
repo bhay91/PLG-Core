@@ -12,6 +12,16 @@ from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
 from plg_core.pricing import effective_customer_unit_price
 
 
+def _next_internal_part_number(connection: sqlite3.Connection) -> str:
+    row = connection.execute(
+        "UPDATE internal_part_number_sequence SET last_number=last_number+1 "
+        "WHERE singleton=1 RETURNING last_number"
+    ).fetchone()
+    if row is None:
+        raise RuntimeError("Internal part number sequence is unavailable.")
+    return f"PPS-MAN-{int(row[0]):06d}"
+
+
 def get_or_create_basket(connection: sqlite3.Connection, job_id: int):
     job = connection.execute(
         "SELECT id FROM jobs WHERE id = ?", (job_id,)
@@ -163,11 +173,14 @@ def add_item_with_connection(
         expected_revision_id=expected_revision_id,
         expected_version=expected_version,
     )
+    internal_part_number = payload.internal_part_number.strip()
+    if not internal_part_number and not payload.manufacturer_part_number.strip():
+        internal_part_number = _next_internal_part_number(connection)
 
     connection.execute(
         """
         INSERT INTO basket_items (
-            basket_id, requested_description,
+            basket_id, requested_description, internal_part_number,
             manufacturer_part_number, alternate_part_number,
             supplier_part_number, supplier_name, source_type, brand, quantity,
             supplier_unit_cost, markup_percent,
@@ -175,11 +188,12 @@ def add_item_with_connection(
             verification_note, availability, lead_time,
             selected, confidence, source_url
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             basket["id"],
             payload.requested_description.strip(),
+            internal_part_number,
             payload.manufacturer_part_number.strip(),
             payload.alternate_part_number.strip(),
             payload.supplier_part_number.strip(),

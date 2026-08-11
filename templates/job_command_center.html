@@ -26,6 +26,8 @@
   max-width:100%;
   box-sizing:border-box;
 }
+.part-editor-list{display:grid;gap:14px}.part-editor-card{border:1px solid var(--line);border-radius:13px;background:#fff;overflow:hidden}.part-editor-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 17px;background:var(--surface-soft);border-bottom:1px solid var(--line)}.part-editor-header h3{margin:6px 0 2px;font-size:17px}.part-editor-header p{margin:0;color:var(--muted);font-size:12px}.part-editor-primary-actions{display:flex;gap:8px;flex-wrap:wrap}.part-editor-grid{display:grid;grid-template-columns:repeat(5,minmax(125px,1fr));gap:12px;padding:16px}.part-editor-grid label,.part-editor-metric{display:grid;align-content:start;gap:6px;min-width:0}.part-editor-grid label>span,.part-editor-metric>span{font-size:10px;font-weight:850;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.part-editor-grid input{width:100%;min-width:0}.part-editor-metric{padding:9px 10px;border-radius:9px;background:var(--surface-soft)}.part-editor-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 16px;border-top:1px solid var(--line);color:var(--muted)}.parts-ready-head-actions{display:flex;align-items:center;gap:8px}.verification-launch-actions{display:grid;grid-template-columns:1fr auto;gap:8px}.manual-part-trigger{white-space:nowrap}@media(max-width:1100px){.part-editor-grid{grid-template-columns:repeat(3,minmax(130px,1fr))}}@media(max-width:720px){.part-editor-header,.part-editor-footer{align-items:stretch;flex-direction:column}.part-editor-primary-actions{display:grid;grid-template-columns:1fr 1fr}.part-editor-grid{grid-template-columns:1fr 1fr;padding:13px}.verification-launch-actions{grid-template-columns:1fr}.part-editor-primary-actions .button,.part-editor-footer .button{width:100%}}@media(max-width:430px){.part-editor-grid{grid-template-columns:1fr}.part-editor-primary-actions{grid-template-columns:1fr}}
+.job-followup-layout{display:grid;grid-template-columns:minmax(280px,.75fr) minmax(0,1.25fr);gap:16px}.job-followup-create{display:grid;gap:10px;padding:15px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft)}.job-followup-create label{display:grid;gap:5px;font-size:11px;font-weight:800}.job-followup-list{display:grid;gap:10px}.job-followup-item{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.7fr);gap:14px;padding:14px;border:1px solid var(--line);border-radius:12px}.job-followup-item.attention{border-left:4px solid var(--danger)}.job-followup-item>div,.job-followup-item form{display:grid;gap:6px}.job-followup-item small{color:var(--muted)}@media(max-width:850px){.job-followup-layout,.job-followup-item{grid-template-columns:1fr}}
 </style>
 
 {% set has_request = customer_request is not none %}
@@ -33,6 +35,31 @@
 {% set quote_ready = basket.status == "COMMITTED" %}
 {% set work_editable = active_revision and active_revision.state == "EDITABLE" %}
 {% set governed_revision = work_editable and not active_revision.is_synthetic %}
+{% set customer_waiting = follow_ups|selectattr('category','equalto','CUSTOMER_INFORMATION')|selectattr('status','equalto','OPEN')|list %}
+{% set operator_attention = (follow_ups|rejectattr('status','equalto','OPEN')|list) + (follow_ups|selectattr('category','equalto','OPERATOR_ATTENTION')|list) %}
+{% if operator_attention %}
+  {% set operator_stage = "Needs Your Attention" %}
+  {% set operator_next = operator_attention[0].summary %}
+{% elif customer_waiting %}
+  {% set operator_stage = "Waiting for Customer Information" %}
+  {% set operator_next = customer_waiting[0].summary %}
+{% elif invoice %}
+  {% set operator_stage = "Invoiced" %}
+  {% set operator_next = "Open current invoice" %}
+{% elif governed_revision %}
+  {% set operator_stage = "Quote changes in progress" %}
+  {% set operator_next = "Finish edits and generate revised quote" %}
+{% elif quote %}
+  {% set operator_stage = "Current quote · " ~ (quote.status|replace('_',' ')|title) %}
+  {% if quote.status == "DRAFT" %}{% set operator_next = "Review, edit, or send the draft" %}
+  {% elif quote.status == "SENT" %}{% set operator_next = "Waiting for customer decision" %}
+  {% elif quote.status == "APPROVED" %}{% set operator_next = "Convert approved quote to invoice" %}
+  {% elif quote.status == "REJECTED" %}{% set operator_next = "Revise if the customer reconsiders" %}
+  {% else %}{% set operator_next = intelligence.next_action %}{% endif %}
+{% else %}
+  {% set operator_stage = intelligence.workflow_label %}
+  {% set operator_next = intelligence.next_action %}
+{% endif %}
 <div class="cc-shell"
      data-revision-id="{{ active_revision.id if work_editable else '' }}"
      data-revision-version="{{ active_revision.lock_version if work_editable else '' }}">
@@ -246,7 +273,7 @@
                 CURRENT STATUS · {{ intelligence.health_label|upper }}
               </span>
 
-              <strong>{{ intelligence.workflow_label }}</strong>
+              <strong>{{ operator_stage }}</strong>
             </div>
 
             <b>{{ intelligence.progress_percent }}%</b>
@@ -263,7 +290,7 @@
 
           <div class="cc-next-action">
             <span>NEXT ACTION</span>
-            <strong>{{ intelligence.next_action }}</strong>
+            <strong>{{ operator_next }}</strong>
 
             {% if intelligence.blocked_reason %}
             <p>{{ intelligence.blocked_reason }}</p>
@@ -272,6 +299,12 @@
 
           {% if job.status == "CANCELLED" %}
           <span class="button full-width disabled" aria-disabled="true">Cancelled — lifecycle locked</span>
+          {% elif invoice %}
+          <a class="button full-width" href="/invoices/{{ invoice.id }}/documents">Open Current Invoice →</a>
+          {% elif governed_revision %}
+          <a class="button full-width" href="#parts-ready">Continue Editing Work →</a>
+          {% elif quote %}
+          <a class="button full-width" href="/quotes/{{ quote.id }}/documents">Open Current Quote →</a>
           {% elif intelligence.action_method == "POST" %}
           <form method="post" action="{{ intelligence.action_url }}">
             <button class="button full-width" type="submit">
@@ -368,52 +401,23 @@
   <section class="cc-card cc-section" id="parts-research">
     <div class="cc-section-head">
       <div><p class="cc-label">PARTS RESEARCH</p><h2>Find and compare parts</h2><p class="cc-muted">Use the standard Verify Parts workflow or add a quote received directly from another supplier.</p></div>
+      <button class="button ghost manual-part-trigger" type="button" data-dialog-open="manual-part-dialog">＋ Add Part Manually</button>
     </div>
     <div class="cc-research-layout">
       <aside class="cc-tools">
         <p class="cc-label">VERIFY PARTS</p>
         <form method="post" action="/jobs/{{ job.id }}/start-source-import" target="_blank">
           <label>Verification Source
-            <select name="source_key" required>{% for connector in connectors %}<option value="{{ connector.connector_key }}">{{ connector.display_name }}</option>{% endfor %}</select>
+            <select id="verification-source" name="source_key" required>{% for connector in connectors %}<option value="{{ connector.connector_key }}" data-launch-url="{{ connector.launch_url }}">{{ connector.display_name }}</option>{% endfor %}</select>
           </label>
-          <button class="button full-width" type="submit">Verify Parts</button>
+          <div class="verification-launch-actions">
+            <button class="button" type="submit">Start Verification</button>
+            <a class="button ghost" id="open-verification-source" target="_blank" rel="noopener">Open Source</a>
+          </div>
         </form>
         <p class="cc-muted">Open the selected verification source, then import its evidence or candidate results.</p>
 
         <div class="cc-tools-divider"></div>
-
-        {% if not quote_ready %}
-    <form
-      class="cc-manual-part-form"
-      method="post"
-      action="/jobs/{{ job.id }}/basket/items"
-    >
-      <label class="cc-label">ADD PART</label>
-
-      <input
-        class="cc-manual-part-description"
-        name="requested_description"
-        placeholder="Part description"
-        required
-      >
-
-      <input
-        class="cc-manual-part-qty"
-        type="number"
-        name="quantity"
-        value="1"
-        min="1"
-        aria-label="Quantity"
-        required
-      >
-
-      <button class="button" type="submit">
-        ＋ Add Part
-      </button>
-    </form>
-
-    <div class="cc-tools-divider"></div>
-    {% endif %}
 
     <button
           class="button ghost full-width"
@@ -619,54 +623,30 @@
     <div class="cc-section-head"><div><p class="cc-label">PARTS READY FOR QUOTE</p><h2>Review selected parts</h2><p class="cc-muted">Only selected parts move into the customer quote.</p></div><div class="parts-ready-head-actions">
   <span class="cc-count">{{ basket.totals.selected_items }}</span>
 
-  {% set quoted_count = basket_items
-      |selectattr("part_status", "equalto", "QUOTED")
-      |list
-      |length %}
-
-  {% set ordered_count = basket_items
-      |selectattr("part_status", "equalto", "ORDERED")
-      |list
-      |length %}
-
-  {% if quoted_count > 0 %}
-  <form
-    method="post"
-    action="/jobs/{{ job.id }}/basket/workflow"
-  >
-    <input type="hidden" name="action" value="ORDER_ALL">
-
-    <button class="button small" type="submit">
-      Order All Ready Parts
-    </button>
-  </form>
-  {% endif %}
-
-  {% if ordered_count > 0 %}
-  <form
-    method="post"
-    action="/jobs/{{ job.id }}/basket/workflow"
-  >
-    <input type="hidden" name="action" value="RECEIVE_ALL">
-
-    <button class="button small" type="submit">
-      Receive All Ordered Parts
-    </button>
-  </form>
-  {% endif %}
 </div></div>
     {% if basket_items %}
-    <div style="overflow-x:auto"><table class="cc-ready-table"><thead><tr><th>Supplier</th><th>Part Numbers</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Cost</th><th>Markup %</th><th>Markup $</th><th>Customer Unit</th><th>Total</th><th>Status</th><th class="cc-confidence-column">Confidence</th><th>Verification</th><th>Actions</th></tr></thead><tbody>
+    <div class="part-editor-list">
     {% for item in basket_items %}
     {% set cost = item.supplier_unit_cost or 0 %}
     {% set pricing = item.pricing %}
     {% set markup = pricing.current_markup_percent %}
     {% set customer_unit = pricing.current_unit_price %}
-    <tr>
-<td><strong>{{ item.supplier_name or "Manual Vendor" }}</strong></td>
-<td>
-<div class="cc-part-title">
-  <small>OEM</small>
+    {% set current_status = item.part_status or "RESEARCH" %}
+    <article class="part-editor-card">
+      <header class="part-editor-header">
+        <div>
+          <span class="cc-badge">{{ item.source_type }}</span>
+          <h3>{{ item.requested_description }}</h3>
+          <p>{{ item.supplier_name or "Manual source" }}{% if item.internal_part_number %} · PPS Ref {{ item.internal_part_number }}{% endif %}</p>
+        </div>
+        <div class="part-editor-primary-actions">
+          {% if item.source_url %}<a class="button small ghost" href="{{ item.source_url }}" target="_blank" rel="noopener">Open Supplier</a>{% endif %}
+          <button form="part-update-{{ item.id }}" class="button small" type="submit">Save Changes</button>
+        </div>
+      </header>
+      <form id="part-update-{{ item.id }}" class="cc-inline-edit-form" method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/update"></form>
+      <div class="part-editor-grid">
+      <label><span>Manufacturer / OEM #</span>
   <input
     form="part-update-{{ item.id }}"
     type="text"
@@ -674,7 +654,8 @@
     value="{{ item.manufacturer_part_number or '' }}"
     placeholder="OEM #"
   >
-  <small>Alternate / superseded</small>
+      </label>
+      <label><span>Alternate / Superseded #</span>
   <input
     form="part-update-{{ item.id }}"
     type="text"
@@ -682,7 +663,8 @@
     value="{{ item.alternate_part_number or '' }}"
     placeholder="Alternate #"
   >
-  <small>Supplier</small>
+      </label>
+      <label><span>Supplier Part #</span>
   <input
     form="part-update-{{ item.id }}"
     type="text"
@@ -690,25 +672,16 @@
     value="{{ item.supplier_part_number or '' }}"
     placeholder="Supplier #"
   >
-</div>
-</td>
-<td>{{ item.requested_description }}</td>
-<td><span class="cc-badge">{{ item.source_type }}</span></td>
-
-<td>
-<form id="part-update-{{ item.id }}"
-      class="cc-inline-edit-form"
-      method="post"
-      action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/update"></form>
+      </label>
+      <label><span>Quantity</span>
 <input form="part-update-{{ item.id }}"
        type="number"
        name="quantity"
        value="{{ item.quantity }}"
        min="1"
        required>
-</td>
-
-<td>
+      </label>
+      <label><span>Supplier Unit</span>
 <input form="part-update-{{ item.id }}"
        type="number"
        name="supplier_unit_cost"
@@ -716,9 +689,8 @@
        step="0.01"
        min="0"
        required>
-</td>
-
-<td>
+      </label>
+      <label><span>Recommended Markup %</span>
 <input form="part-update-{{ item.id }}"
        type="number"
        name="markup_percent"
@@ -739,9 +711,8 @@
 {% elif pricing.status == "MISSING_COST" %}
 <small class="cc-pricing-warning">Supplier cost required</small>
 {% endif %}
-</td>
-
-<td>
+      </label>
+      <div class="part-editor-metric"><span>Dollar Margin</span>
 {% set markup_amount = customer_unit - cost %}
 <strong class="cc-markup-dollar">
   {% if markup_amount < 0 %}
@@ -752,9 +723,8 @@
   $0.00
   {% endif %}
 </strong>
-</td>
-
-<td>
+      </div>
+      <label><span>Customer Unit</span>
 <input form="part-update-{{ item.id }}"
        type="number"
        name="customer_unit_price_override"
@@ -773,15 +743,11 @@
     {{ "%.2f"|format(pricing.actual_markup_percent) }}%
   {% endif %}
 </small>
-</td>
-
-<td>
+      </label>
+      <div class="part-editor-metric"><span>Customer Line Total</span>
 <strong style="color:var(--accent)">${{ "%.2f"|format(customer_unit * item.quantity) }}</strong>
-</td>
-
-<td>
-{% set current_status = item.part_status or "RESEARCH" %}
-
+      </div>
+      <div class="part-editor-metric"><span>Work Status</span>
 <span
   class="part-workflow-badge
     part-workflow-{{ current_status|lower }}"
@@ -798,95 +764,18 @@
     {{ current_status }}
   {% endif %}
 </span>
-</td>
-
-<td class="cc-confidence-column">
-<input
-  form="part-update-{{ item.id }}"
-  type="number"
-  name="confidence"
-  value="{% if item.confidence is not none %}{{ item.confidence }}{% endif %}"
-  min="0"
-  max="1"
-  step="0.01"
-  placeholder="0–1"
-  title="Candidate confidence from 0.0 to 1.0"
->
-{% if item.confidence is not none %}
-<small>{{ "%.0f"|format(item.confidence * 100) }}%</small>
-{% endif %}
-</td>
-
-<td class="cc-verification-cell">
-{% set verification_status = item.verification_status or "UNVERIFIED" %}
-<select
-  form="part-update-{{ item.id }}"
-  name="verification_status"
->
-  <option value="UNVERIFIED" {% if verification_status == "UNVERIFIED" %}selected{% endif %}>Unverified</option>
-  <option value="VERIFIED" {% if verification_status == "VERIFIED" %}selected{% endif %}>Verified</option>
-  <option value="REJECTED" {% if verification_status == "REJECTED" %}selected{% endif %}>Rejected</option>
-  <option value="OVERRIDE" {% if verification_status == "OVERRIDE" %}selected{% endif %}>Manual Override</option>
-</select>
+      </div>
+      </div>
+  <input form="part-update-{{ item.id }}" type="hidden" name="confidence" value="{% if item.confidence is not none %}{{ item.confidence }}{% endif %}">
+  <input form="part-update-{{ item.id }}" type="hidden" name="verification_status" value="{{ item.verification_status or 'UNVERIFIED' }}">
   <input
     form="part-update-{{ item.id }}"
     type="hidden"
     name="verification_note"
     value="{{ item.verification_note or '' }}"
   >
-</td>
-
-<td>
-<div class="part-order-actions">
-  {% if item.source_url %}
-  <a
-    class="button small ghost"
-    href="{{ item.source_url }}"
-    target="_blank"
-    rel="noopener"
-  >
-    Open Supplier
-  </a>
-  {% endif %}
-
-  <button
-    form="part-update-{{ item.id }}"
-    class="button small ghost"
-    type="submit"
-  >
-    Save
-  </button>
-
-  {% if current_status == "QUOTED" %}
-  <form
-    method="post"
-    action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/workflow"
-  >
-    <input type="hidden" name="action" value="ORDER">
-
-    <button class="button small" type="submit">
-      Order Part
-    </button>
-  </form>
-
-  {% elif current_status == "ORDERED" %}
-  <form
-    method="post"
-    action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/workflow"
-  >
-    <input type="hidden" name="action" value="RECEIVE">
-
-    <button class="button small" type="submit">
-      Receive Part
-    </button>
-  </form>
-
-  {% elif current_status == "RECEIVED" %}
-  <span class="part-workflow-complete">
-    ✓ Complete
-  </span>
-  {% endif %}
-
+      <footer class="part-editor-footer">
+        <small>Verification evidence remains stored with this part.</small>
   <form
     method="post"
     action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/toggle"
@@ -894,17 +783,16 @@
     <input type="hidden" name="selected" value="0">
 
     <button
-      class="cc-remove"
+      class="button small danger-outline"
       type="submit"
-      title="Remove from quote"
+      title="Remove from this quote"
     >
-      ×
+      Remove from Quote
     </button>
   </form>
-</div>
-</td>
-</tr>
-    {% endfor %}</tbody></table></div>
+      </footer>
+    </article>
+    {% endfor %}</div>
     {% else %}<div class="cc-empty"><strong>No parts selected yet.</strong><br>Start by researching parts above.</div>{% endif %}
   </section>
 
@@ -1291,6 +1179,47 @@
   </section>
   {% endif %}
 
+  {% if invoice %}
+  <section class="cc-card cc-section purchasing-stage-card">
+    <div class="cc-section-head">
+      <div><p class="cc-label">PURCHASING STAGE</p><h2>Order and receive supplier parts</h2><p class="cc-muted">Part editing is complete for this invoiced sale. Create and manage supplier orders in Purchasing.</p></div>
+      <a class="button" href="/purchasing">Open Purchasing</a>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="cc-card cc-section" id="follow-ups">
+    <div class="cc-section-head">
+      <div><p class="cc-label">FOLLOW-UP</p><h2>Information and next actions</h2><p class="cc-muted">Record missing customer details or an operator task. Open items also appear in Follow-Up Center.</p></div>
+      <a class="button ghost" href="/follow-up">Open Follow-Up Center</a>
+    </div>
+    <div class="job-followup-layout">
+      <form class="job-followup-create" method="post" action="/jobs/{{ job.id }}/follow-ups">
+        <label>Waiting on
+          <select name="category"><option value="CUSTOMER_INFORMATION">Customer information</option><option value="OPERATOR_ATTENTION">PPS / operator action</option></select>
+        </label>
+        <label>What is needed<input name="summary" required placeholder="Example: Photo of headlight connector"></label>
+        <label>Why / context<input name="reason" placeholder="Needed to confirm halogen vs HID fitment"></label>
+        <button class="button" type="submit">Create Follow-Up</button>
+      </form>
+      <div class="job-followup-list">
+        {% set open_follow_ups = follow_ups %}
+        {% if open_follow_ups %}
+        {% for follow_up in open_follow_ups %}
+        <article class="job-followup-item {% if follow_up.status == 'RECEIVED' or follow_up.category == 'OPERATOR_ATTENTION' %}attention{% endif %}">
+          <div><span class="cc-badge">{% if follow_up.status == 'RECEIVED' or follow_up.category == 'OPERATOR_ATTENTION' %}Needs Your Attention{% else %}Waiting for Customer Information{% endif %}</span><strong>{{ follow_up.summary }}</strong>{% if follow_up.reason %}<small>{{ follow_up.reason }}</small>{% endif %}{% if follow_up.resolution %}<small>Received: {{ follow_up.resolution }}</small>{% endif %}</div>
+          {% if follow_up.category == 'CUSTOMER_INFORMATION' and follow_up.status == 'OPEN' %}
+          <form method="post" action="/follow-ups/{{ follow_up.id }}/information-received"><input name="resolution" required placeholder="What the customer provided"><button class="button small" type="submit">Information Received</button></form>
+          {% else %}
+          <form method="post" action="/follow-ups/{{ follow_up.id }}/resolve"><input name="resolution" required placeholder="How this was resolved"><button class="button small" type="submit">Mark Resolved</button></form>
+          {% endif %}
+        </article>
+        {% endfor %}
+        {% else %}<div class="cc-empty">No open Job follow-ups.</div>{% endif %}
+      </div>
+    </div>
+  </section>
+
 <section class="cc-card cc-section" id="job-timeline">
     <div class="cc-section-head">
       <div>
@@ -1326,6 +1255,23 @@
     {% endif %}
   </section>
 </div>
+
+<dialog class="cc-dialog" id="manual-part-dialog">
+  <form method="post" action="/jobs/{{ job.id }}/basket/items">
+    <div class="cc-dialog-head">
+      <div><p class="cc-label">MANUAL PART</p><h2>Add a requested part</h2><p class="cc-muted">Use this when no catalog import is available. PPS will assign an internal reference if no manufacturer number is known.</p></div>
+      <button type="button" class="cc-remove" data-dialog-close>×</button>
+    </div>
+    <div class="cc-dialog-grid">
+      <label class="full">Part description<input name="requested_description" required placeholder="Example: Left headlight assembly"></label>
+      <label>Quantity<input type="number" name="quantity" value="1" min="1" required></label>
+      <label>Manufacturer / OEM # (optional)<input name="manufacturer_part_number" placeholder="Leave blank if unknown"></label>
+      <label>Supplier (optional)<input name="supplier_name" placeholder="Supplier name"></label>
+      <label>Supplier part # (optional)<input name="supplier_part_number" placeholder="Supplier reference"></label>
+    </div>
+    <div class="cc-dialog-actions"><button class="button ghost" type="button" data-dialog-close>Cancel</button><button class="button" type="submit">Add Part</button></div>
+  </form>
+</dialog>
 
 <dialog class="cc-dialog" id="supplier-quote-dialog">
   <form
@@ -1392,6 +1338,18 @@
 </dialog>
 <script>
 (() => {
+  function syncVerificationSourceLink() {
+    const select = document.getElementById("verification-source");
+    const link = document.getElementById("open-verification-source");
+    if (!select || !link) return;
+    const url = select.selectedOptions[0]?.dataset.launchUrl || "";
+    link.href = url || "#";
+    link.hidden = !url;
+  }
+  document.addEventListener("change", (event) => {
+    if (event.target?.id === "verification-source") syncVerificationSourceLink();
+  });
+  syncVerificationSourceLink();
   function applyRevisionTokens() {
     const shell = document.querySelector(".cc-shell");
     const revisionId = shell?.dataset.revisionId || "";
@@ -1476,6 +1434,7 @@
 
     currentMain.replaceWith(incomingMain);
     applyRevisionTokens();
+    syncVerificationSourceLink();
 
     requestAnimationFrame(() => {
       window.scrollTo({

@@ -415,7 +415,7 @@ def get_follow_up_data(
             UNION ALL
 
             SELECT
-                'DELIVERY' AS category,
+                'PARTS_SHIPPING' AS category,
                 j.id AS record_id,
                 j.job_number AS record_number,
                 j.customer AS title,
@@ -518,7 +518,7 @@ def get_follow_up_data(
             item["priority"] = "OVERDUE"
             item["priority_rank"] = 0
 
-        elif item["category"] == "DELIVERY":
+        elif item["category"] == "PARTS_SHIPPING":
             item["priority"] = "ACTION"
             item["priority_rank"] = 1
 
@@ -535,6 +535,48 @@ def get_follow_up_data(
             item["priority_rank"] = 4
 
         items.append(item)
+
+    manual_follow_ups = connection.execute(
+        """
+        SELECT f.*,j.job_number,j.customer,j.manufacturer,j.machine
+        FROM job_follow_ups f
+        JOIN jobs j ON j.id=f.job_id
+        WHERE f.status IN ('OPEN','RECEIVED')
+        ORDER BY f.requested_at,f.id
+        """
+    ).fetchall()
+    for row in manual_follow_ups:
+        item = dict(row)
+        received = item["status"] == "RECEIVED"
+        category = (
+            "NEEDS_ATTENTION"
+            if received or item["category"] == "OPERATOR_ATTENTION"
+            else "CUSTOMER_INFORMATION"
+        )
+        waiting_text = str(
+            item["received_at"] if received else item["requested_at"]
+        )[:10]
+        try:
+            waiting_date = date.fromisoformat(waiting_text)
+        except ValueError:
+            waiting_date = report_date
+        items.append({
+            "category": category,
+            "record_id": item["id"],
+            "record_number": item["job_number"],
+            "title": item["customer"],
+            "subtitle": item["summary"],
+            "detail": item["resolution"] if received else item["reason"],
+            "waiting_since": item["received_at"] if received else item["requested_at"],
+            "due_date": None,
+            "url": f"/jobs/{item['job_id']}/basket#follow-ups",
+            "action_label": "Review now" if category == "NEEDS_ATTENTION" else "Open request",
+            "amount": 0,
+            "age_days": max((report_date - waiting_date).days, 0),
+            "is_overdue": False,
+            "priority": "ACTION" if category == "NEEDS_ATTENTION" else "CUSTOMER",
+            "priority_rank": 0 if category == "NEEDS_ATTENTION" else 3,
+        })
 
     items.sort(
         key=lambda item: (
@@ -561,10 +603,16 @@ def get_follow_up_data(
             for item in items
             if item["category"] == "SUPPLIER"
         ),
-        "deliveries": sum(
+        "parts_shipping": sum(
             1
             for item in items
-            if item["category"] == "DELIVERY"
+            if item["category"] == "PARTS_SHIPPING"
+        ),
+        "customer_information": sum(
+            1 for item in items if item["category"] == "CUSTOMER_INFORMATION"
+        ),
+        "needs_attention": sum(
+            1 for item in items if item["category"] == "NEEDS_ATTENTION"
         ),
         "overdue": sum(
             1

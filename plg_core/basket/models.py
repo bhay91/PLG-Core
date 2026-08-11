@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 class BasketItemCreate(BaseModel):
     requested_description: str = Field(min_length=1)
+    internal_part_number: str = ""
     manufacturer_part_number: str = ""
     alternate_part_number: str = ""
     supplier_part_number: str = ""
@@ -27,6 +28,7 @@ class BasketItemCreate(BaseModel):
 
 class BasketItemUpdate(BaseModel):
     requested_description: str | None = Field(default=None, min_length=1)
+    internal_part_number: str | None = None
     manufacturer_part_number: str | None = None
     alternate_part_number: str | None = None
     supplier_part_number: str | None = None

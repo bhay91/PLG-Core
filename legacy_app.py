@@ -1912,6 +1912,7 @@ def generate_quote(job_id: int):
             SELECT
                 job_parts.id AS part_id,
                 job_parts.requested_description,
+                job_parts.internal_part_number,
                 job_parts.oem_description,
                 job_parts.quantity,
                 job_parts.customer_unit_price,
@@ -2080,6 +2081,7 @@ def generate_quote(job_id: int):
                     row["source_id"],
                     quantity,
                     description,
+                    row["internal_part_number"] or "",
                     row["supplier_name"],
                     row["source_type"],
                     row["brand"] or "",
@@ -2187,6 +2189,7 @@ def generate_quote(job_id: int):
                     source_id,
                     quantity,
                     description,
+                    internal_part_number,
                     supplier_name,
                     source_type,
                     brand,
@@ -2201,7 +2204,7 @@ def generate_quote(job_id: int):
                     recommended_markup_percent
                 )
                 VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 (quote_id, *item),
@@ -2224,6 +2227,11 @@ def generate_quote(job_id: int):
             event_type="QUOTE_GENERATED",
             icon="📝",
             message=f"Quote {quote_number} generated",
+        )
+
+        from plg_core.requests.service import archive_originating_requests_for_quote
+        archive_originating_requests_for_quote(
+            connection, job_id=job_id, quote_id=int(quote_id)
         )
 
         connection.commit()
@@ -3122,7 +3130,7 @@ def convert_quote_to_invoice(quote_id: int):
         cur = connection.execute("""INSERT INTO invoices (invoice_number,quote_id,job_id,invoice_date,status,parts_subtotal,shipping_total,service_charge,sourcing_fee,customer_total,supplier_total,profit_total,credit_applied,balance_due) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_number,quote_id,quote["job_id"],invoice_date,status,float(quote["parts_subtotal"] or 0),float(quote["shipping_total"] or 0),float(quote["service_charge"] or 0),float(quote["sourcing_fee"] or 0),customer_total,float(quote["supplier_total"] or 0),float(quote["profit_total"] or 0),credit_applied,balance_due))
         invoice_id = cur.lastrowid
         for item in quote_items:
-            connection.execute("""INSERT INTO invoice_items (invoice_id,quote_item_id,part_id,source_id,quantity,description,supplier_name,source_type,brand,supplier_part_number,supplier_unit_cost,customer_unit_price,supplier_line_total,customer_line_total,line_profit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_id,item["id"],item["part_id"],item["source_id"],item["quantity"],item["description"],item["supplier_name"],item["source_type"],item["brand"],item["supplier_part_number"],item["supplier_unit_cost"],item["customer_unit_price"],item["supplier_line_total"],item["customer_line_total"],item["line_profit"]))
+            connection.execute("""INSERT INTO invoice_items (invoice_id,quote_item_id,part_id,source_id,quantity,description,internal_part_number,supplier_name,source_type,brand,supplier_part_number,supplier_unit_cost,customer_unit_price,supplier_line_total,customer_line_total,line_profit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_id,item["id"],item["part_id"],item["source_id"],item["quantity"],item["description"],item["internal_part_number"] or "",item["supplier_name"],item["source_type"],item["brand"],item["supplier_part_number"],item["supplier_unit_cost"],item["customer_unit_price"],item["supplier_line_total"],item["customer_line_total"],item["line_profit"]))
         if job["customer_id"]:
             connection.execute("""INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,reference,reason,job_id,quote_id,invoice_id) VALUES (?,?,'INVOICE',?,?,?,?,?,?)""",(job["customer_id"],invoice_date,-customer_total,invoice_number,f"Invoice created from {quote['quote_number']}",quote["job_id"],quote_id,invoice_id))
         previous_quote_status = str(quote["status"] or "").strip().upper()
@@ -5268,10 +5276,20 @@ SOURCE_PROFILES = {
 
 
 @app.post("/jobs/{job_id}/start-source-import")
-def start_source_import(job_id: int, source_key: str = Form(...)):
+def start_source_import(
+    job_id: int,
+    source_key: str = Form(...),
+    expected_revision_id: int | None = Form(None),
+    expected_version: int | None = Form(None),
+):
     with closing(get_connection()) as connection:
-        from plg_core.lifecycle import ensure_job_pre_document_work
-        ensure_job_pre_document_work(connection, job_id, "start a supplier import")
+        from plg_core.basket.service import get_or_create_basket, ensure_basket_mutable
+        basket = get_or_create_basket(connection, job_id)
+        ensure_basket_mutable(
+            basket, connection,
+            expected_revision_id=expected_revision_id,
+            expected_version=expected_version,
+        )
         job = connection.execute(
             "SELECT id FROM jobs WHERE id = ?",
             (job_id,),

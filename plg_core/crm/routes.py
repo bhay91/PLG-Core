@@ -229,6 +229,11 @@ def search_records(
                 OR j.machine LIKE ? COLLATE NOCASE
                 OR j.pin_serial LIKE ? COLLATE NOCASE
                 OR j.notes LIKE ? COLLATE NOCASE
+                OR EXISTS (
+                    SELECT 1 FROM job_parts jp
+                    WHERE jp.job_id=j.id
+                      AND jp.internal_part_number LIKE ? COLLATE NOCASE
+                )
             ORDER BY
                 CASE
                     WHEN j.job_number LIKE ? COLLATE NOCASE
@@ -241,7 +246,7 @@ def search_records(
             """,
             (
                 like, like, like, like, like,
-                like, like, like, like,
+                like, like, like, like, like,
                 prefix, prefix,
                 limit,
             ),
@@ -287,6 +292,8 @@ def search_records(
                             qi.description LIKE ? COLLATE NOCASE
                             OR qi.supplier_part_number
                                LIKE ? COLLATE NOCASE
+                            OR qi.internal_part_number
+                               LIKE ? COLLATE NOCASE
                       )
                 )
             ORDER BY
@@ -300,7 +307,7 @@ def search_records(
             """,
             (
                 like, like, like, like,
-                like, like, like,
+                like, like, like, like,
                 prefix,
                 limit,
             ),

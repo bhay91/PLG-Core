@@ -9,8 +9,8 @@
     <p class="eyebrow">CUSTOMER REQUESTS</p>
     <h1>Smart Intake</h1>
     <p>
-      Paste the information once. PPS extracts, matches, saves,
-      and creates the job.
+      Paste the request in the customer’s natural wording. Review every
+      detected field before PPS creates records.
     </p>
   </div>
 </section>
@@ -22,7 +22,7 @@
     class="smart-intake-paste"
   >
     <label>
-      Paste Customer Request
+      Customer request text
       <textarea
         name="raw_text"
         rows="16"
@@ -30,6 +30,11 @@
         placeholder="Customer: Marcus Rolle&#10;Phone: 242-555-0198&#10;Location: George Town, Exuma&#10;Registry Type: Heavy Equipment&#10;Manufacturer: Caterpillar&#10;Model: 420D Backhoe Loader&#10;Identifier: FDP12345&#10;&#10;Requested Parts:&#10;Water pump&#10;Upper radiator hose"
       >{{ raw_text or "" }}</textarea>
     </label>
+
+    <div class="smart-intake-future-drop" aria-disabled="true">
+      <strong>Images, screenshots, machine tags, and supplier PDFs</strong>
+      <span>Multimodal upload is planned for Smart Intake. It is not active yet.</span>
+    </div>
 
     <div class="form-actions">
       <a class="button ghost" href="/requests">Cancel</a>

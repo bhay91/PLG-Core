@@ -208,7 +208,7 @@ def cancel_job(job_id: int, reason: str):
             )
         previous = str(job["status"] or "REQUESTED").upper()
         connection.execute(
-            "UPDATE jobs SET status='CANCELLED', status_before_cancel=?, "
+            "UPDATE jobs SET status='CANCELLED', is_archived=1, status_before_cancel=?, "
             "cancellation_reason=?, cancelled_at=CURRENT_TIMESTAMP WHERE id=?",
             (previous, reason, job_id),
         )
@@ -258,7 +258,7 @@ def reopen_job(job_id: int, reason: str):
         if target in {"CANCELLED", "VOID", "DELIVERED", "COMPLETED", "COMPLETE", "CLOSED"}:
             target = "REQUESTED"
         connection.execute(
-            "UPDATE jobs SET status=?, cancelled_at=NULL, cancellation_reason='' WHERE id=?",
+            "UPDATE jobs SET status=?, is_archived=0, cancelled_at=NULL, cancellation_reason='' WHERE id=?",
             (target, job_id),
         )
         message = f"Job {job['job_number']} reopened to {target}. Reason: {reason}"

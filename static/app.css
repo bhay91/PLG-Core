@@ -727,6 +727,19 @@ textarea[readonly] {
   .stats { grid-template-columns: 1fr; }
 }
 
+.smart-intake-future-drop {
+  display: grid;
+  gap: 5px;
+  padding: 22px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  text-align: center;
+}
+
+.smart-intake-future-drop strong { color: var(--ink); }
+
 
 .quick-capture-panel {
   margin: 18px 18px 0;
@@ -5336,4 +5349,74 @@ small.secondary {
   font-weight: 750;
   line-height: 1.25;
   white-space: nowrap;
+}
+
+/* Batch 3A corporate workflow refinements */
+:root {
+  --canvas: #f1f4f8;
+  --line: #d9e1eb;
+  --shadow-sm: 0 1px 3px rgba(13, 36, 68, .06), 0 8px 24px rgba(13, 36, 68, .035);
+}
+
+.panel,
+.workspace-row,
+.cc-card {
+  border-color: var(--line);
+}
+
+.button,
+.workspace-btn {
+  min-height: 38px;
+  border-radius: 9px;
+  font-weight: 800;
+}
+
+.button.small { min-height: 32px; }
+
+.button.danger-outline {
+  color: var(--danger);
+  background: #fff;
+  border-color: #efb8b8;
+}
+
+.button.danger-outline:hover {
+  background: var(--danger-soft);
+}
+
+input,
+select,
+textarea {
+  border-color: var(--line-strong);
+  border-radius: 8px;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 3px solid rgba(11, 99, 206, .13);
+  border-color: var(--accent);
+}
+
+.workspace-tabs button {
+  padding: 9px 13px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.workspace-tabs button:hover,
+.workspace-tabs button.active {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+@media (max-width: 720px) {
+  .workspace-heading { align-items: flex-start; }
+  .workspace-tabs { overflow-x: auto; justify-content: flex-start; }
+  .workspace-tabs button { white-space: nowrap; }
 }

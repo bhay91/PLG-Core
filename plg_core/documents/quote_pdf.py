@@ -447,17 +447,20 @@ def _customer_items(items):
     ]]
 
     for item in items:
+        public_part_number = str(
+            _value(item, "supplier_part_number", "") or ""
+        ).strip()
+        if not public_part_number:
+            internal_reference = str(
+                _value(item, "internal_part_number", "") or ""
+            ).strip()
+            public_part_number = (
+                f"PPS Ref: {internal_reference}" if internal_reference else "-"
+            )
         rows.append([
             str(_value(item, "quantity", 1)),
             Paragraph(
-                str(
-                    _value(
-                        item,
-                        "supplier_part_number",
-                        "",
-                    )
-                    or "-"
-                ),
+                public_part_number,
                 s["small"],
             ),
             Paragraph(

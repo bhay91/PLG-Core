@@ -641,6 +641,64 @@ def _migration_0033_operator_quote_revisions(
     )
 
 
+def _migration_0034_workflow_followups_and_internal_parts(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add Batch 3A operator follow-ups and stable internal part references."""
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS job_follow_ups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL,
+            category TEXT NOT NULL
+                CHECK (category IN ('CUSTOMER_INFORMATION','OPERATOR_ATTENTION')),
+            summary TEXT NOT NULL,
+            reason TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'OPEN'
+                CHECK (status IN ('OPEN','RECEIVED','RESOLVED','CANCELLED')),
+            requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            received_at TEXT,
+            resolved_at TEXT,
+            resolution TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (job_id) REFERENCES jobs(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_job_follow_ups_queue
+            ON job_follow_ups(status, category, requested_at);
+        CREATE INDEX IF NOT EXISTS idx_job_follow_ups_job
+            ON job_follow_ups(job_id, status);
+
+        CREATE TABLE IF NOT EXISTS internal_part_number_sequence (
+            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+            last_number INTEGER NOT NULL DEFAULT 0 CHECK (last_number >= 0)
+        );
+        INSERT OR IGNORE INTO internal_part_number_sequence(singleton,last_number)
+        VALUES (1,0);
+        """
+    )
+    for table in (
+        "basket_items",
+        "work_revision_items",
+        "job_parts",
+        "quote_items",
+        "invoice_items",
+    ):
+        _add_columns(
+            connection,
+            table,
+            {"internal_part_number": "TEXT NOT NULL DEFAULT ''"},
+        )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_basket_items_internal_part "
+        "ON basket_items(internal_part_number)"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_job_parts_internal_part "
+        "ON job_parts(internal_part_number)"
+    )
+
+
 def _migration_0032_quote_identity_snapshot_foundation(
     connection: sqlite3.Connection,
 ) -> None:
@@ -1642,4 +1700,11 @@ MIGRATIONS.append(
 
 MIGRATIONS.append(
     ("0033_operator_quote_revisions", _migration_0033_operator_quote_revisions)
+)
+
+MIGRATIONS.append(
+    (
+        "0034_workflow_followups_and_internal_parts",
+        _migration_0034_workflow_followups_and_internal_parts,
+    )
 )

@@ -1,253 +1,80 @@
 {% extends "base.html" %}
 {% block title %}Follow-Up Center · Pinpoint Sourcing Co.{% endblock %}
-
 {% block content %}
 <style>
-.follow-shell{
-  width:100%;
-  max-width:none;
-  margin:0;
-  display:grid;
-  gap:18px
-}
-.follow-summary{
-  display:grid;
-  grid-template-columns:repeat(5,minmax(0,1fr));
-  gap:12px
-}
-.follow-card{
-  background:#fff;
-  border:1px solid var(--line);
-  border-radius:14px;
-  padding:16px;
-  display:grid;
-  gap:4px;
-  box-shadow:var(--shadow-sm)
-}
-.follow-card strong{
-  font-size:27px;
-  color:var(--ink-strong)
-}
-.follow-card span{
-  font-weight:800
-}
-.follow-card small{
-  color:var(--muted)
-}
-.follow-alert{
-  border-color:#efb3b3
-}
-.follow-alert strong{
-  color:#b42318
-}
-.follow-list{
-  display:grid;
-  gap:10px
-}
-.follow-row{
-  display:grid;
-  grid-template-columns:145px minmax(230px,1.5fr) minmax(180px,1fr) 120px 150px;
-  gap:14px;
-  align-items:center;
-  background:#fff;
-  border:1px solid var(--line);
-  border-radius:14px;
-  padding:15px 17px;
-  box-shadow:var(--shadow-sm)
-}
-.follow-record{
-  display:grid;
-  gap:3px
-}
-.follow-record strong{
-  color:var(--accent-dark)
-}
-.follow-record small{
-  color:var(--muted);
-  font-weight:750
-}
-.follow-main{
-  min-width:0;
-  display:grid;
-  gap:3px
-}
-.follow-main strong{
-  color:var(--ink-strong)
-}
-.follow-main span{
-  color:var(--muted)
-}
-.follow-age{
-  display:grid;
-  gap:3px
-}
-.follow-age strong{
-  color:var(--ink-strong)
-}
-.follow-overdue{
-  color:#b42318 !important
-}
-.follow-category{
-  display:inline-flex;
-  width:max-content;
-  padding:5px 9px;
-  border-radius:999px;
-  background:#eef4ff;
-  font-size:12px;
-  font-weight:850
-}
-.follow-action{
-  text-align:right
-}
-.follow-action a{
-  white-space:nowrap
-}
-.follow-empty{
-  background:#fff;
-  border:1px dashed var(--line-strong);
-  border-radius:16px;
-  padding:55px 25px;
-  text-align:center
-}
-@media(max-width:900px){
-  .follow-summary{
-    grid-template-columns:repeat(2,minmax(0,1fr))
-  }
-  .follow-row{
-    grid-template-columns:1fr
-  }
-  .follow-action{
-    text-align:left
-  }
-}
+.follow-shell{display:grid;gap:20px}.follow-kpis{display:grid;grid-template-columns:repeat(6,minmax(145px,1fr));gap:10px}.follow-kpi{display:grid;gap:5px;padding:16px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-sm);text-align:left}.follow-kpi strong{font-size:26px;color:var(--ink-strong)}.follow-kpi span{font-size:12px;font-weight:800}.follow-kpi small{font-size:11px;color:var(--muted)}button.follow-kpi{font:inherit;cursor:pointer}.follow-kpi.active{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}.follow-kpi.attention strong{color:var(--danger)}.follow-kpi.payment strong{color:var(--warning)}.follow-queue{display:grid;gap:10px}.follow-row{display:grid;grid-template-columns:160px minmax(230px,1fr) minmax(150px,.55fr) auto;align-items:center;gap:18px;padding:16px 18px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-sm)}.follow-record,.follow-main,.follow-age{display:grid;gap:4px;min-width:0}.follow-record strong{color:var(--accent-dark)}.follow-main strong{color:var(--ink-strong)}.follow-main span,.follow-main small,.follow-age small{color:var(--muted)}.follow-category{width:max-content;max-width:100%;padding:5px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent-dark);font-size:10px;font-weight:850;line-height:1.2;letter-spacing:.04em}.follow-category.PAYMENT{background:var(--warning-soft);color:var(--warning)}.follow-category.NEEDS_ATTENTION{background:var(--danger-soft);color:var(--danger)}.follow-category.CUSTOMER_INFORMATION{background:#f1ecff;color:#6842a8}.follow-empty{padding:50px 20px;text-align:center;background:#fff;border:1px dashed var(--line-strong);border-radius:14px}.follow-hidden{display:none}.follow-overdue{color:var(--danger)!important;font-weight:850}@media(max-width:1180px){.follow-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:1050px){.follow-row{grid-template-columns:165px minmax(0,1fr);gap:10px 16px}.follow-age{grid-column:2}.follow-row>.button{grid-column:1/-1;width:100%}}@media(max-width:800px){.follow-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.follow-row{grid-template-columns:1fr;gap:10px}.follow-age,.follow-row>.button{grid-column:1}.follow-row .button{width:100%}}@media(max-width:430px){.follow-kpis{grid-template-columns:1fr 1fr}.follow-kpi{padding:12px}.follow-kpi strong{font-size:22px}}
 </style>
-
 <div class="follow-shell">
   <section class="workspace-heading">
     <div>
-      <p class="eyebrow">FOLLOW-UP CENTER</p>
-      <h1>Waiting on the next move</h1>
-      <p>
-        Customer decisions, payments, supplier arrivals,
-        and customer deliveries that still need attention.
-      </p>
+      <p class="eyebrow">OPERATOR WORK QUEUE</p>
+      <h1>Follow-Up Center</h1>
+      <p>See what PPS is waiting on—and what needs your attention now.</p>
     </div>
-
-    <a class="button ghost" href="/">
-      Back to Dashboard
-    </a>
   </section>
 
-  <section class="follow-summary">
-    <article class="follow-card">
-      <strong>{{ summary.customer_decisions }}</strong>
-      <span>Customer Decisions</span>
-      <small>Sent quotes awaiting response</small>
-    </article>
-
-    <article class="follow-card">
-      <strong>{{ summary.payments }}</strong>
-      <span>Payments</span>
-      <small>Open invoice balances</small>
-    </article>
-
-    <article class="follow-card">
-      <strong>{{ summary.suppliers }}</strong>
-      <span>Supplier Purchases</span>
-      <small>Ordered or partially received</small>
-    </article>
-
-    <article class="follow-card">
-      <strong>{{ summary.deliveries }}</strong>
-      <span>Customer Delivery</span>
-      <small>Received jobs awaiting handoff</small>
-    </article>
-
-    <article class="follow-card {% if summary.overdue %}follow-alert{% endif %}">
-      <strong>{{ summary.overdue }}</strong>
-      <span>Overdue</span>
-      <small>Supplier purchases past expected date</small>
-    </article>
+  <section class="follow-kpis" aria-label="Follow-up filters">
+    <button class="follow-kpi attention" data-follow-filter="NEEDS_ATTENTION"><strong>{{ summary.needs_attention }}</strong><span>Needs Your Attention</span><small>Ready for operator action</small></button>
+    <button class="follow-kpi payment" data-follow-filter="PAYMENT"><strong>{{ summary.payments }}</strong><span>Waiting for Payment</span><small>Open invoice balances</small></button>
+    <button class="follow-kpi" data-follow-filter="CUSTOMER_INFORMATION"><strong>{{ summary.customer_information }}</strong><span>Customer Information</span><small>Photos, IDs, measurements</small></button>
+    <button class="follow-kpi" data-follow-filter="CUSTOMER_DECISION"><strong>{{ summary.customer_decisions }}</strong><span>Customer Decision</span><small>Sent quotes awaiting response</small></button>
+    <button class="follow-kpi" data-follow-filter="SUPPLIER"><strong>{{ summary.suppliers }}</strong><span>Supplier</span><small>Orders and expected dates</small></button>
+    <button class="follow-kpi" data-follow-filter="PARTS_SHIPPING"><strong>{{ summary.parts_shipping }}</strong><span>Parts / Shipping</span><small>Receiving and delivery actions</small></button>
   </section>
+
+  <nav class="workspace-tabs" aria-label="Work queue view">
+    <button class="active" data-follow-filter="ALL">All ({{ summary.total }})</button>
+    <button data-follow-filter="NEEDS_ATTENTION">My Actions</button>
+    <button data-follow-filter="PAYMENT">Payment</button>
+    <button data-follow-filter="CUSTOMER_INFORMATION,CUSTOMER_DECISION">Customer</button>
+    <button data-follow-filter="SUPPLIER,PARTS_SHIPPING">Supplier &amp; Logistics</button>
+  </nav>
 
   {% if items %}
-  <section class="follow-list">
+  <section class="follow-queue" id="follow-queue">
     {% for item in items %}
-    <article class="follow-row">
+    <article class="follow-row" data-follow-category="{{ item.category }}">
       <div class="follow-record">
-        <span class="follow-category">
-          {% if item.category == "CUSTOMER_DECISION" %}
-          CUSTOMER
-          {% elif item.category == "PAYMENT" %}
-          PAYMENT
-          {% elif item.category == "SUPPLIER" %}
-          SUPPLIER
-          {% else %}
-          DELIVERY
-          {% endif %}
-        </span>
-
+        <span class="follow-category {{ item.category }}">{{ item.category|replace('_',' ') }}</span>
         <strong>{{ item.record_number }}</strong>
       </div>
-
       <div class="follow-main">
         <strong>{{ item.title }}</strong>
         <span>{{ item.subtitle or "—" }}</span>
-
-        {% if item.amount and item.category in ["PAYMENT", "CUSTOMER_DECISION"] %}
-        <small>
-          ${{ "%.2f"|format(item.amount) }}
-          {% if item.category == "PAYMENT" %}
-          outstanding
-          {% endif %}
-        </small>
-        {% endif %}
+        {% if item.detail %}<small>{{ item.detail }}</small>{% endif %}
+        {% if item.category == "PAYMENT" %}<small><strong>${{ "%.2f"|format(item.amount or 0) }} outstanding</strong></small>{% endif %}
+        {% if item.category == "CUSTOMER_DECISION" %}<small>${{ "%.2f"|format(item.amount or 0) }} quoted</small>{% endif %}
       </div>
-
       <div class="follow-age">
-        <strong>
-          {{ item.age_days }}
-          day{% if item.age_days != 1 %}s{% endif %} waiting
-        </strong>
-
-        {% if item.due_date %}
-        <small class="{% if item.is_overdue %}follow-overdue{% endif %}">
-          Expected: {{ item.due_date }}
-          {% if item.is_overdue %} · OVERDUE{% endif %}
-        </small>
-        {% else %}
-        <small>
-          Since: {{ item.waiting_since or "—" }}
-        </small>
-        {% endif %}
+        <strong class="{% if item.is_overdue %}follow-overdue{% endif %}">{{ item.priority }}</strong>
+        <small>{{ item.age_days }} day{% if item.age_days != 1 %}s{% endif %} waiting</small>
+        {% if item.due_date %}<small class="{% if item.is_overdue %}follow-overdue{% endif %}">Expected {{ item.due_date }}</small>{% endif %}
       </div>
-
-      <div>
-        <strong class="{% if item.is_overdue %}follow-overdue{% endif %}">
-          {{ item.priority }}
-        </strong>
-      </div>
-
-      <div class="follow-action">
-        <a
-          class="workspace-primary-link"
-          href="{{ item.url }}"
-        >
-          {{ item.action_label }} →
-        </a>
-      </div>
+      <a class="button {% if item.category == 'NEEDS_ATTENTION' %}danger{% else %}ghost{% endif %}" href="{{ item.url }}">{{ item.action_label }} →</a>
     </article>
     {% endfor %}
   </section>
-
+  <div class="follow-empty follow-hidden" id="follow-filter-empty"><strong>No follow-ups in this category.</strong><p>Choose another queue filter.</p></div>
   {% else %}
-  <div class="follow-empty">
-    <strong>Nothing is waiting for follow-up.</strong>
-    <p>
-      PPS has no sent quotes, open payments,
-      outstanding supplier purchases, or pending deliveries.
-    </p>
-  </div>
+  <div class="follow-empty"><strong>No open follow-ups.</strong><p>PPS is not currently waiting on a customer, payment, supplier, or logistics action.</p></div>
   {% endif %}
 </div>
+<script>
+(() => {
+  const buttons = document.querySelectorAll('[data-follow-filter]');
+  const rows = document.querySelectorAll('[data-follow-category]');
+  const empty = document.getElementById('follow-filter-empty');
+  buttons.forEach((button) => button.addEventListener('click', () => {
+    const values = button.dataset.followFilter.split(',');
+    let visible = 0;
+    rows.forEach((row) => {
+      const show = values.includes('ALL') || values.includes(row.dataset.followCategory);
+      row.classList.toggle('follow-hidden', !show);
+      if (show) visible += 1;
+    });
+    document.querySelectorAll('.workspace-tabs [data-follow-filter]').forEach((tab) => tab.classList.toggle('active', tab === button));
+    empty?.classList.toggle('follow-hidden', visible !== 0);
+  }));
+})();
+</script>
 {% endblock %}

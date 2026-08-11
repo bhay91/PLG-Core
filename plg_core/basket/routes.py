@@ -169,6 +169,16 @@ def basket_page(request: Request, job_id: int):
                 if basket.get("work_revision") else 0,
             ),
         ).fetchone()
+        follow_ups = connection.execute(
+            """
+            SELECT * FROM job_follow_ups
+            WHERE job_id=? AND status IN ('OPEN','RECEIVED')
+            ORDER BY
+              CASE status WHEN 'RECEIVED' THEN 0 WHEN 'OPEN' THEN 1 ELSE 2 END,
+              id DESC
+            """,
+            (job_id,),
+        ).fetchall()
 
         invoice = connection.execute(
             """
@@ -315,6 +325,7 @@ def basket_page(request: Request, job_id: int):
             "quote": quote,
             "quote_history": quote_history,
             "active_revision": active_revision,
+            "follow_ups": follow_ups,
             "invoice": invoice,
             "intelligence": intelligence,
             "active_page": "jobs",
@@ -792,6 +803,7 @@ def add_manual_vendor_line(
     vendor_name: Annotated[str, Form()],
     requested_description: Annotated[str, Form()],
     quantity: Annotated[int, Form()] = 1,
+    manufacturer_part_number: Annotated[str, Form()] = "",
     supplier_part_number: Annotated[str, Form()] = "",
     supplier_unit_cost: Annotated[float | None, Form()] = None,
     source_type: Annotated[str, Form()] = "AFTERMARKET",
@@ -898,6 +910,7 @@ def add_manual_vendor_line(
 def add_manual_item(
     job_id: int,
     requested_description: Annotated[str, Form()],
+    manufacturer_part_number: Annotated[str, Form()] = "",
     quantity: Annotated[int, Form()] = 1,
     supplier_name: Annotated[str, Form()] = "",
     supplier_part_number: Annotated[str, Form()] = "",
@@ -910,6 +923,7 @@ def add_manual_item(
         job_id,
         BasketItemCreate(
             requested_description=requested_description,
+            manufacturer_part_number=manufacturer_part_number,
             quantity=quantity,
             supplier_name=supplier_name,
             supplier_part_number=supplier_part_number,

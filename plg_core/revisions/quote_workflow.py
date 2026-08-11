@@ -114,6 +114,7 @@ def _revision_quote_rows(connection, revision_id: int):
         """
         SELECT
             jp.id AS part_id, ps.id AS source_id, jp.quantity,
+            jp.internal_part_number,
             jp.requested_description AS description,
             ps.supplier_name, ps.source_type, COALESCE(ps.brand,'') AS brand,
             COALESCE(ps.supplier_part_number,'') AS supplier_part_number,
@@ -184,15 +185,17 @@ def _insert_quote_items(connection, quote_id: int, rows) -> None:
             """
             INSERT INTO quote_items (
                 quote_id, part_id, source_id, quantity, description,
+                internal_part_number,
                 supplier_name, source_type, brand, supplier_part_number,
                 supplier_unit_cost, customer_unit_price, supplier_line_total,
                 customer_line_total, line_profit, pricing_mode,
                 customer_unit_price_override, recommended_markup_percent
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 quote_id, row["part_id"], row["source_id"], quantity,
-                row["description"], row["supplier_name"], row["source_type"],
+                row["description"], row["internal_part_number"] or "",
+                row["supplier_name"], row["source_type"],
                 row["brand"], row["supplier_part_number"], cost, price,
                 round(cost * quantity, 2), round(price * quantity, 2),
                 round((price - cost) * quantity, 2),
@@ -392,6 +395,10 @@ def generate_quote_from_revision(
                 else f"New quote revises {source['quote_number']}"
             ),
         )
+        from plg_core.requests.service import archive_originating_requests_for_quote
+        archive_originating_requests_for_quote(
+            connection, job_id=job_id, quote_id=quote_id
+        )
         connection.commit()
 
     _write_documents(quote_id)
@@ -458,7 +465,7 @@ def reopen_job_for_revision(job_id: int, reason: str) -> dict:
             (quote["status"], revision["id"]),
         )
         connection.execute(
-            "UPDATE jobs SET status='QUOTED',cancelled_at=NULL,"
+            "UPDATE jobs SET status='QUOTED',is_archived=0,cancelled_at=NULL,"
             "cancellation_reason='' WHERE id=?",
             (job_id,),
         )
