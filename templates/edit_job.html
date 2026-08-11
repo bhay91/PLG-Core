@@ -1,42 +1,22 @@
 {% extends "base.html" %}
 {% block title %}Edit {{ job.job_number }} · Pinpoint Sourcing Co.{% endblock %}
 {% block content %}
-<section class="page-heading">
-  <div>
-    <p class="eyebrow">EDIT JOB INFORMATION</p>
-    <h1>{{ job.job_number }}</h1>
-    <p>Update customer or machine information without changing the job number or creation date.</p>
-  </div>
-</section>
-
+<section class="page-heading"><div><p class="eyebrow">EDIT JOB INFORMATION</p><h1>{{ job.job_number }}</h1><p>Correct the linked customer or machine while preserving the Job number.</p></div></section>
+{% if has_history %}<section class="panel lifecycle-warning"><strong>Historical identity is locked.</strong><p>This Job has an issued quote. Customer and machine snapshots cannot be changed in Batch 1; internal notes remain editable.</p></section>{% endif %}
 <form method="post" action="/jobs/{{ job.id }}/edit" class="panel form-grid">
   <div class="form-section">
-    <h2>Customer</h2>
-    <label>Customer name *<input name="customer" value="{{ job.customer }}" required></label>
-    <label>Company<input name="company" value="{{ job.company or '' }}"></label>
-    <div class="two-column">
-      <label>Phone<input name="phone" value="{{ job.phone or '' }}"></label>
-      <label>Email<input name="email" type="email" value="{{ job.email or '' }}"></label>
-    </div>
+    <h2>Customer relationship</h2>
+    <label>Customer *<select name="customer_id" id="job-customer" required {% if has_history %}disabled{% endif %}>{% for customer in customers %}<option value="{{ customer.id }}" {% if customer.id == job.customer_id %}selected{% endif %}>{{ customer.name }}{% if customer.company %} · {{ customer.company }}{% endif %} ({{ customer.customer_number }})</option>{% endfor %}</select></label>
+    {% if has_history %}<input type="hidden" name="customer_id" value="{{ job.customer_id }}">{% endif %}
   </div>
-
   <div class="form-section">
-    <h2>Machine</h2>
-    <div class="two-column">
-      <label>Manufacturer<input name="manufacturer" value="{{ job.manufacturer or '' }}"></label>
-      <label>Model / machine<input name="machine" value="{{ job.machine or '' }}"></label>
-    </div>
-    <label>VIN / PIN / Serial<input name="pin_serial" value="{{ job.pin_serial or '' }}"></label>
+    <h2>Machine relationship</h2>
+    <label>Machine<select name="machine_id" id="job-machine" {% if has_history %}disabled{% endif %}><option value="">No machine linked</option>{% for item in machines %}<option value="{{ item.id }}" data-customer-id="{{ item.customer_id }}" {% if item.id == job.machine_id %}selected{% endif %}>{{ item.name }}{% if item.vin_pin_serial %} · {{ item.vin_pin_serial }}{% endif %}</option>{% endfor %}</select></label>
+    {% if has_history and job.machine_id %}<input type="hidden" name="machine_id" value="{{ job.machine_id }}">{% endif %}
+    <small>Only machines owned by the selected customer are available.</small>
   </div>
-
-  <div class="form-section full">
-    <h2>Internal notes</h2>
-    <label><textarea name="notes" rows="6">{{ job.notes or '' }}</textarea></label>
-  </div>
-
-  <div class="form-actions full">
-    <a class="button ghost" href="/jobs/{{ job.id }}">Cancel</a>
-    <button class="button" type="submit">Save Job Information</button>
-  </div>
+  <div class="form-section full"><h2>Internal notes</h2><label><textarea name="notes" rows="6">{{ job.notes or '' }}</textarea></label></div>
+  <div class="form-actions full"><a class="button ghost" href="/jobs/{{ job.id }}/basket">Cancel</a><button class="button" type="submit">Save Safe Corrections</button></div>
 </form>
+<script>(()=>{const c=document.getElementById('job-customer');const m=document.getElementById('job-machine');if(!c||!m||c.disabled)return;const filter=()=>{for(const option of m.options){if(!option.value)continue;option.hidden=option.dataset.customerId!==c.value;}if(m.selectedOptions[0]?.hidden)m.value='';};c.addEventListener('change',filter);filter();})();</script>
 {% endblock %}

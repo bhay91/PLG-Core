@@ -78,13 +78,13 @@
       {% elif quote.status == "REVISION_REQUIRED" %}
       <div class="quote-decision-result revision">
         <strong>↺ Customer requested changes</strong>
-        <p>Return to the Job Command Center and revise the quote.</p>
+        <p>The request is recorded and this issued quote is preserved. Governed quote revision will be enabled in Lifecycle Batch 2.</p>
       </div>
 
       {% elif quote.status == "REJECTED" %}
       <div class="quote-decision-result rejected">
         <strong>✕ Customer rejected this quote</strong>
-        <p>Review pricing, prepare a revision, or close the job.</p>
+        <p>This decision is locked. Cancel the Job if work is ending; reconsideration and quote revision are deferred to Lifecycle Batch 2.</p>
       </div>
 
       {% elif quote.status == "DRAFT" %}
@@ -112,7 +112,7 @@
           </button>
         </form>
       </div>
-      {% else %}
+      {% elif quote.status == "SENT" %}
       <div class="quote-decision-actions">
         <form
           method="post"
@@ -151,6 +151,8 @@
           </button>
         </form>
       </div>
+      {% else %}
+      <p class="quote-next-step-note">No further quote decision changes are available in the current lifecycle state.</p>
       {% endif %}
       {% endif %}
   </section>

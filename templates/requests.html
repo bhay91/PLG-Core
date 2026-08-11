@@ -12,6 +12,7 @@
   </div>
   <a class="button" href="/requests/smart-intake">＋ Smart Intake</a>
 </section>
+<nav class="filter-tabs" aria-label="Request visibility"><a class="{% if view == 'active' %}active{% endif %}" href="/requests?view=active">Active</a><a class="{% if view == 'archived' %}active{% endif %}" href="/requests?view=archived">Archived</a><a class="{% if view == 'all' %}active{% endif %}" href="/requests?view=all">All</a></nav>
 
 <section class="panel request-queue-panel">
   <form class="request-toolbar" method="get" action="/requests">
@@ -34,6 +35,7 @@
       <div class="request-card-content">
         <div class="request-card-topline">
           <span class="request-status status-{{ item.status|lower }}">{{ item.status }}</span>
+          {% if item.is_cancelled %}<span class="request-status status-cancelled">CANCELLED</span>{% endif %}
           <span class="request-number">{{ item.request_number }}</span>
         </div>
 

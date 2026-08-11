@@ -442,10 +442,40 @@ def update_machine(
         )
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Registry item not found.")
-        connection.execute(
-            """UPDATE jobs SET manufacturer = ?, machine = ?,
-               pin_serial = ? WHERE machine_id = ?""",
-            (manufacturer, model or name, vin_pin_serial, machine_id),
+        safe_jobs = connection.execute(
+            """
+            SELECT jobs.id, jobs.job_number
+            FROM jobs
+            WHERE jobs.machine_id=?
+              AND UPPER(COALESCE(jobs.status, '')) != 'CANCELLED'
+              AND NOT EXISTS (SELECT 1 FROM quotes WHERE quotes.job_id=jobs.id)
+              AND NOT EXISTS (SELECT 1 FROM invoices WHERE invoices.job_id=jobs.id)
+              AND NOT EXISTS (SELECT 1 FROM supplier_orders WHERE supplier_orders.job_id=jobs.id)
+              AND NOT EXISTS (SELECT 1 FROM deliveries WHERE deliveries.job_id=jobs.id)
+            """,
+            (machine_id,),
+        ).fetchall()
+        from plg_core.audit import write_audit
+        from plg_core.timeline import log_job_event
+        for linked_job in safe_jobs:
+            connection.execute(
+                "UPDATE jobs SET manufacturer=?, machine=?, pin_serial=? WHERE id=?",
+                (manufacturer, model or name, vin_pin_serial, linked_job["id"]),
+            )
+            message = f"Active Job {linked_job['job_number']} synchronized from registry edit"
+            write_audit(
+                connection, action="JOB_MACHINE_SNAPSHOT_SYNCED", entity_type="JOB",
+                entity_id=linked_job["id"], summary=message,
+                metadata={"machine_id": machine_id},
+            )
+            log_job_event(
+                connection, job_id=int(linked_job["id"]),
+                event_type="JOB_MACHINE_SNAPSHOT_SYNCED", icon="▱", message=message,
+            )
+        write_audit(
+            connection, action="MACHINE_EDITED", entity_type="MACHINE",
+            entity_id=machine_id, summary=f"Registry item {machine_id} updated",
+            metadata={"active_jobs_synchronized": [int(row["id"]) for row in safe_jobs]},
         )
         connection.commit()
     return RedirectResponse(url=f"/machines/{machine_id}", status_code=303)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import sqlite3
 import sys
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -177,6 +178,15 @@ def run_browser_audit(base_url=BASE_URL):
         }
 
     candidates = sorted(set(_static_candidates() + _dynamic_candidates()))
+    shard = os.getenv("PPS_BROWSER_SHARD", "").strip()
+    if shard:
+        try:
+            shard_index, shard_count = (int(value) for value in shard.split("/", 1))
+            if shard_count < 1 or not 0 <= shard_index < shard_count:
+                raise ValueError
+            candidates = candidates[shard_index::shard_count]
+        except ValueError as exc:
+            raise ValueError("PPS_BROWSER_SHARD must use zero-based INDEX/COUNT format") from exc
     tested_pages = []
     warnings = []
     failures = []
@@ -189,90 +199,86 @@ def run_browser_audit(base_url=BASE_URL):
 
         try:
             for path in candidates:
-                probe = browser.new_page(viewport=VIEWPORTS["desktop"])
+                page = browser.new_page(viewport=VIEWPORTS["desktop"])
+                page_errors = []
+                console_errors = []
+                resource_errors = []
+
+                page.on("pageerror", lambda exc: page_errors.append(str(exc)))
+                page.on(
+                    "console",
+                    lambda msg: console_errors.append(msg.text)
+                    if msg.type == "error" else None,
+                )
+                page.on(
+                    "response",
+                    lambda response: resource_errors.append(
+                        f"{response.status} {response.url}"
+                    ) if response.status >= 400
+                    and not response.url.endswith("/favicon.ico") else None,
+                )
+
+                is_html = False
                 try:
-                    is_html, problem = _probe_html(probe, base_url + path)
+                    for viewport_name, viewport in VIEWPORTS.items():
+                        page.set_viewport_size(viewport)
+                        page_errors.clear()
+                        console_errors.clear()
+                        resource_errors.clear()
+                        try:
+                            response = page.goto(
+                                base_url + path,
+                                wait_until="load",
+                                timeout=15000,
+                            )
+                            status = response.status if response else None
+
+                            if response and "text/html" not in response.headers.get(
+                                "content-type", ""
+                            ).lower():
+                                break
+
+                            is_html = True
+
+                            if status != 200:
+                                failures.append(
+                                    f"{path} [{viewport_name}]: HTTP {status}"
+                                )
+                                continue
+
+                            overflow = page.evaluate(
+                                "() => document.documentElement.scrollWidth > "
+                                "document.documentElement.clientWidth"
+                            )
+
+                            if overflow:
+                                warnings.append(
+                                    f"{path} [{viewport_name}]: horizontal page overflow"
+                                )
+                            if page_errors:
+                                failures.append(
+                                    f"{path} [{viewport_name}]: page errors: "
+                                    + " | ".join(page_errors[:3])
+                                )
+                            if console_errors:
+                                warnings.append(
+                                    f"{path} [{viewport_name}]: console errors: "
+                                    + " | ".join(console_errors[:3])
+                                )
+                            if resource_errors:
+                                warnings.append(
+                                    f"{path} [{viewport_name}]: resource errors: "
+                                    + " | ".join(resource_errors[:3])
+                                )
+                        except Exception as exc:
+                            failures.append(
+                                f"{path} [{viewport_name}]: {exc}"
+                            )
                 finally:
-                    probe.close()
+                    page.close()
 
-                if problem:
-                    failures.append(f"{path}: {problem}")
-                    continue
-                if not is_html:
-                    continue
-
-                tested_pages.append(path)
-
-                for viewport_name, viewport in VIEWPORTS.items():
-                    page = browser.new_page(viewport=viewport)
-                    page_errors = []
-                    console_errors = []
-                    resource_errors = []
-
-                    page.on(
-                        "pageerror",
-                        lambda exc, errors=page_errors:
-                            errors.append(str(exc)),
-                    )
-                    page.on(
-                        "console",
-                        lambda msg, errors=console_errors:
-                            errors.append(msg.text)
-                            if msg.type == "error" else None,
-                    )
-                    page.on(
-                        "response",
-                        lambda response, errors=resource_errors:
-                            errors.append(f"{response.status} {response.url}")
-                            if response.status >= 400
-                            and not response.url.endswith("/favicon.ico")
-                            else None,
-                    )
-
-                    try:
-                        response = page.goto(
-                            base_url + path,
-                            wait_until="networkidle",
-                            timeout=15000,
-                        )
-                        status = response.status if response else None
-
-                        if status != 200:
-                            failures.append(
-                                f"{path} [{viewport_name}]: HTTP {status}"
-                            )
-                            continue
-
-                        overflow = page.evaluate(
-                            "() => document.documentElement.scrollWidth > "
-                            "document.documentElement.clientWidth"
-                        )
-
-                        if overflow:
-                            warnings.append(
-                                f"{path} [{viewport_name}]: horizontal page overflow"
-                            )
-                        if page_errors:
-                            failures.append(
-                                f"{path} [{viewport_name}]: page errors: "
-                                + " | ".join(page_errors[:3])
-                            )
-                        if console_errors:
-                            warnings.append(
-                                f"{path} [{viewport_name}]: console errors: "
-                                + " | ".join(console_errors[:3])
-                            )
-                        if resource_errors:
-                            warnings.append(
-                                f"{path} [{viewport_name}]: resource errors: "
-                                + " | ".join(resource_errors[:3])
-                            )
-                    except Exception as exc:
-                        failures.append(
-                            f"{path} [{viewport_name}]: {exc}"
-                        )
-                    finally:
-                        page.close()
+                if is_html:
+                    tested_pages.append(path)
         finally:
             browser.close()
 

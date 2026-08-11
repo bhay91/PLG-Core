@@ -340,10 +340,15 @@ def initialize_database() -> None:
 
         connection.execute(
             """
-            INSERT OR IGNORE INTO suppliers (name)
+            INSERT INTO suppliers (name)
             SELECT DISTINCT TRIM(supplier_name)
             FROM part_sources
             WHERE TRIM(COALESCE(supplier_name, '')) != ''
+              AND NOT EXISTS (
+                  SELECT 1 FROM suppliers
+                  WHERE LOWER(TRIM(suppliers.name)) =
+                        LOWER(TRIM(part_sources.supplier_name))
+              )
             """
         )
 
@@ -399,25 +404,37 @@ def initialize_database() -> None:
         ]
 
         for row in default_connectors:
-            connection.execute(
-                """
-                INSERT INTO connector_profiles (
+            existing_connector = connection.execute(
+                "SELECT id FROM connector_profiles WHERE connector_key = ?",
+                (row[0],),
+            ).fetchone()
+            if existing_connector is None:
+                connection.execute(
+                    """
+                    INSERT INTO connector_profiles (
                     connector_key, display_name, category, trust_level,
                     launch_url, connector_type, parser_key,
                     is_enabled, sort_order
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    row,
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(connector_key) DO UPDATE SET
-                    display_name = excluded.display_name,
-                    category = excluded.category,
-                    trust_level = excluded.trust_level,
-                    launch_url = excluded.launch_url,
-                    connector_type = excluded.connector_type,
-                    parser_key = excluded.parser_key,
-                    sort_order = excluded.sort_order
-                """,
-                row,
-            )
+            else:
+                connection.execute(
+                    """
+                    UPDATE connector_profiles SET
+                    display_name = ?,
+                    category = ?,
+                    trust_level = ?,
+                    launch_url = ?,
+                    connector_type = ?,
+                    parser_key = ?,
+                    sort_order = ?
+                    WHERE id = ?
+                    """,
+                    (*row[1:7], row[8], existing_connector["id"]),
+                )
 
 
         connection.execute(
@@ -462,7 +479,10 @@ def initialize_database() -> None:
         if "address" not in job_columns:
             connection.execute("ALTER TABLE jobs ADD COLUMN address TEXT DEFAULT ''")
 
-        for old_job in connection.execute("SELECT id, customer, company, phone, email, address FROM jobs ORDER BY id").fetchall():
+        for old_job in connection.execute(
+            "SELECT id, customer, company, phone, email, address "
+            "FROM jobs WHERE customer_id IS NULL ORDER BY id"
+        ).fetchall():
             name=str(old_job["customer"] or "").strip()
             if not name:
                 continue
@@ -959,8 +979,43 @@ def update_customer(customer_id: int,name: Annotated[str,Form()],company: Annota
     name=name.strip()
     if not name: raise HTTPException(status_code=400,detail="Customer name is required.")
     with closing(get_connection()) as connection:
+        customer = connection.execute(
+            "SELECT * FROM customers WHERE id=?", (customer_id,)
+        ).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Customer not found.")
         connection.execute("UPDATE customers SET name=?,company=?,phone=?,email=?,address=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(name,company.strip(),phone.strip(),email.strip(),address.strip(),customer_id))
-        connection.execute("UPDATE jobs SET customer=?,company=?,phone=?,email=?,address=? WHERE customer_id=?",(name,company.strip(),phone.strip(),email.strip(),address.strip(),customer_id)); connection.commit()
+        active_jobs = connection.execute(
+            """
+            SELECT jobs.id, jobs.job_number
+            FROM jobs
+            WHERE jobs.customer_id=?
+              AND UPPER(COALESCE(jobs.status, '')) != 'CANCELLED'
+              AND NOT EXISTS (SELECT 1 FROM quotes WHERE quotes.job_id=jobs.id)
+              AND NOT EXISTS (SELECT 1 FROM invoices WHERE invoices.job_id=jobs.id)
+              AND NOT EXISTS (SELECT 1 FROM customer_transactions WHERE customer_transactions.job_id=jobs.id)
+              AND NOT EXISTS (SELECT 1 FROM supplier_orders WHERE supplier_orders.job_id=jobs.id)
+              AND NOT EXISTS (SELECT 1 FROM deliveries WHERE deliveries.job_id=jobs.id)
+            """,
+            (customer_id,),
+        ).fetchall()
+        from plg_core.audit import write_audit
+        from plg_core.timeline import log_job_event
+        for job in active_jobs:
+            connection.execute(
+                "UPDATE jobs SET customer=?,company=?,phone=?,email=?,address=? WHERE id=?",
+                (name,company.strip(),phone.strip(),email.strip(),address.strip(),job["id"]),
+            )
+            message = f"Active Job {job['job_number']} synchronized from customer master edit"
+            write_audit(connection, action="JOB_CUSTOMER_SNAPSHOT_SYNCED", entity_type="JOB",
+                        entity_id=job["id"], summary=message,
+                        metadata={"customer_id": customer_id})
+            log_job_event(connection, job_id=int(job["id"]),
+                          event_type="JOB_CUSTOMER_SNAPSHOT_SYNCED", icon="▤", message=message)
+        write_audit(connection, action="CUSTOMER_EDITED", entity_type="CUSTOMER",
+                    entity_id=customer_id, summary=f"Customer {customer['customer_number']} updated",
+                    metadata={"active_jobs_synchronized": [int(job["id"]) for job in active_jobs]})
+        connection.commit()
     return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
 
 @app.post("/customers/{customer_id}/deactivate")
@@ -1008,10 +1063,16 @@ def record_customer_adjustment(customer_id: int,amount: Annotated[float,Form()],
 
 
 @app.get("/jobs", response_class=HTMLResponse)
-def list_jobs(request: Request):
+def list_jobs(request: Request, view: str = "active"):
+    if view not in {"active", "archived", "all"}:
+        view = "active"
+    jobs_visibility = {
+        "active": "WHERE COALESCE(jobs.is_archived, 0)=0",
+        "archived": "WHERE COALESCE(jobs.is_archived, 0)=1",
+    }.get(view, "")
     with closing(get_connection()) as connection:
         rows = connection.execute(
-            """
+            f"""
             SELECT
                 jobs.*,
 
@@ -1176,6 +1237,7 @@ def list_jobs(request: Request):
                 ) AS outstanding_part_descriptions
 
             FROM jobs
+            {jobs_visibility}
             ORDER BY jobs.id DESC
             """
         ).fetchall()
@@ -1399,6 +1461,7 @@ def list_jobs(request: Request):
         name="jobs.html",
         context={
             "jobs": jobs,
+            "view": view,
             "active_page": "jobs",
         },
     )
@@ -1522,6 +1585,19 @@ def edit_job_form(request: Request, job_id: int):
             "SELECT * FROM jobs WHERE id = ?",
             (job_id,),
         ).fetchone()
+        customers = connection.execute(
+            "SELECT * FROM customers WHERE active=1 OR id=? ORDER BY name COLLATE NOCASE",
+            (job["customer_id"] if job else -1,),
+        ).fetchall()
+        machines = connection.execute(
+            "SELECT * FROM machines WHERE active=1 OR id=? ORDER BY customer_id,name COLLATE NOCASE",
+            (job["machine_id"] if job else -1,),
+        ).fetchall()
+        if job:
+            from plg_core.lifecycle import job_has_durable_history
+            has_history = job_has_durable_history(connection, job_id)
+        else:
+            has_history = False
 
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found.")
@@ -1529,35 +1605,70 @@ def edit_job_form(request: Request, job_id: int):
     return templates.TemplateResponse(
         request=request,
         name="edit_job.html",
-        context={"job": job, "active_page": "jobs"},
+        context={"job": job, "customers": customers, "machines": machines,
+                 "has_history": has_history, "active_page": "jobs"},
     )
 
 
 @app.post("/jobs/{job_id}/edit")
 def update_job(
     job_id: int,
-    customer: Annotated[str, Form()],
-    company: Annotated[str, Form()] = "",
-    phone: Annotated[str, Form()] = "",
-    email: Annotated[str, Form()] = "",
-    manufacturer: Annotated[str, Form()] = "",
-    machine: Annotated[str, Form()] = "",
-    pin_serial: Annotated[str, Form()] = "",
+    customer_id: Annotated[int | None, Form()] = None,
+    machine_id: Annotated[int | None, Form()] = None,
     notes: Annotated[str, Form()] = "",
 ):
-    customer = customer.strip()
-    if not customer:
-        raise HTTPException(status_code=400, detail="Customer is required.")
-
     with closing(get_connection()) as connection:
+        from plg_core.audit import write_audit
+        from plg_core.timeline import log_job_event
+        job = connection.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found.")
+        from plg_core.lifecycle import job_has_durable_history
+        has_history = job_has_durable_history(connection, job_id)
+        if has_history and (
+            customer_id != job["customer_id"] or machine_id != job["machine_id"]
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Customer and machine identity are locked because this Job has an issued quote. Governed historical corrections are deferred to Lifecycle Batch 2.",
+            )
+        if has_history:
+            connection.execute("UPDATE jobs SET notes=? WHERE id=?", (notes.strip(), job_id))
+            message = f"Job {job['job_number']} internal notes updated; historical identity retained"
+            write_audit(connection, action="JOB_EDITED", entity_type="JOB", entity_id=job_id,
+                        summary=message, metadata={"notes_changed": str(job["notes"] or "") != notes.strip(),
+                                                   "historical_identity_retained": True})
+            log_job_event(connection, job_id=job_id, event_type="JOB_EDITED", icon="✎", message=message)
+            connection.commit()
+            return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+        customer_row = connection.execute(
+            "SELECT * FROM customers WHERE id=? AND (active=1 OR id=?)",
+            (customer_id, job["customer_id"] if has_history else -1),
+        ).fetchone() if customer_id else None
+        if customer_row is None:
+            raise HTTPException(status_code=400, detail="Select an active customer.")
+        machine_row = None
+        if machine_id:
+            machine_row = connection.execute(
+                "SELECT * FROM machines WHERE id=? AND customer_id=? AND active=1",
+                (machine_id, customer_id),
+            ).fetchone()
+            if machine_row is None:
+                raise HTTPException(status_code=409, detail="Selected machine does not belong to the selected customer.")
+        manufacturer = machine_row["manufacturer"] if machine_row else ""
+        machine_name = ((machine_row["model"] or machine_row["name"]) if machine_row else "")
+        serial = machine_row["vin_pin_serial"] if machine_row else ""
         result = connection.execute(
             """
             UPDATE jobs
             SET
+                customer_id = ?,
+                machine_id = ?,
                 customer = ?,
                 company = ?,
                 phone = ?,
                 email = ?,
+                address = ?,
                 manufacturer = ?,
                 machine = ?,
                 pin_serial = ?,
@@ -1565,13 +1676,16 @@ def update_job(
             WHERE id = ?
             """,
             (
-                customer,
-                company.strip(),
-                phone.strip(),
-                email.strip(),
-                manufacturer.strip(),
-                machine.strip(),
-                pin_serial.strip(),
+                customer_id,
+                machine_id,
+                customer_row["name"],
+                customer_row["company"] or "",
+                customer_row["phone"] or "",
+                customer_row["email"] or "",
+                customer_row["address"] or "",
+                manufacturer or "",
+                machine_name or "",
+                serial or "",
                 notes.strip(),
                 job_id,
             ),
@@ -1580,6 +1694,15 @@ def update_job(
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Job not found.")
 
+        changes = {
+            "customer_id": [job["customer_id"], customer_id],
+            "machine_id": [job["machine_id"], machine_id],
+            "notes_changed": str(job["notes"] or "") != notes.strip(),
+        }
+        message = f"Job {job['job_number']} information updated"
+        write_audit(connection, action="JOB_EDITED", entity_type="JOB", entity_id=job_id,
+                    summary=message, metadata=changes)
+        log_job_event(connection, job_id=job_id, event_type="JOB_EDITED", icon="✎", message=message)
         connection.commit()
 
     return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
@@ -1598,6 +1721,8 @@ def add_job_part(
     quantity = max(1, quantity)
 
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_job_pre_document_work
+        ensure_job_pre_document_work(connection, job_id, "add parts")
         job = connection.execute(
             "SELECT id FROM jobs WHERE id = ?",
             (job_id,),
@@ -1624,17 +1749,9 @@ def add_job_part(
 @app.post("/parts/{part_id}/delete")
 def delete_job_part(part_id: int):
     with closing(get_connection()) as connection:
-        part = connection.execute(
-            """
-            SELECT id, job_id, requested_description
-            FROM job_parts
-            WHERE id = ?
-            """,
-            (part_id,),
-        ).fetchone()
-
-        if part is None:
-            raise HTTPException(status_code=404, detail="Part not found.")
+        from plg_core.lifecycle import ensure_part_mutable
+        from plg_core.audit import write_audit
+        part = ensure_part_mutable(connection, part_id)
 
         # Clear any active verification connected to this part.
         connection.execute(
@@ -1665,6 +1782,19 @@ def delete_job_part(part_id: int):
         connection.execute(
             "DELETE FROM job_parts WHERE id = ?",
             (part_id,),
+        )
+        write_audit(
+            connection,
+            action="JOB_PART_DELETED",
+            entity_type="JOB_PART",
+            entity_id=part_id,
+            summary=f"Pre-document part deleted: {part['requested_description']}",
+            metadata={"job_id": int(part["job_id"])},
+        )
+        from plg_core.timeline import log_job_event
+        log_job_event(
+            connection, job_id=int(part["job_id"]), event_type="JOB_PART_DELETED",
+            icon="🗑️", message=f"Pre-document part deleted: {part['requested_description']}",
         )
 
         remaining = connection.execute(
@@ -1723,6 +1853,8 @@ def generate_quote(job_id: int):
     # Repeated Generate Quote submissions must reopen the
     # existing quote instead of issuing another quote number.
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_job_allows_new_business
+        ensure_job_allows_new_business(connection, job_id, "create a quote")
         existing_quote = connection.execute(
             """
             SELECT id
@@ -1748,6 +1880,18 @@ def generate_quote(job_id: int):
     commit_basket(job_id)
 
     with closing(get_connection()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        from plg_core.lifecycle import ensure_job_allows_new_business
+        ensure_job_allows_new_business(connection, job_id, "create a quote")
+        winning_quote = connection.execute(
+            "SELECT id FROM quotes WHERE job_id=? AND is_archived=0 ORDER BY id DESC LIMIT 1",
+            (job_id,),
+        ).fetchone()
+        if winning_quote is not None:
+            return RedirectResponse(
+                url=f"/quotes/{winning_quote['id']}/documents",
+                status_code=303,
+            )
         job = connection.execute(
             "SELECT * FROM jobs WHERE id = ?",
             (job_id,),
@@ -1943,9 +2087,10 @@ def generate_quote(job_id: int):
         )
         profit_total = customer_total - supplier_total
 
-        cursor = connection.execute(
-            """
-            INSERT INTO quotes (
+        try:
+            cursor = connection.execute(
+                """
+                INSERT INTO quotes (
                 quote_number,
                 job_id,
                 quote_date,
@@ -1961,8 +2106,8 @@ def generate_quote(job_id: int):
             VALUES (
                 ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?
             )
-            """,
-            (
+                """,
+                (
                 quote_number,
                 job_id,
                 quote_date,
@@ -1973,8 +2118,23 @@ def generate_quote(job_id: int):
                 customer_total,
                 supplier_total,
                 profit_total,
-            ),
-        )
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            connection.rollback()
+            winning_quote = connection.execute(
+                "SELECT id FROM quotes WHERE job_id=? AND is_archived=0 ORDER BY id DESC LIMIT 1",
+                (job_id,),
+            ).fetchone()
+            if winning_quote is not None:
+                return RedirectResponse(
+                    url=f"/quotes/{winning_quote['id']}/documents",
+                    status_code=303,
+                )
+            raise HTTPException(
+                status_code=409,
+                detail="Quote generation conflicted with another request. Refresh and try again.",
+            ) from error
 
         quote_id = cursor.lastrowid
 
@@ -2858,23 +3018,26 @@ def list_invoices(request: Request, view: str = "all"):
 
 
 @app.post("/quotes/{quote_id}/convert-to-invoice")
-def convert_quote_to_invoice(quote_id: int, force: bool = False):
+def convert_quote_to_invoice(quote_id: int):
     from plg_core.audit import write_audit
 
     with closing(get_connection()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
         quote, quote_items = load_quote(connection, quote_id)
         existing = connection.execute("SELECT id FROM invoices WHERE quote_id=?",(quote_id,)).fetchone()
         if existing is not None:
             return RedirectResponse(url=f"/invoices/{existing['id']}/documents",status_code=303)
 
         quote_status = str(quote["status"] or "").strip().upper()
-        if quote_status not in {"APPROVED", "ACCEPTED", "CONFIRMED"} and not force:
+        if quote_status not in {"APPROVED", "ACCEPTED", "CONFIRMED"}:
             raise HTTPException(
                 status_code=409,
                 detail="Quote must be approved before conversion to invoice.",
             )
 
         job = connection.execute("SELECT * FROM jobs WHERE id=?",(quote["job_id"],)).fetchone()
+        from plg_core.lifecycle import ensure_job_allows_new_business
+        ensure_job_allows_new_business(connection, int(quote["job_id"]), "create an invoice")
         invoice_number = invoice_number_from_quote(quote["quote_number"])
         invoice_date = date.today().isoformat()
         customer_total = float(quote["customer_total"] or 0)
@@ -3554,12 +3717,41 @@ def list_quotes(request: Request, view: str = "active"):
 
 @app.post("/quotes/{quote_id}/archive")
 def archive_quote(quote_id: int):
-    with closing(get_connection()) as connection: connection.execute("UPDATE quotes SET is_archived=1 WHERE id=?",(quote_id,)); connection.commit()
+    with closing(get_connection()) as connection:
+        quote = connection.execute("SELECT * FROM quotes WHERE id=?", (quote_id,)).fetchone()
+        if quote is None:
+            raise HTTPException(status_code=404, detail="Quote not found.")
+        if str(quote["status"] or "").upper() not in {"REJECTED", "CONVERTED"}:
+            raise HTTPException(status_code=409, detail="Only rejected or converted quotes can be archived.")
+        connection.execute("UPDATE quotes SET is_archived=1 WHERE id=?",(quote_id,))
+        from plg_core.audit import write_audit
+        write_audit(connection, action="QUOTE_ARCHIVED", entity_type="QUOTE", entity_id=quote_id,
+                    summary=f"Quote {quote['quote_number']} archived")
+        connection.commit()
     return RedirectResponse(url="/quotes",status_code=303)
 
 @app.post("/quotes/{quote_id}/restore")
 def restore_quote(quote_id: int):
-    with closing(get_connection()) as connection: connection.execute("UPDATE quotes SET is_archived=0 WHERE id=?",(quote_id,)); connection.commit()
+    with closing(get_connection()) as connection:
+        quote = connection.execute("SELECT * FROM quotes WHERE id=?", (quote_id,)).fetchone()
+        if quote is None:
+            raise HTTPException(status_code=404, detail="Quote not found.")
+        if connection.execute(
+            "SELECT 1 FROM quotes WHERE job_id=? AND id!=? AND COALESCE(is_archived,0)=0 LIMIT 1",
+            (quote["job_id"], quote_id),
+        ).fetchone():
+            raise HTTPException(status_code=409, detail="This Job already has an active quote. Restore is blocked.")
+        try:
+            connection.execute("UPDATE quotes SET is_archived=0 WHERE id=?",(quote_id,))
+        except sqlite3.IntegrityError as error:
+            raise HTTPException(
+                status_code=409,
+                detail="Another active quote already exists for this Job. Restore is blocked.",
+            ) from error
+        from plg_core.audit import write_audit
+        write_audit(connection, action="QUOTE_RESTORED", entity_type="QUOTE", entity_id=quote_id,
+                    summary=f"Quote {quote['quote_number']} restored")
+        connection.commit()
     return RedirectResponse(url="/quotes?view=archived",status_code=303)
 
 
@@ -3580,9 +3772,6 @@ def update_quote_decision(
     quote_id: int,
     decision: str = Form(...),
 ):
-    from plg_core.timeline import log_job_event
-    from plg_core.audit import write_audit
-
     valid_decisions = {
         "APPROVED",
         "REVISION_REQUIRED",
@@ -3597,108 +3786,8 @@ def update_quote_decision(
             detail="Invalid quote decision.",
         )
 
-    with closing(get_connection()) as connection:
-        quote = connection.execute(
-            """
-            SELECT id, quote_number, job_id, status
-            FROM quotes
-            WHERE id = ?
-            """,
-            (quote_id,),
-        ).fetchone()
-
-        if quote is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Quote not found.",
-            )
-
-        connection.execute(
-            """
-            UPDATE quotes
-            SET status = ?
-            WHERE id = ?
-            """,
-            (normalized, quote_id),
-        )
-
-        if normalized == "APPROVED":
-            event_type = "QUOTE_APPROVED"
-            icon = "✅"
-            message = f"Quote {quote['quote_number']} approved"
-            job_status = "CONFIRMED"
-
-        elif normalized == "REVISION_REQUIRED":
-            event_type = "QUOTE_REVISION_REQUIRED"
-            icon = "↺"
-            message = (
-                f"Changes requested for quote "
-                f"{quote['quote_number']}"
-            )
-            job_status = "QUOTED"
-
-        else:
-            event_type = "QUOTE_REJECTED"
-            icon = "✕"
-            message = f"Quote {quote['quote_number']} rejected"
-            job_status = "QUOTED"
-
-        connection.execute(
-            """
-            UPDATE jobs
-            SET status = ?
-            WHERE id = ?
-            """,
-            (job_status, quote["job_id"]),
-        )
-
-        previous_status = str(
-            quote["status"] or ""
-        ).strip().upper()
-
-        if previous_status != normalized:
-            connection.execute(
-                """
-                INSERT INTO quote_events (
-                    quote_id,
-                    event_type,
-                    from_status,
-                    to_status,
-                    notes
-                )
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    quote_id,
-                    event_type,
-                    previous_status,
-                    normalized,
-                    message,
-                ),
-            )
-
-            write_audit(
-                connection,
-                action=event_type,
-                entity_type="QUOTE",
-                entity_id=quote_id,
-                summary=message,
-                metadata={
-                    "from_status": previous_status,
-                    "to_status": normalized,
-                    "job_id": int(quote["job_id"]),
-                },
-            )
-
-        log_job_event(
-            connection,
-            job_id=int(quote["job_id"]),
-            event_type=event_type,
-            icon=icon,
-            message=message,
-        )
-
-        connection.commit()
+    from plg_core.lifecycle import transition_quote
+    transition_quote(quote_id, normalized)
 
     return RedirectResponse(
         url=f"/quotes/{quote_id}/documents",
@@ -3783,22 +3872,49 @@ def update_job_status(
     job_id: int,
     status: Annotated[str, Form()],
 ):
-    allowed = {
-        "REQUESTED", "RESEARCHING", "VERIFIED", "QUOTED", "CONFIRMED",
-        "ORDERED", "RECEIVED", "DELIVERED", "VOID",
-    }
+    raise HTTPException(
+        status_code=409,
+        detail="Job status is controlled by lifecycle actions and downstream records. Use Cancel, Reopen, purchasing, receiving, or delivery controls.",
+    )
 
-    if status not in allowed:
-        raise HTTPException(status_code=400, detail="Invalid status.")
 
-    with closing(get_connection()) as connection:
-        connection.execute(
-            "UPDATE jobs SET status = ? WHERE id = ?",
-            (status, job_id),
-        )
-        connection.commit()
+@app.post("/jobs/{job_id}/cancel")
+def cancel_job_web(job_id: int, reason: Annotated[str, Form()]):
+    from plg_core.lifecycle import cancel_job
+    cancel_job(job_id, reason)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket", status_code=303)
 
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+
+@app.post("/jobs/{job_id}/archive")
+def archive_job_web(job_id: int):
+    from plg_core.lifecycle import archive_job
+    archive_job(job_id)
+    return RedirectResponse(url="/jobs", status_code=303)
+
+
+@app.post("/jobs/{job_id}/restore")
+def restore_job_web(job_id: int):
+    from plg_core.lifecycle import restore_job
+    restore_job(job_id)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket", status_code=303)
+
+
+@app.post("/jobs/{job_id}/reopen")
+def reopen_job_web(job_id: int, reason: Annotated[str, Form()]):
+    from plg_core.lifecycle import reopen_job
+    reopen_job(job_id, reason)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket", status_code=303)
+
+
+@app.post("/jobs/{job_id}/delete")
+def delete_job_web(
+    job_id: int,
+    reason: Annotated[str, Form()],
+    confirmation: Annotated[str, Form()],
+):
+    from plg_core.lifecycle import delete_job_safely
+    delete_job_safely(job_id, reason, confirmation)
+    return RedirectResponse(url="/jobs", status_code=303)
 
 
 @app.post("/parts/{part_id}/verify")
@@ -3812,13 +3928,8 @@ def verify_part(
     verification_notes: Annotated[str, Form()] = "",
 ):
     with closing(get_connection()) as connection:
-        part = connection.execute(
-            "SELECT id, job_id FROM job_parts WHERE id = ?",
-            (part_id,),
-        ).fetchone()
-
-        if part is None:
-            raise HTTPException(status_code=404, detail="Part not found.")
+        from plg_core.lifecycle import ensure_part_mutable
+        part = ensure_part_mutable(connection, part_id)
 
         status = "VERIFIED" if oem_part_number.strip() else "PENDING"
 
@@ -3888,13 +3999,8 @@ def update_supplier(
     availability: Annotated[str, Form()] = "",
 ):
     with closing(get_connection()) as connection:
-        part = connection.execute(
-            "SELECT job_id, oem_part_number FROM job_parts WHERE id = ?",
-            (part_id,),
-        ).fetchone()
-
-        if part is None:
-            raise HTTPException(status_code=404, detail="Part not found.")
+        from plg_core.lifecycle import ensure_part_mutable
+        part = ensure_part_mutable(connection, part_id)
 
         connection.execute(
             """
@@ -3959,12 +4065,8 @@ def add_part_source(
         )
 
     with closing(get_connection()) as connection:
-        part = connection.execute(
-            "SELECT job_id, oem_part_number FROM job_parts WHERE id = ?",
-            (part_id,),
-        ).fetchone()
-        if part is None:
-            raise HTTPException(status_code=404, detail="Part not found.")
+        from plg_core.lifecycle import ensure_part_mutable
+        part = ensure_part_mutable(connection, part_id)
 
         final_supplier_part_number = supplier_part_number.strip() or (part["oem_part_number"] or "")
 
@@ -4008,12 +4110,8 @@ def add_part_source(
 @app.post("/parts/{part_id}/sources/{source_id}/select")
 def select_part_source(part_id: int, source_id: int):
     with closing(get_connection()) as connection:
-        part = connection.execute(
-            "SELECT job_id FROM job_parts WHERE id = ?",
-            (part_id,),
-        ).fetchone()
-        if part is None:
-            raise HTTPException(status_code=404, detail="Part not found.")
+        from plg_core.lifecycle import ensure_part_mutable
+        part = ensure_part_mutable(connection, part_id)
 
         source = connection.execute(
             "SELECT * FROM part_sources WHERE id = ? AND part_id = ?",
@@ -4126,6 +4224,8 @@ def update_part_source_verification(
         )
 
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_part_mutable
+        ensure_part_mutable(connection, part_id)
         source = connection.execute(
             """
             SELECT
@@ -4282,6 +4382,8 @@ def update_part_source_compatibility(
         )
 
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_part_mutable
+        ensure_part_mutable(connection, part_id)
         source = connection.execute(
             """
             SELECT
@@ -4420,12 +4522,8 @@ def update_part_source_compatibility(
 @app.post("/parts/{part_id}/sources/{source_id}/delete")
 def delete_part_source(part_id: int, source_id: int):
     with closing(get_connection()) as connection:
-        part = connection.execute(
-            "SELECT job_id FROM job_parts WHERE id = ?",
-            (part_id,),
-        ).fetchone()
-        if part is None:
-            raise HTTPException(status_code=404, detail="Part not found.")
+        from plg_core.lifecycle import ensure_part_mutable
+        part = ensure_part_mutable(connection, part_id)
 
         source = connection.execute(
             "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
@@ -4481,6 +4579,8 @@ def quick_capture_part(
         )
 
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_part_mutable
+        ensure_part_mutable(connection, part_id)
         part = connection.execute(
             "SELECT id, job_id FROM job_parts WHERE id = ?",
             (part_id,),
@@ -4529,6 +4629,8 @@ def quick_capture_part(
 @app.post("/jobs/{job_id}/start-sis-cart-import")
 def start_sis_cart_import(job_id: int):
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_job_pre_document_work
+        ensure_job_pre_document_work(connection, job_id, "start a parts import")
         job = connection.execute(
             "SELECT id, manufacturer FROM jobs WHERE id = ?",
             (job_id,),
@@ -4599,6 +4701,8 @@ async def api_import_source_cart(request: Request):
     imported = []
 
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_job_pre_document_work
+        ensure_job_pre_document_work(connection, int(job_id), "import supplier parts")
         job = connection.execute(
             "SELECT id FROM jobs WHERE id = ?",
             (job_id,),
@@ -4789,6 +4893,8 @@ async def api_import_sis_cart(request: Request):
 
     imported = []
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_job_pre_document_work
+        ensure_job_pre_document_work(connection, int(job_id), "import SIS parts")
         job = connection.execute("SELECT id FROM jobs WHERE id = ?", (job_id,)).fetchone()
         if job is None:
             raise HTTPException(status_code=404, detail="Job not found.")
@@ -4920,6 +5026,8 @@ async def api_import_sis_cart(request: Request):
 @app.post("/parts/{part_id}/start-cat-verification")
 def start_cat_verification(part_id: int):
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_part_mutable
+        ensure_part_mutable(connection, part_id)
         part = connection.execute(
             """
             SELECT
@@ -4986,6 +5094,8 @@ SOURCE_PROFILES = {
 @app.post("/jobs/{job_id}/start-source-import")
 def start_source_import(job_id: int, source_key: str = Form(...)):
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_job_pre_document_work
+        ensure_job_pre_document_work(connection, job_id, "start a supplier import")
         job = connection.execute(
             "SELECT id FROM jobs WHERE id = ?",
             (job_id,),
@@ -5398,6 +5508,8 @@ async def api_capture_part(request: Request):
         raise HTTPException(status_code=400, detail="OEM part number is required.")
 
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_part_mutable
+        ensure_part_mutable(connection, int(part_id))
         part = connection.execute(
             "SELECT id, job_id FROM job_parts WHERE id = ?",
             (part_id,),

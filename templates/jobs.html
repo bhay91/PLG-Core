@@ -12,6 +12,12 @@
   <a class="button" href="/jobs/new">＋ New Job</a>
 </section>
 
+<nav class="filter-tabs" aria-label="Job visibility">
+  <a class="{% if view == 'active' %}active{% endif %}" href="/jobs?view=active">Active</a>
+  <a class="{% if view == 'archived' %}active{% endif %}" href="/jobs?view=archived">Archived</a>
+  <a class="{% if view == 'all' %}active{% endif %}" href="/jobs?view=all">All</a>
+</nav>
+
 <section class="smart-jobs-toolbar">
   <label class="smart-jobs-search">
     <span aria-hidden="true">⌕</span>
@@ -90,6 +96,7 @@
         </div>
 
         <h2>{{ job.customer or "Customer not linked" }}</h2>
+        {% if job.status == "CANCELLED" %}<span class="status danger">Cancelled</span>{% endif %}
 
         <p class="smart-job-row-machine">
           {% if job.manufacturer or job.machine %}

@@ -55,6 +55,11 @@ def pricing_assessment(
         customer_unit_price_override,
     )
     unit_profit = round(current_price - cost, 2)
+    actual_markup_percent = (
+        round(((current_price - cost) / cost) * 100, 2)
+        if cost > 0
+        else None
+    )
 
     if cost <= 0:
         status = "MISSING_COST"
@@ -79,6 +84,7 @@ def pricing_assessment(
         "recommended_markup_percent": recommended_markup,
         "recommended_unit_price": recommended_price,
         "current_markup_percent": effective_markup,
+        "actual_markup_percent": actual_markup_percent,
         "current_unit_price": current_price,
         "unit_profit": unit_profit,
         "status": status,

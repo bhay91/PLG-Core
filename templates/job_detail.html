@@ -8,16 +8,7 @@
     <p>{{ job.manufacturer }} {{ job.machine }}{% if job.pin_serial %} · {{ job.pin_serial }}{% endif %}</p>
   </div>
 
-  <div class="header-actions job-top-actions-clean">
-    <form method="post" action="/jobs/{{ job.id }}/status" class="status-form">
-      <select name="status">
-        {% for value in ["REQUESTED", "RESEARCHING", "VERIFIED", "QUOTED", "CONFIRMED", "ORDERED", "RECEIVED", "DELIVERED", "VOID"] %}
-        <option value="{{ value }}" {% if job.status == value %}selected{% endif %}>{{ value }}</option>
-        {% endfor %}
-      </select>
-      <button class="button small" type="submit">Update</button>
-    </form>
-  </div>
+  <div class="header-actions job-top-actions-clean"><a class="button" href="/jobs/{{ job.id }}/basket#lifecycle-controls">Open Lifecycle Controls</a></div>
 </section>
 
 <section class="job-workspace-nav">

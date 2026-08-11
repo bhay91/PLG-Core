@@ -166,8 +166,9 @@
 </section>
 
 <section class="danger-zone">
-  <form method="post" action="/requests/{{ record.id }}/delete" onsubmit="return confirm('Delete this customer request and its attachments?')">
-    <button class="button danger" type="submit">Delete Request</button>
-  </form>
+  {% if record.is_cancelled %}<div class="lifecycle-warning"><strong>Request cancelled</strong><p>{{ record.cancellation_reason }}</p></div>{% else %}
+  <form class="lifecycle-reason-form" method="post" action="/requests/{{ record.id }}/cancel" onsubmit="return confirm('Cancel this request while retaining all history?')"><label>Cancellation reason<input name="reason" required></label><button class="button danger" type="submit">Cancel Request</button></form>{% endif %}
+  {% if record.is_archived %}<form method="post" action="/requests/{{ record.id }}/restore"><button class="button ghost" type="submit">Restore from Archive</button></form>{% else %}<form method="post" action="/requests/{{ record.id }}/archive"><button class="button ghost" type="submit">Archive Request</button></form>{% endif %}
+  <details class="lifecycle-delete-details"><summary>Delete an empty accidental request</summary><p>Deletion is blocked if the request has a message, requested parts, attachments, reminder, or Job.</p><form class="lifecycle-reason-form" method="post" action="/requests/{{ record.id }}/delete" onsubmit="return confirm('Permanently delete this empty request?')"><label>Reason<input name="reason" required></label><label>Type {{ record.request_number }}<input name="confirmation" required></label><button class="button danger" type="submit">Delete Empty Request</button></form></details>
 </section>
 {% endblock %}

@@ -1005,6 +1005,8 @@ def update_revenue_adjustments(
         )
 
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_job_pre_document_work
+        ensure_job_pre_document_work(connection, job_id, "change revenue adjustments")
         job = connection.execute(
             """
             SELECT

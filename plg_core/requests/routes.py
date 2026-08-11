@@ -4,8 +4,8 @@ from contextlib import closing
 from datetime import date
 from pathlib import Path
 import re
-import shutil
 import uuid
+import json
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -45,6 +45,14 @@ def _get_request_or_404(connection, request_id: int):
     return record
 
 
+def _ensure_request_active(record) -> None:
+    if int(record["is_cancelled"] or 0):
+        raise HTTPException(
+            status_code=409,
+            detail="This request is cancelled. Its history is read-only.",
+        )
+
+
 def _customer_display_name(record) -> str:
     return (record["individual_name"] or record["company_name"] or "").strip()
 
@@ -58,13 +66,19 @@ def _registry_display_name(record) -> str:
 
 
 @router.get("", response_class=HTMLResponse)
-def list_requests(request: Request, q: str = "", status: str = "ALL"):
+def list_requests(request: Request, q: str = "", status: str = "ALL", view: str = "active"):
     status = status.upper().strip()
     if status not in ALLOWED_STATUSES | {"ALL"}:
         status = "ALL"
     q = q.strip()
     where = []
     params: list[object] = []
+    if view not in {"active", "archived", "all"}:
+        view = "active"
+    if view == "active":
+        where.append("COALESCE(r.is_archived,0)=0")
+    elif view == "archived":
+        where.append("COALESCE(r.is_archived,0)=1")
     if status != "ALL":
         where.append("r.status = ?")
         params.append(status)
@@ -107,6 +121,7 @@ def list_requests(request: Request, q: str = "", status: str = "ALL"):
             "requests": rows,
             "q": q,
             "status": status,
+            "view": view,
             "active_page": "requests",
             "today": date.today().isoformat(),
         },
@@ -1314,6 +1329,7 @@ def link_registry_to_request(request_id: int, machine_id: int = Form(...)):
 def create_job_from_request(request_id: int):
     with closing(get_connection()) as connection:
         record = _get_request_or_404(connection, request_id)
+        _ensure_request_active(record)
 
         if record["job_id"]:
             return RedirectResponse(
@@ -1384,7 +1400,8 @@ def update_status(request_id: int, status: str = Form(...)):
             detail="Request status may only be New, Waiting, or Ready.",
         )
     with closing(get_connection()) as connection:
-        _get_request_or_404(connection, request_id)
+        record = _get_request_or_404(connection, request_id)
+        _ensure_request_active(record)
         connection.execute(
             "UPDATE customer_requests SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (status, request_id),
@@ -1394,15 +1411,104 @@ def update_status(request_id: int, status: str = Form(...)):
 
 
 @router.post("/{request_id}/delete")
-def delete_request(request_id: int):
+def delete_request(
+    request_id: int,
+    reason: str = Form(...),
+    confirmation: str = Form(...),
+):
     with closing(get_connection()) as connection:
-        _get_request_or_404(connection, request_id)
+        record = _get_request_or_404(connection, request_id)
+        reason = reason.strip()
+        if not reason:
+            raise HTTPException(status_code=400, detail="Deletion reason is required.")
+        if confirmation.strip() != str(record["request_number"] or ""):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Type {record['request_number']} to confirm permanent deletion.",
+            )
+        has_attachments = connection.execute(
+            "SELECT 1 FROM customer_request_attachments WHERE request_id=? LIMIT 1",
+            (request_id,),
+        ).fetchone()
+        meaningful = bool(
+            record["job_id"] or has_attachments
+            or str(record["request_text"] or "").strip()
+            or str(record["requested_parts"] or "").strip()
+            or str(record["reminder_date"] or "").strip()
+        )
+        if meaningful:
+            raise HTTPException(
+                status_code=409,
+                detail="This request contains meaningful history or evidence and cannot be deleted. Cancel or archive it instead.",
+            )
+        metadata = {
+            "former_id": request_id,
+            "individual_name": record["individual_name"],
+            "company_name": record["company_name"],
+            "created_at": record["created_at"],
+        }
+        connection.execute(
+            "INSERT INTO deletion_tombstones "
+            "(entity_type,entity_number,former_entity_id,reason,metadata_json) "
+            "VALUES ('REQUEST',?,?,?,?)",
+            (record["request_number"], request_id, reason, json.dumps(metadata, sort_keys=True)),
+        )
+        from plg_core.audit import write_audit
+        write_audit(
+            connection, action="REQUEST_DELETED", entity_type="REQUEST_TOMBSTONE",
+            entity_id=record["request_number"],
+            summary=f"Accidental request {record['request_number']} permanently deleted. Reason: {reason}",
+            metadata=metadata,
+        )
         connection.execute("DELETE FROM customer_requests WHERE id = ?", (request_id,))
         connection.commit()
-    request_dir = UPLOAD_ROOT / str(request_id)
-    if request_dir.exists():
-        shutil.rmtree(request_dir)
     return RedirectResponse(url="/requests", status_code=303)
+
+
+@router.post("/{request_id}/cancel")
+def cancel_request(request_id: int, reason: str = Form(...)):
+    reason = reason.strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="Cancellation reason is required.")
+    with closing(get_connection()) as connection:
+        record = _get_request_or_404(connection, request_id)
+        connection.execute(
+            "UPDATE customer_requests SET is_cancelled=1,cancelled_at=CURRENT_TIMESTAMP,"
+            "cancellation_reason=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (reason, request_id),
+        )
+        from plg_core.audit import write_audit
+        write_audit(connection, action="REQUEST_CANCELLED", entity_type="REQUEST",
+                    entity_id=request_id,
+                    summary=f"Request {record['request_number']} cancelled. Reason: {reason}",
+                    metadata={"reason": reason})
+        connection.commit()
+    return RedirectResponse(url=f"/requests/{request_id}", status_code=303)
+
+
+@router.post("/{request_id}/archive")
+def archive_request(request_id: int):
+    return _set_request_archived(request_id, True)
+
+
+@router.post("/{request_id}/restore")
+def restore_request(request_id: int):
+    return _set_request_archived(request_id, False)
+
+
+def _set_request_archived(request_id: int, archived: bool):
+    with closing(get_connection()) as connection:
+        record = _get_request_or_404(connection, request_id)
+        connection.execute(
+            "UPDATE customer_requests SET is_archived=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (int(archived), request_id),
+        )
+        from plg_core.audit import write_audit
+        action = "REQUEST_ARCHIVED" if archived else "REQUEST_RESTORED"
+        write_audit(connection, action=action, entity_type="REQUEST", entity_id=request_id,
+                    summary=f"Request {record['request_number']} {'archived' if archived else 'restored'}")
+        connection.commit()
+    return RedirectResponse(url=f"/requests/{request_id}", status_code=303)
 
 
 @router.get("/{request_id}/attachments/{attachment_id}")

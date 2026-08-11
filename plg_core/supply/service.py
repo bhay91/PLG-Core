@@ -10,6 +10,8 @@ def create_orders_from_paid_invoice(invoice_id: int):
         invoice = connection.execute("SELECT * FROM invoices WHERE id=?", (invoice_id,)).fetchone()
         if invoice is None:
             raise HTTPException(status_code=404, detail="Invoice not found.")
+        from plg_core.lifecycle import ensure_job_allows_new_business
+        ensure_job_allows_new_business(connection, int(invoice["job_id"]), "create supplier purchases")
         if str(invoice["status"] or "").upper() != "PAID" or float(invoice["balance_due"] or 0) > 0:
             raise HTTPException(status_code=409, detail="Supplier purchases require a fully paid invoice.")
         existing = connection.execute(

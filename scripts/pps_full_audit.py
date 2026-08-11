@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import os
 import re
 import sqlite3
 import sys
@@ -669,7 +670,9 @@ else:
 try:
     from pps_browser_audit import run_browser_audit
 
-    browser_result = run_browser_audit()
+    browser_result = run_browser_audit(
+        os.getenv("PPS_AUDIT_BASE_URL", "http://127.0.0.1:8000")
+    )
 
     for warning in browser_result["warnings"]:
         audit.warn("Browser", warning)

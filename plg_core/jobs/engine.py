@@ -382,7 +382,7 @@ class JobEngine:
                 action = (
                     "Create Invoice for Payment",
                     "CREATE_PAYMENT_INVOICE",
-                    f"/jobs/{job_id}/generate-invoice",
+                    f"/quotes/{quote_id}/convert-to-invoice",
                     "POST",
                 )
 

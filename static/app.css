@@ -3821,6 +3821,10 @@ small.secondary {
   gap: 18px;
 }
 
+.quote-review-shell > * {
+  min-width: 0;
+}
+
 .quote-review-heading {
   display: flex;
   justify-content: space-between;
@@ -4103,6 +4107,11 @@ small.secondary {
     width: 100%;
   }
 }
+
+.lifecycle-warning{border-color:#e5b74b;background:#fff9e8}
+.lifecycle-warning strong{color:#704d00}.lifecycle-warning p{margin:6px 0 0;color:#6d5a2d}
+.lifecycle-controls form{margin:0}.lifecycle-reason-form{display:flex;align-items:end;gap:12px;margin-top:16px!important}.lifecycle-reason-form label{flex:1}.lifecycle-delete-details{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}.lifecycle-delete-details summary{cursor:pointer;font-weight:800;color:var(--danger)}.button.disabled{opacity:.65;cursor:not-allowed;pointer-events:none}
+@media(max-width:720px){.lifecycle-reason-form{align-items:stretch;flex-direction:column}.lifecycle-reason-form .button{width:100%}}
 
 /* =========================================================
    PLG WORKSPACE V2

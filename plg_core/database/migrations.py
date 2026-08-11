@@ -873,6 +873,67 @@ MIGRATIONS.append(
     )
 )
 
+
+def _migration_0026_lifecycle_safety(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add durable lifecycle metadata and deletion tombstones."""
+
+    job_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(jobs)").fetchall()
+    }
+    job_additions = {
+        "is_archived": "INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1))",
+        "cancelled_at": "TEXT",
+        "cancellation_reason": "TEXT NOT NULL DEFAULT ''",
+        "status_before_cancel": "TEXT NOT NULL DEFAULT ''",
+    }
+    for name, definition in job_additions.items():
+        if name not in job_columns:
+            connection.execute(f"ALTER TABLE jobs ADD COLUMN {name} {definition}")
+
+    request_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(customer_requests)"
+        ).fetchall()
+    }
+    request_additions = {
+        "is_archived": "INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1))",
+        "is_cancelled": "INTEGER NOT NULL DEFAULT 0 CHECK (is_cancelled IN (0, 1))",
+        "cancelled_at": "TEXT",
+        "cancellation_reason": "TEXT NOT NULL DEFAULT ''",
+    }
+    for name, definition in request_additions.items():
+        if name not in request_columns:
+            connection.execute(
+                f"ALTER TABLE customer_requests ADD COLUMN {name} {definition}"
+            )
+
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS deletion_tombstones (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_type TEXT NOT NULL,
+            entity_number TEXT NOT NULL,
+            former_entity_id INTEGER,
+            reason TEXT NOT NULL,
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_deletion_tombstones_entity
+            ON deletion_tombstones(entity_type, entity_number);
+        CREATE INDEX IF NOT EXISTS idx_jobs_archived
+            ON jobs(is_archived, status);
+        CREATE INDEX IF NOT EXISTS idx_requests_archived
+            ON customer_requests(is_archived, status);
+        """
+    )
+
+
+MIGRATIONS.append(("0026_lifecycle_safety", _migration_0026_lifecycle_safety))
+
 def _migration_0023_machine_parts_history(
     connection: sqlite3.Connection,
 ) -> None:
@@ -1045,4 +1106,58 @@ MIGRATIONS.append(
         "0025_customer_price_override",
         _migration_0025_customer_price_override,
     )
+)
+
+
+def _migration_0027_request_cancellation_flag(
+    connection: sqlite3.Connection,
+) -> None:
+    """Ensure request cancellation is independent of the legacy status CHECK."""
+    columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(customer_requests)"
+        ).fetchall()
+    }
+    if "is_cancelled" not in columns:
+        connection.execute(
+            "ALTER TABLE customer_requests ADD COLUMN is_cancelled "
+            "INTEGER NOT NULL DEFAULT 0 CHECK (is_cancelled IN (0, 1))"
+        )
+
+
+MIGRATIONS.append(
+    ("0027_request_cancellation_flag", _migration_0027_request_cancellation_flag)
+)
+
+
+def _migration_0028_one_active_quote_per_job(
+    connection: sqlite3.Connection,
+) -> None:
+    """Enforce the current PPS rule that a Job has at most one active quote."""
+    duplicates = connection.execute(
+        """
+        SELECT job_id
+        FROM quotes
+        WHERE COALESCE(is_archived, 0) = 0
+        GROUP BY job_id
+        HAVING COUNT(*) > 1
+        LIMIT 1
+        """
+    ).fetchone()
+    if duplicates is not None:
+        raise RuntimeError(
+            "Cannot enforce one active quote per Job: existing duplicate active quotes require review."
+        )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_quotes_one_active_per_job
+        ON quotes(job_id)
+        WHERE is_archived = 0
+        """
+    )
+
+
+MIGRATIONS.append(
+    ("0028_one_active_quote_per_job", _migration_0028_one_active_quote_per_job)
 )

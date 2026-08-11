@@ -25,10 +25,12 @@ def convert_quote(quote_id: int, payload: ConversionRequest | None = None):
         return {"created": False, "invoice": get_invoice(int(quote["invoice_id"]))}
     status = str(quote.get("status") or "").upper()
     force = bool(payload.force) if payload else False
-    if status not in {"APPROVED", "ACCEPTED", "CONFIRMED"} and not force:
+    if force:
+        raise HTTPException(status_code=409, detail="Forced invoice conversion is disabled by lifecycle safety rules.")
+    if status not in {"APPROVED", "ACCEPTED", "CONFIRMED"}:
         raise HTTPException(status_code=409, detail="Quote must be approved before API conversion.")
     from legacy_app import convert_quote_to_invoice
-    convert_quote_to_invoice(quote_id, force=force)
+    convert_quote_to_invoice(quote_id)
     with closing(get_connection()) as connection:
         invoice = connection.execute(
             "SELECT id FROM invoices WHERE quote_id=?",

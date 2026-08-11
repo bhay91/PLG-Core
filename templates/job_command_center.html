@@ -33,6 +33,13 @@
   {% set has_parts = basket.totals.selected_items > 0 %}
   {% set quote_ready = basket.status == "COMMITTED" %}
 
+  {% if job.status == "CANCELLED" %}
+  <section class="panel lifecycle-warning">
+    <strong>This Job is cancelled.</strong>
+    <p>{{ job.cancellation_reason or "No cancellation reason recorded." }} Existing history remains available, but new parts, quotes, invoices, and purchasing are blocked.</p>
+  </section>
+  {% endif %}
+
   <section class="cc-card cc-command-overview" id="job-overview">
     <header class="cc-command-overview-head">
       <div>
@@ -208,7 +215,9 @@
             {% endif %}
           </div>
 
-          {% if intelligence.action_method == "POST" %}
+          {% if job.status == "CANCELLED" %}
+          <span class="button full-width disabled" aria-disabled="true">Cancelled — lifecycle locked</span>
+          {% elif intelligence.action_method == "POST" %}
           <form method="post" action="{{ intelligence.action_url }}">
             <button class="button full-width" type="submit">
               {{ intelligence.next_action }} →
@@ -262,6 +271,40 @@
         {% endif %}
       {% endfor %}
     </nav>
+  </section>
+
+  <section class="cc-card cc-section lifecycle-controls" id="lifecycle-controls">
+    <div class="cc-section-head">
+      <div><p class="cc-label">JOB LIFECYCLE</p><h2>Safety and organization</h2><p class="cc-muted">Cancellation preserves history. Archive only changes list visibility. Permanent deletion is restricted to empty accidental Jobs.</p></div>
+    </div>
+    <div class="cc-actions">
+      <a class="button ghost" href="/jobs/{{ job.id }}/edit">Edit Job</a>
+      {% if job.is_archived %}
+      <form method="post" action="/jobs/{{ job.id }}/restore"><button class="button ghost" type="submit">Restore from Archive</button></form>
+      {% else %}
+      <form method="post" action="/jobs/{{ job.id }}/archive"><button class="button ghost" type="submit">Archive</button></form>
+      {% endif %}
+    </div>
+    {% if job.status == "CANCELLED" %}
+    <form class="lifecycle-reason-form" method="post" action="/jobs/{{ job.id }}/reopen">
+      <label>Reason for reopening<input name="reason" required placeholder="Why is this Job being reopened?"></label>
+      <button class="button" type="submit">Reopen Job</button>
+    </form>
+    {% else %}
+    <form class="lifecycle-reason-form" method="post" action="/jobs/{{ job.id }}/cancel" onsubmit="return confirm('Cancel this Job? All history and the Job number will be retained.');">
+      <label>Cancellation reason<input name="reason" required placeholder="Why is this Job being cancelled?"></label>
+      <button class="button danger" type="submit">Cancel Job</button>
+    </form>
+    {% endif %}
+    <details class="lifecycle-delete-details">
+      <summary>Accidental empty Job deletion</summary>
+      <p class="cc-muted">Deletion will be blocked when meaningful work or history exists. Type the Job number to confirm.</p>
+      <form class="lifecycle-reason-form" method="post" action="/jobs/{{ job.id }}/delete" onsubmit="return confirm('Permanently delete this empty accidental Job? This cannot be undone.');">
+        <label>Deletion reason<input name="reason" required></label>
+        <label>Type {{ job.job_number }}<input name="confirmation" required autocomplete="off"></label>
+        <button class="button danger" type="submit">Delete Empty Job</button>
+      </form>
+    </details>
   </section>
 
   <section class="cc-card cc-section" id="parts-research">
@@ -631,6 +674,8 @@
 </small>
 {% if pricing.status == "BELOW_RECOMMENDED" %}
 <small class="cc-pricing-warning">Below recommended margin</small>
+{% elif pricing.status == "BELOW_COST" %}
+<small class="cc-pricing-warning">Below supplier cost — loss</small>
 {% elif pricing.status == "AT_COST" %}
 <small class="cc-pricing-warning">No parts margin</small>
 {% elif pricing.status == "MISSING_COST" %}
@@ -661,6 +706,14 @@
        placeholder="{{ '%.2f'|format(customer_unit) }}">
 <small class="cc-pricing-recommendation">
   Blank = automatic
+</small>
+<small class="cc-pricing-recommendation">
+  Actual markup:
+  {% if pricing.actual_markup_percent is none %}
+    Undefined (supplier cost is $0)
+  {% else %}
+    {{ "%.2f"|format(pricing.actual_markup_percent) }}%
+  {% endif %}
 </small>
 </td>
 

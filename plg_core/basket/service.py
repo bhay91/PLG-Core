@@ -37,6 +37,11 @@ def get_or_create_basket(connection: sqlite3.Connection, job_id: int):
 
 def ensure_basket_mutable(basket) -> None:
     """Reject changes after the basket has been committed to Job Parts."""
+    with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_job_allows_new_business
+        ensure_job_allows_new_business(
+            connection, int(basket["job_id"]), "change its working basket"
+        )
     status = (basket["status"] or "").strip().upper()
     if status == "COMMITTED":
         raise HTTPException(
@@ -765,6 +770,8 @@ def import_cart(job_id: int, payload: dict[str, Any]):
 
 def commit_basket(job_id: int):
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_job_allows_new_business
+        ensure_job_allows_new_business(connection, job_id, "commit parts")
         basket = get_or_create_basket(connection, job_id)
 
         if basket["status"] == "COMMITTED":
