@@ -44,3 +44,19 @@ data/*.db-wal
 uploads/requests/*
 !uploads/requests/.gitkeep
 debug/
+
+# PPS runtime/customer data
+documents/*
+!documents/.gitkeep
+
+uploads/*
+!uploads/.gitkeep
+!uploads/requests/
+uploads/requests/*
+!uploads/requests/.gitkeep
+
+# Stray/local databases
+plg.db
+
+# Local deployment safety copies
+*.pre-online-deploy
