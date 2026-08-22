@@ -12,6 +12,7 @@ from plg_core.timeline import log_job_event
 
 
 router = APIRouter(tags=["follow-ups"])
+FOLLOW_UP_RETURN_URL = "/follow-up?view=MY_FOLLOW_UPS"
 
 
 def _required(value: str, label: str) -> str:
@@ -88,7 +89,7 @@ def create_job_follow_up(
             message=message,
         )
         connection.commit()
-    return RedirectResponse(url=f"/jobs/{job_id}/basket#follow-ups", status_code=303)
+    return RedirectResponse(url=FOLLOW_UP_RETURN_URL, status_code=303)
 
 
 def _open_follow_up(connection, follow_up_id: int):
@@ -110,7 +111,7 @@ def information_received(
         follow_up = _open_follow_up(connection, follow_up_id)
         if follow_up["status"] == "RECEIVED":
             return RedirectResponse(
-                url=f"/jobs/{follow_up['job_id']}/basket#follow-ups", status_code=303
+                url=FOLLOW_UP_RETURN_URL, status_code=303
             )
         if follow_up["status"] != "OPEN" or follow_up["category"] != "CUSTOMER_INFORMATION":
             raise HTTPException(status_code=409, detail="This follow-up is no longer waiting for customer information.")
@@ -130,7 +131,7 @@ def information_received(
             event_type="CUSTOMER_INFORMATION_RECEIVED", icon="!", message=message,
         )
         connection.commit()
-    return RedirectResponse(url=f"/jobs/{follow_up['job_id']}/basket#follow-ups", status_code=303)
+    return RedirectResponse(url=FOLLOW_UP_RETURN_URL, status_code=303)
 
 @router.post("/follow-ups/{follow_up_id}/resolve")
 def resolve_follow_up(
@@ -142,7 +143,7 @@ def resolve_follow_up(
         follow_up = _open_follow_up(connection, follow_up_id)
         if follow_up["status"] == "RESOLVED":
             return RedirectResponse(
-                url=f"/jobs/{follow_up['job_id']}/basket#follow-ups", status_code=303
+                url=FOLLOW_UP_RETURN_URL, status_code=303
             )
         if follow_up["status"] == "CANCELLED":
             raise HTTPException(status_code=409, detail="Cancelled follow-up cannot be resolved.")
@@ -162,4 +163,36 @@ def resolve_follow_up(
             event_type="JOB_FOLLOW_UP_RESOLVED", icon="✓", message=message,
         )
         connection.commit()
-    return RedirectResponse(url=f"/jobs/{follow_up['job_id']}/basket#follow-ups", status_code=303)
+    return RedirectResponse(url=FOLLOW_UP_RETURN_URL, status_code=303)
+
+
+@router.post("/follow-ups/{follow_up_id}/cancel")
+def cancel_follow_up(
+    follow_up_id: int,
+    reason: Annotated[str, Form()],
+):
+    reason = _required(reason, "Cancellation reason")
+    with closing(get_connection()) as connection:
+        follow_up = _open_follow_up(connection, follow_up_id)
+        if follow_up["status"] == "CANCELLED":
+            return RedirectResponse(url=FOLLOW_UP_RETURN_URL, status_code=303)
+        if follow_up["status"] == "RESOLVED":
+            raise HTTPException(status_code=409, detail="Resolved follow-up cannot be cancelled.")
+        connection.execute(
+            "UPDATE job_follow_ups SET status='CANCELLED',resolution=?,"
+            "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (reason, follow_up_id),
+        )
+        message = f"Follow-up cancelled: {follow_up['summary']}"
+        write_audit(
+            connection, action="JOB_FOLLOW_UP_CANCELLED",
+            entity_type="JOB_FOLLOW_UP", entity_id=follow_up_id,
+            summary=message,
+            metadata={"job_id": follow_up["job_id"], "reason": reason},
+        )
+        log_job_event(
+            connection, job_id=int(follow_up["job_id"]),
+            event_type="JOB_FOLLOW_UP_CANCELLED", icon="×", message=message,
+        )
+        connection.commit()
+    return RedirectResponse(url=FOLLOW_UP_RETURN_URL, status_code=303)

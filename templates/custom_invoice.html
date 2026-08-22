@@ -1,17 +1,32 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="panel">
-<div class="panel-heading"><div><p class="eyebrow">CUSTOM INVOICE</p><h1>{{ custom_invoice.custom_invoice_number }}</h1><p>Based on paid invoice <a href="/invoices/{{ invoice.id }}/documents">{{ invoice.invoice_number }}</a></p></div></div>
+<div class="panel-heading"><div><p class="eyebrow">CUSTOM INVOICE</p><h1>{{ custom_invoice.custom_invoice_number }}</h1><p>Based on paid invoice <a href="/invoices/{{ invoice.id }}/documents">{{ invoice.invoice_number }}</a></p></div><a class="workspace-btn workspace-btn-primary" href="#custom-invoice-adjustments">Adjust Custom Invoice</a></div>
 <p><strong>{{ invoice.customer }}</strong></p>
 {% if invoice.manufacturer or invoice.machine or invoice.pin_serial %}<p>{{ invoice.manufacturer or "" }} {{ invoice.machine or "" }} {{ invoice.pin_serial or "" }}</p>{% endif %}
 <form method="post" action="/invoices/{{ invoice.id }}/custom/save">
-<label>Adjustment Mode <select name="adjustment_mode" id="adjustment_mode"><option value="MANUAL">Manual</option><option value="PERCENTAGE">Percentage</option><option value="TARGET_TOTAL">Target Total</option></select></label>
+<div id="custom-invoice-adjustments" class="panel">
+<div class="panel-heading"><div><p class="eyebrow">PRESENTATION ONLY</p><h2>Adjust Custom Invoice</h2><p>Excluded items and freight remain unchanged on the source invoice and accounting records.</p></div></div>
+<label>Adjustment Mode <select name="adjustment_mode" id="adjustment_mode"><option value="MANUAL" {% if custom_invoice.adjustment_mode == 'MANUAL' %}selected{% endif %}>Manual</option><option value="PERCENTAGE" {% if custom_invoice.adjustment_mode == 'PERCENTAGE' %}selected{% endif %}>Percentage</option><option value="TARGET_TOTAL" {% if custom_invoice.adjustment_mode == 'TARGET_TOTAL' %}selected{% endif %}>Target Total</option></select></label>
 <label>Adjustment Value <input type="number" step="0.01" name="adjustment_value" value="{{ custom_invoice.adjustment_value or "" }}"></label>
-<table class="workspace-table"><thead><tr><th>Qty</th><th>Description</th><th>Part #</th><th>Unit Price</th><th>Line Total</th></tr></thead><tbody>
-{% for item in items %}<tr><td>{{ item.quantity }}</td><td>{{ item.description }}</td><td>{{ item.supplier_part_number or "" }}</td><td><input type="number" step="0.01" min="0" name="unit_price_{{ item.id }}" value="{{ "%.2f"|format(item.custom_unit_price or 0) }}"></td><td>${{ "%.2f"|format(item.custom_line_total or 0) }}</td></tr>{% endfor %}
+<table class="workspace-table"><thead><tr><th>Show</th><th>Qty</th><th>Description</th><th>Part #</th><th>Unit Price</th><th>Line Total</th></tr></thead><tbody>
+{% for item in items %}<tr class="custom-item-row{% if not item.is_visible %} custom-item-excluded{% endif %}" data-quantity="{{ item.quantity }}" data-original-line-total="{{ item.custom_line_total or 0 }}" data-is-freight="{{ '1' if ('freight' in item.description|lower or 'freidgt' in item.description|lower or 'inbound shipping' in item.description|lower) else '0' }}"><td><input class="custom-item-visible" type="checkbox" name="visible_item_ids" value="{{ item.id }}" {% if item.is_visible %}checked{% endif %} aria-label="Show {{ item.description }}"></td><td>{{ item.quantity }}</td><td>{{ item.description }} <strong class="custom-excluded-label" {% if item.is_visible %}hidden{% endif %}>Excluded</strong></td><td>{{ item.supplier_part_number or "" }}</td><td><input class="custom-unit-price" type="number" step="0.01" min="0" name="unit_price_{{ item.id }}" value="{{ "%.2f"|format(item.custom_unit_price or 0) }}"></td><td class="custom-line-total">${{ "%.2f"|format(item.custom_line_total or 0) }}</td></tr>{% endfor %}
 </tbody></table>
-<p><strong>Total: ${{ "%.2f"|format(custom_invoice.custom_total or 0) }}</strong></p>
-<button class="workspace-btn" type="submit">Save Custom Invoice</button>
+<label><input id="include-freight" type="checkbox" name="include_freight" value="1" {% if custom_invoice.include_freight %}checked{% endif %}> Show inbound freight (${{ "%.2f"|format(presentation.freight_adjustment_total) }})</label>
+<div class="invoice-desk-total"><span>Displayed Subtotal</span><strong id="custom-preview-subtotal">${{ "%.2f"|format(presentation.subtotal) }}</strong></div>
+<div class="invoice-desk-total"><span>Displayed Invoice Total</span><strong id="custom-preview-total">${{ "%.2f"|format(presentation.invoice_total) }}</strong></div>
+<div class="invoice-desk-total"><span>Displayed Balance Due</span><strong>$0.00</strong></div>
+<button class="workspace-btn" type="submit">Save &amp; Generate Custom Invoice</button>
+</div>
+</form>
+<form method="post" action="/invoices/{{ invoice.id }}/custom/revert" onsubmit="return confirm('Restore every item, freight, quantity, and amount from the original paid invoice?');">
+<button class="workspace-btn workspace-btn-primary" type="submit">Revert Custom Invoice Changes</button>
 </form>
 </section>
+<style>
+.custom-item-excluded{opacity:.58;background:#f8fafc}.custom-excluded-label{margin-left:8px;color:#991b1b;font-size:11px;text-transform:uppercase}.invoice-desk-total{display:flex;justify-content:space-between;max-width:420px;padding:8px 0;border-bottom:1px solid var(--line)}
+</style>
+<script>
+(()=>{const rows=[...document.querySelectorAll('.custom-item-row')];const freight=document.getElementById('include-freight');const baseTotal={{ custom_invoice.custom_total or 0 }};const originalItemTotal=rows.reduce((sum,row)=>sum+Number(row.dataset.originalLineTotal||0),0);const freightAmount={{ invoice.shipping_total or 0 }};const money=value=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Math.max(0,value));function refresh(){let updatedItemTotal=0,excludedTotal=0;for(const row of rows){const qty=Number(row.dataset.quantity||0);const price=Number(row.querySelector('.custom-unit-price').value||0);const line=Math.round(qty*price*100)/100;const itemChecked=row.querySelector('.custom-item-visible').checked;const visible=itemChecked&&(freight.checked||row.dataset.isFreight!=='1');updatedItemTotal+=line;if(!visible)excludedTotal+=line;row.querySelector('.custom-line-total').textContent=money(line);row.classList.toggle('custom-item-excluded',!visible);row.querySelector('.custom-excluded-label').hidden=visible;}const updatedBase=Math.max(0,baseTotal+updatedItemTotal-originalItemTotal);const total=Math.max(0,updatedBase-excludedTotal-(freight.checked?0:freightAmount));const subtotal=Math.max(0,total-(freight.checked?freightAmount:0));document.getElementById('custom-preview-subtotal').textContent=money(subtotal);document.getElementById('custom-preview-total').textContent=money(total);}for(const input of document.querySelectorAll('.custom-item-visible,.custom-unit-price'))input.addEventListener('input',refresh);freight.addEventListener('input',refresh);refresh();})();
+</script>
 {% endblock %}

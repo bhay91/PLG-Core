@@ -35,25 +35,72 @@ class SmartIntakeBatch3DTests(unittest.TestCase):
         return legacy_app.get_connection()
 
     def test_original_failure_and_three_unlabeled_forms(self):
-        original = "Norman Frater Tropical Real Estate Development Montego Bay, Jamaica John Deere 350D PIN: 1FF350DXTA0806941 Need: Fuel Filter Kit"
-        multiline = "Norman Frater\nTropical Real Estate Development\nMontego Bay Jamaica\nJohn Deere 350D\n1FF350DXTA0806941\nFuel Filter Kit"
-        sentence = "Norman from Tropical Real Estate Development in Montego Bay needs a fuel filter kit for their John Deere 350D. The machine PIN is 1FF350DXTA0806941."
+        original = "Jordan Example Example Equipment Development Kingston, Jamaica John Deere 350D PIN: TEST0000000000001 Need: Fuel Filter Kit"
+        multiline = "Jordan Example\nExample Equipment Development\nTest City\nJohn Deere 350D\nTEST0000000000001\nFuel Filter Kit"
+        sentence = "Jordan from Example Equipment Development in Test City needs a fuel filter kit for their John Deere 350D. The machine PIN is TEST0000000000001."
         for text in (original, multiline, sentence):
             proposal = parse_intake(text)
-            self.assertTrue(proposal["contact_name"].startswith("Norman"))
-            self.assertEqual(proposal["company_name"], "Tropical Real Estate Development")
+            self.assertTrue(proposal["contact_name"].startswith("Jordan"))
+            self.assertEqual(proposal["company_name"], "Example Equipment Development")
             self.assertEqual(proposal["assets"][0]["manufacturer"], "John Deere")
             self.assertEqual(proposal["assets"][0]["model"], "350D")
             self.assertEqual(proposal["assets"][0]["identifiers"][0]["identifier_type"], "PIN")
             self.assertIn("fuel filter kit", proposal["assets"][0]["needs"][0]["wording"].lower())
 
+    def test_numbered_natural_language_request_coalesces_machine_and_quantities(self):
+        raw = """Customer: Taylor Example
+Location: Exuma, Bahamas
+
+Machine:
+Caterpillar 420D Backhoe Loader
+PIN: TEST-PIN-INTAKE-002
+
+Request:
+I need the following parts for my CAT 420D:
+
+1. Starter motor — quantity 1
+2. Alternator — quantity 1
+3. Fuel filter — quantity 2
+4. Hydraulic return filter — quantity 2
+
+Please source the parts and give me pricing. I am okay with aftermarket parts if they are confirmed compatible. Let me know if you need any additional information."""
+        proposal = parse_intake(raw)
+        self.assertEqual((proposal["contact_name"], proposal["company_name"]), ("Taylor Example", ""))
+        self.assertEqual(len(proposal["assets"]), 1)
+        asset = proposal["assets"][0]
+        self.assertEqual((asset["manufacturer"], asset["model"]), ("Caterpillar", "420D Backhoe Loader"))
+        self.assertEqual(asset["identifiers"][0]["value"], "TEST-PIN-INTAKE-002")
+        self.assertEqual([item["wording"] for item in asset["needs"]], [
+            "Starter motor — Qty 1", "Alternator — Qty 1",
+            "Fuel filter — Qty 2", "Hydraulic return filter — Qty 2",
+        ])
+        self.assertEqual([item["quantity"] for item in asset["needs"]], [1.0, 1.0, 2.0, 2.0])
+        self.assertNotIn("additional information", " ".join(item["wording"] for item in asset["needs"]).lower())
+        self.assertEqual(proposal["raw_input"], raw)
+
+    def test_bullets_and_quantity_forms_are_supported_without_invention(self):
+        proposal = parse_intake("""Customer: Test Person
+Machine:
+JCB 3CX
+PIN TEST-JCB-LIST
+Requested Parts:
+- Seal kit Qty 2
+• Filter x3
+- Hose 4x
+- Belt
+
+Please call if you need more information.""")
+        needs = proposal["assets"][0]["needs"]
+        self.assertEqual([item["wording"] for item in needs], ["Seal kit — Qty 2", "Filter — Qty 3", "Hose — Qty 4", "Belt"])
+        self.assertIsNone(needs[-1]["quantity"])
+
     def test_multi_machine_needs_do_not_leak(self):
         proposal = parse_intake("""PPS-BATCH3D-TEST-001
-Norman Frater
-Tropical Real Estate Development
+Jordan Example
+Example Equipment Development
 Montego Bay, Jamaica
 John Deere 350D
-PIN 1FF350DXTA0806941
+PIN TEST-PIN-INTAKE-001
 needs:
 Fuel Filter Kit
 Hydraulic Filter
@@ -75,8 +122,44 @@ Right Headlight""")
         self.assertEqual(proposal["assets"][2]["year"], "2022")
         self.assertEqual(proposal["assets"][1]["year"], "")
 
+    def test_two_existing_assets_are_separate_and_matched_without_duplicates(self):
+        raw = """Synthetic Intake Customer
+synthetic-intake@example.test
+Caterpillar 420D Backhoe Loader
+Serial TEST-420D-001
+International 4700 Flatbed
+VIN TEST-4700-001
+
+Need hydraulic cylinder seal kit and headlight sets for the Caterpillar 420D, and wheel seal and brake drums for the International 4700."""
+        with closing(self.connection()) as connection:
+            customer_id = connection.execute(
+                "INSERT INTO customers(customer_number,name,email,active) VALUES ('SI-MULTI','Synthetic Intake Customer','synthetic-intake@example.test',1)"
+            ).lastrowid
+            machine_ids = {
+                connection.execute(
+                    "INSERT INTO machines(customer_id,machine_number,name,manufacturer,model,vin_pin_serial,active) VALUES (?,'SI-CAT','420D','Caterpillar','420D Backhoe Loader','TEST-420D-001',1)",
+                    (customer_id,),
+                ).lastrowid,
+                connection.execute(
+                    "INSERT INTO machines(customer_id,machine_number,name,manufacturer,model,vin_pin_serial,active) VALUES (?,'SI-INT','4700','International','4700 Flatbed','TEST-4700-001',1)",
+                    (customer_id,),
+                ).lastrowid,
+            }
+            connection.commit()
+            proposal_id = create_proposal(connection, raw)
+            proposal = load_proposal(connection, proposal_id)
+            self.assertEqual(proposal["matched_customer_id"], customer_id)
+            self.assertEqual({asset["matched_machine_id"] for asset in proposal["assets"]}, machine_ids)
+            by_make = {asset["manufacturer"]: asset for asset in proposal["assets"]}
+            self.assertEqual(by_make["Caterpillar"]["identifiers"][0]["identifier_value"], "TEST-420D-001")
+            self.assertEqual(by_make["International"]["identifiers"][0]["identifier_value"], "TEST-4700-001")
+            self.assertEqual({need["wording"].lower() for need in by_make["Caterpillar"]["needs"]}, {"hydraulic cylinder seal kit", "headlight sets"})
+            self.assertEqual({need["wording"].lower() for need in by_make["International"]["needs"]}, {"wheel seal", "brake drums"})
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM customers WHERE name='Synthetic Intake Customer'").fetchone()[0], 1)
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM machines WHERE customer_id=?", (customer_id,)).fetchone()[0], 2)
+
     def test_ambiguous_and_zero_machine_needs_remain_unassigned(self):
-        ambiguous = parse_intake("Norman Frater\nJohn Deere 350D\nJCB 3CX\nNeed starter")
+        ambiguous = parse_intake("Jordan Example\nJohn Deere 350D\nJCB 3CX\nNeed starter")
         self.assertEqual(len(ambiguous["assets"]), 2)
         self.assertEqual(ambiguous["unassigned_needs"][0]["wording"].lower(), "starter")
         self.assertFalse(any(asset["needs"] for asset in ambiguous["assets"]))
@@ -86,15 +169,15 @@ Right Headlight""")
         self.assertEqual(zero["unassigned_needs"][0]["wording"].lower(), "starter")
 
     def test_global_vin_market_location_separation_and_equipment_context(self):
-        vin = "1HGCM82633A004352"
-        proposal = parse_intake(f"Kareen Blake\nMontego Bay Jamaica\n2022 Toyota Hilux\nVIN {vin}\nNeeds Left Headlight and Right Headlight")
+        vin = "TEST0000000000002"
+        proposal = parse_intake(f"Morgan Example\nTest City\n2022 Toyota Hilux\nVIN {vin}\nNeeds Left Headlight and Right Headlight")
         asset = proposal["assets"][0]
         self.assertEqual(asset["identifiers"][0]["identifier_type"], "AUTOMOTIVE_VIN")
         self.assertEqual(asset["market_region"], "UNKNOWN")
         self.assertEqual(classify_identifier(vin, manufacturer="John Deere", asset_category="machine"), "PIN")
 
     def test_jdm_frame_model_code_and_component_identifier_are_independent(self):
-        proposal = parse_intake("Kareen Blake\nToyota Prius\nFrame: ZVW30-TEST123\nModel Code: DAA-ZVW30\nEngine Serial: ENG-TEST123\nNeeds left headlight")
+        proposal = parse_intake("Morgan Example\nToyota Prius\nFrame: ZVW30-TEST123\nModel Code: DAA-ZVW30\nEngine Serial: ENG-TEST123\nNeeds left headlight")
         asset = proposal["assets"][0]
         identifiers = {(item["identifier_type"], item["value"]) for item in asset["identifiers"]}
         self.assertIn(("JDM_FRAME", "ZVW30-TEST123"), identifiers)
@@ -109,12 +192,12 @@ Right Headlight""")
 
     def test_proposal_persistence_correction_and_atomic_confirm(self):
         with closing(self.connection()) as connection:
-            proposal_id = create_proposal(connection, "Norman Frater\nJohn Deere 350D\nPIN TEST-PIN-3D\nNeeds wrong part")
+            proposal_id = create_proposal(connection, "Jordan Example\nJohn Deere 350D\nPIN TEST-PIN-3D\nNeeds wrong part")
         with closing(self.connection()) as connection:
             proposal = load_proposal(connection, proposal_id)
             asset_id = proposal["assets"][0]["id"]
             need_id = proposal["assets"][0]["needs"][0]["id"]
-            connection.execute("UPDATE intake_proposals SET company_name='Correct Company',location='Nassau, Bahamas',matched_customer_id=NULL WHERE id=?", (proposal_id,))
+            connection.execute("UPDATE intake_proposals SET contact_name='Unique Correct Person',company_name='Correct Company',location='Nassau, Bahamas',matched_customer_id=NULL WHERE id=?", (proposal_id,))
             connection.execute("UPDATE intake_proposal_assets SET manufacturer='JCB',model='3CX' WHERE id=?", (asset_id,))
             connection.execute("UPDATE intake_proposal_needs SET wording='Correct Seal Kit' WHERE id=?", (need_id,))
             connection.commit()
@@ -127,7 +210,7 @@ Right Headlight""")
             need = connection.execute("SELECT * FROM requested_needs WHERE job_id=?", (job_id,)).fetchone()
             self.assertEqual((job["company"], asset["manufacturer"], asset["model"]), ("Correct Company", "JCB", "3CX"))
             self.assertEqual(need["wording"], "Correct Seal Kit")
-            self.assertEqual(request["request_text"], "Norman Frater\nJohn Deere 350D\nPIN TEST-PIN-3D\nNeeds wrong part")
+            self.assertEqual(request["request_text"], "Jordan Example\nJohn Deere 350D\nPIN TEST-PIN-3D\nNeeds wrong part")
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM basket_items bi JOIN baskets b ON b.id=bi.basket_id WHERE b.job_id=?", (job_id,)).fetchone()[0], 0)
 
     def test_end_to_end_three_machine_work_queue_is_populated(self):
@@ -164,7 +247,7 @@ Needs Left Headlight and Right Headlight"""
 
     def test_confirm_is_idempotent_and_stale_version_is_blocked(self):
         with closing(self.connection()) as connection:
-            proposal_id = create_proposal(connection, "Norman Frater\nJohn Deere 350D\nNeeds Fuel Filter")
+            proposal_id = create_proposal(connection, "Unique Idempotent Person\nJohn Deere 350D\nNeeds Fuel Filter")
         with closing(self.connection()) as connection:
             version = connection.execute("SELECT lock_version FROM intake_proposals WHERE id=?", (proposal_id,)).fetchone()[0]
             job_id = confirm_proposal(connection, proposal_id, version)
@@ -215,10 +298,10 @@ Needs Left Headlight and Right Headlight"""
 
     def test_existing_asset_strong_identifier_is_proposed_without_overwrite(self):
         with closing(self.connection()) as connection:
-            customer_id = connection.execute("INSERT INTO customers(customer_number,name,active) VALUES ('3D-C','Existing Customer',1)").lastrowid
+            customer_id = connection.execute("INSERT INTO customers(customer_number,name,email,active) VALUES ('3D-C','Existing Customer','existing-3d@example.test',1)").lastrowid
             machine_id = connection.execute("INSERT INTO machines(customer_id,machine_number,name,manufacturer,model,vin_pin_serial,active) VALUES (?,'3D-M','350D','John Deere','350D','MATCH-3D-PIN',1)", (customer_id,)).lastrowid
             connection.commit()
-            proposal_id = create_proposal(connection, "Existing Customer\nJohn Deere 350D\nPIN MATCH-3D-PIN\nNeeds Filter")
+            proposal_id = create_proposal(connection, "Existing Customer\nexisting-3d@example.test\nJohn Deere 350D\nPIN MATCH-3D-PIN\nNeeds Filter")
             proposal = load_proposal(connection, proposal_id)
             self.assertEqual(proposal["assets"][0]["matched_machine_id"], machine_id)
             self.assertEqual(proposal["matched_customer_id"], customer_id)

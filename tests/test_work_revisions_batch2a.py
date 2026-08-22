@@ -18,9 +18,11 @@ from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
 from plg_core.basket.service import add_item, commit_basket, get_basket, update_item
 from plg_core.basket.service import get_or_create_basket
 from plg_core.database.migrations import (
+    MIGRATIONS,
     _migration_0029_work_quote_revision_foundation,
     run_migrations,
 )
+from plg_core.roadmap.migrations import run_roadmap_migrations
 from plg_core.pricing import pricing_assessment
 from plg_core.revisions import (
     cancel_work_revision,
@@ -32,7 +34,88 @@ from plg_core.revisions import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PRE_BATCH2A = Path("/tmp/pps-batch2a-safety-dHEIJ0/plg_core.pre-batch2a.db")
+
+
+def create_pre_batch2a_fixture(path: Path) -> None:
+    """Build a deterministic historical database immediately before migration 0029."""
+    with patch.object(legacy_app, "DB_PATH", path):
+        legacy_app.initialize_database()
+        run_roadmap_migrations()
+
+        connection = legacy_app.get_connection()
+        try:
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS schema_migrations (
+                       migration_id TEXT PRIMARY KEY,
+                       applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                   )"""
+            )
+            for migration_id, migration in MIGRATIONS:
+                if migration_id == "0029_work_quote_revision_foundation":
+                    break
+                migration(connection)
+                connection.execute(
+                    "INSERT INTO schema_migrations (migration_id) VALUES (?)",
+                    (migration_id,),
+                )
+
+            customer_id = connection.execute(
+                """INSERT INTO customers (customer_number,name,active)
+                   VALUES ('PPS-C-0042','Historical Customer',1)"""
+            ).lastrowid
+            job_id = connection.execute(
+                """INSERT INTO jobs (
+                       job_number,created_date,customer_id,customer,status
+                   ) VALUES ('PPS-J-0042','2026-01-15',?,'Historical Customer','QUOTED')""",
+                (customer_id,),
+            ).lastrowid
+            part_id = connection.execute(
+                """INSERT INTO job_parts (
+                       job_id,requested_description,oem_part_number,supplier,
+                       supplier_cost,quantity,verification_status,customer_unit_price
+                   ) VALUES (?,'Historical Filter','HF-42','Supplier A',80,2,'VERIFIED',125)""",
+                (job_id,),
+            ).lastrowid
+            source_id = connection.execute(
+                """INSERT INTO part_sources (
+                       part_id,supplier_name,source_type,supplier_part_number,
+                       supplier_cost,selected_for_quote,trust_level
+                   ) VALUES (?,'Supplier A','AFTERMARKET','SUP-42',80,1,'MANUAL')""",
+                (part_id,),
+            ).lastrowid
+            quote_id = connection.execute(
+                """INSERT INTO quotes (
+                       quote_number,job_id,quote_date,status,parts_subtotal,
+                       customer_total,supplier_total,profit_total,is_archived
+                   ) VALUES ('PPS-Q-0042',?,'2026-01-16','SENT',250,250,160,90,0)""",
+                (job_id,),
+            ).lastrowid
+            connection.execute(
+                """INSERT INTO quote_items (
+                       quote_id,part_id,source_id,quantity,description,
+                       supplier_name,source_type,supplier_part_number,
+                       supplier_unit_cost,customer_unit_price,supplier_line_total,
+                       customer_line_total,line_profit
+                   ) VALUES (?,?,?,2,'Historical Filter','Supplier A','AFTERMARKET',
+                             'SUP-42',80,125,160,250,90)""",
+                (quote_id, part_id, source_id),
+            )
+            connection.execute(
+                """INSERT INTO invoices (
+                       invoice_number,quote_id,job_id,invoice_date,status,
+                       parts_subtotal,customer_total,supplier_total,profit_total,
+                       balance_due
+                   ) VALUES ('PPS-INV-0042',?,?,'2026-01-17','DRAFT',
+                             250,250,160,90,250)""",
+                (quote_id, job_id),
+            )
+            connection.execute(
+                "UPDATE pps_number_sequences SET last_number=42 "
+                "WHERE entity_type IN ('CUSTOMER','JOB','QUOTE','INVOICE')"
+            )
+            connection.commit()
+        finally:
+            connection.close()
 
 
 class WorkRevisionBatch2ATests(unittest.TestCase):
@@ -588,7 +671,7 @@ class WorkRevisionBatch2ATests(unittest.TestCase):
 
     def test_migration_preflight_refuses_ambiguous_quotes_without_changes(self):
         path = Path(self.temp.name) / "ambiguous.db"
-        shutil.copy2(PRE_BATCH2A, path)
+        create_pre_batch2a_fixture(path)
         c = sqlite3.connect(path)
         c.row_factory = sqlite3.Row
         c.execute("DROP INDEX IF EXISTS uq_quotes_one_active_per_job")
@@ -617,7 +700,7 @@ class WorkRevisionBatch2ATests(unittest.TestCase):
                 if name == "fresh":
                     legacy_app.initialize_database()
                 else:
-                    shutil.copy2(PRE_BATCH2A, path)
+                    create_pre_batch2a_fixture(path)
                     with closing(self.connection()) as c:
                         _migration_0029_work_quote_revision_foundation(c)
                         c.commit()  # schema applied, marker intentionally absent
@@ -634,11 +717,15 @@ class WorkRevisionBatch2ATests(unittest.TestCase):
 
     def test_migration_preserves_business_sequences_and_historical_values(self):
         path = Path(self.temp.name) / "production-copy.db"
-        shutil.copy2(PRE_BATCH2A, path)
+        create_pre_batch2a_fixture(path)
         before = sqlite3.connect(path)
         tables = ("jobs", "job_parts", "part_sources", "quotes", "quote_items", "invoices")
         values = {table: before.execute(f'SELECT * FROM "{table}" ORDER BY id').fetchall()
                   for table in tables}
+        column_counts = {
+            table: len(before.execute(f"PRAGMA table_info({table})").fetchall())
+            for table in tables
+        }
         sequences = before.execute(
             "SELECT * FROM pps_number_sequences ORDER BY entity_type"
         ).fetchall()
@@ -647,9 +734,7 @@ class WorkRevisionBatch2ATests(unittest.TestCase):
         run_migrations()
         after = sqlite3.connect(path)
         for table in tables:
-            old_column_count = len(values[table][0]) if values[table] else len(
-                sqlite3.connect(PRE_BATCH2A).execute(f"PRAGMA table_info({table})").fetchall()
-            )
+            old_column_count = column_counts[table]
             rows = after.execute(f'SELECT * FROM "{table}" ORDER BY id').fetchall()
             self.assertEqual([row[:old_column_count] for row in rows], values[table])
         self.assertEqual(

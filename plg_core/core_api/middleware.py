@@ -258,6 +258,7 @@ def install_optional_api_hardening(app) -> None:
             )
             or str(uuid.uuid4())
         )
+        request.state.request_id = request_id
 
         path = str(
             request.url.path or ""

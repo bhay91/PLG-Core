@@ -7,23 +7,33 @@ from legacy_app import app
 from plg_core.basket.routes import router as basket_router
 from plg_core.machines.routes import router as machines_router
 from plg_core.requests.routes import router as requests_router
+from plg_core.requests.extension_routes import router as firefox_inbox_router
 from plg_core.followups.routes import router as followups_router
 from plg_core.assets.routes import router as assets_router
 from plg_core.commercial.routes import router as commercial_router
 from plg_core.verification.routes import router as verification_router
 from plg_core.research.routes import router as research_router
 from plg_core.intake.routes import router as intake_router
+from plg_core.sources.routes import router as sources_router
+from plg_core.disposable.routes import router as disposable_router
+from plg_core.ai.routes import router as ai_router
+from plg_core.mcp import register_mcp
 from plg_core.database.migrations import run_migrations
 
 app.include_router(basket_router)
 app.include_router(machines_router)
 app.include_router(requests_router)
+app.include_router(firefox_inbox_router)
 app.include_router(followups_router)
 app.include_router(assets_router)
 app.include_router(commercial_router)
 app.include_router(verification_router)
 app.include_router(research_router)
 app.include_router(intake_router)
+app.include_router(sources_router)
+app.include_router(disposable_router)
+app.include_router(ai_router)
+register_mcp(app)
 
 
 @app.on_event("startup")

@@ -12,6 +12,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
@@ -23,6 +24,11 @@ from reportlab.platypus import (
     Spacer,
     Table,
     TableStyle,
+)
+from plg_core.documents.pdf_fit import (
+    build_with_one_page_preference,
+    fit_value,
+    font_scale,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -86,6 +92,12 @@ def _logo() -> Path | None:
     return None
 
 
+def _logo_image(path: Path) -> Image:
+    width, height = ImageReader(str(path)).getSize()
+    scale = min((2.50 * inch) / width, (0.68 * inch) / height)
+    return Image(str(path), width=width * scale, height=height * scale)
+
+
 def _date_text(raw) -> str:
     value = str(raw or "").strip()
     if not value:
@@ -103,50 +115,53 @@ def _valid_until(raw_date) -> str:
 
 def _styles():
     base = getSampleStyleSheet()
+    scale = font_scale()
+    sized = lambda value: value * scale
     return {
         "brand": ParagraphStyle(
             "PLGBrand", parent=base["Heading1"], fontName="Helvetica-Bold",
-            fontSize=20, leading=22, textColor=NAVY, spaceAfter=2,
+            fontSize=sized(20), leading=sized(22), textColor=NAVY,
+            spaceAfter=fit_value(2, 1, 1, 0),
         ),
         "tagline": ParagraphStyle(
             "PLGTagline", parent=base["Normal"], fontName="Helvetica",
-            fontSize=9.2, leading=11, textColor=INK,
+            fontSize=sized(9.2), leading=sized(11), textColor=INK,
         ),
         "contact": ParagraphStyle(
             "PLGContact", parent=base["Normal"], fontName="Helvetica",
-            fontSize=7.7, leading=10, textColor=MUTED,
+            fontSize=sized(7.7), leading=sized(10), textColor=MUTED,
         ),
         "doc_title": ParagraphStyle(
             "PLGDocTitle", parent=base["Heading1"], fontName="Helvetica-Bold",
-            fontSize=26, leading=28, alignment=TA_RIGHT, textColor=NAVY,
+            fontSize=sized(26), leading=sized(28), alignment=TA_RIGHT, textColor=NAVY,
         ),
         "label": ParagraphStyle(
             "PLGLabel", parent=base["Normal"], fontName="Helvetica-Bold",
-            fontSize=8.2, leading=10, textColor=INK,
+            fontSize=sized(8.2), leading=sized(10), textColor=INK,
         ),
         "value": ParagraphStyle(
             "PLGValue", parent=base["Normal"], fontName="Helvetica",
-            fontSize=8.2, leading=10, textColor=INK,
+            fontSize=sized(8.2), leading=sized(10), textColor=INK,
         ),
         "small": ParagraphStyle(
             "PLGSmall", parent=base["Normal"], fontName="Helvetica",
-            fontSize=8.0, leading=10, textColor=MUTED,
+            fontSize=sized(8.0), leading=sized(10), textColor=MUTED,
         ),
         "footer_heading": ParagraphStyle(
             "PLGFooterHeading", parent=base["Normal"], fontName="Helvetica-Bold",
-            fontSize=7.6, leading=9, alignment=TA_CENTER, textColor=NAVY,
+            fontSize=sized(7.6), leading=sized(9), alignment=TA_CENTER, textColor=NAVY,
         ),
         "footer": ParagraphStyle(
             "PLGFooter", parent=base["Normal"], fontName="Helvetica",
-            fontSize=6.6, leading=8.2, alignment=TA_CENTER, textColor=MUTED,
+            fontSize=sized(6.6), leading=sized(8.2), alignment=TA_CENTER, textColor=MUTED,
         ),
         "center_brand": ParagraphStyle(
             "PLGCenterBrand", parent=base["Normal"], fontName="Helvetica-Bold",
-            fontSize=9, leading=11, alignment=TA_CENTER, textColor=NAVY,
+            fontSize=sized(9), leading=sized(11), alignment=TA_CENTER, textColor=NAVY,
         ),
         "center_tag": ParagraphStyle(
             "PLGCenterTag", parent=base["Normal"], fontName="Helvetica-Oblique",
-            fontSize=6.8, leading=8, alignment=TA_CENTER, textColor=MUTED,
+            fontSize=sized(6.8), leading=sized(8), alignment=TA_CENTER, textColor=MUTED,
         ),
     }
 
@@ -156,14 +171,16 @@ def _page_footer(canvas, doc, title, number):
     width, _ = LETTER
     canvas.setStrokeColor(NAVY)
     canvas.setLineWidth(0.8)
-    canvas.line(0.28 * inch, 0.39 * inch, width - 0.28 * inch, 0.39 * inch)
+    rule_y = fit_value(0.39, 0.35, 0.32, 0.30) * inch
+    canvas.line(0.28 * inch, rule_y, width - 0.28 * inch, rule_y)
     canvas.setFont("Helvetica", 6.5)
     canvas.setFillColor(MUTED)
-    canvas.drawString(0.28 * inch, 0.21 * inch, "Pinpoint Sourcing Co. | Worldwide Parts Sourcing & Logistics")
-    canvas.drawRightString(width - 0.28 * inch, 0.21 * inch, f"{title} {number} | Page {doc.page}")
+    baseline = fit_value(0.21, 0.18, 0.16, 0.14) * inch
+    canvas.drawString(0.28 * inch, baseline, "Pinpoint Sourcing Co. | Worldwide Parts Sourcing & Logistics")
+    canvas.drawRightString(width - 0.28 * inch, baseline, f"{title} {number} | Page {doc.page}")
     footer_blocks = _footer_blocks()
     footer_blocks.wrapOn(canvas, 7.94 * inch, 0.70 * inch)
-    footer_blocks.drawOn(canvas, 0.28 * inch, 0.47 * inch)
+    footer_blocks.drawOn(canvas, 0.28 * inch, fit_value(0.47, 0.43, 0.39, 0.36) * inch)
     canvas.restoreState()
 
 
@@ -171,7 +188,8 @@ def _document(path: Path, quote, title: str):
     doc = BaseDocTemplate(
         str(path), pagesize=LETTER,
         leftMargin=0.28 * inch, rightMargin=0.28 * inch,
-        topMargin=0.27 * inch, bottomMargin=1.22 * inch,
+        topMargin=fit_value(0.27, 0.22, 0.18, 0.16) * inch,
+        bottomMargin=fit_value(1.22, 1.10, 1.02, 0.96) * inch,
         title=f"{title} {_value(quote, 'quote_number')}",
         author="Pinpoint Sourcing Co.",
     )
@@ -194,7 +212,7 @@ def _header(quote, internal: bool):
     logo_flow = []
     if logo:
         try:
-            logo_flow.append(Image(str(logo), width=2.50 * inch, height=0.68 * inch))
+            logo_flow.append(_logo_image(logo))
         except Exception:
             pass
     if not logo_flow:
@@ -319,8 +337,8 @@ def _info_box(title, rows, hide_empty=False):
         ("LINEBELOW", (0,0), (-1,0), 0.65, LINE),
         ("LEFTPADDING", (0,0), (-1,-1), 10),
         ("RIGHTPADDING", (0,0), (-1,-1), 10),
-        ("TOPPADDING", (0,0), (-1,-1), 6),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+        ("TOPPADDING", (0,0), (-1,-1), fit_value(6, 4, 3, 2)),
+        ("BOTTOMPADDING", (0,0), (-1,-1), fit_value(6, 4, 3, 2)),
     ]))
     return box
 
@@ -453,8 +471,8 @@ def _customer_information(quote):
         ("BACKGROUND", (0, 0), (-1, -1), WHITE),
         ("LEFTPADDING", (0, 0), (-1, -1), 12),
         ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-        ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), fit_value(10, 7, 5, 4)),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), fit_value(10, 7, 5, 4)),
     ]))
 
     return table
@@ -467,8 +485,8 @@ def _section_bar(text):
         ("FONTSIZE", (0,0), (-1,-1), 10),
         ("LEFTPADDING", (0,0), (-1,-1), 12),
         ("RIGHTPADDING", (0,0), (-1,-1), 12),
-        ("TOPPADDING", (0,0), (-1,-1), 7),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 7),
+        ("TOPPADDING", (0,0), (-1,-1), fit_value(7, 5, 4, 3)),
+        ("BOTTOMPADDING", (0,0), (-1,-1), fit_value(7, 5, 4, 3)),
     ])
 
 
@@ -552,9 +570,9 @@ def _customer_items(items):
         ),
         ("LEFTPADDING", (0, 0), (-1, -1), 7),
         ("RIGHTPADDING", (0, 0), (-1, -1), 7),
-        ("TOPPADDING", (0, 0), (-1, -1), 7),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-        ("MINROWHEIGHT", (0, 1), (-1, -1), 28),
+        ("TOPPADDING", (0, 0), (-1, -1), fit_value(7, 5, 4, 3)),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), fit_value(7, 5, 4, 3)),
+        ("MINROWHEIGHT", (0, 1), (-1, -1), fit_value(28, 24, 21, 19)),
     ]))
 
     return table
@@ -589,9 +607,9 @@ def _internal_items(items):
         ("ROWBACKGROUNDS", (0,1), (-1,-1), [WHITE, colors.HexColor("#FAFBFD")]),
         ("LEFTPADDING", (0,0), (-1,-1), 5),
         ("RIGHTPADDING", (0,0), (-1,-1), 5),
-        ("TOPPADDING", (0,0), (-1,-1), 7),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 7),
-        ("MINROWHEIGHT", (0,1), (-1,-1), 29),
+        ("TOPPADDING", (0,0), (-1,-1), fit_value(7, 5, 4, 3)),
+        ("BOTTOMPADDING", (0,0), (-1,-1), fit_value(7, 5, 4, 3)),
+        ("MINROWHEIGHT", (0,1), (-1,-1), fit_value(29, 24, 21, 19)),
     ]))
     return table
 
@@ -619,8 +637,8 @@ def _payment_box():
         ("LINEBEFORE", (1,0), (1,0), 0.5, LINE),
         ("LEFTPADDING", (0,0), (-1,-1), 8),
         ("RIGHTPADDING", (0,0), (-1,-1), 8),
-        ("TOPPADDING", (0,0), (-1,-1), 7),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 7),
+        ("TOPPADDING", (0,0), (-1,-1), fit_value(7, 5, 4, 3)),
+        ("BOTTOMPADDING", (0,0), (-1,-1), fit_value(7, 5, 4, 3)),
     ]))
     box = Table([
         [Paragraph("PAYMENT INFORMATION", ParagraphStyle(
@@ -634,8 +652,8 @@ def _payment_box():
         ("LINEBELOW", (0,0), (-1,0), 0.65, LINE),
         ("LEFTPADDING", (0,0), (-1,-1), 10),
         ("RIGHTPADDING", (0,0), (-1,-1), 10),
-        ("TOPPADDING", (0,0), (-1,-1), 6),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+        ("TOPPADDING", (0,0), (-1,-1), fit_value(6, 4, 3, 2)),
+        ("BOTTOMPADDING", (0,0), (-1,-1), fit_value(6, 4, 3, 2)),
     ]))
     return box
 
@@ -735,8 +753,8 @@ def _totals_box(quote, internal: bool):
         ("LINEBELOW", (0, 0), (-1, final_row - 1), 0.35, LINE),
         ("LEFTPADDING", (0, 0), (-1, -1), 9),
         ("RIGHTPADDING", (0, 0), (-1, -1), 9),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), fit_value(6, 4, 3, 2)),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), fit_value(6, 4, 3, 2)),
         ("BACKGROUND", (0, final_row), (-1, final_row), NAVY),
         ("TEXTCOLOR", (0, final_row), (-1, final_row), WHITE),
         (
@@ -746,8 +764,8 @@ def _totals_box(quote, internal: bool):
             "Helvetica-Bold",
         ),
         ("FONTSIZE", (0, final_row), (-1, final_row), 11),
-        ("TOPPADDING", (0, final_row), (-1, final_row), 7),
-        ("BOTTOMPADDING", (0, final_row), (-1, final_row), 7),
+        ("TOPPADDING", (0, final_row), (-1, final_row), fit_value(7, 5, 4, 3)),
+        ("BOTTOMPADDING", (0, final_row), (-1, final_row), fit_value(7, 5, 4, 3)),
     ]))
 
     return table
@@ -769,7 +787,7 @@ def _footer_blocks():
     s = _styles()
     left = [
         Paragraph("PARTS IDENTIFICATION", s["footer_heading"]),
-        Spacer(1, 4),
+        Spacer(1, fit_value(4, 3, 2, 1)),
         Paragraph(
             "Parts are supplied based on the vehicle or equipment information provided "
             "by the customer. Please verify compatibility before installation.",
@@ -783,7 +801,7 @@ def _footer_blocks():
     ]
     right = [
         Paragraph("WARRANTY INFORMATION", s["footer_heading"]),
-        Spacer(1, 4),
+        Spacer(1, fit_value(4, 3, 2, 1)),
         Paragraph(
             "Manufacturer warranty applies where provided by the original supplier.",
             s["footer"],
@@ -846,7 +864,7 @@ def _quote_notice(internal):
         ),
     )
 
-def build_quote_pdf(quote, items: Iterable, path: Path, internal: bool):
+def _build_quote_pdf_once(quote, items: Iterable, path: Path, internal: bool):
     items = list(items)
     path.parent.mkdir(parents=True, exist_ok=True)
     title = "INTERNAL QUOTE" if internal else "QUOTE"
@@ -854,29 +872,42 @@ def build_quote_pdf(quote, items: Iterable, path: Path, internal: bool):
 
     story = [
         _header(quote, internal),
-        Spacer(1, 9),
+        Spacer(1, fit_value(9, 6, 4, 3)),
         Table([[""]], colWidths=[7.44*inch], style=[
             ("LINEBELOW", (0,0), (-1,-1), 1.1, NAVY),
             ("TOPPADDING", (0,0), (-1,-1), 0),
             ("BOTTOMPADDING", (0,0), (-1,-1), 0),
         ]),
-        Spacer(1, 10),
+        Spacer(1, fit_value(10, 6, 4, 3)),
         _information(quote, internal),
-        Spacer(1, 10),
+        Spacer(1, fit_value(10, 6, 4, 3)),
         _section_bar("QUOTED ITEMS" if not internal else "INTERNAL COST & PROFIT DETAIL"),
     ]
     groups = _group_items_by_asset(items)
     for key, group_items in groups:
         if len(groups) > 1:
-            story.extend([Spacer(1, 5), _asset_heading(key), Spacer(1, 3)])
+            story.extend([
+                Spacer(1, fit_value(5, 3, 2, 1)),
+                _asset_heading(key),
+                Spacer(1, fit_value(3, 2, 1, 1)),
+            ])
         story.append(_internal_items(group_items) if internal else _customer_items(group_items))
     story.extend([
-        Spacer(1, 10),
+        Spacer(1, fit_value(10, 6, 4, 3)),
         _quote_notice(internal),
-        Spacer(1, 10),
+        Spacer(1, fit_value(10, 6, 4, 3)),
         _bottom_blocks(quote, internal),
     ])
     doc.build(story)
+
+
+def build_quote_pdf(quote, items: Iterable, path: Path, internal: bool):
+    items = list(items)
+    path = Path(path)
+    return build_with_one_page_preference(
+        path,
+        lambda: _build_quote_pdf_once(quote, items, path, internal),
+    )
 
 
 def generate_quote_pdfs(quote, items: Iterable) -> dict[str, str]:

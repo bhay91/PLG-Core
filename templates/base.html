@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b63ce">
   <title>{% block title %}Pinpoint Sourcing Co.{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', path='/app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='/app.css') }}?v=invoice-action-grid-v2">
   <link rel="stylesheet" href="/static/app_v2.css?v=alpha8-3-revenue-v1">
 </head>
 <body>
@@ -15,16 +15,11 @@
     </a>
 
     <nav class="sidebar-nav" aria-label="Primary navigation">
-      <a class="{% if active_page == 'dashboard' %}active{% endif %}" href="/">
-        <span class="nav-icon" aria-hidden="true">⌂</span><span>Dashboard</span>
-      </a>
-
-      <div class="nav-section-label">Daily Work</div>
-      <a class="{% if active_page == 'follow_up' %}active{% endif %}" href="/follow-up">
-        <span class="nav-icon" aria-hidden="true">◎</span><span>Follow-Up Center</span>
+      <a class="{% if active_page == 'work_queue' %}active{% endif %}" href="/">
+        <span class="nav-icon" aria-hidden="true">⌂</span><span>Work Queue</span>
       </a>
       <a class="{% if active_page == 'requests' %}active{% endif %}" href="/requests">
-        <span class="nav-icon" aria-hidden="true">✉</span><span>Customer Requests</span>
+        <span class="nav-icon" aria-hidden="true">✉</span><span>Inbox</span>
       </a>
       <a class="{% if active_page == 'jobs' %}active{% endif %}" href="/jobs">
         <span class="nav-icon" aria-hidden="true">▣</span><span>Jobs</span>
@@ -32,38 +27,41 @@
       <a class="{% if active_page == 'quotes' %}active{% endif %}" href="/quotes">
         <span class="nav-icon" aria-hidden="true">＄</span><span>Quotes</span>
       </a>
+      <a class="{% if active_page == 'purchasing' %}active{% endif %}" href="/purchasing">
+        <span class="nav-icon" aria-hidden="true">🛒</span><span>Orders</span>
+      </a>
       <a class="{% if active_page == 'invoices' %}active{% endif %}" href="/invoices">
         <span class="nav-icon" aria-hidden="true">▤</span><span>Invoices</span>
       </a>
-      <a class="{% if active_page == 'purchasing' %}active{% endif %}" href="/purchasing">
-        <span class="nav-icon" aria-hidden="true">🛒</span><span>Purchasing</span>
-      </a>
 
-      <div class="nav-section-label">Records &amp; Sources</div>
+      <div class="nav-section-label">Directory</div>
       <a class="{% if active_page == 'customers' %}active{% endif %}" href="/customers">
         <span class="nav-icon" aria-hidden="true">♙</span><span>Customers</span>
       </a>
       <a class="{% if active_page == 'machines' %}active{% endif %}" href="/machines">
-        <span class="nav-icon" aria-hidden="true">▱</span><span>Machine Registry</span>
+        <span class="nav-icon" aria-hidden="true">▱</span><span>Machines</span>
+      </a>
+      <a class="{% if active_page == 'connectors' %}active{% endif %}" href="/connectors">
+        <span class="nav-icon" aria-hidden="true">⌁</span><span>Sources</span>
       </a>
       <a class="{% if active_page == 'suppliers' %}active{% endif %}" href="/suppliers">
         <span class="nav-icon" aria-hidden="true">▰</span><span>Suppliers</span>
       </a>
 
-      <div class="nav-section-label">System</div>
+      <div class="nav-section-label">Administration</div>
+      <a class="{% if active_page == 'admin' %}active{% endif %}" href="/admin">
+        <span class="nav-icon" aria-hidden="true">⚙</span><span>Administration</span>
+      </a>
       <a class="{% if active_page == 'accounting' %}active{% endif %}" href="/accounting">
         <span class="nav-icon" aria-hidden="true">▥</span><span>Accounting &amp; Audit</span>
       </a>
       <a class="{% if active_page == 'documents' %}active{% endif %}" href="/documents">
         <span class="nav-icon" aria-hidden="true">▤</span><span>Documents</span>
       </a>
-      <a class="{% if active_page == 'admin' %}active{% endif %}" href="/admin">
-        <span class="nav-icon" aria-hidden="true">⚙</span><span>Administration</span>
-      </a>
     </nav>
 
     <div class="sidebar-footer">
-      <a class="button full-width" href="/requests/smart-intake">＋ Smart Intake</a>
+      <a class="button full-width" href="/requests">Open Inbox</a>
       <div class="support-card">
         <strong>Pinpoint Sourcing Co.</strong>
         <span>PPS Core · 1.0.0-alpha.19</span>
@@ -115,5 +113,15 @@
       {% block content %}{% endblock %}
     </section>
   </main>
+  <dialog id="archive-delete-dialog" class="archive-delete-dialog" aria-labelledby="archive-delete-title">
+    <form method="dialog">
+      <h2 id="archive-delete-title">Delete this item?</h2>
+      <p>This will archive it and remove it from active PPS views.<br>Historical records will be preserved.</p>
+      <div class="form-actions"><button class="button ghost" value="cancel">Cancel</button><button class="button danger" id="archive-delete-confirm" value="default">Delete</button></div>
+    </form>
+  </dialog>
+  <script>
+  (()=>{const dialog=document.getElementById('archive-delete-dialog');const confirmButton=document.getElementById('archive-delete-confirm');let pending=null;if(!dialog)return;document.addEventListener('submit',(event)=>{const form=event.target.closest('form[data-archive-delete],form[action$="/archive"],form[action$="/deactivate"]');if(!form||form.dataset.archiveConfirmed==='1')return;event.preventDefault();event.stopImmediatePropagation();pending=form;dialog.showModal();},true);confirmButton?.addEventListener('click',(event)=>{event.preventDefault();if(!pending)return;pending.dataset.archiveConfirmed='1';dialog.close();pending.requestSubmit();pending=null;});dialog.addEventListener('close',()=>{if(dialog.returnValue==='cancel')pending=null;});})();
+  </script>
 </body>
 </html>

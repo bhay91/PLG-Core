@@ -190,12 +190,13 @@
             class="workspace-action-form"
             method="post"
             action="/customers/{{ customer.id }}/deactivate"
+            data-archive-delete
           >
             <button
               class="workspace-btn workspace-btn-secondary"
               type="submit"
             >
-              Deactivate
+              Delete
             </button>
           </form>
           {% else %}

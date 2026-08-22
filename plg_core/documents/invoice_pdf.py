@@ -12,6 +12,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
@@ -24,6 +25,11 @@ from reportlab.platypus import (
     Spacer,
     Table,
     TableStyle,
+)
+from plg_core.documents.pdf_fit import (
+    build_with_one_page_preference,
+    fit_value,
+    font_scale,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -120,6 +126,12 @@ def _logo() -> Path | None:
     return None
 
 
+def _logo_image(path: Path) -> Image:
+    width, height = ImageReader(str(path)).getSize()
+    scale = min((2.50 * inch) / width, (0.68 * inch) / height)
+    return Image(str(path), width=width * scale, height=height * scale)
+
+
 def _date_text(raw) -> str:
     value = str(raw or "").strip()
     if not value:
@@ -137,50 +149,53 @@ def _valid_until(raw_date) -> str:
 
 def _styles():
     base = getSampleStyleSheet()
+    scale = font_scale()
+    sized = lambda value: value * scale
     return {
         "brand": ParagraphStyle(
             "PLGBrand", parent=base["Heading1"], fontName="Helvetica-Bold",
-            fontSize=20, leading=22, textColor=NAVY, spaceAfter=2,
+            fontSize=sized(20), leading=sized(22), textColor=NAVY,
+            spaceAfter=fit_value(2, 1, 1, 0),
         ),
         "tagline": ParagraphStyle(
             "PLGTagline", parent=base["Normal"], fontName="Helvetica",
-            fontSize=9.2, leading=11, textColor=INK,
+            fontSize=sized(9.2), leading=sized(11), textColor=INK,
         ),
         "contact": ParagraphStyle(
             "PLGContact", parent=base["Normal"], fontName="Helvetica",
-            fontSize=7.7, leading=10, textColor=MUTED,
+            fontSize=sized(7.7), leading=sized(10), textColor=MUTED,
         ),
         "doc_title": ParagraphStyle(
             "PLGDocTitle", parent=base["Heading1"], fontName="Helvetica-Bold",
-            fontSize=26, leading=28, alignment=TA_RIGHT, rightIndent=4, textColor=NAVY,
+            fontSize=sized(26), leading=sized(28), alignment=TA_RIGHT, rightIndent=4, textColor=NAVY,
         ),
         "label": ParagraphStyle(
             "PLGLabel", parent=base["Normal"], fontName="Helvetica-Bold",
-            fontSize=8.2, leading=10, textColor=INK,
+            fontSize=sized(8.2), leading=sized(10), textColor=INK,
         ),
         "value": ParagraphStyle(
             "PLGValue", parent=base["Normal"], fontName="Helvetica",
-            fontSize=8.2, leading=10, textColor=INK,
+            fontSize=sized(8.2), leading=sized(10), textColor=INK,
         ),
         "small": ParagraphStyle(
             "PLGSmall", parent=base["Normal"], fontName="Helvetica",
-            fontSize=8.0, leading=10, textColor=MUTED,
+            fontSize=sized(8.0), leading=sized(10), textColor=MUTED,
         ),
         "footer_heading": ParagraphStyle(
             "PLGFooterHeading", parent=base["Normal"], fontName="Helvetica-Bold",
-            fontSize=7.6, leading=9, alignment=TA_CENTER, textColor=NAVY,
+            fontSize=sized(7.6), leading=sized(9), alignment=TA_CENTER, textColor=NAVY,
         ),
         "footer": ParagraphStyle(
             "PLGFooter", parent=base["Normal"], fontName="Helvetica",
-            fontSize=6.6, leading=8.2, alignment=TA_CENTER, textColor=MUTED,
+            fontSize=sized(6.6), leading=sized(8.2), alignment=TA_CENTER, textColor=MUTED,
         ),
         "center_brand": ParagraphStyle(
             "PLGCenterBrand", parent=base["Normal"], fontName="Helvetica-Bold",
-            fontSize=9, leading=11, alignment=TA_CENTER, textColor=NAVY,
+            fontSize=sized(9), leading=sized(11), alignment=TA_CENTER, textColor=NAVY,
         ),
         "center_tag": ParagraphStyle(
             "PLGCenterTag", parent=base["Normal"], fontName="Helvetica-Oblique",
-            fontSize=6.8, leading=8, alignment=TA_CENTER, textColor=MUTED,
+            fontSize=sized(6.8), leading=sized(8), alignment=TA_CENTER, textColor=MUTED,
         ),
     }
 
@@ -192,26 +207,29 @@ def _page_footer(canvas, doc, title, number):
     canvas.setLineWidth(0.8)
     canvas.line(
         PDF_LEFT_MARGIN,
-        0.39 * inch,
+        fit_value(0.39, 0.35, 0.32, 0.30) * inch,
         width - PDF_RIGHT_MARGIN,
-        0.39 * inch,
+        fit_value(0.39, 0.35, 0.32, 0.30) * inch,
     )
     canvas.setFont("Helvetica", 6.5)
     canvas.setFillColor(MUTED)
     canvas.drawString(
         PDF_LEFT_MARGIN,
-        0.21 * inch,
+        fit_value(0.21, 0.18, 0.16, 0.14) * inch,
         "Pinpoint Sourcing Co. | Worldwide Parts Sourcing & Logistics",
     )
     canvas.drawRightString(
         width - PDF_RIGHT_MARGIN,
-        0.21 * inch,
+        fit_value(0.21, 0.18, 0.16, 0.14) * inch,
         f"{title} {number} | Page {doc.page}",
     )
 
     footer_blocks = _footer_blocks()
     footer_blocks.wrapOn(canvas, PDF_CONTENT_WIDTH, 0.70 * inch)
-    footer_blocks.drawOn(canvas, PDF_LEFT_MARGIN, 0.47 * inch)
+    footer_blocks.drawOn(
+        canvas, PDF_LEFT_MARGIN,
+        fit_value(0.47, 0.43, 0.39, 0.36) * inch,
+    )
 
     canvas.restoreState()
 
@@ -222,8 +240,8 @@ def _document(path: Path, invoice, title: str):
         pagesize=PDF_PAGE_SIZE,
         leftMargin=PDF_LEFT_MARGIN,
         rightMargin=PDF_RIGHT_MARGIN,
-        topMargin=PDF_TOP_MARGIN,
-        bottomMargin=PDF_BOTTOM_MARGIN,
+        topMargin=fit_value(0.27, 0.22, 0.18, 0.16) * inch,
+        bottomMargin=fit_value(1.22, 1.10, 1.02, 0.96) * inch,
         title=f"{title} {_value(invoice, 'invoice_number')}",
         author="Pinpoint Sourcing Co.",
     )
@@ -289,7 +307,7 @@ def _header(invoice, internal: bool):
     logo_flow = []
     if logo:
         try:
-            logo_flow.append(Image(str(logo), width=2.50 * inch, height=0.68 * inch))
+            logo_flow.append(_logo_image(logo))
         except Exception:
             pass
     if not logo_flow:
@@ -431,8 +449,8 @@ def _info_box(title, rows, hide_empty=False):
         ("LINEBELOW", (0,0), (-1,0), 0.65, LINE),
         ("LEFTPADDING", (0,0), (-1,-1), 10),
         ("RIGHTPADDING", (0,0), (-1,-1), 10),
-        ("TOPPADDING", (0,0), (-1,-1), 4),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+        ("TOPPADDING", (0,0), (-1,-1), fit_value(4, 3, 2, 2)),
+        ("BOTTOMPADDING", (0,0), (-1,-1), fit_value(4, 3, 2, 2)),
     ]))
     return box
 
@@ -472,8 +490,8 @@ def _section_bar(text):
         ("FONTSIZE", (0,0), (-1,-1), 10),
         ("LEFTPADDING", (0,0), (-1,-1), 12),
         ("RIGHTPADDING", (0,0), (-1,-1), 12),
-        ("TOPPADDING", (0,0), (-1,-1), 7),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 7),
+        ("TOPPADDING", (0,0), (-1,-1), fit_value(7, 5, 4, 3)),
+        ("BOTTOMPADDING", (0,0), (-1,-1), fit_value(7, 5, 4, 3)),
     ])
 
 
@@ -546,8 +564,8 @@ def _customer_items(items):
         ),
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), fit_value(6, 4.5, 3.5, 3)),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), fit_value(6, 4.5, 3.5, 3)),
     ]))
 
     return table
@@ -619,8 +637,8 @@ def _internal_items(items):
         ),
         ("LEFTPADDING", (0, 0), (-1, -1), 4),
         ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), fit_value(6, 4.5, 3.5, 3)),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), fit_value(6, 4.5, 3.5, 3)),
     ]))
 
     return table
@@ -651,8 +669,8 @@ def _payment_box():
         ("LINEBEFORE", (1,0), (1,0), 0.5, LINE),
         ("LEFTPADDING", (0,0), (-1,-1), 8),
         ("RIGHTPADDING", (0,0), (-1,-1), 8),
-        ("TOPPADDING", (0,0), (-1,-1), 7),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 7),
+        ("TOPPADDING", (0,0), (-1,-1), fit_value(7, 5, 4, 3)),
+        ("BOTTOMPADDING", (0,0), (-1,-1), fit_value(7, 5, 4, 3)),
     ]))
     box = Table([
         [Paragraph("PAYMENT INFORMATION", ParagraphStyle(
@@ -666,8 +684,8 @@ def _payment_box():
         ("LINEBELOW", (0,0), (-1,0), 0.65, LINE),
         ("LEFTPADDING", (0,0), (-1,-1), 10),
         ("RIGHTPADDING", (0,0), (-1,-1), 10),
-        ("TOPPADDING", (0,0), (-1,-1), 6),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+        ("TOPPADDING", (0,0), (-1,-1), fit_value(6, 4, 3, 2)),
+        ("BOTTOMPADDING", (0,0), (-1,-1), fit_value(6, 4, 3, 2)),
     ]))
     return box
 
@@ -692,42 +710,24 @@ def _totals_box(invoice, internal: bool):
     )
 
     if internal:
-        supplier_parts = (
-            float(_value(invoice, "supplier_total", 0) or 0)
-            - shipping
-        )
-
+        actual_state = str(_value(invoice, "actual_cost_state", "NOT_CONFIRMED"))
+        actual_confirmed = actual_state != "NOT_CONFIRMED"
         rows = [
-            ["Supplier Parts", money(supplier_parts)],
-            ["Shipping", money(shipping)],
-            [
-                "Supplier Total",
-                money(_value(invoice, "supplier_total", 0)),
-            ],
+            ["Revenue", money(_value(invoice, "customer_total", 0))],
+            ["Estimated Cost", money(_value(invoice, "booked_supplier_cost", _value(invoice, "supplier_total", 0)))],
+            ["Supplier Order Cost", money(_value(invoice, "placed_supplier_cost", 0))],
+            ["Final Actual Cost", money(_value(invoice, "actual_supplier_cost", 0)) if actual_confirmed else "NOT CONFIRMED"],
+            ["Expected Profit", money(_value(invoice, "expected_profit", _value(invoice, "profit_total", 0)))],
+            ["Supplier Order Profit", money(_value(invoice, "placed_cost_profit", 0))],
+            ["Final Profit", money(_value(invoice, "actual_profit", 0)) if actual_confirmed else "NOT CONFIRMED"],
+            ["Cost Difference", money(_value(invoice, "cost_variance", 0)) if actual_confirmed else "—"],
+            ["Profit Difference", money(_value(invoice, "profit_variance", 0)) if actual_confirmed else "—"],
+            ["Actual Cost Confirmation State", actual_state.replace("_", " ")],
         ]
-
         if service_charge > 0:
-            rows.append([
-                "Service Charge",
-                money(service_charge),
-            ])
-
+            rows.append(["Service Charge", money(service_charge)])
         if sourcing_fee > 0:
-            rows.append([
-                "Sourcing Fee",
-                money(sourcing_fee),
-            ])
-
-        rows.extend([
-            [
-                "Customer Total",
-                money(_value(invoice, "customer_total", 0)),
-            ],
-            [
-                "NET PROFIT",
-                money(_value(invoice, "profit_total", 0)),
-            ],
-        ])
+            rows.append(["Sourcing Fee", money(sourcing_fee)])
 
         if status == "PAID":
             rows.append(["PAYMENT STATUS", "PAID IN FULL"])
@@ -766,6 +766,7 @@ def _totals_box(invoice, internal: bool):
             ])
 
         if status == "PAID":
+            rows.append(["BALANCE DUE", money(balance_due)])
             rows.append(["PAID IN FULL", ""])
         else:
             rows.append(["BALANCE DUE", money(balance_due)])
@@ -785,8 +786,8 @@ def _totals_box(invoice, internal: bool):
         ("ALIGN", (1, 0), (1, -1), "RIGHT"),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
         ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), fit_value(6, 4, 3, 2)),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), fit_value(6, 4, 3, 2)),
         ("LINEBELOW", (0, 0), (-1, final_row - 1), 0.35, LINE),
         (
             "BACKGROUND",
@@ -802,8 +803,8 @@ def _totals_box(invoice, internal: bool):
             "Helvetica-Bold",
         ),
         ("FONTSIZE", (0, final_row), (-1, final_row), 11),
-        ("TOPPADDING", (0, final_row), (-1, final_row), 8),
-        ("BOTTOMPADDING", (0, final_row), (-1, final_row), 8),
+        ("TOPPADDING", (0, final_row), (-1, final_row), fit_value(8, 6, 5, 4)),
+        ("BOTTOMPADDING", (0, final_row), (-1, final_row), fit_value(8, 6, 5, 4)),
     ]))
 
     if paid:
@@ -848,7 +849,7 @@ def _footer_blocks():
     s = _styles()
     left = [
         Paragraph("PARTS IDENTIFICATION", s["footer_heading"]),
-        Spacer(1, 4),
+        Spacer(1, fit_value(4, 3, 2, 1)),
         Paragraph(
             "Parts are supplied based on the vehicle or equipment information provided "
             "by the customer. Please verify compatibility before installation.",
@@ -862,7 +863,7 @@ def _footer_blocks():
     ]
     right = [
         Paragraph("WARRANTY INFORMATION", s["footer_heading"]),
-        Spacer(1, 4),
+        Spacer(1, fit_value(4, 3, 2, 1)),
         Paragraph(
             "Manufacturer warranty applies where provided by the original supplier.",
             s["footer"],
@@ -905,12 +906,12 @@ def _invoice_notice(invoice, internal):
         ("BOX", (0,0), (-1,-1), 0.5, LINE),
         ("LEFTPADDING", (0,0), (-1,-1), 8),
         ("RIGHTPADDING", (0,0), (-1,-1), 8),
-        ("TOPPADDING", (0,0), (-1,-1), 5),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+        ("TOPPADDING", (0,0), (-1,-1), fit_value(5, 4, 3, 2)),
+        ("BOTTOMPADDING", (0,0), (-1,-1), fit_value(5, 4, 3, 2)),
     ])
 
 
-def build_invoice_pdf(
+def _build_invoice_pdf_once(
     invoice,
     items: Iterable,
     path: Path,
@@ -924,7 +925,7 @@ def build_invoice_pdf(
 
     story = [
         _header(invoice, internal),
-        Spacer(1, 5),
+        Spacer(1, fit_value(5, 3, 2, 1)),
 
         Table(
             [[""]],
@@ -936,9 +937,9 @@ def build_invoice_pdf(
             ],
         ),
 
-        Spacer(1, 5),
+        Spacer(1, fit_value(5, 3, 2, 1)),
         _information(invoice, internal),
-        Spacer(1, 5),
+        Spacer(1, fit_value(5, 3, 2, 1)),
 
         _section_bar(
             "PARTS & SERVICES"
@@ -950,14 +951,28 @@ def build_invoice_pdf(
         if internal
         else _customer_items(items),
 
-        Spacer(1, 5),
+        Spacer(1, fit_value(5, 3, 2, 1)),
         _invoice_notice(invoice, internal),
-        Spacer(1, 5),
+        Spacer(1, fit_value(5, 3, 2, 1)),
         _bottom_blocks(invoice, internal),
-        Spacer(1, 2),
+        Spacer(1, fit_value(2, 1, 1, 0)),
         ]
 
     doc.build(story)
+
+
+def build_invoice_pdf(
+    invoice,
+    items: Iterable,
+    path: Path,
+    internal: bool,
+):
+    items = list(items)
+    path = Path(path)
+    return build_with_one_page_preference(
+        path,
+        lambda: _build_invoice_pdf_once(invoice, items, path, internal),
+    )
 
 def generate_paid_invoice_pdfs(
     invoice,
@@ -1033,8 +1048,14 @@ def generate_custom_invoice_pdf(
     invoice,
     custom_invoice,
     custom_items: Iterable,
+    output_path: Path | None = None,
 ) -> str:
     """Generate a saved Custom Invoice using the locked PPS invoice layout."""
+    from plg_core.documents.custom_invoice import custom_invoice_presentation
+
+    presentation = custom_invoice_presentation(
+        invoice, custom_invoice, custom_items
+    )
 
     custom_invoice_data = dict(invoice)
     custom_invoice_data["invoice_number"] = _value(
@@ -1043,19 +1064,24 @@ def generate_custom_invoice_pdf(
         _value(invoice, "invoice_number", ""),
     )
     custom_invoice_data["parts_subtotal"] = float(
-        _value(custom_invoice, "custom_total", 0) or 0
+        presentation["subtotal"]
     )
-    custom_invoice_data["shipping_total"] = 0.0
+    custom_invoice_data["shipping_total"] = presentation["freight"]
+    # Custom customer invoices intentionally roll these internal charges into
+    # the final invoice amount instead of itemizing them.  Mutate only the
+    # presentation copy so the source invoice retains its accounting data.
+    custom_invoice_data["service_charge"] = 0.0
+    custom_invoice_data["sourcing_fee"] = 0.0
     custom_invoice_data["customer_total"] = float(
-        _value(custom_invoice, "custom_total", 0) or 0
+        presentation["invoice_total"]
     )
     custom_invoice_data["credit_applied"] = 0.0
-    custom_invoice_data["balance_due"] = 0.0
+    custom_invoice_data["balance_due"] = presentation["balance_due"]
     custom_invoice_data["status"] = "PAID"
 
     items = []
 
-    for item in custom_items:
+    for item in presentation["visible_items"]:
         row = dict(item)
         row["customer_unit_price"] = float(
             _value(item, "custom_unit_price", 0) or 0
@@ -1065,10 +1091,7 @@ def generate_custom_invoice_pdf(
         )
         items.append(row)
 
-    path = custom_invoice_path(
-        invoice,
-        custom_invoice,
-    )
+    path = output_path or custom_invoice_path(invoice, custom_invoice)
 
     build_invoice_pdf(
         custom_invoice_data,

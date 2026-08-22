@@ -69,11 +69,11 @@ class MachineFirstResearchBatch3CTests(unittest.TestCase):
     def job(self):
         with closing(self.connection()) as c:
             customer_id = c.execute(
-                "INSERT INTO customers(customer_number,name,active) VALUES ('3C-C','Norman Frater',1)"
+                "INSERT INTO customers(customer_number,name,active) VALUES ('3C-C','Synthetic Research Customer',1)"
             ).lastrowid
             job_id = c.execute(
                 "INSERT INTO jobs(job_number,created_date,customer_id,customer,status) "
-                "VALUES ('PPS-J-3C','2026-08-11',?,'Norman Frater','REQUESTED')",
+                "VALUES ('PPS-J-3C','2026-08-11',?,'Synthetic Research Customer','REQUESTED')",
                 (customer_id,),
             ).lastrowid
             c.commit()
@@ -201,7 +201,9 @@ class MachineFirstResearchBatch3CTests(unittest.TestCase):
                                      expected_revision_id=revision["id"], expected_version=revision["lock_version"])
         revision = self.revision(job_id)
         with closing(self.connection()) as c:
-            connector = c.execute("SELECT id FROM connector_profiles WHERE is_enabled=1 ORDER BY id LIMIT 1").fetchone()
+            connector = c.execute(
+                "SELECT id FROM connector_profiles WHERE connector_key='general_research'"
+            ).fetchone()
         session = start_asset_research(job_id, deere["id"], connector["id"], requested_need_id=need["id"],
                                        expected_revision_id=revision["id"], expected_version=revision["lock_version"])
         self.assertEqual(session["requested_need_id"], need["id"])
@@ -212,15 +214,17 @@ class MachineFirstResearchBatch3CTests(unittest.TestCase):
         self.assertEqual((item["job_asset_id"], item["primary_requested_need_id"], item["research_state"], item["selected"]),
                          (deere["id"], need["id"], "RESEARCH_RESULT", 0))
 
-    def test_brand_registry_uses_fallback_without_approved_local_asset(self):
+    def test_brand_registry_uses_real_local_image_and_unknown_text_fallback(self):
         job_id = self.job(); self.assets(job_id)
         with closing(self.connection()) as c:
             deere = manufacturer_brand(c, "Deere")
             unknown = manufacturer_brand(c, "Acme Equipment")
         self.assertEqual(deere["canonical_name"], "John Deere")
-        self.assertFalse(deere["logo_url"])
+        self.assertEqual(deere["logo_url"], "/static/manufacturer-logos/john-deere.png")
+        self.assertTrue(deere["has_logo"])
         self.assertEqual(unknown["key"], "generic")
-        self.assertEqual(unknown["initials"], "AE")
+        self.assertFalse(unknown["has_logo"])
+        self.assertNotIn("initials", unknown)
 
     @patch("plg_core.commercial.service._write_documents")
     def test_need_and_shipping_lineage_survive_quote_revision_clone(self, _write_documents):

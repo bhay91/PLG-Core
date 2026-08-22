@@ -1,76 +1,30 @@
 {% extends "base.html" %}
-{% block title %}Purchasing · Pinpoint Sourcing Co.{% endblock %}
-
+{% block title %}Supplier Orders · Pinpoint Sourcing Co.{% endblock %}
 {% block content %}
-<section class="workspace-heading">
-  <div>
-    <p class="eyebrow">PURCHASING</p>
-    <h1>Supplier Purchases</h1>
-    <p>
-      Purchase records created from paid customer invoices.
-    </p>
-  </div>
-</section>
-
-{% if invoice_id %}
+<style>
+.purchase-filters{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;align-items:end}.purchase-filters label span{display:block;font-size:10px;font-weight:850;text-transform:uppercase;color:var(--muted);margin-bottom:5px}.purchase-filters input,.purchase-filters select{width:100%}.purchase-list-wrap{overflow-x:auto}.purchase-list{min-width:1320px}.purchase-list th{font-size:9px}.purchase-list td{vertical-align:top}.purchase-money{white-space:nowrap}.purchase-next{min-width:155px}.purchase-actions{display:flex;flex-wrap:wrap;gap:5px}.purchase-cards{display:none;gap:12px}.purchase-card{border:1px solid var(--line);border-radius:12px;padding:14px;min-width:0}.purchase-card-head{display:flex;justify-content:space-between;gap:12px}.purchase-card-head strong{overflow-wrap:anywhere}.purchase-card-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}.purchase-card-grid div{padding:8px;background:var(--surface-soft);border-radius:8px;min-width:0}.purchase-card-grid span{display:block;font-size:9px;color:var(--muted);font-weight:800;text-transform:uppercase}.purchase-card-grid strong{display:block;margin-top:3px;overflow-wrap:anywhere}.purchase-card-next{padding:10px;border-left:3px solid var(--accent);background:var(--surface-soft);margin-bottom:10px}.purchase-card-next span{display:block;font-size:9px;font-weight:850;color:var(--muted);text-transform:uppercase}.purchase-card-next strong{display:block;margin-top:3px}.variance-up{color:var(--danger)!important}.variance-down{color:var(--success)!important}
+@media(max-width:1180px){.purchase-list-wrap{display:none}.purchase-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.purchase-filters{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:680px){.purchase-cards{grid-template-columns:1fr}.purchase-filters{grid-template-columns:1fr 1fr}.purchase-filter-submit{grid-column:1/-1}.purchase-filter-submit .button{width:100%}}
+@media(max-width:520px){.purchase-filters{grid-template-columns:1fr}.purchase-card-grid{grid-template-columns:1fr 1fr}.purchase-card .purchase-actions .button{flex:1}.purchase-card{max-width:100%}}
+.purchase-list{width:100%;min-width:0;table-layout:fixed}.purchase-list th,.purchase-list td{padding-left:5px;padding-right:5px;overflow-wrap:anywhere}.purchase-list td{font-size:10px}.purchase-next{min-width:0}.purchase-list .workspace-btn,.purchase-list .button{padding:6px 7px;font-size:9px}
+</style>
+<section class="workspace-heading"><div><p class="eyebrow">PURCHASING COMMAND CENTER</p><h1>Supplier Orders</h1><p>Authoritative supplier state, cost progression, and physical movement.</p></div></section>
+{% if invoice_id %}<section class="panel supplier-order-filter-context"><strong>Filtered to invoice {{ filtered_invoice_number or "Unavailable" }}</strong><a class="button ghost" href="/purchasing">Show All Supplier Orders</a></section>{% endif %}
+<section class="panel"><form class="purchase-filters" method="get" action="/purchasing">
+  {% if invoice_id %}<input type="hidden" name="invoice_id" value="{{ invoice_id }}">{% endif %}
+  <label><span>Supplier</span><select name="supplier"><option value="">All suppliers</option>{% for value in filter_options.suppliers %}<option value="{{ value }}"{% if filters.supplier == value %} selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+  <label><span>Status</span><select name="status"><option value="">All statuses</option>{% for value in filter_options.statuses %}<option value="{{ value }}"{% if filters.status == value %} selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+  <label><span>Customer</span><input name="customer" value="{{ filters.customer }}" placeholder="Customer name"></label>
+  <label><span>Job</span><input name="job" value="{{ filters.job }}" placeholder="PPS-J-0000"></label>
+  <div class="purchase-filter-submit"><button class="button" type="submit">Apply Filters</button></div>
+</form></section>
 <section class="panel">
-  <strong>Filtered to invoice #{{ invoice_id }}</strong>
-  <a class="button ghost" href="/purchasing">
-    Show All Supplier Purchases
-  </a>
-</section>
-{% endif %}
-
-<section class="panel">
-  {% if orders %}
-  <div class="invoice-center-table-wrap">
-    <table class="invoice-center-table">
-      <thead>
-        <tr>
-          <th>Purchase #</th>
-          <th>Supplier</th>
-          <th>Job</th>
-          <th>Invoice</th>
-          <th>Items</th>
-          <th>Total</th>
-          <th>Status</th>
-          <th></th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {% for order in orders %}
-        <tr>
-          <td>
-            <strong>{{ order.po_number or "Draft Purchase" }}</strong>
-          </td>
-          <td>{{ order.supplier_name }}</td>
-          <td>{{ order.job_number }}</td>
-          <td>{{ order.invoice_number or "—" }}</td>
-          <td>{{ order.item_count }}</td>
-          <td>${{ "%.2f"|format(order.order_total or 0) }}</td>
-          <td>
-            <span class="workspace-status-badge workspace-status-{{ order.status|lower }}">
-              {{ order.status }}
-            </span>
-          </td>
-          <td>
-            <a
-              class="workspace-btn"
-              href="/purchasing/orders/{{ order.id }}"
-            >
-              Open
-            </a>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <div class="empty-state">
-    No supplier purchases yet.
-  </div>
-  {% endif %}
+{% if orders %}
+<div class="purchase-list-wrap"><table class="invoice-center-table purchase-list"><thead><tr><th>Supplier</th><th>PO</th><th>Job</th><th>Customer</th><th>Status</th><th>Booked</th><th>Placed</th><th>Actual</th><th>Variance</th><th>Ordered</th><th>Received</th><th>Remaining</th><th>Next Action</th><th>Open</th></tr></thead><tbody>
+{% for order in orders %}{% set i=order.identity %}{% set c=order.costs %}{% set m=order.movement %}<tr>
+<td><strong>{{ i.supplier }}</strong></td><td>{{ i.po_number }}</td><td><a href="{{ order.links.job }}">{{ i.job_number }}</a></td><td>{{ i.customer }}</td><td><span class="workspace-status-badge workspace-status-{{ order.status.current|lower }}">{{ order.status.current }}</span></td><td class="purchase-money">${{ '%.2f'|format(c.booked_cost) }}</td><td class="purchase-money">{% if order.status.current == 'DRAFT' %}<small>DRAFT COST</small><br>{% endif %}${{ '%.2f'|format(c.placed_total) }}</td><td class="purchase-money">{% if c.actual_cost_state == 'CONFIRMED' %}${{ '%.2f'|format(c.final_actual_cost) }}{% else %}{{ c.actual_cost_state }}{% endif %}</td><td class="purchase-money {% if c.variance_vs_booked is not none and c.variance_vs_booked > 0 %}variance-up{% elif c.variance_vs_booked is not none and c.variance_vs_booked < 0 %}variance-down{% endif %}">{% if c.variance_vs_booked is none %}—{% elif c.variance_vs_booked >= 0 %}+${{ '%.2f'|format(c.variance_vs_booked) }}{% else %}-${{ '%.2f'|format(-c.variance_vs_booked) }}{% endif %}</td><td>{{ m.ordered }}</td><td>{{ m.received }}</td><td>{{ m.remaining }}</td><td class="purchase-next"><strong>{{ order.status.next_action }}</strong>{% if order.links.receiving %}<br><a href="{{ order.links.receiving }}">Receive</a>{% endif %}{% if order.links.delivery %}<br><a href="{{ order.links.delivery }}">Delivery</a>{% endif %}</td><td><a class="workspace-btn" href="{{ order.links.open }}">Open</a></td></tr>{% endfor %}
+</tbody></table></div>
+<div class="purchase-cards">{% for order in orders %}{% set i=order.identity %}{% set c=order.costs %}{% set m=order.movement %}<article class="purchase-card"><div class="purchase-card-head"><div><strong>{{ i.supplier }}</strong><small>{{ i.po_number }} · <a href="{{ order.links.job }}">{{ i.job_number }}</a></small></div><span class="workspace-status-badge workspace-status-{{ order.status.current|lower }}">{{ order.status.current }}</span></div><div class="purchase-card-grid"><div><span>Booked</span><strong>${{ '%.2f'|format(c.booked_cost) }}</strong></div><div><span>{% if order.status.current == 'DRAFT' %}Draft Cost{% else %}Placed{% endif %}</span><strong>${{ '%.2f'|format(c.placed_total) }}</strong></div><div><span>Actual</span><strong>{% if c.actual_cost_state == 'CONFIRMED' %}${{ '%.2f'|format(c.final_actual_cost) }}{% else %}{{ c.actual_cost_state }}{% endif %}</strong></div><div><span>Variance</span><strong>{% if c.variance_vs_booked is none %}—{% elif c.variance_vs_booked >= 0 %}+${{ '%.2f'|format(c.variance_vs_booked) }}{% else %}-${{ '%.2f'|format(-c.variance_vs_booked) }}{% endif %}</strong></div><div><span>Ordered</span><strong>{{ m.ordered }}</strong></div><div><span>Received</span><strong>{{ m.received }}</strong></div><div><span>Remaining</span><strong>{{ m.remaining }}</strong></div><div><span>Customer</span><strong>{{ i.customer }}</strong></div></div><div class="purchase-card-next"><span>Next Action</span><strong>{{ order.status.next_action }}</strong></div><div class="purchase-actions"><a class="button" href="{{ order.links.open }}">Open</a>{% if order.links.receiving %}<a class="button ghost" href="{{ order.links.receiving }}">Receive</a>{% endif %}{% if order.links.delivery %}<a class="button ghost" href="{{ order.links.delivery }}">Delivery</a>{% endif %}<a class="button ghost" href="{{ order.links.job }}">Job</a>{% if order.links.invoice %}<a class="button ghost" href="{{ order.links.invoice }}">Invoice</a>{% endif %}</div></article>{% endfor %}</div>
+{% else %}<div class="empty-state">No supplier orders match the current filters.</div>{% endif %}
 </section>
 {% endblock %}

@@ -2,278 +2,52 @@
 {% block title %}Delivery · {{ job.job_number }}{% endblock %}
 
 {% block content %}
-<section class="workspace-heading">
-  <div>
-    <p class="eyebrow">CUSTOMER DELIVERY</p>
-    <h1>{{ job.job_number }}</h1>
-    <p>
-      {{ job.customer }}
-      {% if job.company %}
-      · {{ job.company }}
-      {% endif %}
-    </p>
-  </div>
+<div class="delivery-desk">
+  <section class="workspace-heading delivery-heading">
+    <div><p class="eyebrow">CUSTOMER DELIVERY</p><h1>{{ job.job_number }}</h1><p>{{ job.customer }}{% if job.company %} · {{ job.company }}{% endif %}</p></div>
+    <a class="button ghost" href="/jobs/{{ job.id }}/basket">Back to Job</a>
+  </section>
 
-  <a
-    class="button ghost"
-    href="/jobs/{{ job.id }}/basket"
-  >
-    Back to Job
-  </a>
-</section>
+  <section class="panel delivery-context">
+    <div><span>Customer</span><strong>{{ job.customer }}</strong></div>
+    <div><span>Invoice</span><strong>{{ job.invoice_number or "—" }}</strong></div>
+    <div><span>Machine / PIN / Serial</span><strong>{{ job.machine_context }}</strong></div>
+    <div><span>Job Status</span><strong>{{ job.status }}</strong></div>
+  </section>
 
-<section class="panel">
-  <div class="invoice-center-identity-grid">
-    <div>
-      <span>Customer</span>
-      <strong>{{ job.customer }}</strong>
-    </div>
-
-    <div>
-      <span>Machine</span>
-      <strong>
-        {{ job.manufacturer or "" }}
-        {{ job.machine or "" }}
-      </strong>
-    </div>
-
-    <div>
-      <span>VIN / PIN / Serial</span>
-      <strong>{{ job.pin_serial or "—" }}</strong>
-    </div>
-
-    <div>
-      <span>Job Status</span>
-      <strong>{{ job.status }}</strong>
-    </div>
-  </div>
-</section>
-
-{% if job.status == "DELIVERED" %}
-<section class="panel">
-  <div class="invoice-paid-state">
-    <span class="invoice-paid-check">✓</span>
-    <div>
-      <strong>Job Delivered</strong>
-      <p>
-        All purchased parts have been delivered
-        to the customer.
-      </p>
-    </div>
-  </div>
-</section>
-{% endif %}
-
-{% if ready_delivery %}
-<section class="panel">
-  <div class="invoice-center-section-heading">
-    <div>
-      <p class="eyebrow">READY DELIVERY</p>
-      <h2>Delivery #{{ ready_delivery.id }}</h2>
-      <p>
-        Prepared for {{ ready_delivery.recipient }}
-      </p>
-    </div>
-  </div>
-
-  <div class="invoice-center-table-wrap">
-    <table class="invoice-center-table">
-      <thead>
-        <tr>
-          <th>Part</th>
-          <th>Supplier</th>
-          <th>Quantity</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {% for item in ready_delivery.items %}
-        <tr>
-          <td>
-            <strong>
-              {{ item.supplier_part_number or "—" }}
-            </strong>
-            <br>
-            <small>{{ item.description }}</small>
-          </td>
-          <td>
-            {{ item.supplier_name }}
-            <br>
-            <small>{{ item.po_number }}</small>
-          </td>
-          <td>{{ item.quantity_delivered }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  {% if ready_delivery.notes %}
-  <p>
-    <strong>Notes:</strong>
-    {{ ready_delivery.notes }}
-  </p>
+  {% if action_delivery %}
+  <section class="panel delivery-result" aria-live="polite">
+    <strong>{{ action_delivery.delivery_number }}</strong>
+    {% if delivery_action == "prepared" %}<p>{{ action_delivery.quantity_total }} units reserved · {{ available_total }} units remain available</p>
+    {% elif delivery_action == "delivered" %}<p>Delivered {{ action_delivery.quantity_total }} units{% if available_total > 0 %} · {{ available_total }} units remain available for another delivery{% endif %}</p>
+    {% elif delivery_action == "cancelled" %}<p>Delivery cancelled. {{ available_total }} units are available again.</p>{% endif %}
+    <p>{{ action_delivery.customer }} · {{ action_delivery.job_number }} · {{ action_delivery.invoice_number or "No invoice" }}</p>
+  </section>
   {% endif %}
 
-  <form
-    method="post"
-    action="/deliveries/{{ ready_delivery.id }}/complete"
-    onsubmit="return confirm('Confirm these parts were delivered to {{ ready_delivery.recipient }}?');"
-  >
-    <button
-      type="submit"
-      class="workspace-btn workspace-btn-primary"
-    >
-      Mark Delivered
-    </button>
-  </form>
-</section>
-{% endif %}
-
-<section class="panel">
-  <div class="invoice-center-section-heading">
-    <div>
-      <p class="eyebrow">DELIVERY INVENTORY</p>
-      <h2>Received parts</h2>
-      <p>
-        Only physically received parts can be
-        prepared for customer delivery.
-      </p>
+  {% if ready_delivery %}
+  <section class="panel delivery-ready">
+    <div class="invoice-center-section-heading"><div><p class="eyebrow">DELIVERY READY</p><h2>{{ ready_delivery.delivery_number }}</h2><p>Reserved for {{ ready_delivery.recipient }}</p></div><span class="workspace-status-badge workspace-status-ready">READY</span></div>
+    <div class="delivery-ready-lines">{% for item in ready_delivery["items"] %}<div><span><strong>{{ item.supplier_part_number or "—" }}</strong><small>{{ item.description }}</small></span><span>{{ item.po_number }}</span><strong>{{ item.quantity_delivered }}</strong></div>{% endfor %}</div>
+    {% if ready_delivery.notes %}<p><strong>Notes:</strong> {{ ready_delivery.notes }}</p>{% endif %}
+    <div class="delivery-ready-actions">
+      <form method="post" action="/deliveries/{{ ready_delivery.id }}/complete" onsubmit="return confirm('Confirm delivery of {{ ready_delivery.quantity_total }} units to {{ ready_delivery.recipient|e }}?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="button">Mark Delivered</button></form>
+      <form method="post" action="/deliveries/{{ ready_delivery.id }}/cancel" onsubmit="return confirm('Cancel {{ ready_delivery.delivery_number }} and release all reserved quantities?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="button ghost">Cancel Delivery</button></form>
     </div>
-  </div>
+  </section>
+  {% endif %}
 
-  <div class="invoice-center-table-wrap">
-    <table class="invoice-center-table">
-      <thead>
-        <tr>
-          <th>Part</th>
-          <th>Supplier</th>
-          <th>Received</th>
-          <th>Delivered</th>
-          <th>Available</th>
-        </tr>
-      </thead>
+  <section class="panel delivery-availability">
+    <div class="invoice-center-section-heading"><div><p class="eyebrow">AVAILABLE TO DELIVER</p><h2>Physically received inventory</h2><p>Delivered and READY-reserved quantities are excluded.</p></div><span class="invoice-item-count">{{ available_total }} available</span></div>
+    {% if has_available and not ready_delivery %}<form method="post" action="/jobs/{{ job.id }}/delivery" class="delivery-prepare-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="idempotency_key" value="{{ delivery_idempotency_key }}">
+      <div class="delivery-lines"><div class="delivery-line delivery-line-head"><span>Part</span><span>Description</span><span>Available</span><span>Deliver Now</span></div>{% for item in items %}{% if item.available_to_deliver > 0 %}<div class="delivery-line"><div><span class="delivery-mobile-label">Part</span><strong>{{ item.supplier_part_number or "—" }}</strong><small>{{ item.supplier_name }} · {{ item.po_number }}</small></div><div><span class="delivery-mobile-label">Description</span>{{ item.description }}{% if item.asset_name or item.asset_model %}<small>{{ item.asset_manufacturer }} {{ item.asset_model or item.asset_name }}{% if item.asset_serial %} · {{ item.asset_serial }}{% endif %}</small>{% endif %}</div><div><span class="delivery-mobile-label">Available</span><strong>{{ item.available_to_deliver }}</strong></div><div><span class="delivery-mobile-label">Deliver Now</span><input type="number" name="qty_{{ item.id }}" value="0" min="0" max="{{ item.available_to_deliver }}" step="1"></div></div>{% endif %}{% endfor %}</div>
+      <div class="delivery-meta"><label><span>Recipient</span><input type="text" name="recipient" value="{{ job.customer }}" maxlength="200"></label><label><span>Delivery Notes</span><textarea name="notes" rows="3" maxlength="1000" placeholder="Shipping, pickup, tracking, or handoff notes"></textarea></label></div>
+      <button type="submit" class="button delivery-prepare-submit">Reserve Selected Parts</button>
+    </form>{% elif ready_delivery %}<p>An existing READY delivery holds the selected inventory. Complete or cancel it before preparing another.</p>{% else %}<p>No physically received, unreserved parts are currently available.</p>{% endif %}
+  </section>
 
-      <tbody>
-        {% for item in items %}
-        <tr>
-          <td>
-            <strong>
-              {{ item.supplier_part_number or "—" }}
-            </strong>
-            <br>
-            <small>{{ item.description }}</small>
-          </td>
-          <td>
-            {{ item.supplier_name }}
-            <br>
-            <small>{{ item.po_number }}</small>
-          </td>
-          <td>{{ item.quantity_received }}</td>
-          <td>{{ item.quantity_delivered }}</td>
-          <td>
-            <strong>{{ item.available_to_deliver }}</strong>
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="5">
-            No purchasing records are attached to this job.
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</section>
-
-{% if has_available and not ready_delivery %}
-<section class="panel invoice-payment-panel">
-  <p class="eyebrow">PREPARE DELIVERY</p>
-
-  <form
-    method="post"
-    action="/jobs/{{ job.id }}/delivery"
-    class="invoice-payment-form"
-  >
-    <label>
-      <span>Recipient</span>
-      <input
-        type="text"
-        name="recipient"
-        value="{{ job.customer }}"
-        maxlength="200"
-      >
-    </label>
-
-    <label>
-      <span>Delivery Notes</span>
-      <textarea
-        name="notes"
-        rows="4"
-        maxlength="1000"
-        placeholder="Shipping method, tracking reference, pickup details, or delivery notes"
-      ></textarea>
-    </label>
-
-    <button
-      type="submit"
-      class="workspace-btn workspace-btn-primary"
-    >
-      Prepare Available Parts
-    </button>
-  </form>
-</section>
-{% elif not ready_delivery and job.status != "DELIVERED" %}
-<section class="panel">
-  <p class="eyebrow">DELIVERY STATUS</p>
-  <p>
-    No received, undelivered parts are currently available.
-  </p>
-</section>
-{% endif %}
-
-{% if deliveries %}
-<section class="panel">
-  <div class="invoice-center-section-heading">
-    <div>
-      <p class="eyebrow">DELIVERY HISTORY</p>
-      <h2>Customer deliveries</h2>
-    </div>
-  </div>
-
-  <div class="invoice-center-table-wrap">
-    <table class="invoice-center-table">
-      <thead>
-        <tr>
-          <th>Delivery</th>
-          <th>Recipient</th>
-          <th>Quantity</th>
-          <th>Status</th>
-          <th>Date</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {% for delivery in deliveries %}
-        <tr>
-          <td>
-            <strong>#{{ delivery.id }}</strong>
-          </td>
-          <td>{{ delivery.recipient or "—" }}</td>
-          <td>{{ delivery.quantity_total }}</td>
-          <td>{{ delivery.status }}</td>
-          <td>
-            {{
-              delivery.delivery_date
-              or delivery.created_at
-            }}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</section>
-{% endif %}
+  {% if deliveries %}<section class="panel delivery-history"><div class="invoice-center-section-heading"><div><p class="eyebrow">DELIVERY HISTORY</p><h2>Customer deliveries</h2></div></div>
+    <div class="delivery-history-list">{% for delivery in deliveries %}<article class="delivery-history-card"><header><div><strong>{{ delivery.delivery_number }}</strong><span>{{ delivery.delivery_date or delivery.created_at }} · {{ delivery.recipient }}</span></div><span class="workspace-status-badge workspace-status-{{ delivery.status|lower }}">{{ delivery.status }}</span></header><p>{{ delivery.invoice_number or "No invoice" }} · {{ delivery.machine_context }}</p>{% if delivery.notes %}<p>{{ delivery.notes }}</p>{% endif %}<div class="delivery-history-lines">{% for item in delivery["items"] %}<div><span><strong>{{ item.supplier_part_number or "—" }}</strong><small>{{ item.description }}</small></span><span>{{ item.po_number }}</span><strong>{{ item.quantity_delivered }}</strong></div>{% endfor %}</div>{% if delivery.status == "DELIVERED" %}<a class="button ghost small" href="/deliveries/{{ delivery.id }}/delivery-note/pdf">Open Delivery Note</a>{% endif %}</article>{% endfor %}</div>
+  </section>{% endif %}
+</div>
 {% endblock %}

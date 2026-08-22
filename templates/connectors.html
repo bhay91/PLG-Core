@@ -6,13 +6,13 @@
 
   <section class="workspace-heading">
     <div>
-      <p class="eyebrow">SOURCE CONNECTORS</p>
-      <h1>Connectors</h1>
-      <p>Manage supplier and vendor-import source connections.</p>
+      <p class="eyebrow">UNIFIED SOURCE DIRECTORY</p>
+      <h1>Connections</h1>
+      <p>Manage the master sources used by Admin, Job Research, and Open Source.</p>
     </div>
 
     <a class="button" href="/connectors/new">
-      + New Connector
+      + New Source
     </a>
   </section>
 
@@ -60,6 +60,9 @@
       data-search="
         {{ connector.display_name }}
         {{ connector.launch_url }}
+        {{ connector.category }} {{ connector.source_type }}
+        {{ connector.manufacturer_applicability }}
+        {{ connector.asset_category_applicability }} {{ connector.market_applicability }}
       "
     >
       <div class="workspace-row-mark connector-mark">
@@ -67,7 +70,7 @@
       </div>
 
       <div class="workspace-row-identity">
-        <small>SOURCE CONNECTOR</small>
+        <small>{{ connector.category or "SOURCE" }} · {{ connector.source_type|replace('_',' ')|title }}</small>
 
         <h2>{{ connector.display_name }}</h2>
 
@@ -84,6 +87,17 @@
         <p>
           {{ connector.launch_url or "No launch URL configured" }}
         </p>
+        <p>
+          <strong>Applies to:</strong>
+          {{ connector.manufacturer_applicability or "Any manufacturer" }} ·
+          {{ connector.asset_category_applicability or "Any asset category" }} ·
+          {{ connector.market_applicability or "Any market" }}
+        </p>
+        <p>
+          {% if connector.is_default %}<span class="workspace-status-badge workspace-status-paid">Recommended</span>{% endif %}
+          Priority {{ connector.source_priority }} · {{ connector.connector_type|title }} · {{ connector.trust_level|replace('_',' ')|title }}
+        </p>
+        {% if connector.notes %}<p>{{ connector.notes }}</p>{% endif %}
       </div>
 
       <div class="workspace-row-status">
@@ -106,18 +120,18 @@
         <span>NEXT ACTION</span>
 
         {% if connector.is_archived %}
-          <strong>Restore Connector</strong>
+          <strong>Restore Source</strong>
         {% elif connector.is_enabled %}
-          <strong>Open or Manage Source</strong>
+          <strong>Edit Master Source</strong>
         {% else %}
-          <strong>Enable Connector</strong>
+          <strong>Enable Source</strong>
         {% endif %}
 
         <a
           class="workspace-btn workspace-btn-primary"
           href="/connectors/{{ connector.id }}/edit"
         >
-          Open Connector
+          Edit Source
         </a>
 
         <div class="workspace-btn-row">
@@ -156,12 +170,13 @@
             class="workspace-action-form"
             method="post"
             action="/connectors/{{ connector.id }}/archive"
+            data-archive-delete
           >
             <button
               class="workspace-btn workspace-btn-secondary"
               type="submit"
             >
-              Archive
+              Delete
             </button>
           </form>
           {% endif %}
@@ -173,11 +188,11 @@
   </section>
 
   <p id="no-connector-results" class="workspace-empty hidden">
-    No connectors match your search.
+    No sources match your search.
   </p>
   {% else %}
   <div class="workspace-empty">
-    No connectors are available in this view.
+    No sources are available in this view.
   </div>
   {% endif %}
 

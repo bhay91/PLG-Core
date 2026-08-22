@@ -10,12 +10,13 @@ import json
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from legacy_app import BASE_DIR, get_connection, next_customer_number, next_job_number, next_machine_number, next_request_number, templates
+from legacy_app import BASE_DIR, UPLOADS_DIR, get_connection, next_customer_number, next_job_number, next_machine_number, next_request_number, templates
 from plg_core.machines.identifiers import find_machine_by_identifier
 from plg_core.intake.service import create_proposal
+from plg_core.intake.attachments import store_proposal_images, validate_attachments
 
 router = APIRouter(prefix="/requests", tags=["customer-requests"])
-UPLOAD_ROOT = BASE_DIR / "uploads" / "requests"
+UPLOAD_ROOT = UPLOADS_DIR / "requests"
 ALLOWED_STATUSES = {"NEW", "WAITING", "READY", "COMPLETED"}
 MANUAL_STATUSES = ALLOWED_STATUSES - {"COMPLETED"}
 REGISTRY_TYPES = {
@@ -64,6 +65,69 @@ def _registry_display_name(record) -> str:
     return display or (record["identifier"] or "").strip() or "Registry Item"
 
 
+def _inbox_age(value: str, today: date) -> int | None:
+    try:
+        created = date.fromisoformat(str(value or "")[:10])
+    except ValueError:
+        return None
+    return max((today - created).days, 0)
+
+
+def _inbox_request_item(row, today: date) -> dict:
+    item = dict(row)
+    if int(item.get("is_archived") or 0):
+        label, action = "Archived", "View History"
+    elif int(item.get("is_cancelled") or 0):
+        label, action = "Cancelled", "View History"
+    elif item.get("job_id") and str(item.get("status") or "").upper() == "COMPLETED":
+        label, action = "Job Created", "Open Job"
+    elif str(item.get("status") or "").upper() == "WAITING":
+        label, action = "Waiting for Information", "Open Request"
+    elif str(item.get("status") or "").upper() == "READY":
+        label, action = "Ready to Create Job", "Open Request"
+    else:
+        label, action = "New Request", "Review Request"
+    machine = " ".join(filter(None, [item.get("manufacturer"), item.get("model")])).strip()
+    removable = not any((
+        int(item.get("is_archived") or 0), int(item.get("is_cancelled") or 0),
+        item.get("job_id"), str(item.get("status") or "").upper() == "COMPLETED",
+    ))
+    return {
+        "key": f"request:{item['id']}", "record_id": int(item["id"]), "entry_type": "Manual Request",
+        "customer": item.get("company_name") or item.get("individual_name") or item.get("phone") or "Sender unknown",
+        "preview": item.get("request_text") or item.get("requested_parts") or "Attachment only",
+        "created_at": item.get("created_at"), "updated_at": item.get("updated_at"),
+        "age_days": _inbox_age(item.get("created_at"), today),
+        "review_label": label, "next_action": action,
+        "url": f"/jobs/{item['job_id']}/basket" if action == "Open Job" else f"/requests/{item['id']}",
+        "machine_need_summary": " · ".join(filter(None, [machine, item.get("requested_parts")])),
+        "reminder_date": item.get("reminder_date") or "", "source": "REQUEST",
+        "removable": removable,
+        "remove_url": f"/requests/{item['id']}/remove-from-inbox" if removable else "",
+        "remove_version": item.get("updated_at") or "",
+    }
+
+
+def _inbox_proposal_item(row, today: date) -> dict:
+    item = dict(row)
+    ready = str(item.get("review_state") or "").upper() == "CONFIDENT"
+    machine_need = " · ".join(filter(None, [item.get("machine_summary"), item.get("need_summary")]))
+    return {
+        "key": f"proposal:{item['id']}", "record_id": int(item["id"]), "entry_type": "Smart Intake",
+        "customer": item.get("company_name") or item.get("contact_name") or item.get("phone") or "Sender needs review",
+        "preview": item.get("raw_input") or "Smart Intake proposal",
+        "created_at": item.get("created_at"), "updated_at": item.get("updated_at"),
+        "age_days": _inbox_age(item.get("created_at"), today),
+        "review_label": "Ready for Review" if ready else "Needs Review",
+        "next_action": "Review Intake",
+        "url": f"/requests/smart-intake/proposals/{item['id']}",
+        "machine_need_summary": machine_need, "reminder_date": "", "source": "PROPOSAL",
+        "removable": str(item.get("status") or "").upper() == "DRAFT",
+        "remove_url": f"/requests/smart-intake/proposals/{item['id']}/remove-from-inbox",
+        "remove_version": item.get("lock_version"),
+    }
+
+
 @router.get("", response_class=HTMLResponse)
 def list_requests(request: Request, q: str = "", status: str = "ALL", view: str = "active"):
     status = status.upper().strip()
@@ -97,6 +161,7 @@ def list_requests(request: Request, q: str = "", status: str = "ALL", view: str 
         needle = f"%{q.lower()}%"
         params.extend([needle] * 8)
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    report_date = date.today()
     with closing(get_connection()) as connection:
         rows = connection.execute(
             f"""
@@ -113,16 +178,77 @@ def list_requests(request: Request, q: str = "", status: str = "ALL", view: str 
             """,
             params,
         ).fetchall()
+        proposals = []
+        if view != "archived" and status in {"ALL", "NEW"}:
+            proposal_where = ["p.status='DRAFT'"]
+            proposal_params: list[object] = []
+            if q:
+                proposal_where.append(
+                    "(LOWER(p.raw_input) LIKE ? OR LOWER(p.contact_name) LIKE ? OR "
+                    "LOWER(p.company_name) LIKE ? OR LOWER(p.phone) LIKE ? OR LOWER(p.email) LIKE ?)"
+                )
+                proposal_params.extend([f"%{q.lower()}%"] * 5)
+            proposals = connection.execute(
+                f"""
+                SELECT p.*,
+                       (SELECT GROUP_CONCAT(TRIM(a.manufacturer || ' ' || a.model), ', ')
+                          FROM intake_proposal_assets a
+                         WHERE a.proposal_id=p.id AND a.included=1) AS machine_summary,
+                       (SELECT GROUP_CONCAT(n.wording, ', ')
+                          FROM intake_proposal_needs n
+                         WHERE n.proposal_id=p.id AND n.included=1) AS need_summary
+                  FROM intake_proposals p
+                 WHERE {' AND '.join(proposal_where)}
+                 ORDER BY p.updated_at DESC,p.id DESC
+                 LIMIT 500
+                """,
+                proposal_params,
+            ).fetchall()
+    inbox_items = [_inbox_request_item(row, report_date) for row in rows]
+    inbox_items.extend(_inbox_proposal_item(row, report_date) for row in proposals)
+    inbox_items.sort(
+        key=lambda item: (
+            0 if item["reminder_date"] else 1,
+            item["reminder_date"] or "9999-12-31",
+            str(item["updated_at"] or item["created_at"] or ""),
+        ),
+        reverse=False,
+    )
+    # Within ordinary (non-reminder) Inbox work, newest activity comes first.
+    reminder_items = [item for item in inbox_items if item["reminder_date"]]
+    ordinary_items = sorted(
+        (item for item in inbox_items if not item["reminder_date"]),
+        key=lambda item: str(item["updated_at"] or item["created_at"] or ""),
+        reverse=True,
+    )
+    inbox_items = reminder_items + ordinary_items
+    # A complete server-side preflight controls whether destructive review is offered.
+    # The POST endpoint rebuilds the same plan under BEGIN IMMEDIATE before deleting.
+    from plg_core.disposable.service import build_proposal_deletion_plan, build_request_deletion_plan
+    with closing(get_connection()) as connection:
+        for item in inbox_items:
+            try:
+                if item["source"] == "PROPOSAL":
+                    plan = build_proposal_deletion_plan(item["record_id"], connection)
+                    item["delete_disposable_url"] = f"/requests/smart-intake/proposals/{item['record_id']}/delete-disposable"
+                else:
+                    plan = build_request_deletion_plan(item["record_id"], connection)
+                    item["delete_disposable_url"] = f"/requests/{item['record_id']}/delete-disposable"
+                item["disposable_eligible"] = not plan["blockers"]
+            except HTTPException:
+                item["disposable_eligible"] = False
+                item["delete_disposable_url"] = ""
     return templates.TemplateResponse(
         request=request,
         name="requests.html",
         context={
             "requests": rows,
+            "inbox_items": inbox_items,
             "q": q,
             "status": status,
             "view": view,
             "active_page": "requests",
-            "today": date.today().isoformat(),
+            "today": report_date.isoformat(),
         },
     )
 
@@ -629,14 +755,40 @@ def smart_intake_form(request: Request):
 
 
 @router.post("/smart-intake/analyze", response_class=HTMLResponse)
-def analyze_smart_intake(
+async def analyze_smart_intake(
     request: Request,
-    raw_text: str = Form(...),
+    raw_text: str = Form(""),
+    attachments: list[UploadFile] = File(default=[]),
 ):
-    if not raw_text.strip():
-        raise HTTPException(status_code=400, detail="Paste the customer request before analyzing it.")
+    files = await validate_attachments(attachments)
+    if not raw_text.strip() and not files:
+        raise HTTPException(status_code=400, detail="Paste request text or attach a supported document before analyzing it.")
+    extracted_documents = [
+        {
+            "filename": item.original_filename,
+            "media_type": item.media_type,
+            "text": item.extracted_text,
+            "extraction_status": item.extraction_status,
+            "extraction_evidence": item.extraction_evidence,
+            "page_count": item.page_count,
+        }
+        for item in files if item.media_type == "application/pdf"
+    ]
+    created_paths: list[Path] = []
     with closing(get_connection()) as connection:
-        proposal_id = create_proposal(connection, raw_text)
+        proposal_id = create_proposal(
+            connection, raw_text, extracted_documents=extracted_documents,
+        )
+        try:
+            created_paths = store_proposal_images(connection, proposal_id, files)
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            connection.execute("DELETE FROM intake_proposals WHERE id=?", (proposal_id,))
+            connection.commit()
+            for path in created_paths:
+                path.unlink(missing_ok=True)
+            raise
     return RedirectResponse(url=f"/requests/smart-intake/proposals/{proposal_id}", status_code=303)
 
 
@@ -992,6 +1144,12 @@ def request_detail(request: Request, request_id: int):
             job = connection.execute(
                 "SELECT * FROM jobs WHERE id = ?", (record["job_id"],)
             ).fetchone()
+        attachment_removable = not any((
+            record["job_id"],
+            str(record["status"] or "").upper() == "COMPLETED",
+            int(record["is_archived"] or 0),
+            int(record["is_cancelled"] or 0),
+        ))
     return templates.TemplateResponse(
         request=request,
         name="request_detail.html",
@@ -1006,6 +1164,7 @@ def request_detail(request: Request, request_id: int):
             "registry_types": REGISTRY_TYPES,
             "active_page": "requests",
             "today": date.today().isoformat(),
+            "attachment_removable": attachment_removable,
         },
     )
 
@@ -1492,6 +1651,31 @@ def archive_request(request_id: int):
     return _set_request_archived(request_id, True)
 
 
+@router.post("/{request_id}/remove-from-inbox")
+def remove_request_from_inbox(request_id: int, expected_updated_at: str = Form(...)):
+    """Archive active intake work without deleting its history or lineage."""
+    with closing(get_connection()) as connection:
+        record = _get_request_or_404(connection, request_id)
+        if any((record["job_id"], int(record["is_archived"] or 0),
+                int(record["is_cancelled"] or 0), record["status"] == "COMPLETED")):
+            raise HTTPException(status_code=409, detail="This request is no longer removable from the Inbox.")
+        changed = connection.execute(
+            """UPDATE customer_requests SET is_archived=1,updated_at=CURRENT_TIMESTAMP
+               WHERE id=? AND updated_at=? AND job_id IS NULL AND status!='COMPLETED'
+                 AND COALESCE(is_archived,0)=0 AND COALESCE(is_cancelled,0)=0""",
+            (request_id, expected_updated_at),
+        )
+        if changed.rowcount != 1:
+            connection.rollback()
+            raise HTTPException(status_code=409, detail="This request changed. Reload the Inbox before removing it.")
+        from plg_core.audit import write_audit
+        write_audit(connection, action="REQUEST_ARCHIVED", entity_type="REQUEST",
+                    entity_id=request_id,
+                    summary=f"Request {record['request_number']} removed from Inbox and archived")
+        connection.commit()
+    return RedirectResponse(url="/requests", status_code=303)
+
+
 @router.post("/{request_id}/restore")
 def restore_request(request_id: int):
     return _set_request_archived(request_id, False)
@@ -1531,6 +1715,13 @@ def download_attachment(request_id: int, attachment_id: int):
 @router.post("/{request_id}/attachments/{attachment_id}/delete")
 def delete_attachment(request_id: int, attachment_id: int):
     with closing(get_connection()) as connection:
+        record = _get_request_or_404(connection, request_id)
+        if any((record["job_id"], str(record["status"] or "").upper() == "COMPLETED",
+                int(record["is_archived"] or 0), int(record["is_cancelled"] or 0))):
+            raise HTTPException(
+                status_code=409,
+                detail="Historical Request attachments are preserved and cannot be deleted.",
+            )
         attachment = connection.execute(
             """SELECT * FROM customer_request_attachments
                WHERE id = ? AND request_id = ?""",

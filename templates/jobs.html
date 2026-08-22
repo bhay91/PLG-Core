@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_manufacturer_logo.html" import manufacturer_logo %}
 {% block title %}Jobs · Pinpoint Sourcing Co.{% endblock %}
 
 {% block content %}
@@ -81,7 +82,7 @@
 
     <div class="smart-job-row-main">
       <div class="smart-job-row-manufacturer">
-        {{ job.manufacturer_code }}
+        {{ manufacturer_logo(job.manufacturer, true, false, true) }}
       </div>
 
       <div class="smart-job-row-identity">

@@ -3,255 +3,54 @@
 
 {% block content %}
 <style>
-.docs-shell{
-  width:100%;
-  max-width:none;
-  margin:0;
-  display:grid;
-  gap:18px
-}
-.docs-summary{
-  display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
-  gap:12px
-}
-.docs-card{
-  background:#fff;
-  border:1px solid var(--line);
-  border-radius:15px;
-  padding:17px;
-  box-shadow:var(--shadow-sm);
-  display:grid;
-  gap:4px
-}
-.docs-card strong{
-  font-size:27px;
-  color:var(--ink-strong)
-}
-.docs-card span{
-  font-weight:800
-}
-.docs-card small{
-  color:var(--muted)
-}
-.docs-search{
-  background:#fff;
-  border:1px solid var(--line);
-  border-radius:15px;
-  padding:16px;
-  display:flex;
-  gap:10px;
-  align-items:center
-}
-.docs-search input{
-  flex:1
-}
-.docs-table-wrap{
-  background:#fff;
-  border:1px solid var(--line);
-  border-radius:16px;
-  overflow:auto;
-  box-shadow:var(--shadow-sm)
-}
-.docs-table{
-  width:100%;
-  border-collapse:collapse;
-  min-width:900px
-}
-.docs-table th,
-.docs-table td{
-  padding:13px 15px;
-  text-align:left;
-  border-bottom:1px solid var(--line);
-  vertical-align:middle
-}
-.docs-table th{
-  background:#f7f9fc;
-  font-size:12px;
-  text-transform:uppercase;
-  color:var(--muted)
-}
-.docs-table tr:last-child td{
-  border-bottom:0
-}
-.docs-name{
-  display:grid;
-  gap:3px
-}
-.docs-name strong{
-  color:var(--ink-strong)
-}
-.docs-name small{
-  color:var(--muted);
-  word-break:break-all
-}
-.docs-badge{
-  display:inline-flex;
-  width:max-content;
-  padding:5px 9px;
-  border-radius:999px;
-  background:#eef4ff;
-  font-size:12px;
-  font-weight:850
-}
-.docs-empty{
-  padding:55px 25px;
-  text-align:center;
-  background:#fff;
-  border:1px dashed var(--line-strong);
-  border-radius:16px
-}
-@media(max-width:850px){
-  .docs-summary{
-    grid-template-columns:repeat(2,minmax(0,1fr))
-  }
-  .docs-search{
-    align-items:stretch;
-    flex-direction:column
-  }
-}
+.docs-shell{width:100%;min-width:0;display:grid;gap:18px}.docs-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.docs-card,.docs-list{background:#fff;border:1px solid var(--line);border-radius:15px;box-shadow:var(--shadow-sm)}.docs-card{padding:17px;display:grid;gap:4px;min-width:0}.docs-card strong{font-size:27px;color:var(--ink-strong)}.docs-card span{font-weight:800}.docs-card small,.docs-muted{color:var(--muted)}.docs-filters{padding:16px;background:#fff;border:1px solid var(--line);border-radius:15px;display:grid;grid-template-columns:minmax(220px,2fr) repeat(4,minmax(130px,1fr));gap:10px;align-items:end}.docs-filters label{display:grid;gap:6px;min-width:0}.docs-filters label span,.docs-label{color:var(--muted);font-size:10px;font-weight:850;letter-spacing:.05em;text-transform:uppercase}.docs-filters input,.docs-filters select{width:100%;min-width:0}.docs-filter-actions{display:flex;flex-wrap:wrap;gap:8px;grid-column:1/-1}.docs-list{overflow:hidden}.docs-list-head,.docs-row-main{display:grid;grid-template-columns:minmax(210px,1.65fr) minmax(145px,1fr) minmax(135px,.9fr) minmax(125px,.8fr) minmax(190px,1.2fr);gap:14px;align-items:center}.docs-list-head{padding:11px 16px;background:#f7f9fc;color:var(--muted);font-size:11px;font-weight:850;letter-spacing:.04em;text-transform:uppercase}.docs-row{min-width:0;border-top:1px solid var(--line)}.docs-row-main{padding:16px}.docs-row-main>*{min-width:0}.docs-identity,.docs-context,.docs-version,.docs-integrity{display:grid;gap:4px}.docs-identity strong,.docs-context strong{color:var(--ink-strong);overflow-wrap:anywhere}.docs-identity small,.docs-context small,.docs-version small,.docs-integrity small{color:var(--muted);line-height:1.35;overflow-wrap:anywhere}.docs-type,.docs-audience,.docs-version-badge,.docs-integrity-badge{display:inline-flex;width:max-content;max-width:100%;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:850;line-height:1.25;white-space:normal}.docs-type{background:#eef4ff;color:#164f91}.docs-audience{background:#f3f4f6;color:#354052}.docs-version-badge{background:#edf7ef;color:#25643b}.docs-version-badge.is-historical{background:#f4f1eb;color:#725927}.docs-integrity-badge.is-valid{background:#e8f8ef;color:#12683c}.docs-integrity-badge.is-invalid{background:#fff0f0;color:#a52929}.docs-row-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.docs-row-actions .button{min-width:0;width:100%;white-space:normal;overflow-wrap:anywhere;text-align:center}.docs-row-actions .docs-parent{grid-column:1/-1}.docs-disabled{display:flex;align-items:center;justify-content:center;min-height:40px;padding:8px;border:1px solid var(--line);border-radius:9px;color:var(--muted);background:#f7f8fa;font-size:12px;text-align:center}.docs-history{margin:0 16px 16px;border:1px solid var(--line);border-radius:11px;background:#fafbfd}.docs-history summary{cursor:pointer;padding:11px 13px;font-weight:800}.docs-history-list{display:grid;border-top:1px solid var(--line)}.docs-history:not([open]) .docs-history-list{display:none}.docs-history-row{display:grid;grid-template-columns:minmax(100px,.6fr) minmax(145px,1fr) minmax(145px,1fr) minmax(190px,1.2fr);gap:12px;align-items:center;padding:12px 13px;border-top:1px solid var(--line)}.docs-history-row:first-child{border-top:0}.docs-history-actions{display:flex;flex-wrap:wrap;gap:7px}.docs-empty{padding:55px 25px;text-align:center;background:#fff;border:1px dashed var(--line-strong);border-radius:16px}.docs-issue-note{padding:10px 13px;border-radius:10px;background:#fff6e7;color:#76520d;font-size:13px}.docs-mobile-label{display:none}
+@media(max-width:1180px){.docs-filters{grid-template-columns:repeat(3,minmax(0,1fr))}.docs-filters>label:first-child{grid-column:span 2}.docs-list-head,.docs-row-main{grid-template-columns:minmax(190px,1.4fr) minmax(130px,1fr) minmax(120px,.8fr) minmax(175px,1.1fr)}.docs-list-head>span:nth-child(4){display:none}.docs-row-actions{grid-column:1/-1;grid-template-columns:repeat(3,minmax(0,1fr))}.docs-row-actions .docs-parent{grid-column:auto}}
+@media(max-width:850px){.docs-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.docs-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.docs-filters>label:first-child{grid-column:1/-1}.docs-list-head{display:none}.docs-row-main{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}.docs-mobile-label{display:block}.docs-row-actions{grid-column:1/-1}.docs-history-row{grid-template-columns:repeat(2,minmax(0,1fr))}.docs-history-actions{grid-column:1/-1}}
+@media(max-width:520px){.docs-summary,.docs-filters,.docs-row-main,.docs-history-row{grid-template-columns:minmax(0,1fr)}.docs-filters>label:first-child{grid-column:1}.docs-filter-actions{display:grid;grid-template-columns:minmax(0,1fr)}.docs-filter-actions .button{width:100%}.docs-row-main{gap:13px}.docs-context,.docs-version,.docs-integrity{padding-top:11px;border-top:1px solid var(--line)}.docs-row-actions{grid-template-columns:minmax(0,1fr)}.docs-row-actions .docs-parent{grid-column:1}.docs-history{margin:0 12px 12px}.docs-history-actions{display:grid;grid-template-columns:minmax(0,1fr)}.docs-history-actions .button{width:100%}.workspace-heading:has(+.docs-summary){align-items:stretch;flex-direction:column}.workspace-heading:has(+.docs-summary)>.button{width:100%}}
 </style>
 
 <div class="docs-shell">
   <section class="workspace-heading">
-    <div>
-      <p class="eyebrow">DOCUMENT CENTER</p>
-      <h1>PPS Documents</h1>
-      <p>
-        Generated customer, internal and purchasing
-        documents stored by PPS.
-      </p>
-    </div>
-
-    <a class="button ghost" href="/accounting">
-      Accounting &amp; Audit
-    </a>
+    <div><p class="eyebrow">DOCUMENT CENTER</p><h1>PPS Documents</h1><p>Manifest-backed customer, internal, supplier, receiving and delivery documents.</p></div>
+    <a class="button ghost" href="/accounting">Accounting &amp; Audit</a>
   </section>
 
-  <section class="docs-summary">
-    <article class="docs-card">
-      <strong>{{ summary.total }}</strong>
-      <span>PDF Documents</span>
-      <small>Current search results</small>
-    </article>
-
-    <article class="docs-card">
-      <strong>{{ summary.quotes }}</strong>
-      <span>Quotes</span>
-      <small>Customer and internal copies</small>
-    </article>
-
-    <article class="docs-card">
-      <strong>{{ summary.invoices }}</strong>
-      <span>Invoices</span>
-      <small>Standard and paid copies</small>
-    </article>
-
-    <article class="docs-card">
-      <strong>{{ summary.purchasing }}</strong>
-      <span>Purchasing</span>
-      <small>Parts order sheets</small>
-    </article>
+  <section class="docs-summary" aria-label="Document summary">
+    <article class="docs-card"><strong>{{ summary.total }}</strong><span>Authoritative Documents</span><small>Current filter results</small></article>
+    <article class="docs-card"><strong>{{ summary.current }}</strong><span>Current</span><small>Current manifest versions</small></article>
+    <article class="docs-card"><strong>{{ summary.valid }}</strong><span>Valid</span><small>Parent, file and SHA-256 verified</small></article>
+    <article class="docs-card"><strong>{{ summary.issues }}</strong><span>Integrity Issues</span><small>Actions fail closed</small></article>
   </section>
 
-  <form
-    method="get"
-    action="/documents"
-    class="docs-search"
-  >
-    <input
-      type="search"
-      name="q"
-      value="{{ query }}"
-      placeholder="Search customer, invoice, quote, filename or document type"
-      aria-label="Search PPS documents"
-    >
-
-    <button
-      class="button"
-      type="submit"
-    >
-      Search
-    </button>
-
-    {% if query %}
-    <a
-      class="button ghost"
-      href="/documents"
-    >
-      Clear
-    </a>
-    {% endif %}
+  <form method="get" action="/documents" class="docs-filters">
+    <label><span>Search</span><input type="search" name="q" value="{{ filters.q }}" placeholder="Document, customer, job, invoice, quote or PO" aria-label="Search authoritative documents"></label>
+    <label><span>Document Type</span><select name="document_type"><option value="">All types</option>{% for option in options.document_types %}<option value="{{ option }}" {% if filters.document_type == option %}selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+    <label><span>Audience</span><select name="audience"><option value="">All audiences</option>{% for option in options.audiences %}<option value="{{ option }}" {% if filters.audience == option %}selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+    <label><span>Versions</span><select name="version_scope"><option value="current" {% if filters.version_scope == 'current' %}selected{% endif %}>Current</option><option value="historical" {% if filters.version_scope == 'historical' %}selected{% endif %}>Historical</option><option value="all" {% if filters.version_scope == 'all' %}selected{% endif %}>Current + Historical</option></select></label>
+    <label><span>Status</span><select name="status"><option value="">All statuses</option>{% for option in options.statuses %}<option value="{{ option }}" {% if filters.status == option %}selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+    <label><span>Customer</span><select name="customer"><option value="">All customers</option>{% for option in options.customers %}<option value="{{ option }}" {% if filters.customer == option %}selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+    <div class="docs-filter-actions"><button class="button" type="submit">Apply Filters</button><a class="button ghost" href="/documents">Clear</a></div>
   </form>
 
   {% if items %}
-  <section class="docs-table-wrap">
-    <table class="docs-table">
-      <thead>
-        <tr>
-          <th>Document</th>
-          <th>Customer</th>
-          <th>Type</th>
-          <th>Audience</th>
-          <th>Modified</th>
-          <th>Size</th>
-          <th></th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {% for item in items %}
-        <tr>
-          <td>
-            <div class="docs-name">
-              <strong>{{ item.name }}</strong>
-              <small>{{ item.relative_path }}</small>
-            </div>
-          </td>
-
-          <td>{{ item.customer }}</td>
-
-          <td>
-            <span class="docs-badge">
-              {{ item.document_type }}
-            </span>
-          </td>
-
-          <td>{{ item.audience }}</td>
-
-          <td>{{ item.modified_at }}</td>
-
-          <td>{{ item.size_kb }} KB</td>
-
-          <td>
-            <a
-              class="workspace-primary-link"
-              href="{{ item.open_url }}"
-              target="_blank"
-              rel="noopener"
-            >
-              Open PDF →
-            </a>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <section class="docs-list" aria-label="Authoritative documents">
+    <div class="docs-list-head"><span>Document</span><span>Context</span><span>Version</span><span>Integrity</span><span>Actions</span></div>
+    {% for item in items %}
+    <article class="docs-row" data-document-family="{{ item.family }}" data-manifest-id="{{ item.manifest_id }}">
+      <div class="docs-row-main">
+        <div class="docs-identity"><span class="docs-type">{{ item.document_type }}</span><strong>{{ item.document_number or 'Document #' ~ item.manifest_id }}</strong><small>{{ item.document_kind|replace('_',' ')|title }}</small></div>
+        <div class="docs-context"><span class="docs-mobile-label docs-label">Context</span><strong>{{ item.customer }}</strong><small>{% if item.job_number %}Job {{ item.job_number }}{% else %}No job context{% endif %}</small><small>Status · {{ item.status or '—' }}</small></div>
+        <div class="docs-version"><span class="docs-mobile-label docs-label">Version / Audience</span><span class="docs-version-badge {% if not item.is_current %}is-historical{% endif %}">v{{ item.version }} · {{ item.version_label }}</span><span class="docs-audience">{{ item.audience }}</span><small>{{ item.date or 'Date unavailable' }}</small></div>
+        <div class="docs-integrity"><span class="docs-mobile-label docs-label">Integrity</span><span class="docs-integrity-badge {% if item.is_valid %}is-valid{% else %}is-invalid{% endif %}">{{ item.integrity }}</span>{% if not item.is_valid %}<small class="docs-issue-note">{{ item.integrity_detail }}</small>{% endif %}</div>
+        <div class="docs-row-actions">
+          {% if item.is_valid %}<a class="button ghost" target="_blank" rel="noopener" href="{{ item.open_url }}">{% if item.is_current %}Open{% else %}Open History Version{% endif %}</a><a class="button" href="{{ item.download_url }}">Download</a>{% else %}<span class="docs-disabled">Open disabled</span><span class="docs-disabled">Download disabled</span>{% endif %}
+          {% if item.parent_url %}<a class="button ghost docs-parent" href="{{ item.parent_url }}">View Parent</a>{% endif %}
+        </div>
+      </div>
+      <details class="docs-history"><summary>View History · {{ item.history|length }} other version{% if item.history|length != 1 %}s{% endif %}</summary><div class="docs-history-list">{% if item.history %}{% for version in item.history %}<div class="docs-history-row"><div><strong>v{{ version.version }}</strong><small class="docs-muted">{{ version.version_label }}</small></div><div><strong>{{ version.date or 'Date unavailable' }}</strong><small class="docs-muted">{{ version.status or '—' }}</small></div><div><span class="docs-integrity-badge {% if version.is_valid %}is-valid{% else %}is-invalid{% endif %}">{{ version.integrity }}</span>{% if not version.is_valid %}<small class="docs-muted">{{ version.integrity_detail }}</small>{% endif %}</div><div class="docs-history-actions">{% if version.is_valid %}<a class="button ghost small" target="_blank" rel="noopener" href="{{ version.open_url }}">{% if version.is_current %}Open{% else %}Open History Version{% endif %}</a><a class="button small" href="{{ version.download_url }}">Download</a>{% else %}<span class="docs-disabled">Actions disabled</span>{% endif %}</div></div>{% endfor %}{% else %}<div class="docs-history-row"><span class="docs-muted">No other manifested versions.</span></div>{% endif %}</div></details>
+    </article>
+    {% endfor %}
   </section>
-
-  {% else %}
-  <div class="docs-empty">
-    {% if query %}
-    <strong>No documents matched “{{ query }}”.</strong>
-    <p>Try a customer name, PPS number or document type.</p>
-    {% else %}
-    <strong>No PPS PDFs found.</strong>
-    <p>
-      Generated quotes, invoices and purchasing
-      documents will appear here.
-    </p>
-    {% endif %}
-  </div>
-  {% endif %}
+  {% else %}<div class="docs-empty"><strong>No authoritative documents matched.</strong><p>Try a different search or filter. Files without a valid manifest are intentionally excluded.</p></div>{% endif %}
 </div>
 {% endblock %}

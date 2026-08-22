@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_manufacturer_logo.html" import manufacturer_logo %}
 {% block title %}Quotes · Pinpoint Sourcing Co.{% endblock %}
 
 {% block content %}
@@ -64,7 +65,7 @@
       "
     >
       <div class="workspace-row-mark quote-mark">
-        {{ (quote.manufacturer or "PPS")[:3]|upper }}
+        {{ manufacturer_logo(quote.manufacturer, true, false, true) }}
       </div>
 
       <div class="workspace-row-identity">
@@ -75,9 +76,9 @@
 
         <h2>{{ quote.customer }}</h2>
 
-        <strong>
+        <strong class="machine-identity-line">
           {% if quote.manufacturer or quote.machine %}
-            {{ quote.manufacturer }} {{ quote.machine }}
+            <span>{{ quote.manufacturer }}</span> <span>{{ quote.machine }}</span>
           {% else %}
             No machine linked
           {% endif %}
@@ -164,6 +165,11 @@
           >
             Customer PDF
           </a>
+          {% if quote.can_archive and not quote.is_archived %}
+          <form method="post" action="/quotes/{{ quote.id }}/archive" data-archive-delete>
+            <button class="workspace-btn workspace-btn-secondary" type="submit">Delete</button>
+          </form>
+          {% endif %}
 
           <a
             class="workspace-btn workspace-btn-secondary"

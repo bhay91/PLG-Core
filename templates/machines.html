@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_manufacturer_logo.html" import manufacturer_logo %}
 {% block title %}Registry · Pinpoint Sourcing Co.{% endblock %}
 
 {% block content %}
@@ -74,7 +75,7 @@
       "
     >
       <div class="workspace-row-mark registry-mark">
-        {{ type.icon }}
+        {{ manufacturer_logo(machine.manufacturer, true, false, true) }}
       </div>
 
       <div class="workspace-row-identity">
@@ -87,9 +88,9 @@
           {{ machine.name or machine.manufacturer ~ " " ~ machine.model }}
         </h2>
 
-        <strong>
-          {{ machine.manufacturer }}
-          {{ machine.model }}
+        <strong class="machine-identity-line">
+          <span>{{ machine.manufacturer }}</span>
+          <span>{{ machine.model }}</span>
 
           {% if machine.year %}
             <span>· {{ machine.year }}</span>

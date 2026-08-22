@@ -282,7 +282,8 @@ def _copy_quote_items(connection, source_quote_id: int, quote_id: int, item_ids:
         "description","internal_part_number","supplier_name","source_type","brand",
         "supplier_part_number","supplier_unit_cost","customer_unit_price",
         "supplier_line_total","customer_line_total","line_profit","pricing_mode",
-        "customer_unit_price_override","recommended_markup_percent","asset_name_snapshot",
+        "customer_unit_price_override","recommended_markup_percent","research_session_id",
+        "research_evidence","research_notes","identified_at","asset_name_snapshot",
         "asset_type_snapshot","asset_manufacturer_snapshot","asset_model_snapshot",
         "asset_year_snapshot","asset_serial_snapshot",
     ]

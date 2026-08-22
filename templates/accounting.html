@@ -87,6 +87,9 @@
   grid-template-columns:1fr 1fr;
   gap:16px
 }
+.accounting-card-link{text-decoration:none}.accounting-card-link:hover{border-color:var(--accent)}
+.accounting-helper-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.accounting-helper{padding:13px 15px;border:1px solid var(--line);border-radius:12px;background:#fff}.accounting-helper span{display:block;color:var(--muted);font-size:12px;font-weight:750}.accounting-helper strong{display:block;margin-top:4px;color:var(--ink-strong);font-size:18px}
+.accounting-reconciliation-table td{font-size:13px}.accounting-state{display:inline-block;padding:4px 7px;border-radius:999px;background:var(--surface-soft);font-size:10px;font-weight:850;letter-spacing:.03em}.accounting-state.ORDER_COSTED,.accounting-state.RECEIVED{background:#eaf8ef;color:#12603c}.accounting-state.PARTIALLY_COSTED{background:#fff4df;color:#71501b}.accounting-links{display:flex;flex-wrap:wrap;gap:5px}.accounting-links a{font-size:12px;font-weight:750;color:var(--accent-dark)}
 @media(max-width:900px){
   .accounting-grid{
     grid-template-columns:repeat(2,minmax(0,1fr))
@@ -95,10 +98,25 @@
     grid-template-columns:1fr
   }
 }
+@media(max-width:1100px){
+  .accounting-reconciliation-table,
+  .accounting-reconciliation-table tbody,
+  .accounting-reconciliation-table tr,
+  .accounting-reconciliation-table td{display:block;width:100%}
+  .accounting-reconciliation-table thead{display:none}
+  .accounting-reconciliation-table tr{padding:12px;border-bottom:1px solid var(--line)}
+  .accounting-reconciliation-table td{display:grid;grid-template-columns:minmax(140px,.7fr) minmax(0,1fr);gap:8px;padding:5px 4px;border:0;overflow-wrap:anywhere}
+  .accounting-reconciliation-table td::before{content:attr(data-label);color:var(--muted);font-size:11px;font-weight:800;text-transform:uppercase}
+  .accounting-reconciliation-table td.accounting-primary-cell{display:block}
+  .accounting-reconciliation-table td.accounting-primary-cell::before{display:none}
+}
 @media(max-width:620px){
+  .page:has(> .accounting-shell){width:auto;margin-left:12px;margin-right:12px}
   .accounting-grid{
     grid-template-columns:1fr
   }
+  .accounting-helper-grid{grid-template-columns:1fr}
+  .accounting-reconciliation-table td{grid-template-columns:minmax(105px,.7fr) minmax(0,1fr)}
 }
 </style>
 
@@ -119,97 +137,98 @@
   </section>
 
   <section class="accounting-grid">
-    <article class="accounting-card">
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
       <span>Invoiced Revenue</span>
       <strong>
         ${{ "%.2f"|format(financials.invoiced_revenue) }}
       </strong>
       <small>All non-void invoices</small>
-    </article>
+    </a>
 
-    <article class="accounting-card">
-      <span>Booked Gross Profit</span>
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Invoice Collections</span>
       <strong>
-        ${{ "%.2f"|format(financials.booked_profit) }}
+        ${{ "%.2f"|format(financials.invoice_collections) }}
       </strong>
-      <small>
-        {{ "%.1f"|format(financials.gross_margin_percent) }}%
-        booked gross margin
-      </small>
-    </article>
+      <small>Invoice-linked payments less reversals</small>
+    </a>
 
-    <article class="accounting-card">
-      <span>Actual Gross Profit</span>
-      {% if financials.reconciled_invoice_count %}
-      <strong>
-        ${{ "%.2f"|format(financials.actual_gross_profit) }}
-      </strong>
-      <small>
-        {{ "%.1f"|format(financials.actual_gross_margin_percent) }}%
-        actual margin ·
-        {{ financials.reconciled_invoice_count }}
-        reconciled invoice{% if financials.reconciled_invoice_count != 1 %}s{% endif %}
-      </small>
-      {% else %}
-      <strong>—</strong>
-      <small>
-        Available after all supplier purchases for an invoice
-        are marked ordered
-      </small>
-      {% endif %}
-    </article>
-
-    <article class="accounting-card">
-      <span>Profit Variance</span>
-      {% if financials.reconciled_invoice_count %}
-      <strong>
-        ${{ "%+.2f"|format(financials.profit_variance) }}
-      </strong>
-      <small>
-        Actual minus booked profit on reconciled invoices
-      </small>
-      {% else %}
-      <strong>—</strong>
-      <small>No reconciled supplier purchase costs yet</small>
-      {% endif %}
-    </article>
-
-    <article class="accounting-card">
-      <span>Outstanding Receivables</span>
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Outstanding Balance</span>
       <strong>
         ${{ "%.2f"|format(financials.receivables) }}
       </strong>
-      <small>Unpaid and partial invoice balances</small>
-    </article>
+      <small>Persisted unpaid and partial balances</small>
+    </a>
 
-    <article class="accounting-card">
-      <span>Net Customer Payments</span>
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Supplier Order Cost</span>
       <strong>
-        ${{ "%.2f"|format(financials.net_customer_payments) }}
+        ${{ "%.2f"|format(financials.placed_supplier_cost) }}
       </strong>
-      <small>Payments less payment reversals</small>
-    </article>
+      <small>What the supplier orders were placed for.</small>
+    </a>
 
-    <article class="accounting-card">
-      <span>Placed Supplier Spend</span>
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Expected Profit</span>
       <strong>
-        ${{ "%.2f"|format(financials.supplier_spend) }}
+        ${{ "%.2f"|format(financials.booked_profit) }}
       </strong>
-      <small>Ordered, partial and received supplier purchases</small>
-    </article>
+      <small>Customer sale minus estimated cost.</small>
+    </a>
 
-    <article class="accounting-card">
-      <span>This Month</span>
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Supplier Order Profit</span>
       <strong>
-        ${{ "%.2f"|format(month.invoiced_revenue) }}
+        ${{ "%.2f"|format(financials.placed_cost_profit) }}
       </strong>
-      <small>
-        {{ month.invoice_count }}
-        invoice{% if month.invoice_count != 1 %}s{% endif %}
-        · ${{ "%.2f"|format(month.net_customer_payments) }}
-        collected
-      </small>
-    </article>
+      <small>Customer sale minus supplier order cost.</small>
+    </a>
+
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Final Actual Cost</span>
+      <strong>{% if financials.actual_confirmation_state == "NOT_CONFIRMED" %}NOT CONFIRMED{% else %}${{ "%.2f"|format(financials.actual_supplier_cost) }}{% endif %}</strong>
+      <small>What we ultimately confirmed the parts actually cost. · {{ financials.actual_confirmation_state|replace('_',' ') }}</small>
+    </a>
+
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Final Profit</span>
+      <strong>{% if financials.actual_confirmation_state == "NOT_CONFIRMED" %}NOT CONFIRMED{% else %}${{ "%.2f"|format(financials.actual_gross_profit) }}{% endif %}</strong>
+      <small>Customer sale minus final actual cost.</small>
+    </a>
+
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Profit Difference</span>
+      <strong>{% if financials.actual_confirmation_state == "NOT_CONFIRMED" %}—{% else %}${{ "%+.2f"|format(financials.profit_variance) }}{% endif %}</strong>
+      <small>Final profit compared with expected profit.</small>
+    </a>
+
+  </section>
+
+  <section class="accounting-helper-grid" aria-label="Other customer money">
+    <article class="accounting-helper"><span>Unallocated Customer Money</span><strong>${{ "%.2f"|format(financials.unallocated_customer_money) }}</strong></article>
+    <article class="accounting-helper"><span>Generic Refunds</span><strong>${{ "%.2f"|format(financials.refunds) }}</strong></article>
+    <article class="accounting-helper"><span>Adjustments</span><strong>${{ "%+.2f"|format(financials.adjustments) }}</strong></article>
+  </section>
+
+  <section class="accounting-section" id="invoice-reconciliation">
+    <div class="accounting-section-head"><p class="eyebrow">INVOICE CONTROL</p><h2>Invoice Reconciliation</h2><p><strong>Estimated Cost:</strong> What we expected the parts to cost when the customer was quoted/invoiced. <strong>Supplier Order Cost:</strong> What the supplier orders were placed for. <strong>Final Actual Cost:</strong> What we ultimately confirmed the parts actually cost.</p></div>
+    <table class="accounting-table accounting-reconciliation-table">
+      <thead><tr><th>Invoice / Job</th><th>Revenue</th><th>Estimated Cost</th><th>Supplier Order Cost</th><th>Final Actual Cost</th><th>Expected Profit</th><th>Supplier Order Profit</th><th>Final Profit</th><th>Cost Difference</th><th>Profit Difference</th><th>Status / Orders</th></tr></thead>
+      <tbody>{% for row in invoice_reconciliation %}<tr>
+        <td class="accounting-primary-cell"><strong><a href="{{ row.invoice_url }}">{{ row.invoice_number }}</a></strong><div><a href="{{ row.job_url }}">{{ row.job_number }}</a> · {{ row.customer }}</div></td>
+        <td data-label="Revenue" class="accounting-money">${{ "%.2f"|format(row.customer_total) }}</td>
+        <td data-label="Estimated Cost" class="accounting-money">${{ "%.2f"|format(row.booked_supplier_cost) }}</td>
+        <td data-label="Supplier Order Cost" class="accounting-money">${{ "%.2f"|format(row.placed_supplier_cost) }}</td>
+        <td data-label="Final Actual Cost" class="accounting-money">{% if row.actual_cost_state == "NOT_CONFIRMED" %}NOT CONFIRMED{% else %}${{ "%.2f"|format(row.actual_supplier_cost) }}<small>{{ row.actual_cost_state|replace('_',' ') }}</small>{% endif %}</td>
+        <td data-label="Expected Profit" class="accounting-money">${{ "%.2f"|format(row.expected_profit) }}</td>
+        <td data-label="Supplier Order Profit" class="accounting-money">${{ "%.2f"|format(row.placed_cost_profit) }}</td>
+        <td data-label="Final Profit" class="accounting-money">{% if row.actual_cost_state == "NOT_CONFIRMED" %}NOT CONFIRMED{% else %}${{ "%.2f"|format(row.actual_profit) }}{% endif %}</td>
+        <td data-label="Cost Difference" class="accounting-money">{% if row.actual_cost_state == "NOT_CONFIRMED" %}—{% else %}${{ "%+.2f"|format(row.cost_variance) }}{% endif %}</td>
+        <td data-label="Profit Difference" class="accounting-money">{% if row.actual_cost_state == "NOT_CONFIRMED" %}—{% else %}${{ "%+.2f"|format(row.profit_variance) }}{% endif %}</td>
+        <td data-label="Status / Orders"><span class="accounting-state {{ row.actual_cost_state }}">{{ row.actual_cost_state|replace('_',' ') }}</span>{% if row.orders %}<div class="accounting-links">{% for order in row.orders %}<a href="/purchasing/orders/{{ order.id }}">{{ order.po_number or order.supplier_name }}</a>{% endfor %}</div>{% endif %}</td>
+      </tr>{% else %}<tr><td colspan="11">No non-void invoices to reconcile.</td></tr>{% endfor %}</tbody>
+    </table>
   </section>
 
   <div class="accounting-status-grid">

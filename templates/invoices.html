@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_manufacturer_logo.html" import manufacturer_logo %}
 {% block title %}Invoices · Pinpoint Sourcing Co.{% endblock %}
 
 {% block content %}
@@ -71,7 +72,7 @@
       "
     >
       <div class="workspace-row-mark invoice-mark">
-        {{ (invoice.manufacturer or "PPS")[:3]|upper }}
+        {{ manufacturer_logo(invoice.manufacturer, true, false, true) }}
       </div>
 
       <div class="workspace-row-identity">
@@ -82,9 +83,9 @@
 
         <h2>{{ invoice.customer }}</h2>
 
-        <strong>
+        <strong class="machine-identity-line">
           {% if invoice.manufacturer or invoice.machine %}
-            {{ invoice.manufacturer }} {{ invoice.machine }}
+            <span>{{ invoice.manufacturer }}</span> <span>{{ invoice.machine }}</span>
           {% else %}
             No machine linked
           {% endif %}
@@ -122,11 +123,11 @@
         </div>
       </div>
 
-      <div class="workspace-row-action workspace-action-panel">
+      <div class="workspace-row-action workspace-action-panel invoice-action-panel">
         <span>NEXT ACTION</span>
 
         {% if invoice.status == "PAID" %}
-      <strong>Create Parts Order Sheet</strong>
+      <strong>Create Internal Parts Order Worksheet</strong>
 
       <div class="invoice-paid-grid">
         <a class="workspace-btn workspace-btn-secondary"
@@ -137,13 +138,13 @@
         <a class="workspace-btn workspace-btn-secondary"
            target="_blank"
            href="/invoices/{{ invoice.id }}/parts-order-sheet/pdf?v={{ invoice.status }}-{{ invoice.invoice_date }}">
-          Parts Order Sheet
+          Internal Parts Order Worksheet
         </a>
 
         <a class="workspace-btn workspace-btn-secondary"
            target="_blank"
-           href="/invoices/{{ invoice.id }}/customer/pdf?v={{ invoice.status }}-{{ invoice.balance_due }}">
-          Customer PDF
+           href="/invoices/{{ invoice.id }}/customer/paid-pdf?v={{ invoice.customer_document_version }}">
+          Customer PDF — Paid
         </a>
 
         {% if invoice.custom_invoice_exists %}
@@ -160,8 +161,8 @@
 
         <a class="workspace-btn workspace-btn-secondary"
            target="_blank"
-           href="/invoices/{{ invoice.id }}/internal/pdf?v={{ invoice.status }}-{{ invoice.balance_due }}">
-          Internal PDF
+           href="/invoices/{{ invoice.id }}/internal/paid-pdf?v={{ invoice.internal_document_version }}">
+          Internal PDF — Current
         </a>
 
         {% if invoice.custom_invoice_exists %}

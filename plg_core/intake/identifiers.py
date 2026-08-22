@@ -12,7 +12,7 @@ MARKETS = ("UNKNOWN", "JDM", "USDM", "EDM", "UK", "GLOBAL")
 
 EQUIPMENT_MAKES = {
     "john deere", "deere", "jcb", "caterpillar", "cat", "komatsu", "bomag",
-    "hamm", "gradall", "cummins", "mack",
+    "hamm", "gradall", "cummins", "mack", "international",
 }
 
 

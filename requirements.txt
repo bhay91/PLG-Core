@@ -3,3 +3,5 @@ uvicorn[standard]>=0.35
 jinja2>=3.1
 python-multipart>=0.0.20
 reportlab>=4.0
+mcp==2.0.0
+playwright>=1.61,<1.62

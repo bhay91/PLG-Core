@@ -18,5 +18,6 @@
   <div class="form-section full"><h2>Internal notes</h2><label><textarea name="notes" rows="6">{{ job.notes or '' }}</textarea></label></div>
   <div class="form-actions full"><a class="button ghost" href="/jobs/{{ job.id }}/basket">Cancel</a><button class="button" type="submit">Save Safe Corrections</button></div>
 </form>
+{% if not job.is_archived %}<section class="danger-zone"><form method="post" action="/jobs/{{ job.id }}/archive" data-archive-delete><button class="button danger-outline" type="submit">Delete</button></form><p>This archives the Job. Quotes, invoices, purchasing, delivery, and history remain preserved.</p></section>{% endif %}
 <script>(()=>{const c=document.getElementById('job-customer');const m=document.getElementById('job-machine');if(!c||!m||c.disabled)return;const filter=()=>{for(const option of m.options){if(!option.value)continue;option.hidden=option.dataset.customerId!==c.value;}if(m.selectedOptions[0]?.hidden)m.value='';};c.addEventListener('change',filter);filter();})();</script>
 {% endblock %}

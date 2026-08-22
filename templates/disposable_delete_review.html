@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Permanently Delete disposable record · Pinpoint Sourcing Co.{% endblock %}
+{% block content %}
+<section class="workspace-heading"><div><p class="eyebrow">DISPOSABLE RECORD REVIEW</p><h1>Permanently Delete this record?</h1><p>This will permanently remove the selected Request/Job and disposable related data. This cannot be undone.</p></div></section>
+<section class="panel" style="max-width:760px">
+  <dl class="summary-list">
+    <div><dt>Customer</dt><dd>{{ plan.customer }}</dd></div>
+    <div><dt>Request</dt><dd>{{ plan.request_number }}</dd></div>
+    {% if plan.job_number %}<div><dt>Job</dt><dd>{{ plan.job_number }}</dd></div>{% endif %}
+    <div><dt>Machine(s)</dt><dd>{{ plan.machines|join(', ') if plan.machines else 'None' }}</dd></div>
+    <div><dt>Requested Needs</dt><dd>{{ plan.needs|join(', ') if plan.needs else 'None' }}</dd></div>
+    <div><dt>Research / Parts Found</dt><dd>{{ plan.counts.get('Parts Found', 0) }} result(s)</dd></div>
+    <div><dt>Attachments</dt><dd>{{ plan.counts.get('Attachments', 0) }}</dd></div>
+  </dl>
+  <form method="post" action="{{ post_url }}" class="stack-form">
+    <input type="hidden" name="expected_token" value="{{ plan.token }}">
+    <label>Reason <textarea name="reason" required></textarea></label>
+    <label>Type the exact Job number/request number: <strong>{{ required_number }}</strong><input name="confirmation_number" required autocomplete="off"></label>
+    <label>Type: <strong>{{ delete_phrase }}</strong><input name="confirmation_phrase" required autocomplete="off"></label>
+    <div class="form-actions"><a class="button ghost" href="/requests">Cancel</a><button class="button danger" type="submit">Permanently Delete</button></div>
+  </form>
+</section>
+{% endblock %}

@@ -241,8 +241,9 @@ def _snapshot_revision(
                 pricing_mode, customer_unit_price_override,
                 effective_customer_unit_price, recommended_markup_percent,
                 part_status, verification_status, verification_note,
-                availability, lead_time, selected, confidence, source_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                availability, lead_time, selected, confidence, source_url,
+                research_session_id,research_evidence,research_notes,identified_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 revision_id,
@@ -261,6 +262,8 @@ def _snapshot_revision(
                 item["verification_note"] or "", item["availability"] or "",
                 item["lead_time"] or "", int(item["selected"]), item["confidence"],
                 item["source_url"] or "",
+                item["research_session_id"], item["research_evidence"] or "",
+                item["research_notes"] or "", item["identified_at"],
             ),
         )
         revision_item_id = int(cursor.lastrowid)
@@ -352,8 +355,9 @@ def _clone_snapshot_to_basket(
                 quantity, supplier_unit_cost, markup_percent,
                 customer_unit_price_override, pricing_mode, part_status,
                 verification_status, verification_note, availability,
-                lead_time, selected, confidence, source_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                lead_time, selected, confidence, source_url,
+                research_session_id,research_evidence,research_notes,identified_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 basket_id, source_map.get(int(item["revision_source_id"]))
@@ -370,6 +374,8 @@ def _clone_snapshot_to_basket(
                 item["verification_status"], item["verification_note"],
                 item["availability"], item["lead_time"], item["selected"],
                 item["confidence"], item["source_url"],
+                item["research_session_id"], item["research_evidence"],
+                item["research_notes"], item["identified_at"],
             ),
         )
         basket_item_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
@@ -631,12 +637,33 @@ def _validate_selected_items(connection: sqlite3.Connection, basket_id: int):
     ).fetchall()
     if not items:
         raise HTTPException(status_code=400, detail="Select at least one basket item.")
-    invalid = [item for item in items if str(item["verification_status"] or "UNVERIFIED").upper()
-               not in {"VERIFIED", "OVERRIDE"} or
-               (str(item["verification_status"] or "").upper() == "OVERRIDE" and
-                not str(item["verification_note"] or "").strip())]
-    if invalid:
-        raise HTTPException(status_code=400, detail="All selected parts must be verified or have a documented manual override before commit.")
+    unpromoted = [
+        item for item in items
+        if str(item["research_state"] or "LEGACY_CANDIDATE").upper() == "RESEARCH_RESULT"
+    ]
+    if unpromoted:
+        raise HTTPException(
+            status_code=409,
+            detail="Confirm each Research Result as a Quote Candidate before committing work.",
+        )
+    # Explicit Quote Candidate promotion is the current operator authority
+    # boundary. Retain the old verification rule only for pre-3C legacy work.
+    invalid_legacy = [
+        item for item in items
+        if str(item["research_state"] or "LEGACY_CANDIDATE").upper() == "LEGACY_CANDIDATE"
+        and (
+            str(item["verification_status"] or "UNVERIFIED").upper() not in {"VERIFIED", "OVERRIDE"}
+            or (
+                str(item["verification_status"] or "").upper() == "OVERRIDE"
+                and not str(item["verification_note"] or "").strip()
+            )
+        )
+    ]
+    if invalid_legacy:
+        raise HTTPException(
+            status_code=400,
+            detail="Legacy selected parts must retain verified or documented override metadata.",
+        )
     return items
 
 
@@ -678,9 +705,10 @@ def commit_work_revision(
                     verification_status, verification_source, verification_notes,
                     oem_dealer_name, oem_dealer_price, oem_dealer_availability,
                     source_url, product_url, captured_at,
+                    research_session_id,research_evidence,research_notes,identified_at,
                     work_revision_id, work_revision_item_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'VERIFIED', ?, ?, ?, ?, ?, ?, ?,
-                          CURRENT_TIMESTAMP, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job_id, item["job_asset_id"], item["primary_requested_need_id"],
@@ -689,13 +717,16 @@ def commit_work_revision(
                     item["manufacturer_part_number"] if source_type == "OEM" else "",
                     item["alternate_part_number"] or "",
                     item["requested_description"] if source_type == "OEM" else "", price,
+                    str(item["verification_status"] or "UNVERIFIED").upper(),
                     "Manual Override" if str(item["verification_status"]).upper() == "OVERRIDE"
                     else item["supplier_name"] or "Basket",
                     item["verification_note"] or "",
                     item["supplier_name"] if source_type == "OEM" else "",
                     item["supplier_unit_cost"] if source_type == "OEM" else None,
                     item["availability"] if source_type == "OEM" else "",
-                    item["source_url"], item["source_url"], revision["id"], revision_item_id,
+                    item["source_url"], item["source_url"], item["research_session_id"],
+                    item["research_evidence"], item["research_notes"], item["identified_at"],
+                    revision["id"], revision_item_id,
                 ),
             )
             part_id = int(part_cursor.lastrowid)

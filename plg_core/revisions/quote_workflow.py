@@ -124,6 +124,7 @@ def _revision_quote_rows(connection, revision_id: int):
             wri.recommended_markup_percent, wri.revision_source_id,
             wri.id AS origin_work_revision_item_id,
             wri.primary_requested_need_id,
+            wri.research_session_id,wri.research_evidence,wri.research_notes,wri.identified_at,
             COALESCE(a.name,'') AS asset_name_snapshot,
             COALESCE(a.asset_type,'') AS asset_type_snapshot,
             COALESCE(a.manufacturer,'') AS asset_manufacturer_snapshot,
@@ -200,9 +201,10 @@ def _insert_quote_items(connection, quote_id: int, rows) -> None:
                 supplier_unit_cost, customer_unit_price, supplier_line_total,
                 customer_line_total, line_profit, pricing_mode,
                 customer_unit_price_override, recommended_markup_percent,
+                research_session_id,research_evidence,research_notes,identified_at,
                 asset_name_snapshot,asset_type_snapshot,asset_manufacturer_snapshot,
                 asset_model_snapshot,asset_year_snapshot,asset_serial_snapshot
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 quote_id, row["part_id"], row["source_id"], row["job_asset_id"],
@@ -214,6 +216,8 @@ def _insert_quote_items(connection, quote_id: int, rows) -> None:
                 round((price - cost) * quantity, 2),
                 row["pricing_mode"], row["customer_unit_price_override"],
                 row["recommended_markup_percent"],
+                row["research_session_id"], row["research_evidence"],
+                row["research_notes"], row["identified_at"],
                 row["asset_name_snapshot"], row["asset_type_snapshot"],
                 row["asset_manufacturer_snapshot"], row["asset_model_snapshot"],
                 row["asset_year_snapshot"], row["asset_serial_snapshot"],
@@ -233,14 +237,20 @@ def _write_documents(quote_id: int) -> None:
             connection.execute(
                 """
                 INSERT INTO quote_documents_manifest (
-                    quote_id,audience,document_kind,file_path,sha256,is_issued
-                ) VALUES (?,?, 'QUOTE',?,?,0)
-                ON CONFLICT(quote_id,audience,document_kind,is_issued)
+                    quote_id,audience,document_kind,file_path,sha256,is_issued,
+                    version,quote_status,is_current
+                ) VALUES (?,?, 'QUOTE',?,?,0,1,?,1)
+                ON CONFLICT(quote_id,audience,document_kind,version)
                 DO UPDATE SET file_path=excluded.file_path,
                               sha256=excluded.sha256,
-                              generated_at=CURRENT_TIMESTAMP
+                              generated_at=CURRENT_TIMESTAMP,
+                              quote_status=excluded.quote_status,
+                              is_current=1
                 """,
-                (quote_id, audience.upper(), path, digest),
+                (
+                    quote_id, audience.upper(), path, digest,
+                    str(quote["status"] or "").upper(),
+                ),
             )
         connection.commit()
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import closing
+import json
 import sqlite3
 from typing import Any
 
@@ -190,6 +191,17 @@ def add_item_with_connection(
         (payload.primary_requested_need_id, job_id),
     ).fetchone() is None:
         raise HTTPException(status_code=409, detail="Requested Need does not belong to this Job.")
+    if payload.research_session_id is not None:
+        session = connection.execute(
+            "SELECT * FROM verification_sessions WHERE id=? AND job_id=?",
+            (payload.research_session_id, job_id),
+        ).fetchone()
+        if session is None:
+            raise HTTPException(status_code=409, detail="Research Session does not belong to this Job.")
+        if session["job_asset_id"] != payload.job_asset_id:
+            raise HTTPException(status_code=409, detail="Research Session belongs to a different machine.")
+        if session["requested_need_id"] != payload.primary_requested_need_id:
+            raise HTTPException(status_code=409, detail="Research Session belongs to a different Requested Need.")
 
     connection.execute(
         """
@@ -201,9 +213,10 @@ def add_item_with_connection(
             supplier_unit_cost, markup_percent,
             customer_unit_price_override, pricing_mode, verification_status,
             verification_note, availability, lead_time,
-            selected, confidence, source_url
+            selected, confidence, source_url, research_session_id,
+            research_evidence, research_notes, identified_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             basket["id"],
@@ -230,6 +243,10 @@ def add_item_with_connection(
             int(payload.selected),
             payload.confidence,
             payload.source_url.strip(),
+            payload.research_session_id,
+            payload.research_evidence.strip(),
+            payload.research_notes.strip(),
+            payload.identified_at,
         ),
     )
     item_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
@@ -309,7 +326,8 @@ def update_item(
         "alternate_part_number", "supplier_part_number",
         "supplier_name", "source_type",
         "brand", "quantity", "supplier_unit_cost", "markup_percent", "customer_unit_price_override", "part_status", "verification_status", "verification_note", "availability",
-        "lead_time", "selected", "confidence", "source_url",
+        "lead_time", "selected", "confidence", "source_url", "research_session_id",
+        "research_evidence", "research_notes", "identified_at",
     }
 
     with closing(get_connection()) as connection:
@@ -716,6 +734,7 @@ def delete_item(
     *,
     expected_revision_id: int | None = None,
     expected_version: int | None = None,
+    require_unpromoted_research_result: bool = False,
 ):
     with closing(get_connection()) as connection:
         item = connection.execute(
@@ -745,6 +764,15 @@ def delete_item(
             raise HTTPException(
                 status_code=404,
                 detail="Basket item not found for this job.",
+            )
+
+        if require_unpromoted_research_result and (
+            str(item["research_state"] or "").upper() != "RESEARCH_RESULT"
+            or bool(item["selected"])
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Only an unpromoted Research Result can be removed here.",
             )
 
         revision = ensure_basket_mutable(
@@ -824,14 +852,20 @@ def import_cart(
     *,
     expected_revision_id: int | None = None,
     expected_version: int | None = None,
+    job_asset_id: int | None = None,
+    requested_need_id: int | None = None,
+    verification_session_id: int | None = None,
+    require_capture_context: bool = False,
 ):
     source_key = str(payload.get("source_key", "")).strip()
     source_name = str(payload.get("source_name", "")).strip()
-    source_url = str(payload.get("source_url", "")).strip()
+    from plg_core.sources.service import validate_source_url
+    source_url = validate_source_url(str(payload.get("source_url", "")).strip())
     trust_level = str(
         payload.get("trust_level", "SUPPLIER_VERIFIED")
     ).strip()
     currency = str(payload.get("currency", "USD")).strip() or "USD"
+    capture_mode = str(payload.get("capture_mode") or "").strip().upper()
     items = payload.get("items") or []
     charges = payload.get("charges") or []
 
@@ -849,6 +883,7 @@ def import_cart(
                 shipping = 0.0
 
     with closing(get_connection()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
         basket = get_or_create_basket(connection, job_id)
         revision = ensure_basket_mutable(
             basket,
@@ -857,12 +892,47 @@ def import_cart(
             expected_version=expected_version,
         )
         import_context = connection.execute(
-            "SELECT job_asset_id,requested_need_id FROM active_source_import "
+            "SELECT job_asset_id,requested_need_id,verification_session_id FROM active_source_import "
             "WHERE id=1 AND job_id=?",
             (job_id,),
         ).fetchone()
-        import_asset_id = import_context["job_asset_id"] if import_context else None
-        import_need_id = import_context["requested_need_id"] if import_context else None
+        if require_capture_context:
+            if import_context is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="The active PPS capture context is no longer available. Reload and review before sending.",
+                )
+            supplied_context = (job_asset_id, requested_need_id, verification_session_id)
+            active_context = (
+                import_context["job_asset_id"], import_context["requested_need_id"],
+                import_context["verification_session_id"],
+            )
+            if supplied_context != active_context:
+                raise HTTPException(
+                    status_code=409,
+                    detail="The active Job, machine, Need, or research session changed before import.",
+                )
+            asset = connection.execute(
+                "SELECT 1 FROM job_assets WHERE id=? AND job_id=? AND state='ACTIVE'",
+                (job_asset_id, job_id),
+            ).fetchone()
+            session = connection.execute(
+                "SELECT 1 FROM verification_sessions WHERE id=? AND job_id=? "
+                "AND job_asset_id=? AND requested_need_id IS ?",
+                (verification_session_id, job_id, job_asset_id, requested_need_id),
+            ).fetchone()
+            need = None if requested_need_id is None else connection.execute(
+                "SELECT 1 FROM requested_needs WHERE id=? AND job_id=? AND job_asset_id=?",
+                (requested_need_id, job_id, job_asset_id),
+            ).fetchone()
+            if asset is None or session is None or (requested_need_id is not None and need is None):
+                raise HTTPException(
+                    status_code=409,
+                    detail="The supplied machine, Need, or research session does not belong to this Job.",
+                )
+        import_asset_id = job_asset_id if require_capture_context else (import_context["job_asset_id"] if import_context else None)
+        import_need_id = requested_need_id if require_capture_context else (import_context["requested_need_id"] if import_context else None)
+        import_session_id = verification_session_id if require_capture_context else (import_context["verification_session_id"] if import_context else None)
         cursor = connection.execute(
             """
             INSERT INTO basket_sources (
@@ -884,7 +954,8 @@ def import_cart(
                 raw.get("description", "")
             ).strip() or "Imported Part"
             supplier_part = str(
-                raw.get("supplier_part_number", "")
+                raw.get("supplier_part_number") or raw.get("sku") or
+                raw.get("asin") or raw.get("listing_id") or raw.get("item_id") or ""
             ).strip()
             manufacturer_part = str(
                 raw.get("manufacturer_part_number", "")
@@ -902,26 +973,53 @@ def import_cart(
                 cost = None
 
             source_type = "OEM" if source_key == "cat_sis" else "AFTERMARKET"
+            product_page_url = validate_source_url(str(raw.get("product_page_url") or "").strip()) if raw.get("product_page_url") else ""
+            cart_page_url = validate_source_url(str(raw.get("cart_page_url") or "").strip()) if raw.get("cart_page_url") else ""
+            item_source_url = validate_source_url(str(product_page_url or raw.get("source_url") or cart_page_url or source_url).strip())
+            item_supplier_name = str(raw.get("supplier_name") or source_name).strip()
+            evidence_parts = []
+            if capture_mode:
+                evidence_parts.append(f"Capture mode: {capture_mode}")
+            evidence_parts.append(f"Source: {source_name}")
+            raw_evidence = str(raw.get("evidence") or "").strip()
+            if raw_evidence:
+                evidence_parts.append(f"Evidence: {raw_evidence}")
+            for label, key in (("MPN", "manufacturer_part_number"), ("Supplier part", "supplier_part_number"), ("SKU", "sku"), ("ASIN", "asin"), ("Listing ID", "listing_id")):
+                value = str(raw.get(key) or "").strip()
+                if value:
+                    evidence_parts.append(f"{label}: {value}")
+            if raw.get("item_id"):
+                evidence_parts.append(f"Item ID: {str(raw.get('item_id')).strip()}")
+            if product_page_url:
+                evidence_parts.append(f"Product page: {product_page_url}")
+            if cart_page_url:
+                evidence_parts.append(f"Cart page: {cart_page_url}")
+            evidence_fields = raw.get("evidence_fields")
+            if isinstance(evidence_fields, dict) and evidence_fields:
+                evidence_parts.append("Field evidence: " + json.dumps(evidence_fields, sort_keys=True))
+            evidence = " | ".join(part for part in evidence_parts if part)
             connection.execute(
                 """
                 INSERT INTO basket_items (
                     basket_id, source_id, job_asset_id, primary_requested_need_id,
+                    research_session_id,
                     research_state, requested_description,
                     manufacturer_part_number, supplier_part_number,
                     supplier_name, source_type, brand, quantity,
                     supplier_unit_cost, availability, lead_time,
-                    selected, confidence, source_url
+                    selected, confidence, source_url, research_evidence
                 )
-                VALUES (?, ?, ?, ?, 'RESEARCH_RESULT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1.0, ?)
+                VALUES (?, ?, ?, ?, ?, 'RESEARCH_RESULT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1.0, ?, ?)
                 """,
                 (
-                    basket["id"], source_id, import_asset_id, import_need_id, description,
-                    manufacturer_part, supplier_part, source_name,
+                    basket["id"], source_id, import_asset_id, import_need_id,
+                    import_session_id, description,
+                    manufacturer_part, supplier_part, item_supplier_name,
                     source_type, str(raw.get("brand", "")).strip(),
                     quantity, cost,
                     str(raw.get("availability", "")).strip(),
                     str(raw.get("lead_time", "")).strip(),
-                    str(raw.get("source_url", source_url)).strip(),
+                    item_source_url, evidence,
                 ),
             )
             item_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
@@ -931,7 +1029,36 @@ def import_cart(
                     "(basket_item_id,requested_need_id) VALUES (?,?)",
                     (item_id, import_need_id),
                 )
+            shipping_values = (
+                raw.get("weight"), raw.get("length"), raw.get("width"), raw.get("height")
+            )
+            if any(value not in (None, "") for value in shipping_values):
+                def optional_number(value):
+                    try:
+                        return float(value) if value not in (None, "") else None
+                    except (TypeError, ValueError):
+                        return None
+                connection.execute(
+                    """INSERT INTO part_shipping_data (
+                           basket_item_id,manufacturer_part_number,unit_weight,weight_unit,
+                           length,width,height,dimension_unit,quality,provenance,notes
+                       ) VALUES (?,?,?,?,?,?,?,?, 'VERIFIED', ?, ?)""",
+                    (item_id, manufacturer_part, optional_number(raw.get("weight")),
+                     str(raw.get("weight_unit") or "").strip(),
+                     optional_number(raw.get("length")), optional_number(raw.get("width")),
+                     optional_number(raw.get("height")), str(raw.get("dimension_unit") or "").strip(),
+                     item_source_url,
+                     "Firefox source-reported data; "
+                     f"weight_type={str(raw.get('weight_type') or 'UNKNOWN').upper()}; "
+                     f"dimension_type={str(raw.get('dimension_type') or 'UNKNOWN').upper()}"),
+                )
             imported += 1
+
+        if imported == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="No parts with a usable identifier were accepted for import.",
+            )
 
         connection.execute(
             """
@@ -988,11 +1115,12 @@ def commit_basket(job_id: int):
                 item["verification_note"] or ""
             ).strip()
 
-            if (
-                candidate_status not in {"VERIFIED", "OVERRIDE"}
-                or (
-                    candidate_status == "OVERRIDE"
-                    and not candidate_note
+            research_state = str(item["research_state"] or "LEGACY_CANDIDATE").upper()
+            if research_state == "RESEARCH_RESULT" or (
+                research_state == "LEGACY_CANDIDATE"
+                and (
+                    candidate_status not in {"VERIFIED", "OVERRIDE"}
+                    or (candidate_status == "OVERRIDE" and not candidate_note)
                 )
             ):
                 invalid_items.append(item)
@@ -1005,8 +1133,8 @@ def commit_basket(job_id: int):
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "All selected parts must be verified or have a documented "
-                    f"manual override before commit: {descriptions}"
+                    "Selected work must be an explicit Quote Candidate; legacy "
+                    f"items must retain accepted verification metadata: {descriptions}"
                 ),
             )
 
@@ -1024,9 +1152,9 @@ def commit_basket(job_id: int):
                 item["verification_note"] or ""
             ).strip()
 
-            # Legacy Job Parts treat VERIFIED as the accepted gate.
-            # Preserve manual override provenance separately.
-            committed_verification_status = "VERIFIED"
+            # Verification remains historical metadata; Quote Candidate
+            # promotion is the authority boundary for current research work.
+            committed_verification_status = candidate_verification_status
             committed_verification_source = (
                 "Manual Override"
                 if candidate_verification_status == "OVERRIDE"

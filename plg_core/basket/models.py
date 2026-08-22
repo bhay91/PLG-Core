@@ -27,6 +27,10 @@ class BasketItemCreate(BaseModel):
     selected: bool = True
     confidence: float | None = Field(default=None, ge=0, le=1)
     source_url: str = ""
+    research_session_id: int | None = None
+    research_evidence: str = ""
+    research_notes: str = ""
+    identified_at: str | None = None
 
 
 class BasketItemUpdate(BaseModel):
@@ -53,3 +57,7 @@ class BasketItemUpdate(BaseModel):
     selected: bool | None = None
     confidence: float | None = Field(default=None, ge=0, le=1)
     source_url: str | None = None
+    research_session_id: int | None = None
+    research_evidence: str | None = None
+    research_notes: str | None = None
+    identified_at: str | None = None

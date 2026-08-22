@@ -246,7 +246,52 @@ class JobEngine:
             "CLOSED",
         }
 
-        if not has_request:
+        # Durable supply-chain state outranks the contents of the current
+        # editable basket.  Historical jobs can legitimately have an empty
+        # current basket after their quoted revision has been committed.
+        if completed:
+            stage = "COMPLETE"
+            action = (
+                "Completed",
+                "COMPLETED",
+                (
+                    f"/invoices/{invoice_id}/documents"
+                    if invoice_id
+                    else f"/jobs/{job_id}/basket"
+                ),
+                "GET",
+            )
+            blocked_reason = ""
+
+        elif payment_received and job_status == "RECEIVED":
+            stage = "READY_TO_COMPLETE"
+            action = (
+                "Prepare Delivery",
+                "PREPARE_DELIVERY",
+                f"/jobs/{job_id}/delivery",
+                "GET",
+            )
+            blocked_reason = (
+                "Purchased parts are received and ready "
+                "for customer delivery."
+            )
+
+        elif payment_received and job_status == "ORDERED":
+            stage = "WAITING_PARTS"
+            remaining = max(selected_items - received_items, 0)
+            action = (
+                f"Receive {remaining} remaining "
+                f"part{'s' if remaining != 1 else ''}",
+                "RECEIVE_REMAINING_PARTS",
+                "/purchasing",
+                "GET",
+            )
+            blocked_reason = (
+                f"Waiting for {remaining} ordered "
+                f"part{'s' if remaining != 1 else ''}."
+            )
+
+        elif not has_request:
             stage = "REQUEST"
             action = (
                 "Create Customer Request",
@@ -390,16 +435,6 @@ class JobEngine:
                 "Customer approval is recorded, but payment "
                 "has not been received."
             )
-
-        elif payment_received and completed:
-            stage = "COMPLETE"
-            action = (
-                "Completed",
-                "COMPLETED",
-                f"/invoices/{invoice_id}/documents",
-                "GET",
-            )
-            blocked_reason = ""
 
         elif payment_received and (
             job_status == "RECEIVED"

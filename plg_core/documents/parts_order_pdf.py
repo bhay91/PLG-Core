@@ -280,7 +280,7 @@ def _header(invoice):
     meta_rows_display = [["", row[0], row[1]] for row in meta_rows]
 
     meta = [
-        Paragraph("PARTS ORDER SHEET", styles["title"]),
+        Paragraph("INTERNAL PARTS ORDER WORKSHEET", styles["title"]),
         Spacer(1, 1),
         Paragraph(
             str(_value(invoice, "job_number") or _value(invoice, "invoice_number")),

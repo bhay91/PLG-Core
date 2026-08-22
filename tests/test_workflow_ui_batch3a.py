@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import closing
+from datetime import date
 from pathlib import Path
 import shutil
 import tempfile
@@ -16,6 +17,7 @@ from plg_core.dashboard.service import get_follow_up_data
 from plg_core.database.migrations import run_migrations
 from plg_core.documents import quote_pdf
 from plg_core.followups.routes import (
+    cancel_follow_up,
     create_job_follow_up,
     information_received,
     resolve_follow_up,
@@ -168,6 +170,145 @@ class WorkflowUIBatch3ATests(unittest.TestCase):
             self.assertEqual(c.execute(
                 "SELECT status FROM job_follow_ups WHERE id=?", (follow_up_id,)
             ).fetchone()[0], "RESOLVED")
+
+    def test_follow_up_center_manual_context_actions_and_history(self):
+        job_id, request_id = self.job(request=True)
+        with closing(self.connection()) as c:
+            customer_id = c.execute(
+                "SELECT customer_id FROM jobs WHERE id=?", (job_id,)
+            ).fetchone()[0]
+            machine_id = c.execute(
+                "INSERT INTO machines(machine_number,customer_id,manufacturer,model,vin_pin_serial,active) "
+                "VALUES ('PPS-M-FU',?,'John Deere','350D','PIN-FOLLOW',1)",
+                (customer_id,),
+            ).lastrowid
+            asset_id = c.execute(
+                "INSERT INTO job_assets(job_id,machine_id,name,manufacturer,model,vin_pin_serial,is_primary) "
+                "VALUES (?,?,'John Deere 350D','John Deere','350D','PIN-FOLLOW',1)",
+                (job_id, machine_id),
+            ).lastrowid
+            need_id = c.execute(
+                "INSERT INTO requested_needs(job_id,job_asset_id,wording,state) "
+                "VALUES (?,?,'Original Fuel Filter wording','OPEN')",
+                (job_id, asset_id),
+            ).lastrowid
+            c.commit()
+        response = create_job_follow_up(
+            job_id, summary="Confirm filter housing photo",
+            reason="Two housings are possible", category="CUSTOMER_INFORMATION",
+            job_asset_id=asset_id, requested_need_id=need_id,
+        )
+        self.assertEqual(response.headers["location"], "/follow-up?view=MY_FOLLOW_UPS")
+        with closing(self.connection()) as c:
+            data = get_follow_up_data(c, view="MY_FOLLOW_UPS", today=date(2026, 8, 14))
+            row = data["items"][0]
+            follow_up_id = row["record_id"]
+            self.assertEqual(row["title"], "Batch 3 Customer")
+            self.assertEqual(row["record_number"], "PPS-J-0001")
+            self.assertIn("John Deere 350D", row["subtitle"])
+            self.assertIn("PIN-FOLLOW", row["subtitle"])
+            self.assertIn("Original Fuel Filter wording", row["subtitle"])
+            self.assertEqual(row["summary_text"], "Confirm filter housing photo")
+            self.assertEqual(row["detail"], "Two housings are possible")
+            self.assertEqual(row["url"], f"/jobs/{job_id}/basket")
+            self.assertIn("PPS-R-0001", {link["label"] for link in row["links"]})
+        response = information_received(follow_up_id, "Photo received")
+        self.assertEqual(response.headers["location"], "/follow-up?view=MY_FOLLOW_UPS")
+        response = resolve_follow_up(follow_up_id, "Correct housing selected")
+        self.assertEqual(response.headers["location"], "/follow-up?view=MY_FOLLOW_UPS")
+        create_job_follow_up(
+            job_id, summary="Call supplier", reason="Confirm stock",
+            category="OPERATOR_ATTENTION",
+        )
+        with closing(self.connection()) as c:
+            cancel_id = c.execute(
+                "SELECT id FROM job_follow_ups WHERE summary='Call supplier'"
+            ).fetchone()[0]
+        cancel_follow_up(cancel_id, "No longer required")
+        with closing(self.connection()) as c:
+            self.assertEqual(get_follow_up_data(c, view="MY_FOLLOW_UPS")["items"], [])
+            history = get_follow_up_data(c, view="HISTORY")["items"]
+            self.assertEqual({row["stored_status"] for row in history}, {"RESOLVED", "CANCELLED"})
+            self.assertGreaterEqual(c.execute(
+                "SELECT COUNT(*) FROM audit_logs WHERE entity_type='JOB_FOLLOW_UP'"
+            ).fetchone()[0], 5)
+            self.assertGreaterEqual(c.execute(
+                "SELECT COUNT(*) FROM job_timeline WHERE job_id=?", (job_id,)
+            ).fetchone()[0], 5)
+
+    def test_follow_up_views_separate_automatic_rows_and_terminal_manual_work(self):
+        job_id, _ = self.job()
+        create_job_follow_up(job_id, summary="Manual task", category="OPERATOR_ATTENTION")
+        with closing(self.connection()) as c:
+            c.execute(
+                "INSERT INTO quotes(quote_number,job_id,quote_date,status,customer_total) "
+                "VALUES ('PPS-Q-FU',?,'2026-08-10','SENT',1250)", (job_id,),
+            )
+            c.commit()
+            manual = get_follow_up_data(c, view="MY_FOLLOW_UPS")
+            decisions = get_follow_up_data(c, view="CUSTOMER_DECISIONS")
+            self.assertEqual({row["row_kind"] for row in manual["items"]}, {"MANUAL"})
+            self.assertEqual({row["row_kind"] for row in decisions["items"]}, {"AUTOMATIC"})
+            self.assertEqual(decisions["items"][0]["context_detail"].split(" · ")[:2], ["PPS-Q-FU", "$1,250.00"])
+            c.execute("UPDATE jobs SET status='DELIVERED' WHERE id=?", (job_id,))
+            c.commit()
+            self.assertEqual(get_follow_up_data(c, view="MY_FOLLOW_UPS")["items"], [])
+            self.assertEqual(len(get_follow_up_data(c, view="HISTORY")["items"]), 1)
+
+    def test_payment_supplier_and_delivery_views_use_persisted_context(self):
+        payment_job, _ = self.job()
+        with closing(self.connection()) as c:
+            quote_id = c.execute(
+                "INSERT INTO quotes(quote_number,job_id,quote_date,status,customer_total) "
+                "VALUES ('PPS-Q-PAY',?,'2026-08-10','APPROVED',500)",
+                (payment_job,),
+            ).lastrowid
+            invoice_id = c.execute(
+                "INSERT INTO invoices(invoice_number,job_id,quote_id,invoice_date,status,customer_total,balance_due) "
+                "VALUES ('PPS-INV-PAY',?,?,'2026-08-10','PARTIAL',500,175)",
+                (payment_job, quote_id),
+            ).lastrowid
+            order_id = c.execute(
+                "INSERT INTO supplier_orders(po_number,job_id,invoice_id,supplier_name,status,order_total,ordered_at,expected_at) "
+                "VALUES ('PPS-PO-FU',?,?,'Synthetic Supplier','PARTIAL',200,'2026-08-11','2026-08-20')",
+                (payment_job, invoice_id),
+            ).lastrowid
+            c.execute(
+                "INSERT INTO supplier_order_items(order_id,description,quantity_ordered,quantity_received,unit_cost,line_cost) "
+                "VALUES (?,'Filter',3,1,50,150)", (order_id,),
+            )
+            c.commit()
+            payment = get_follow_up_data(c, view="PAYMENTS")["items"][0]
+            supplier = get_follow_up_data(c, view="SUPPLIERS_LOGISTICS")["items"][0]
+            self.assertEqual(payment["context_detail"], "PPS-INV-PAY · Balance $175.00")
+            self.assertEqual(payment["action_label"], "Open Invoice")
+            self.assertEqual(
+                supplier["context_detail"],
+                "Synthetic Supplier · PPS-PO-FU · 2 remaining · Expected Aug 20",
+            )
+            self.assertEqual(supplier["action_label"], "Open Supplier Order")
+
+        delivery_job = payment_job
+        with closing(self.connection()) as c:
+            c.execute("UPDATE jobs SET status='RECEIVED' WHERE id=?", (delivery_job,))
+            c.commit()
+            delivery = [
+                row for row in get_follow_up_data(c, view="SUPPLIERS_LOGISTICS")["items"]
+                if row["category"] == "PARTS_SHIPPING"
+            ][0]
+            self.assertEqual(delivery["context_detail"], "All supplier parts received.")
+            self.assertEqual(delivery["action_label"], "Open Delivery")
+            self.assertEqual(delivery["url"], f"/jobs/{delivery_job}/delivery")
+
+    def test_follow_up_template_and_routes_have_operator_action_contract(self):
+        template = (ROOT / "templates" / "follow_up.html").read_text()
+        routes = (ROOT / "plg_core" / "followups" / "routes.py").read_text()
+        for label in ("My Follow-Ups", "Customer Decisions", "Payments", "Suppliers / Logistics", "History"):
+            self.assertIn(label, template)
+        for action in ("information-received", "/resolve", "/cancel"):
+            self.assertIn(action, template)
+        self.assertNotIn("basket#follow-ups", routes)
+        self.assertIn("@media(max-width:760px)", template)
 
     def test_payment_queue_remains_distinct_from_customer_information(self):
         job_id, _ = self.job()

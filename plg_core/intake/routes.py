@@ -3,11 +3,15 @@ from __future__ import annotations
 from contextlib import closing
 
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from pathlib import Path
 
 from legacy_app import get_connection, templates
 from plg_core.intake.identifiers import IDENTIFIER_TYPES, MARKETS
-from plg_core.intake.service import confirm_proposal, load_proposal
+from plg_core.intake.service import (
+    confirm_proposal, load_proposal, record_customer_resolution, record_machine_resolution,
+    refresh_proposal_analysis,
+)
 
 
 router = APIRouter(prefix="/requests/smart-intake/proposals", tags=["smart-intake"])
@@ -35,6 +39,65 @@ def review(request: Request, proposal_id: int):
     )
 
 
+@router.get("/{proposal_id}/attachments/{attachment_id}")
+def preview_attachment(proposal_id: int, attachment_id: int):
+    with closing(get_connection()) as connection:
+        row = connection.execute(
+            "SELECT * FROM intake_proposal_attachments WHERE id=? AND proposal_id=?",
+            (attachment_id, proposal_id),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Proposal attachment not found.")
+    path = Path(row["stored_path"])
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Proposal attachment file is missing.")
+    return FileResponse(path, media_type=row["media_type"], filename=row["original_filename"], content_disposition_type="inline")
+
+
+@router.post("/{proposal_id}/attachments/{attachment_id}/remove")
+def remove_attachment(proposal_id: int, attachment_id: int, lock_version: int = Form(...)):
+    with closing(get_connection()) as connection:
+        _draft(connection, proposal_id)
+        row = connection.execute(
+            "SELECT * FROM intake_proposal_attachments WHERE id=? AND proposal_id=?",
+            (attachment_id, proposal_id),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Proposal attachment not found.")
+        changed = connection.execute(
+            "UPDATE intake_proposals SET lock_version=lock_version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND lock_version=? AND status='DRAFT'",
+            (proposal_id, lock_version),
+        )
+        if changed.rowcount != 1:
+            connection.rollback()
+            raise HTTPException(status_code=409, detail="Proposal changed in another tab. Reload before removing the image.")
+        connection.execute("DELETE FROM intake_proposal_attachments WHERE id=? AND proposal_id=?", (attachment_id, proposal_id))
+        connection.commit()
+    Path(row["stored_path"]).unlink(missing_ok=True)
+    return RedirectResponse(f"/requests/smart-intake/proposals/{proposal_id}", 303)
+
+
+@router.post("/{proposal_id}/remove-from-inbox")
+def remove_proposal_from_inbox(proposal_id: int, lock_version: int = Form(...)):
+    with closing(get_connection()) as connection:
+        _draft(connection, proposal_id)
+        changed = connection.execute(
+            """UPDATE intake_proposals
+               SET status='CANCELLED',lock_version=lock_version+1,updated_at=CURRENT_TIMESTAMP
+               WHERE id=? AND status='DRAFT' AND lock_version=?""",
+            (proposal_id, lock_version),
+        )
+        if changed.rowcount != 1:
+            connection.rollback()
+            raise HTTPException(status_code=409, detail="This proposal changed. Reload the Inbox before removing it.")
+        from plg_core.audit import write_audit
+        write_audit(connection, action="SMART_INTAKE_CANCELLED", entity_type="INTAKE_PROPOSAL",
+                    entity_id=proposal_id,
+                    summary=f"Smart Intake proposal {proposal_id} removed from Inbox; history preserved")
+        connection.commit()
+    return RedirectResponse("/requests", 303)
+
+
 @router.post("/{proposal_id}/customer")
 def update_customer(
     proposal_id: int, contact_name: str = Form(""), company_name: str = Form(""),
@@ -46,13 +109,15 @@ def update_customer(
         matched = int(matched_customer_id) if matched_customer_id.strip().isdigit() else None
         changed = connection.execute(
             """UPDATE intake_proposals SET contact_name=?,company_name=?,location=?,phone=?,email=?,
-            matched_customer_id=?,lock_version=lock_version+1,updated_at=CURRENT_TIMESTAMP
+            matched_customer_id=?,review_state='CONFIDENT',lock_version=lock_version+1,updated_at=CURRENT_TIMESTAMP
             WHERE id=? AND lock_version=? AND status='DRAFT'""",
             (contact_name.strip(), company_name.strip(), location.strip(), phone.strip(), email.strip(), matched, proposal_id, lock_version),
         )
         if changed.rowcount != 1:
             connection.rollback()
             raise HTTPException(status_code=409, detail="Proposal changed in another tab. Reload before saving.")
+        record_customer_resolution(connection, proposal_id, matched)
+        refresh_proposal_analysis(connection, proposal_id)
         connection.commit()
     return RedirectResponse(f"/requests/smart-intake/proposals/{proposal_id}", 303)
 
@@ -91,7 +156,7 @@ def update_asset(
         else:
             connection.execute(
                 """UPDATE intake_proposal_assets SET manufacturer=?,model=?,year=?,asset_category=?,market_region=?,
-                model_code=?,matched_machine_id=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=? AND proposal_id=?""",
+                model_code=?,matched_machine_id=NULL,review_state='CONFIDENT',updated_at=CURRENT_TIMESTAMP WHERE id=? AND proposal_id=?""",
                 (manufacturer.strip(), model.strip(), year.strip(), asset_category.strip() or "other", market_region,
                  model_code.strip(), asset_id, proposal_id),
             )
@@ -118,6 +183,51 @@ def update_asset(
         if changed.rowcount != 1:
             connection.rollback()
             raise HTTPException(status_code=409, detail="Proposal changed in another tab. Reload before saving.")
+        refresh_proposal_analysis(connection, proposal_id)
+        connection.commit()
+    return RedirectResponse(f"/requests/smart-intake/proposals/{proposal_id}", 303)
+
+
+@router.post("/{proposal_id}/assets/{asset_id}/match")
+def resolve_machine_match(
+    proposal_id: int,
+    asset_id: int,
+    machine_resolution: str = Form(...),
+    lock_version: int = Form(...),
+):
+    with closing(get_connection()) as connection:
+        _draft(connection, proposal_id)
+        proposal = load_proposal(connection, proposal_id)
+        assets = proposal.get("assets") or []
+        asset_index = next((index for index, asset in enumerate(assets) if int(asset["id"]) == asset_id), None)
+        if asset_index is None:
+            raise HTTPException(status_code=404, detail="Proposed machine not found.")
+        matches = (proposal.get("document_analysis") or {}).get("machine_matches") or []
+        match = matches[asset_index] if asset_index < len(matches) else {}
+        candidate_ids = {str(candidate["id"]) for candidate in match.get("candidates") or []}
+        resolution = machine_resolution.strip().upper()
+        if resolution != "NEW" and resolution not in candidate_ids:
+            raise HTTPException(status_code=400, detail="Select an available machine match or create a new machine.")
+        changed = connection.execute(
+            """UPDATE intake_proposals SET lock_version=lock_version+1,updated_at=CURRENT_TIMESTAMP
+               WHERE id=? AND lock_version=? AND status='DRAFT'""",
+            (proposal_id, lock_version),
+        )
+        if changed.rowcount != 1:
+            connection.rollback()
+            raise HTTPException(status_code=409, detail="Proposal changed in another tab. Reload before resolving the machine.")
+        connection.execute(
+            "UPDATE intake_proposal_assets SET review_state='CONFIDENT',updated_at=CURRENT_TIMESTAMP WHERE id=? AND proposal_id=?",
+            (asset_id, proposal_id),
+        )
+        connection.execute(
+            "UPDATE intake_proposal_identifiers SET review_state='CONFIDENT' WHERE proposal_asset_id=? AND proposal_id=?",
+            (asset_id, proposal_id),
+        )
+        record_machine_resolution(
+            connection, proposal_id, asset_id, "NEW" if resolution == "NEW" else int(resolution),
+        )
+        refresh_proposal_analysis(connection, proposal_id)
         connection.commit()
     return RedirectResponse(f"/requests/smart-intake/proposals/{proposal_id}", 303)
 
@@ -172,6 +282,7 @@ def update_need(
         if changed.rowcount != 1:
             connection.rollback()
             raise HTTPException(status_code=409, detail="Proposal changed in another tab. Reload before saving.")
+        refresh_proposal_analysis(connection, proposal_id)
         connection.commit()
     return RedirectResponse(f"/requests/smart-intake/proposals/{proposal_id}", 303)
 

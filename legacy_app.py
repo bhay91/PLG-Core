@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from fastapi.responses import FileResponse
 from plg_core.documents.quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
-from plg_core.documents.invoice_pdf import generate_invoice_pdfs, invoice_paths
 from fastapi import File, UploadFile
 
 import sqlite3
 import os
+import re
+import shutil
+import sys
+import tempfile
 from contextlib import closing
 from datetime import date
 from pathlib import Path
@@ -18,15 +21,49 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from plg_core.jobs.engine import JobEngine
-from plg_core.dashboard.service import get_dashboard_data
+from plg_core.dashboard.service import get_work_queue_data
 from plg_core.machines.identifiers import find_machine_by_identifier
 from plg_core.pricing import customer_unit_price as calculate_customer_unit_price
+from plg_core.sources.service import (
+    CONNECTOR_TYPES,
+    SOURCE_TYPES,
+    TRUST_LEVELS,
+    create_source,
+    update_source,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
-DB_PATH = Path(os.getenv("PPS_DB_PATH", str(DATA_DIR / "plg_core.db"))).resolve()
+PRODUCTION_DB_PATH = (DATA_DIR / "plg_core.db").resolve()
+
+
+def _is_automated_test_process() -> bool:
+    """Identify supported Python test runners without changing normal app startup."""
+    executable = Path(sys.argv[0]).name.lower()
+    command = " ".join(sys.argv).lower()
+    return (
+        executable in {"pytest", "py.test"}
+        or "unittest" in command
+        or (executable.startswith("test_") and executable.endswith(".py"))
+    )
+
+
+_TEST_DB_DIRECTORY: tempfile.TemporaryDirectory[str] | None = None
+configured_db_path = os.getenv("PPS_DB_PATH")
+if configured_db_path:
+    DB_PATH = Path(configured_db_path).resolve()
+elif _is_automated_test_process():
+    _TEST_DB_DIRECTORY = tempfile.TemporaryDirectory(prefix="pps-test-process-")
+    DB_PATH = (Path(_TEST_DB_DIRECTORY.name) / "plg_core.test.db").resolve()
+    if PRODUCTION_DB_PATH.exists():
+        shutil.copy2(PRODUCTION_DB_PATH, DB_PATH)
+else:
+    DB_PATH = PRODUCTION_DB_PATH
 DOCUMENTS_DIR = Path(
     os.getenv("PPS_DOCUMENT_ROOT", str(BASE_DIR / "documents"))
+).resolve()
+UPLOADS_DIR = Path(
+    os.getenv("PPS_UPLOAD_ROOT", str(BASE_DIR / "uploads"))
 ).resolve()
 
 from plg_core.documents.parts_order_pdf import (
@@ -57,6 +94,10 @@ def get_connection() -> sqlite3.Connection:
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     return connection
+
+
+from plg_core.research.branding import manufacturer_identity
+templates.env.globals["manufacturer_identity"] = manufacturer_identity
 
 
 def column_names(connection: sqlite3.Connection, table: str) -> set[str]:
@@ -682,16 +723,16 @@ def startup() -> None:
 
 
 @app.get("/", response_class=HTMLResponse)
-def dashboard(request: Request):
+def dashboard(request: Request, queue: str = "ALL"):
     with closing(get_connection()) as connection:
-        dashboard_data = get_dashboard_data(connection)
+        work_queue = get_work_queue_data(connection, category=queue)
 
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
         context={
-            **dashboard_data,
-            "active_page": "dashboard",
+            **work_queue,
+            "active_page": "work_queue",
         },
     )
 
@@ -861,6 +902,7 @@ def global_search_page(
 )
 def follow_up_center(
     request: Request,
+    view: str = "MY_FOLLOW_UPS",
 ):
     from plg_core.dashboard.service import (
         get_follow_up_data,
@@ -869,6 +911,7 @@ def follow_up_center(
     with closing(get_connection()) as connection:
         follow_up = get_follow_up_data(
             connection,
+            view=view,
         )
 
     return templates.TemplateResponse(
@@ -911,15 +954,27 @@ def accounting_center(
 def document_center(
     request: Request,
     q: str = "",
+    document_type: str = "",
+    audience: str = "",
+    version_scope: str = "current",
+    status: str = "",
+    customer: str = "",
 ):
     from plg_core.documents.library import (
-        scan_documents,
+        query_authoritative_documents,
     )
 
-    data = scan_documents(
-        DOCUMENTS_DIR,
-        q=q,
-    )
+    with closing(get_connection()) as connection:
+        data = query_authoritative_documents(
+            connection,
+            DOCUMENTS_DIR,
+            q=q,
+            document_type=document_type,
+            audience=audience,
+            version_scope=version_scope,
+            status=status,
+            customer=customer,
+        )
 
     return templates.TemplateResponse(
         request=request,
@@ -935,22 +990,35 @@ def document_center(
 def open_pps_document(
     path: str,
 ):
-    from plg_core.documents.library import (
-        resolve_document_path,
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Raw filesystem document links are no longer authoritative. "
+            "Open the document from the PPS Document Center."
+        ),
     )
 
-    document = resolve_document_path(
-        DOCUMENTS_DIR,
-        path,
-    )
 
+@app.get("/documents/manifest/{family}/{manifest_id}")
+def open_manifest_document(
+    family: str,
+    manifest_id: int,
+    download: int = 0,
+):
+    from plg_core.documents.library import resolve_manifest_document
+    with closing(get_connection()) as connection:
+        document, _manifest = resolve_manifest_document(
+            connection, DOCUMENTS_DIR, family, manifest_id
+        )
     return FileResponse(
         path=document,
         media_type="application/pdf",
+        filename=document.name,
+        content_disposition_type=("attachment" if download else "inline"),
         headers={
-            "Content-Disposition": (
-                f'inline; filename="{document.name}"'
-            )
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
         },
     )
 
@@ -1052,7 +1120,13 @@ def update_customer(customer_id: int,name: Annotated[str,Form()],company: Annota
 
 @app.post("/customers/{customer_id}/deactivate")
 def deactivate_customer(customer_id: int):
-    with closing(get_connection()) as connection: connection.execute("UPDATE customers SET active=0,updated_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,)); connection.commit()
+    with closing(get_connection()) as connection:
+        customer=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
+        if customer is None: raise HTTPException(status_code=404,detail="Customer not found.")
+        connection.execute("UPDATE customers SET active=0,updated_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,))
+        from plg_core.audit import write_audit
+        write_audit(connection,action="CUSTOMER_DEACTIVATED",entity_type="CUSTOMER",entity_id=customer_id,summary=f"Customer {customer['customer_number']} removed from active views; history preserved")
+        connection.commit()
     return RedirectResponse(url="/customers?view=active",status_code=303)
 
 @app.post("/customers/{customer_id}/reactivate")
@@ -1273,7 +1347,6 @@ def list_jobs(request: Request, view: str = "active"):
             ORDER BY jobs.id DESC
             """
         ).fetchall()
-
         jobs = []
 
         manufacturer_codes = {
@@ -2600,6 +2673,11 @@ def custom_invoice_editor(
             )
         )
 
+        from plg_core.documents.custom_invoice import custom_invoice_presentation
+        presentation = custom_invoice_presentation(
+            invoice, custom_invoice, custom_items
+        )
+
     return templates.TemplateResponse(
         request=request,
         name="custom_invoice.html",
@@ -2607,6 +2685,7 @@ def custom_invoice_editor(
             "invoice": invoice,
             "custom_invoice": custom_invoice,
             "items": custom_items,
+            "presentation": presentation,
             "active_page": "invoices",
         },
     )
@@ -2652,6 +2731,21 @@ async def save_custom_invoice(
             row["id"]: row
             for row in original_items
         }
+
+        visible_item_ids = {
+            int(value)
+            for value in form.getlist("visible_item_ids")
+            if str(value).isdigit()
+        }
+
+        from plg_core.documents.custom_invoice import save_custom_invoice_visibility
+        save_custom_invoice_visibility(
+            connection,
+            custom_invoice["id"],
+            custom_items,
+            visible_item_ids,
+            bool(form.get("include_freight")),
+        )
 
         updates = []
 
@@ -2746,10 +2840,25 @@ async def save_custom_invoice(
                 ),
             )
 
-        custom_total = round(
-            sum(row[2] for row in updates),
-            2,
+        previous_item_total = sum(
+            float(item["custom_line_total"] or 0)
+            for item in custom_items
         )
+        updated_item_total = sum(row[2] for row in updates)
+        if mode == "TARGET_TOTAL":
+            custom_total = round(max(0.0, adjustment_value), 2)
+        else:
+            # Keep non-itemized amounts in the presentation baseline while
+            # applying only the operator's change to item values.
+            custom_total = max(
+                0.0,
+                round(
+                    float(custom_invoice["custom_total"] or 0)
+                    + updated_item_total
+                    - previous_item_total,
+                    2,
+                ),
+            )
 
         connection.execute(
             """
@@ -2777,18 +2886,40 @@ async def save_custom_invoice(
             )
         )
 
-        from plg_core.documents.invoice_pdf import (
-            generate_custom_invoice_pdf,
+        from plg_core.documents.integrity import issue_custom_invoice_document
+        issue_custom_invoice_document(
+            connection, invoice, custom_invoice, custom_items
         )
-
-        generate_custom_invoice_pdf(
-            invoice,
-            custom_invoice,
-            custom_items,
-        )
+        connection.commit()
 
     return RedirectResponse(
         url="/invoices",
+        status_code=303,
+    )
+
+
+@app.post("/invoices/{invoice_id}/custom/revert")
+def revert_custom_invoice(invoice_id: int):
+    with closing(get_connection()) as connection:
+        invoice, custom_invoice, custom_items = get_or_create_custom_invoice(
+            connection, invoice_id
+        )
+        from plg_core.documents.custom_invoice import revert_custom_invoice_presentation
+        revert_custom_invoice_presentation(
+            connection, invoice, custom_invoice, custom_items
+        )
+        connection.commit()
+        invoice, custom_invoice, custom_items = get_or_create_custom_invoice(
+            connection, invoice_id
+        )
+        from plg_core.documents.integrity import issue_custom_invoice_document
+        issue_custom_invoice_document(
+            connection, invoice, custom_invoice, custom_items
+        )
+        connection.commit()
+
+    return RedirectResponse(
+        url=f"/invoices/{invoice_id}/custom",
         status_code=303,
     )
 
@@ -2798,30 +2929,17 @@ def custom_invoice_pdf(
     invoice_id: int,
     download: int = 0,
 ):
-    from plg_core.documents.invoice_pdf import (
-        custom_invoice_path,
-        generate_custom_invoice_pdf,
-    )
-
     with closing(get_connection()) as connection:
-        invoice, custom_invoice, custom_items = (
+        invoice, custom_invoice, _custom_items = (
             get_or_create_custom_invoice(
                 connection,
                 invoice_id,
             )
         )
-
-        path = custom_invoice_path(
-            invoice,
-            custom_invoice,
+        from plg_core.documents.integrity import verified_invoice_document
+        path = verified_invoice_document(
+            connection, invoice_id, "CUSTOM_INVOICE", "CUSTOMER"
         )
-
-        if not path.exists():
-            generate_custom_invoice_pdf(
-                invoice,
-                custom_invoice,
-                custom_items,
-            )
 
     return FileResponse(
         path,
@@ -2836,24 +2954,49 @@ def custom_invoice_pdf(
 def purchasing_center(
     request: Request,
     invoice_id: int | None = None,
+    supplier: str = "",
+    status: str = "",
+    customer: str = "",
+    job: str = "",
 ):
-    from plg_core.supply.service import list_orders
+    from plg_core.supply.service import list_purchasing_operational_snapshots
 
-    orders = list_orders(500)
+    result = list_purchasing_operational_snapshots(
+        supplier=supplier, status=status, customer=customer, job=job,
+        invoice_id=invoice_id, limit=500,
+    )
+    orders = result["orders"]
+    filtered_invoice_number = None
 
     if invoice_id is not None:
-        orders = [
-            order
-            for order in orders
-            if int(order["invoice_id"] or 0) == invoice_id
-        ]
+        filtered_invoice_number = next(
+            (
+                str(order["identity"]["invoice_number"] or "").strip()
+                for order in orders
+                if str(order["identity"]["invoice_number"] or "").strip()
+            ),
+            None,
+        )
+        if filtered_invoice_number is None:
+            with closing(get_connection()) as connection:
+                invoice = connection.execute(
+                    "SELECT invoice_number FROM invoices WHERE id=?",
+                    (invoice_id,),
+                ).fetchone()
+            if invoice is not None:
+                filtered_invoice_number = str(
+                    invoice["invoice_number"] or ""
+                ).strip() or None
 
     return templates.TemplateResponse(
         request=request,
         name="supplier_orders.html",
         context={
             "orders": orders,
+            "filter_options": result["options"],
+            "filters": {"supplier": supplier, "status": status, "customer": customer, "job": job},
             "invoice_id": invoice_id,
+            "filtered_invoice_number": filtered_invoice_number,
             "active_page": "purchasing",
         },
     )
@@ -2866,18 +3009,85 @@ def purchasing_center(
 def purchasing_order_detail(
     request: Request,
     order_id: int,
+    receipt_id: int | None = None,
 ):
-    from plg_core.supply.service import get_order
+    from plg_core.supply.service import get_order, get_receipt, get_purchasing_operational_snapshot
 
     order = get_order(order_id)
+    operational_snapshot = get_purchasing_operational_snapshot(order_id)
 
-    return templates.TemplateResponse(
+    from plg_core.web_security import (
+        CSRF_COOKIE_NAME,
+        csrf_token_for_request,
+        new_idempotency_key,
+        request_actor,
+    )
+    csrf_token = csrf_token_for_request(request)
+    actor = request_actor(request)
+    for item in order["items"]:
+        item["actual_request_id"] = new_idempotency_key()
+    receipt_result = None
+    if receipt_id is not None:
+        receipt_result = get_receipt(receipt_id)
+        if int(receipt_result["order_id"]) != order_id:
+            raise HTTPException(status_code=404, detail="Receipt not found for order.")
+
+    response = templates.TemplateResponse(
         request=request,
         name="supplier_order_detail.html",
         context={
             "order": order,
+            "operational_snapshot": operational_snapshot,
             "items": order["items"],
+            "csrf_token": csrf_token,
+            "receipt_idempotency_key": new_idempotency_key(),
+            "actual_cost_request_id": new_idempotency_key(),
+            "receiver_default": "" if actor == "system" else actor,
+            "receipt_result": receipt_result,
             "active_page": "purchasing",
+        },
+    )
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        csrf_token,
+        httponly=True,
+        samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
+
+
+@app.get("/purchasing/orders/{order_id}/purchase-order/pdf")
+def supplier_purchase_order_pdf(
+    order_id: int,
+    download: int = 0,
+):
+    from plg_core.documents.integrity import (
+        preview_supplier_order_document,
+        verified_supplier_order_document,
+    )
+
+    with closing(get_connection()) as connection:
+        order = connection.execute(
+            "SELECT status FROM supplier_orders WHERE id=?",
+            (order_id,),
+        ).fetchone()
+        if order is None:
+            raise HTTPException(status_code=404, detail="Supplier order not found.")
+        if str(order["status"] or "").upper() == "DRAFT":
+            path = Path(preview_supplier_order_document(connection, order_id))
+        else:
+            path = verified_supplier_order_document(connection, order_id)
+
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type=("attachment" if download else "inline"),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
         },
     )
 
@@ -2904,14 +3114,18 @@ def create_supplier_orders_web(
     "/purchasing/orders/{order_id}/items/{item_id}/cost"
 )
 def update_supplier_order_item_cost_web(
+    request: Request,
     order_id: int,
     item_id: int,
     unit_cost: Annotated[float, Form()],
+    csrf_token: Annotated[str, Form()] = "",
 ):
     from plg_core.supply.service import (
         update_order_item_cost,
     )
 
+    from plg_core.web_security import require_valid_csrf
+    require_valid_csrf(request, csrf_token)
     update_order_item_cost(
         order_id=order_id,
         item_id=item_id,
@@ -2928,12 +3142,17 @@ def update_supplier_order_item_cost_web(
     "/purchasing/orders/{order_id}/update"
 )
 def update_supplier_order_web(
+    request: Request,
     order_id: int,
     shipping_total: Annotated[float, Form()] = 0,
     expected_at: Annotated[str, Form()] = "",
     notes: Annotated[str, Form()] = "",
+    csrf_token: Annotated[str, Form()] = "",
 ):
     from plg_core.supply.service import update_order
+    from plg_core.web_security import require_valid_csrf
+
+    require_valid_csrf(request, csrf_token)
 
     update_order(
         order_id=order_id,
@@ -2948,15 +3167,61 @@ def update_supplier_order_web(
     )
 
 
+@app.post("/purchasing/orders/{order_id}/actual-cost")
+def record_actual_cost_web(
+    request: Request,
+    order_id: int,
+    cost_kind: Annotated[str, Form()],
+    new_amount: Annotated[float, Form()],
+    reason: Annotated[str, Form()],
+    request_id_value: Annotated[str, Form()],
+    csrf_token: Annotated[str, Form()],
+    supplier_order_item_id: Annotated[int | None, Form()] = None,
+    supplier_reference: Annotated[str, Form()] = "",
+    actor_name: Annotated[str, Form()] = "",
+):
+    from plg_core.supply.service import record_actual_cost_adjustment
+    from plg_core.web_security import request_actor, require_valid_csrf
+
+    require_valid_csrf(request, csrf_token)
+    actor = request_actor(request)
+    record_actual_cost_adjustment(
+        order_id,
+        cost_kind=cost_kind,
+        new_amount=new_amount,
+        supplier_order_item_id=supplier_order_item_id,
+        reason=reason,
+        actor=actor if actor != "system" else actor_name,
+        request_id=request_id_value,
+        supplier_reference=supplier_reference,
+    )
+    return RedirectResponse(
+        url=f"/purchasing/orders/{order_id}#actual-cost",
+        status_code=303,
+    )
+
 @app.post(
     "/purchasing/orders/{order_id}/place"
 )
 def place_supplier_order_web(
+    request: Request,
     order_id: int,
+    csrf_token: Annotated[str, Form()] = "",
 ):
     from plg_core.supply.service import place_order
+    from plg_core.web_security import (
+        request_actor,
+        request_id,
+        require_valid_csrf,
+    )
 
-    place_order(order_id)
+    require_valid_csrf(request, csrf_token)
+    place_order(
+        order_id,
+        actor=request_actor(request),
+        request_id=request_id(request),
+        source_path=str(request.url.path),
+    )
 
     return RedirectResponse(
         url=f"/purchasing/orders/{order_id}",
@@ -2970,7 +3235,6 @@ def place_supplier_order_web(
 async def receive_supplier_order_web(
     request: Request,
     order_id: int,
-    notes: Annotated[str, Form()] = "",
 ):
     from plg_core.supply.models import (
         ReceiptCreate,
@@ -2980,9 +3244,14 @@ async def receive_supplier_order_web(
         get_order,
         record_receipt,
     )
+    from plg_core.web_security import request_actor, request_id, require_valid_csrf
 
     order = get_order(order_id)
     form = await request.form()
+    require_valid_csrf(request, str(form.get("csrf_token", "") or ""))
+    notes = str(form.get("notes", "") or "").strip()
+    receiver = str(form.get("receiver", "") or "").strip()
+    idempotency_key = str(form.get("idempotency_key", "") or "").strip()
 
     receipt_items = []
 
@@ -3029,17 +3298,37 @@ async def receive_supplier_order_web(
             ),
         )
 
-    record_receipt(
+    receipt = record_receipt(
         order_id,
         ReceiptCreate(
             items=receipt_items,
             notes=notes,
+            receiver=receiver,
+            idempotency_key=idempotency_key or None,
         ),
+        actor=request_actor(request),
+        request_id=request_id(request),
+        source_path=str(request.url.path),
     )
 
     return RedirectResponse(
-        url=f"/purchasing/orders/{order_id}",
+        url=f"/purchasing/orders/{order_id}?receipt_id={receipt['id']}",
         status_code=303,
+    )
+
+
+@app.get("/purchasing/receipts/{receipt_id}/summary/pdf")
+def receiving_summary_pdf(receipt_id: int, download: int = 0):
+    from plg_core.documents.integrity import verified_receiving_document
+
+    with closing(get_connection()) as connection:
+        path = verified_receiving_document(connection, receipt_id)
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type=("attachment" if download else "inline"),
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -3050,61 +3339,134 @@ async def receive_supplier_order_web(
 def job_delivery_workspace(
     request: Request,
     job_id: int,
+    delivery_id: int | None = None,
+    action: str = "",
 ):
     from plg_core.supply.service import (
         get_delivery_workspace,
     )
 
     workspace = get_delivery_workspace(job_id)
+    from plg_core.supply.service import get_delivery
+    from plg_core.web_security import (
+        CSRF_COOKIE_NAME, csrf_token_for_request, new_idempotency_key,
+    )
+    csrf_token = csrf_token_for_request(request)
+    action_delivery = None
+    if delivery_id is not None:
+        action_delivery = get_delivery(delivery_id)
+        if int(action_delivery["job_id"]) != job_id:
+            raise HTTPException(status_code=404, detail="Delivery not found for Job.")
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="job_delivery.html",
         context={
             **workspace,
+            "csrf_token": csrf_token,
+            "delivery_idempotency_key": new_idempotency_key(),
+            "action_delivery": action_delivery,
+            "delivery_action": action,
             "active_page": "jobs",
         },
     )
+    response.set_cookie(
+        CSRF_COOKIE_NAME, csrf_token, httponly=True, samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
 
 
 @app.post("/jobs/{job_id}/delivery")
-def create_job_delivery(
-    job_id: int,
-    recipient: Annotated[str, Form()] = "",
-    notes: Annotated[str, Form()] = "",
-):
-    from plg_core.supply.models import DeliveryCreate
-    from plg_core.supply.service import create_delivery
+async def create_job_delivery(request: Request, job_id: int):
+    from plg_core.supply.models import DeliveryCreate, DeliveryItemCreate
+    from plg_core.supply.service import create_delivery, get_delivery_workspace
+    from plg_core.web_security import request_actor, request_id, require_valid_csrf
 
-    create_delivery(
+    form = await request.form()
+    require_valid_csrf(request, str(form.get("csrf_token", "") or ""))
+    workspace = get_delivery_workspace(job_id)
+    selected = []
+    for item in workspace["items"]:
+        raw = str(form.get(f"qty_{item['id']}", "0") or "0").strip()
+        try:
+            quantity = int(raw)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Delivery quantities must be whole numbers.")
+        if quantity < 0:
+            raise HTTPException(status_code=400, detail="Delivery quantity cannot be negative.")
+        if quantity > 0:
+            selected.append(DeliveryItemCreate(order_item_id=int(item["id"]), quantity=quantity))
+
+    result = create_delivery(
         job_id,
         DeliveryCreate(
-            recipient=recipient,
-            notes=notes,
+            items=selected,
+            recipient=str(form.get("recipient", "") or ""),
+            notes=str(form.get("notes", "") or ""),
+            idempotency_key=str(form.get("idempotency_key", "") or ""),
         ),
+        actor=request_actor(request), request_id=request_id(request),
+        source_path=str(request.url.path),
     )
 
     return RedirectResponse(
-        url=f"/jobs/{job_id}/delivery",
+        url=f"/jobs/{job_id}/delivery?delivery_id={result['id']}&action=prepared",
         status_code=303,
     )
 
 
 @app.post("/deliveries/{delivery_id}/complete")
 def complete_job_delivery(
+    request: Request,
     delivery_id: int,
+    csrf_token: Annotated[str, Form()] = "",
 ):
     from plg_core.supply.service import (
         complete_delivery,
     )
 
+    from plg_core.web_security import request_actor, request_id, require_valid_csrf
+    require_valid_csrf(request, csrf_token)
     result = complete_delivery(
-        delivery_id
+        delivery_id, actor=request_actor(request), request_id=request_id(request),
+        source_path=str(request.url.path),
     )
 
     return RedirectResponse(
-        url=f"/jobs/{result['job_id']}/delivery",
+        url=f"/jobs/{result['job_id']}/delivery?delivery_id={delivery_id}&action=delivered",
         status_code=303,
+    )
+
+
+@app.post("/deliveries/{delivery_id}/cancel")
+def cancel_job_delivery(
+    request: Request,
+    delivery_id: int,
+    csrf_token: Annotated[str, Form()] = "",
+):
+    from plg_core.supply.service import cancel_delivery
+    from plg_core.web_security import request_actor, request_id, require_valid_csrf
+    require_valid_csrf(request, csrf_token)
+    result = cancel_delivery(
+        delivery_id, actor=request_actor(request), request_id=request_id(request),
+        source_path=str(request.url.path),
+    )
+    return RedirectResponse(
+        url=f"/jobs/{result['job_id']}/delivery?delivery_id={delivery_id}&action=cancelled",
+        status_code=303,
+    )
+
+
+@app.get("/deliveries/{delivery_id}/delivery-note/pdf")
+def delivery_note_pdf(delivery_id: int, download: int = 0):
+    from plg_core.documents.integrity import verified_delivery_document
+    with closing(get_connection()) as connection:
+        path = verified_delivery_document(connection, delivery_id)
+    return FileResponse(
+        path=path, media_type="application/pdf", filename=path.name,
+        content_disposition_type=("attachment" if download else "inline"),
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -3159,6 +3521,16 @@ def list_invoices(request: Request, view: str = "all"):
             ORDER BY invoices.id DESC
             """
         ).fetchall()
+        from plg_core.documents.integrity import current_invoice_document_versions
+        rows = [
+            {
+                **dict(row),
+                **current_invoice_document_versions(
+                    connection, int(row["id"]), row["status"]
+                ),
+            }
+            for row in rows
+        ]
 
     return templates.TemplateResponse(
         request=request,
@@ -3296,7 +3668,9 @@ def convert_quote_to_invoice(quote_id: int):
 
         connection.commit()
         invoice, items = load_invoice(connection, invoice_id)
-        generate_invoice_pdfs(invoice, items)
+        from plg_core.documents.integrity import issue_invoice_documents
+        issue_invoice_documents(connection, invoice, items, variant="ISSUED")
+        connection.commit()
     return RedirectResponse(url=f"/invoices/{invoice_id}/documents",status_code=303)
 
 
@@ -3307,6 +3681,10 @@ def convert_quote_to_invoice(quote_id: int):
 def invoice_documents(request: Request, invoice_id: int):
     with closing(get_connection()) as connection:
         invoice, items = load_invoice(connection, invoice_id)
+        from plg_core.documents.integrity import current_invoice_document_versions
+        document_versions = current_invoice_document_versions(
+            connection, invoice_id, invoice["status"]
+        )
 
         payments = connection.execute(
             """
@@ -3419,11 +3797,6 @@ def invoice_documents(request: Request, invoice_id: int):
                     "already started for this invoice."
                 )
 
-    paths = invoice_paths(
-        invoice["customer"],
-        invoice["invoice_number"],
-    )
-
     from plg_core.documents.invoice_pdf import (
         paid_invoice_paths,
     )
@@ -3433,11 +3806,14 @@ def invoice_documents(request: Request, invoice_id: int):
         invoice["invoice_number"],
     )
 
-    if (
-        not paths["customer"].exists()
-        or not paths["internal"].exists()
-    ):
-        generate_invoice_pdfs(invoice, items)
+    from plg_core.documents.integrity import verified_invoice_document
+    with closing(get_connection()) as connection:
+        verified_invoice_document(
+            connection, invoice_id, "CUSTOMER_INVOICE", "CUSTOMER"
+        )
+        verified_invoice_document(
+            connection, invoice_id, "INTERNAL_INVOICE", "INTERNAL"
+        )
 
     return templates.TemplateResponse(
         request=request,
@@ -3463,6 +3839,7 @@ def invoice_documents(request: Request, invoice_id: int):
             "can_void_invoice": can_void_invoice,
             "void_block_reason": void_block_reason,
             "active_page": "invoices",
+            **document_versions,
         },
     )
 
@@ -3539,13 +3916,8 @@ def paid_customer_invoice_pdf(
     invoice_id: int,
     download: int = 0,
 ):
-    from plg_core.documents.invoice_pdf import (
-        generate_paid_invoice_pdfs,
-        paid_invoice_paths,
-    )
-
     with closing(get_connection()) as connection:
-        invoice, items = load_invoice(connection, invoice_id)
+        invoice, _items = load_invoice(connection, invoice_id)
 
     if str(invoice["status"] or "").upper() != "PAID":
         raise HTTPException(
@@ -3553,13 +3925,11 @@ def paid_customer_invoice_pdf(
             detail="The invoice has not been paid.",
         )
 
-    path = paid_invoice_paths(
-        invoice["customer"],
-        invoice["invoice_number"],
-    )["customer"]
-
-    if not path.exists():
-        generate_paid_invoice_pdfs(invoice, items)
+    from plg_core.documents.integrity import verified_invoice_document
+    with closing(get_connection()) as connection:
+        path = verified_invoice_document(
+            connection, invoice_id, "CUSTOMER_INVOICE_PAID", "CUSTOMER"
+        )
 
     return FileResponse(
         path=path,
@@ -3568,6 +3938,11 @@ def paid_customer_invoice_pdf(
         content_disposition_type=(
             "attachment" if download else "inline"
         ),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
     )
 
 
@@ -3576,13 +3951,8 @@ def paid_internal_invoice_pdf(
     invoice_id: int,
     download: int = 0,
 ):
-    from plg_core.documents.invoice_pdf import (
-        generate_paid_invoice_pdfs,
-        paid_invoice_paths,
-    )
-
     with closing(get_connection()) as connection:
-        invoice, items = load_invoice(connection, invoice_id)
+        invoice, _items = load_invoice(connection, invoice_id)
 
     if str(invoice["status"] or "").upper() != "PAID":
         raise HTTPException(
@@ -3590,13 +3960,11 @@ def paid_internal_invoice_pdf(
             detail="The invoice has not been paid.",
         )
 
-    path = paid_invoice_paths(
-        invoice["customer"],
-        invoice["invoice_number"],
-    )["internal"]
-
-    if not path.exists():
-        generate_paid_invoice_pdfs(invoice, items)
+    from plg_core.documents.integrity import verified_invoice_document
+    with closing(get_connection()) as connection:
+        path = verified_invoice_document(
+            connection, invoice_id, "INTERNAL_INVOICE_PAID", "INTERNAL"
+        )
 
     return FileResponse(
         path=path,
@@ -3605,6 +3973,11 @@ def paid_internal_invoice_pdf(
         content_disposition_type=(
             "attachment" if download else "inline"
         ),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
     )
 
 
@@ -3722,10 +4095,11 @@ def open_parts_order_sheet(invoice_id: int, download: int = 0):
 @app.get("/invoices/{invoice_id}/customer/pdf")
 def customer_invoice_pdf(invoice_id: int, download: int = 0):
     with closing(get_connection()) as connection:
-        invoice, items = load_invoice(connection, invoice_id)
-    path = invoice_paths(invoice["customer"],invoice["invoice_number"])["customer"]
-    if not path.exists():
-        generate_invoice_pdfs(invoice,items)
+        load_invoice(connection, invoice_id)
+        from plg_core.documents.integrity import verified_invoice_document
+        path = verified_invoice_document(
+            connection, invoice_id, "CUSTOMER_INVOICE", "CUSTOMER"
+        )
     return FileResponse(
         path=path,
         media_type="application/pdf",
@@ -3744,10 +4118,11 @@ def customer_invoice_pdf(invoice_id: int, download: int = 0):
 @app.get("/invoices/{invoice_id}/internal/pdf")
 def internal_invoice_pdf(invoice_id: int, download: int = 0):
     with closing(get_connection()) as connection:
-        invoice, items = load_invoice(connection, invoice_id)
-    path = invoice_paths(invoice["customer"],invoice["invoice_number"])["internal"]
-    if not path.exists():
-        generate_invoice_pdfs(invoice,items)
+        load_invoice(connection, invoice_id)
+        from plg_core.documents.integrity import verified_invoice_document
+        path = verified_invoice_document(
+            connection, invoice_id, "INTERNAL_INVOICE", "INTERNAL"
+        )
     return FileResponse(
         path=path,
         media_type="application/pdf",
@@ -3801,7 +4176,16 @@ def update_supplier(supplier_id: int, name: Annotated[str, Form()], website: Ann
 
 @app.post("/suppliers/{supplier_id}/status")
 def supplier_status(supplier_id: int, status: Annotated[str, Form()]):
-    with closing(get_connection()) as connection: connection.execute("UPDATE suppliers SET status=? WHERE id=?",(status,supplier_id)); connection.commit()
+    with closing(get_connection()) as connection:
+        supplier=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+        if supplier is None: raise HTTPException(status_code=404,detail="Supplier not found.")
+        normalized=status.strip().upper()
+        if normalized not in {"ACTIVE","INACTIVE","DO_NOT_USE"}: raise HTTPException(status_code=400,detail="Invalid supplier status.")
+        connection.execute("UPDATE suppliers SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(normalized,supplier_id))
+        if normalized=="INACTIVE":
+            from plg_core.audit import write_audit
+            write_audit(connection,action="SUPPLIER_DEACTIVATED",entity_type="SUPPLIER",entity_id=supplier_id,summary=f"Supplier {supplier['name']} removed from active views; history preserved")
+        connection.commit()
     return RedirectResponse(url="/suppliers",status_code=303)
 
 @app.post("/suppliers/{supplier_id}/delete")
@@ -3809,7 +4193,12 @@ def supplier_delete(supplier_id: int):
     with closing(get_connection()) as connection:
         s=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
         used=connection.execute("SELECT 1 FROM part_sources WHERE LOWER(TRIM(supplier_name))=LOWER(TRIM(?)) LIMIT 1",(s["name"],)).fetchone()
-        if used: raise HTTPException(status_code=400,detail="Supplier has history. Mark it Inactive or Do Not Use.")
+        if used:
+            connection.execute("UPDATE suppliers SET status='INACTIVE',updated_at=CURRENT_TIMESTAMP WHERE id=?",(supplier_id,))
+            from plg_core.audit import write_audit
+            write_audit(connection,action="SUPPLIER_DEACTIVATED",entity_type="SUPPLIER",entity_id=supplier_id,summary=f"Supplier {s['name']} removed from active views; history preserved")
+            connection.commit()
+            return RedirectResponse(url="/suppliers?view=inactive",status_code=303)
         connection.execute("DELETE FROM suppliers WHERE id=?",(supplier_id,)); connection.commit()
     return RedirectResponse(url="/suppliers",status_code=303)
 
@@ -3877,6 +4266,19 @@ def list_quotes(request: Request, view: str = "active"):
                     ORDER BY invoices.id DESC
                     LIMIT 1
                 ) AS invoice_status
+                ,CASE
+                    WHEN UPPER(COALESCE(quotes.status,'')) IN ('REJECTED','CONVERTED') THEN 1
+                    WHEN UPPER(COALESCE(quotes.status,''))='DRAFT'
+                     AND COALESCE(jobs.is_archived,0)=1
+                     AND jobs.cancelled_at IS NOT NULL
+                     AND quotes.issued_at IS NULL
+                     AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.quote_id=quotes.id)
+                     AND NOT EXISTS (
+                         SELECT 1 FROM quote_documents_manifest d
+                         WHERE d.quote_id=quotes.id AND COALESCE(d.is_issued,0)=1
+                     ) THEN 1
+                    ELSE 0
+                 END AS can_archive
 
             FROM quotes
             JOIN jobs
@@ -3900,11 +4302,22 @@ def list_quotes(request: Request, view: str = "active"):
 @app.post("/quotes/{quote_id}/archive")
 def archive_quote(quote_id: int):
     with closing(get_connection()) as connection:
-        quote = connection.execute("SELECT * FROM quotes WHERE id=?", (quote_id,)).fetchone()
+        quote = connection.execute(
+            """SELECT q.*,j.is_archived AS job_is_archived,j.cancelled_at AS job_cancelled_at,
+                      EXISTS(SELECT 1 FROM invoices i WHERE i.quote_id=q.id) AS has_invoice,
+                      EXISTS(SELECT 1 FROM quote_documents_manifest d WHERE d.quote_id=q.id AND COALESCE(d.is_issued,0)=1) AS has_issued_document
+               FROM quotes q JOIN jobs j ON j.id=q.job_id WHERE q.id=?""", (quote_id,)
+        ).fetchone()
         if quote is None:
             raise HTTPException(status_code=404, detail="Quote not found.")
-        if str(quote["status"] or "").upper() not in {"REJECTED", "CONVERTED"}:
-            raise HTTPException(status_code=409, detail="Only rejected or converted quotes can be archived.")
+        status = str(quote["status"] or "").upper()
+        cancelled_draft = (
+            status == "DRAFT" and int(quote["job_is_archived"] or 0) == 1
+            and bool(quote["job_cancelled_at"]) and not bool(quote["issued_at"])
+            and not bool(quote["has_invoice"]) and not bool(quote["has_issued_document"])
+        )
+        if status not in {"REJECTED", "CONVERTED"} and not cancelled_draft:
+            raise HTTPException(status_code=409, detail="Only rejected, converted, or unissued drafts on archived/cancelled Jobs can be archived.")
         connection.execute("UPDATE quotes SET is_archived=1 WHERE id=?",(quote_id,))
         from plg_core.audit import write_audit
         write_audit(connection, action="QUOTE_ARCHIVED", entity_type="QUOTE", entity_id=quote_id,
@@ -3940,6 +4353,7 @@ def restore_quote(quote_id: int):
 @app.post("/quotes/{quote_id}/mark-sent")
 def mark_quote_sent(quote_id: int):
     from plg_core.sales.service import update_quote_status
+    from plg_core.documents.integrity import issue_quote_documents
 
     update_quote_status(quote_id, "SENT")
     with closing(get_connection()) as connection:
@@ -3948,11 +4362,9 @@ def mark_quote_sent(quote_id: int):
             "WHERE id=?",
             (quote_id,),
         )
-        connection.execute(
-            "UPDATE quote_documents_manifest SET is_issued=1 "
-            "WHERE quote_id=? AND is_issued=0",
-            (quote_id,),
-        )
+        connection.commit()
+        quote, items = load_quote(connection, quote_id)
+        issue_quote_documents(connection, quote, items)
         connection.commit()
 
     return RedirectResponse(
@@ -4047,6 +4459,15 @@ def quote_documents(request: Request, quote_id: int):
     with closing(get_connection()) as connection:
         quote, items = load_quote(connection, quote_id)
         invoice = connection.execute("SELECT id,invoice_number FROM invoices WHERE quote_id=?",(quote_id,)).fetchone()
+        job_state = connection.execute("SELECT is_archived,cancelled_at FROM jobs WHERE id=?", (quote["job_id"],)).fetchone()
+        has_issued_document = connection.execute(
+            "SELECT 1 FROM quote_documents_manifest WHERE quote_id=? AND COALESCE(is_issued,0)=1 LIMIT 1", (quote_id,)
+        ).fetchone() is not None
+        can_archive = str(quote["status"] or "").upper() in {"REJECTED", "CONVERTED"} or (
+            str(quote["status"] or "").upper() == "DRAFT" and int(job_state["is_archived"] or 0) == 1
+            and bool(job_state["cancelled_at"]) and invoice is None and not bool(quote["issued_at"])
+            and not has_issued_document
+        )
         quote_events = connection.execute(
             """
             SELECT event_type, from_status, to_status, notes, created_at
@@ -4071,42 +4492,35 @@ def quote_documents(request: Request, quote_id: int):
             """,
             (quote_id,),
         ).fetchall()
-    paths = quote_paths(quote["customer"],quote["quote_number"])
-    if (
-        (not paths["customer"].exists() or not paths["internal"].exists())
-        and str(quote["status"] or "").upper()
-        not in {
-            "SENT", "APPROVED", "REJECTED", "REVISION_REQUIRED",
-            "SUPERSEDED", "CONVERTED",
-        }
-    ):
-        generate_quote_pdfs(quote,items)
-    elif not paths["customer"].exists() or not paths["internal"].exists():
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "An issued quote document is missing and cannot be "
-                "regenerated silently."
-            ),
-        )
+    if str(quote["status"] or "").upper() in {
+        "SENT", "APPROVED", "REJECTED", "REVISION_REQUIRED",
+        "SUPERSEDED", "CONVERTED",
+    }:
+        from plg_core.documents.integrity import verified_quote_document
+        with closing(get_connection()) as connection:
+            verified_quote_document(connection, quote_id, "CUSTOMER")
+            verified_quote_document(connection, quote_id, "INTERNAL")
+    else:
+        paths = quote_paths(quote["customer"], quote["quote_number"])
+        if not paths["customer"].exists() or not paths["internal"].exists():
+            generate_quote_pdfs(quote, items)
     customer_path = Path("documents")/"Customers"/sanitize_path_name(quote["customer"])/"Quotes"
-    return templates.TemplateResponse(request=request,name="quote_documents.html",context={"quote":quote,"items":items,"invoice":invoice,"quote_events":quote_events,"split_predecessor":split_predecessor,"split_successors":split_successors,"customer_path":str(customer_path),"active_page":"quotes"})
+    return templates.TemplateResponse(request=request,name="quote_documents.html",context={"quote":quote,"items":items,"invoice":invoice,"quote_events":quote_events,"split_predecessor":split_predecessor,"split_successors":split_successors,"customer_path":str(customer_path),"can_archive":can_archive,"active_page":"quotes"})
 
 
 @app.get("/quotes/{quote_id}/customer/pdf")
 def customer_quote_pdf(quote_id: int, download: int = 0):
     with closing(get_connection()) as connection:
         quote, items = load_quote(connection, quote_id)
-    path = quote_paths(quote["customer"], quote["quote_number"])["customer"]
-    if not path.exists():
         if str(quote["status"] or "").upper() in {
             "SENT", "APPROVED", "REJECTED", "REVISION_REQUIRED",
             "SUPERSEDED", "CONVERTED",
         }:
-            raise HTTPException(
-                status_code=409,
-                detail="Issued quote PDF is missing and cannot be regenerated silently.",
-            )
+            from plg_core.documents.integrity import verified_quote_document
+            path = verified_quote_document(connection, quote_id, "CUSTOMER")
+        else:
+            path = quote_paths(quote["customer"], quote["quote_number"])["customer"]
+    if not path.exists():
         generate_quote_pdfs(quote, items)
     return FileResponse(path=path, media_type="application/pdf", filename=path.name, content_disposition_type="attachment" if download else "inline")
 
@@ -4114,16 +4528,15 @@ def customer_quote_pdf(quote_id: int, download: int = 0):
 def internal_quote_pdf(quote_id: int, download: int = 0):
     with closing(get_connection()) as connection:
         quote, items = load_quote(connection, quote_id)
-    path = quote_paths(quote["customer"], quote["quote_number"])["internal"]
-    if not path.exists():
         if str(quote["status"] or "").upper() in {
             "SENT", "APPROVED", "REJECTED", "REVISION_REQUIRED",
             "SUPERSEDED", "CONVERTED",
         }:
-            raise HTTPException(
-                status_code=409,
-                detail="Issued quote PDF is missing and cannot be regenerated silently.",
-            )
+            from plg_core.documents.integrity import verified_quote_document
+            path = verified_quote_document(connection, quote_id, "INTERNAL")
+        else:
+            path = quote_paths(quote["customer"], quote["quote_number"])["internal"]
+    if not path.exists():
         generate_quote_pdfs(quote, items)
     return FileResponse(path=path, media_type="application/pdf", filename=path.name, content_disposition_type="attachment" if download else "inline")
 
@@ -5674,7 +6087,7 @@ def connector_manager(request: Request, view: str = "active"):
     if view not in {"active","archived","all"}: view="active"
     where={"active":"WHERE connector_profiles.is_archived=0","archived":"WHERE connector_profiles.is_archived=1"}.get(view,"")
     with closing(get_connection()) as connection:
-        rows=connection.execute(f"""SELECT connector_profiles.*, EXISTS(SELECT 1 FROM source_cart_imports WHERE source_key=connector_profiles.connector_key) AS has_history FROM connector_profiles {where} ORDER BY sort_order,display_name""").fetchall()
+        rows=connection.execute(f"""SELECT connector_profiles.*, EXISTS(SELECT 1 FROM source_cart_imports WHERE source_key=connector_profiles.connector_key) AS has_history FROM connector_profiles {where} ORDER BY is_default DESC,source_priority DESC,sort_order,display_name""").fetchall()
         connectors=[]
         for row in rows:
             item=dict(row); item["can_delete"]=bool(item["is_archived"]) and not bool(item["has_history"]); connectors.append(item)
@@ -5682,22 +6095,28 @@ def connector_manager(request: Request, view: str = "active"):
 
 @app.get("/connectors/new", response_class=HTMLResponse)
 def new_connector_form(request: Request):
-    return templates.TemplateResponse(request=request,name="connector_form.html",context={"title":"New Connector","subtitle":"Add a source connector.","form_action":"/connectors/new","submit_label":"Save Connector","connector":{"display_name":"","launch_url":"","category":"Supplier","trust_level":"SUPPLIER_VERIFIED","connector_type":"CART"},"active_page":"connectors"})
+    return templates.TemplateResponse(request=request,name="connector_form.html",context={"title":"New Source","subtitle":"Add one master source for Admin and Job Research.","form_action":"/connectors/new","submit_label":"Save Source","connector":{"display_name":"","launch_url":"","category":"Supplier","source_type":"SUPPLIER","trust_level":"NEEDS_REVIEW","connector_type":"CATALOG","manufacturer_applicability":"","asset_category_applicability":"","market_applicability":"GLOBAL","notes":"","source_priority":50,"is_default":0,"is_enabled":1,"is_archived":0},"source_types":SOURCE_TYPES,"connector_types":CONNECTOR_TYPES,"trust_levels":TRUST_LEVELS,"active_page":"connectors"})
 
 @app.post("/connectors/new")
-def add_connector(display_name: Annotated[str, Form()], launch_url: Annotated[str, Form()] = "", category: Annotated[str, Form()] = "Supplier", trust_level: Annotated[str, Form()] = "SUPPLIER_VERIFIED", connector_type: Annotated[str, Form()] = "CART", manufacturer_applicability: Annotated[str, Form()] = "", notes: Annotated[str, Form()] = ""):
-    key=re.sub(r"[^a-z0-9]+","_",display_name.lower()).strip("_")
-    with closing(get_connection()) as connection: connection.execute("INSERT INTO connector_profiles (connector_key,display_name,category,trust_level,launch_url,connector_type,parser_key,is_enabled,is_archived,sort_order,manufacturer_applicability,notes) VALUES (?,?,?,?,?,?,'',1,0,100,?,?)",(key,display_name.strip(),category.strip(),trust_level.strip(),launch_url.strip(),connector_type.strip(),manufacturer_applicability.strip(),notes.strip())); connection.commit()
+def add_connector(display_name: Annotated[str, Form()], launch_url: Annotated[str, Form()] = "", category: Annotated[str, Form()] = "Supplier", source_type: Annotated[str, Form()] = "SUPPLIER", trust_level: Annotated[str, Form()] = "NEEDS_REVIEW", connector_type: Annotated[str, Form()] = "CATALOG", manufacturer_applicability: Annotated[str, Form()] = "", asset_category_applicability: Annotated[str, Form()] = "", market_applicability: Annotated[str, Form()] = "GLOBAL", notes: Annotated[str, Form()] = "", source_priority: Annotated[int, Form()] = 50, is_default: Annotated[str, Form()] = "", is_enabled: Annotated[str, Form()] = "1"):
+    with closing(get_connection()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        create_source(connection,display_name=display_name,launch_url=launch_url,category=category,source_type=source_type,trust_level=trust_level,connector_type=connector_type,manufacturer_applicability=manufacturer_applicability,asset_category_applicability=asset_category_applicability,market_applicability=market_applicability,notes=notes,source_priority=source_priority,is_default=bool(is_default),is_enabled=bool(is_enabled),provenance="ADMIN_DIRECTORY")
+        connection.commit()
     return RedirectResponse(url="/connectors",status_code=303)
 
 @app.get("/connectors/{connector_id}/edit", response_class=HTMLResponse)
 def edit_connector_form(request: Request, connector_id: int):
     with closing(get_connection()) as connection: c=connection.execute("SELECT * FROM connector_profiles WHERE id=?",(connector_id,)).fetchone()
-    return templates.TemplateResponse(request=request,name="connector_form.html",context={"title":"Edit Connector","subtitle":c["display_name"],"form_action":f"/connectors/{connector_id}/edit","submit_label":"Save Changes","connector":c,"active_page":"connectors"})
+    if c is None: raise HTTPException(status_code=404,detail="Source not found.")
+    return templates.TemplateResponse(request=request,name="connector_form.html",context={"title":"Edit Source","subtitle":c["display_name"],"form_action":f"/connectors/{connector_id}/edit","submit_label":"Save Changes","connector":c,"source_types":SOURCE_TYPES,"connector_types":CONNECTOR_TYPES,"trust_levels":TRUST_LEVELS,"active_page":"connectors"})
 
 @app.post("/connectors/{connector_id}/edit")
-def update_connector(connector_id: int, display_name: Annotated[str, Form()], launch_url: Annotated[str, Form()] = "", category: Annotated[str, Form()] = "Supplier", trust_level: Annotated[str, Form()] = "SUPPLIER_VERIFIED", connector_type: Annotated[str, Form()] = "CART", manufacturer_applicability: Annotated[str, Form()] = "", notes: Annotated[str, Form()] = ""):
-    with closing(get_connection()) as connection: connection.execute("UPDATE connector_profiles SET display_name=?,launch_url=?,category=?,trust_level=?,connector_type=?,manufacturer_applicability=?,notes=? WHERE id=?",(display_name.strip(),launch_url.strip(),category.strip(),trust_level.strip(),connector_type.strip(),manufacturer_applicability.strip(),notes.strip(),connector_id)); connection.commit()
+def update_connector(connector_id: int, display_name: Annotated[str, Form()], launch_url: Annotated[str, Form()] = "", category: Annotated[str, Form()] = "Supplier", source_type: Annotated[str, Form()] = "SUPPLIER", trust_level: Annotated[str, Form()] = "NEEDS_REVIEW", connector_type: Annotated[str, Form()] = "CATALOG", manufacturer_applicability: Annotated[str, Form()] = "", asset_category_applicability: Annotated[str, Form()] = "", market_applicability: Annotated[str, Form()] = "GLOBAL", notes: Annotated[str, Form()] = "", source_priority: Annotated[int, Form()] = 50, is_default: Annotated[str, Form()] = "", is_enabled: Annotated[str, Form()] = "", is_archived: Annotated[str, Form()] = ""):
+    with closing(get_connection()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        update_source(connection,connector_id,display_name=display_name,launch_url=launch_url,category=category,source_type=source_type,trust_level=trust_level,connector_type=connector_type,manufacturer_applicability=manufacturer_applicability,asset_category_applicability=asset_category_applicability,market_applicability=market_applicability,notes=notes,source_priority=source_priority,is_default=bool(is_default),is_enabled=bool(is_enabled),is_archived=bool(is_archived))
+        connection.commit()
     return RedirectResponse(url="/connectors",status_code=303)
 
 @app.post("/connectors/{connector_id}/toggle")
@@ -5742,13 +6161,24 @@ def api_active_source_import():
                 active_source_import.source_key,
                 active_source_import.source_name,
                 active_source_import.activated_at,
+                verification_sessions.connector_profile_id,
+                verification_sessions.source_url_snapshot,
+                verification_sessions.source_type_snapshot,
+                work_revisions.id AS expected_revision_id,
+                work_revisions.lock_version AS expected_version,
                 jobs.job_number,
                 jobs.customer,
-                jobs.manufacturer,
-                jobs.machine,
-                jobs.pin_serial
+                COALESCE(job_assets.manufacturer,jobs.manufacturer,'') AS manufacturer,
+                COALESCE(job_assets.model,job_assets.name,jobs.machine,'') AS machine,
+                COALESCE(job_assets.vin_pin_serial,jobs.pin_serial,'') AS pin_serial,
+                COALESCE(requested_needs.wording,'') AS requested_need
             FROM active_source_import
             JOIN jobs ON jobs.id = active_source_import.job_id
+            LEFT JOIN verification_sessions
+                ON verification_sessions.id = active_source_import.verification_session_id
+            LEFT JOIN job_assets ON job_assets.id = active_source_import.job_asset_id
+            LEFT JOIN requested_needs ON requested_needs.id = active_source_import.requested_need_id
+            LEFT JOIN work_revisions ON work_revisions.id = jobs.active_work_revision_id
             WHERE active_source_import.id = 1
             """
         ).fetchone()

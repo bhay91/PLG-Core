@@ -16,6 +16,7 @@ ALIASES = {
     "bmw": ("BMW", "vehicle"), "mercedes benz": ("Mercedes-Benz", "vehicle"),
     "mercedes-benz": ("Mercedes-Benz", "vehicle"), "mack": ("Mack", "vehicle"),
     "volvo": ("Volvo", "vehicle"), "isuzu": ("Isuzu", "vehicle"),
+    "international": ("International", "vehicle"),
 }
 COMPANY_WORDS = r"(?:Development|Construction|Real Estate|Limited|Ltd|Inc|LLC|Company|Co|Group|Holdings|Services|Trading|Enterprises)"
 LOCATION_PATTERN = re.compile(
@@ -47,9 +48,71 @@ class Asset:
 
 
 def _clean_need(value: str) -> str:
-    value = re.sub(r"^[\s\-•:]+", "", value.strip())
+    value = re.sub(r"^[\s\-•:*]+", "", value.strip())
+    value = re.sub(r"^\d+[.)]\s*", "", value)
     value = re.sub(r"[.\s]+$", "", value)
     return value.strip()
+
+
+def _need_item(value: str) -> dict | None:
+    original = _clean_need(value)
+    if not original:
+        return None
+    prefix_quantity = re.match(r"^(\d+(?:\.\d+)?)\s*[x×]\s+(.+)$", original, re.I)
+    if prefix_quantity:
+        quantity = float(prefix_quantity.group(1))
+        wording = _clean_need(prefix_quantity.group(2))
+        shown = str(int(quantity)) if quantity.is_integer() else str(quantity)
+        return {
+            "wording": f"{wording} — Qty {shown}",
+            "original_wording": original,
+            "quantity": quantity,
+            "review_state": "CONFIDENT",
+        }
+    patterns = (
+        r"^(.*?)\s*[—–-]\s*(?:quantity|qty)\s*[:.]?\s*(\d+(?:\.\d+)?)\s*$",
+        r"^(.*?)\s+(?:quantity|qty)\s*[:.]?\s*(\d+(?:\.\d+)?)\s*$",
+        r"^(.*?)\s+[x×]\s*(\d+(?:\.\d+)?)\s*$",
+        r"^(.*?)\s+(\d+(?:\.\d+)?)\s*[x×]\s*$",
+    )
+    quantity = None
+    wording = original
+    for pattern in patterns:
+        match = re.match(pattern, original, re.I)
+        if match:
+            wording = _clean_need(match.group(1))
+            quantity = float(match.group(2))
+            break
+    if not wording:
+        return None
+    if quantity is not None:
+        shown = str(int(quantity)) if quantity.is_integer() else str(quantity)
+        wording = f"{wording} — Qty {shown}"
+    return {
+        "wording": wording,
+        "original_wording": original,
+        "quantity": quantity,
+        "review_state": "CONFIDENT",
+    }
+
+
+def _structured_need_items(text: str) -> list[dict]:
+    """Read explicit numbered/bulleted part lists without consuming later prose."""
+    items: list[dict] = []
+    list_started = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        marker = re.match(r"^(?:\d+[.)]|[-*•])\s+(.+)$", line)
+        if marker:
+            item = _need_item(marker.group(1))
+            if item:
+                items.append(item)
+                list_started = True
+            continue
+        if list_started and line:
+            # A normal paragraph ends the explicit list.
+            break
+    return items
 
 
 def _split_needs(value: str) -> list[str]:
@@ -73,7 +136,10 @@ def _identity_prefix(text: str, first_make: int) -> tuple[str, str, str]:
     if location_match:
         prefix = prefix[: location_match.start()] + prefix[location_match.end() :]
     prefix = re.sub(r"\b(?:Customer|Name|Company|Location)\s*:\s*", "", prefix, flags=re.I)
-    lines = [x.strip(" ,") for x in prefix.splitlines() if x.strip(" ,")]
+    lines = [
+        x.strip(" ,") for x in prefix.splitlines()
+        if x.strip(" ,") and not re.fullmatch(r"(?:Machine|Asset|Equipment|Request|Requested Parts|Parts)s*: ?", x.strip(), re.I)
+    ]
     contact = company = ""
     if len(lines) >= 2:
         contact, company = lines[0], lines[1]
@@ -102,6 +168,32 @@ def _asset_matches(text: str) -> list[tuple[int, int, str, str]]:
                 continue
             matches.append((match.start(), match.end(), canonical, category))
     return sorted(matches)
+
+
+def _coalesce_asset_references(text: str, matches: list[tuple[int, int, str, str]]) -> list[tuple[int, int, str, str]]:
+    """Collapse later prose references to an already declared make/model."""
+    kept: list[tuple[int, int, str, str]] = []
+    signatures: list[tuple[str, str]] = []
+    for match in matches:
+        start, end, canonical, category = match
+        tail = text[end:end + 80]
+        model = re.split(r"\b(?:VIN|PIN|Frame|Chassis|Serial|Model\s*Code|needs?|Request)\b|[\n.]", tail, maxsplit=1, flags=re.I)[0]
+        model = re.sub(r"\b(?:19|20)\d{2}\b", "", model).strip(" ,.:\n")
+        first_token = re.split(r"\s+", model)[0].lower() if model else ""
+        line_prefix = text[text.rfind("\n", 0, start) + 1:start]
+        line_leading_declaration = not line_prefix.strip()
+        duplicate = not line_leading_declaration and any(
+            prior_make == canonical.lower()
+            and first_token
+            and (first_token == prior_model or first_token in prior_model or prior_model in first_token)
+            for prior_make, prior_model in signatures
+            if prior_model
+        )
+        if duplicate:
+            continue
+        kept.append(match)
+        signatures.append((canonical.lower(), first_token))
+    return kept
 
 
 def _identifier_candidates(segment: str, asset: Asset) -> list[Identifier]:
@@ -134,7 +226,7 @@ def parse_intake(raw_input: str) -> dict:
     normalized = re.sub(r"\r\n?", "\n", raw)
     # Natural sentence form gets structural line breaks without destroying evidence.
     working = re.sub(r"^(.+?)\s+from\s+(.+?)\s+in\s+(.+?)\s+needs\s+(.+?)\s+for\s+(?:their|his|her)\s+", r"\1\n\2\n\3\nNeed: \4\n", normalized, flags=re.I)
-    matches = _asset_matches(working)
+    matches = _coalesce_asset_references(working, _asset_matches(working))
     first_make = matches[0][0] if matches else len(working)
     contact, company, location = _identity_prefix(working, first_make)
     email_match = re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", raw)
@@ -160,9 +252,25 @@ def parse_intake(raw_input: str) -> dict:
             for wording in _split_needs(need_text):
                 # Avoid swallowing natural-sentence identifier clauses.
                 wording = re.split(r"\.\s*The machine", wording, flags=re.I)[0]
-                if wording:
-                    asset.needs.append({"wording": wording, "original_wording": wording, "review_state": "CONFIDENT"})
+                if wording and not re.match(r"^(?:the\s+)?following\s+parts\b", wording, re.I) and not re.search(r"\badditional information\b", wording, re.I):
+                    item = _need_item(wording)
+                    if item:
+                        asset.needs.append(item)
         assets.append(asset)
+
+    structured_needs = _structured_need_items(working)
+    if structured_needs:
+        if len(assets) == 1:
+            assets[0].needs = structured_needs
+        else:
+            # A list following a make/model reference belongs only to a uniquely
+            # compatible declared asset; otherwise it remains unassigned below.
+            reference = re.search(r"(?:following parts|requested parts).*?\b(" + "|".join(map(re.escape, ALIASES)) + r")\b\s*([^:\n]*)", working, re.I | re.S)
+            if reference:
+                canonical = ALIASES[reference.group(1).lower()][0]
+                candidates = [asset for asset in assets if asset.manufacturer == canonical]
+                if len(candidates) == 1:
+                    candidates[0].needs = structured_needs
 
     natural_need = re.search(
         r"\bneeds?\s+(?:an?\s+)?(.+?)\s+for\s+(?:their|his|her)\s+", raw,
@@ -170,7 +278,32 @@ def parse_intake(raw_input: str) -> dict:
     )
     if len(assets) == 1 and natural_need and not assets[0].needs:
         for wording in _split_needs(natural_need.group(1)):
-            assets[0].needs.append({"wording": wording, "original_wording": wording, "review_state": "CONFIDENT"})
+            item = _need_item(wording)
+            if item:
+                assets[0].needs.append(item)
+
+    # Explicit "... for <make/model>" clauses are evidence that a request's
+    # need groups belong to separate recognized assets.
+    if len(assets) > 1:
+        request_match = re.search(r"\bNeed\s+(.+?)(?:[.!?]|$)", raw, re.I | re.S)
+        if request_match:
+            aliases = "|".join(map(re.escape, sorted(ALIASES, key=len, reverse=True)))
+            groups = re.finditer(
+                rf"(?:^|,\s*and\s+)(.+?)\s+for\s+(?:the\s+)?({aliases})\b[^,.]*",
+                request_match.group(1), re.I | re.S,
+            )
+            assignments: list[tuple[Asset, list[dict]]] = []
+            for group in groups:
+                canonical = ALIASES[group.group(2).lower()][0]
+                candidates = [asset for asset in assets if asset.manufacturer == canonical]
+                needs = [item for wording in _split_needs(group.group(1)) if (item := _need_item(wording))]
+                if len(candidates) == 1 and needs:
+                    assignments.append((candidates[0], needs))
+            if len({asset.manufacturer for asset, _ in assignments}) > 1:
+                for asset in assets:
+                    asset.needs = []
+                for asset, needs in assignments:
+                    asset.needs.extend(needs)
 
     # Multiline unlabeled final values: identifier then requested wording.
     lines = [line.strip(" -•\t") for line in working.splitlines() if line.strip(" -•\t")]
@@ -181,7 +314,10 @@ def parse_intake(raw_input: str) -> dict:
         candidates = [line for line in tail if not ignored.search(line) and not re.fullmatch(r"[A-Z0-9-]{7,}", line, re.I)]
         if candidates:
             wording = _clean_need(candidates[-1])
-            assets[0].needs.append({"wording": wording, "original_wording": wording, "review_state": "REVIEW"})
+            item = _need_item(wording)
+            if item:
+                item["review_state"] = "REVIEW"
+                assets[0].needs.append(item)
 
     unassigned: list[dict] = []
     if not assets:

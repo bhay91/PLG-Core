@@ -460,6 +460,11 @@ MIGRATIONS: list[Migration] = [
 
 
 def run_migrations() -> None:
+    # The modular delivery/receiving integrity migrations build on the
+    # supply-chain tables introduced by the roadmap migration set.
+    from plg_core.roadmap.migrations import run_roadmap_migrations
+
+    run_roadmap_migrations()
     with closing(get_connection()) as connection:
         connection.execute(
             """
@@ -1067,6 +1072,159 @@ MIGRATIONS.append(
         "0022_request_opportunity_link",
         _migration_0022_request_opportunity_link,
     )
+)
+
+
+def _migration_0047_delivery_2_integrity(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add safe Delivery reservations and immutable Delivery Notes."""
+    delivery_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(deliveries)"
+        ).fetchall()
+    }
+    expected_deliveries = {
+        "id", "job_id", "invoice_id", "status", "recipient",
+        "delivery_date", "notes", "created_at", "updated_at",
+    }
+    item_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(delivery_items)"
+        ).fetchall()
+    }
+    expected_items = {
+        "id", "delivery_id", "order_item_id", "quantity_delivered",
+    }
+    if not expected_deliveries.issubset(delivery_columns):
+        raise RuntimeError(
+            "deliveries does not match the expected pre-0047 schema"
+        )
+    if not expected_items.issubset(item_columns):
+        raise RuntimeError(
+            "delivery_items does not match the expected pre-0047 schema"
+        )
+    for name, definition in (
+        ("request_id", "TEXT NOT NULL DEFAULT ''"),
+        ("source_path", "TEXT NOT NULL DEFAULT ''"),
+        ("idempotency_key", "TEXT"),
+    ):
+        if name not in delivery_columns:
+            connection.execute(
+                f"ALTER TABLE deliveries ADD COLUMN {name} {definition}"
+            )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_deliveries_idempotency
+        ON deliveries(idempotency_key)
+        WHERE idempotency_key IS NOT NULL AND idempotency_key != ''
+        """
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_deliveries_one_ready_per_job
+        ON deliveries(job_id)
+        WHERE status = 'READY'
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS delivery_documents_manifest (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            delivery_id INTEGER NOT NULL,
+            document_kind TEXT NOT NULL DEFAULT 'DELIVERY_NOTE',
+            audience TEXT NOT NULL DEFAULT 'CUSTOMER',
+            version INTEGER NOT NULL DEFAULT 1,
+            file_path TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            issued_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            is_current INTEGER NOT NULL DEFAULT 1
+                CHECK(is_current IN (0,1)),
+            FOREIGN KEY(delivery_id) REFERENCES deliveries(id),
+            UNIQUE(delivery_id, document_kind, audience, version)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_delivery_documents_manifest_delivery
+        ON delivery_documents_manifest(delivery_id)
+        """
+    )
+
+
+MIGRATIONS.append(
+    ("0047_delivery_2_integrity", _migration_0047_delivery_2_integrity)
+)
+
+
+def _migration_0046_receiving_2_integrity(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add attributed, idempotent receiving and immutable receipt manifests."""
+    columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(receiving_events)"
+        ).fetchall()
+    }
+    expected = {
+        "id", "receipt_number", "order_id", "notes", "received_at",
+    }
+    if not expected.issubset(columns):
+        raise RuntimeError(
+            "receiving_events does not match the expected pre-0046 schema"
+        )
+    additions = (
+        ("receiver", "TEXT NOT NULL DEFAULT ''"),
+        ("request_id", "TEXT NOT NULL DEFAULT ''"),
+        ("source_path", "TEXT NOT NULL DEFAULT ''"),
+        ("idempotency_key", "TEXT"),
+    )
+    for name, definition in additions:
+        if name not in columns:
+            connection.execute(
+                f"ALTER TABLE receiving_events ADD COLUMN {name} {definition}"
+            )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_receiving_events_idempotency
+        ON receiving_events(idempotency_key)
+        WHERE idempotency_key IS NOT NULL AND idempotency_key != ''
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS receiving_documents_manifest (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            receipt_id INTEGER NOT NULL,
+            document_kind TEXT NOT NULL DEFAULT 'RECEIVING_SUMMARY',
+            audience TEXT NOT NULL DEFAULT 'INTERNAL',
+            version INTEGER NOT NULL DEFAULT 1,
+            file_path TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            issued_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            is_current INTEGER NOT NULL DEFAULT 1
+                CHECK(is_current IN (0,1)),
+            FOREIGN KEY(receipt_id) REFERENCES receiving_events(id),
+            UNIQUE(receipt_id, document_kind, audience, version)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_receiving_documents_receipt
+        ON receiving_documents_manifest(receipt_id)
+        """
+    )
+
+
+MIGRATIONS.append(
+    ("0046_receiving_2_integrity", _migration_0046_receiving_2_integrity)
 )
 
 
@@ -2433,3 +2591,471 @@ def _migration_0040_smart_intake_identifier_completion(connection: sqlite3.Conne
 
 
 MIGRATIONS.append(("0040_smart_intake_identifier_completion", _migration_0040_smart_intake_identifier_completion))
+
+
+def _migration_0041_need_aware_research_sources(connection: sqlite3.Connection) -> None:
+    """Strengthen research context/source evidence without rewriting existing work."""
+    _add_columns(
+        connection,
+        "connector_profiles",
+        {
+            "source_type": "TEXT NOT NULL DEFAULT 'OTHER'",
+            "asset_category_applicability": "TEXT NOT NULL DEFAULT ''",
+            "market_applicability": "TEXT NOT NULL DEFAULT ''",
+            "source_priority": "INTEGER NOT NULL DEFAULT 100",
+            "is_default": "INTEGER NOT NULL DEFAULT 0",
+            "provenance": "TEXT NOT NULL DEFAULT 'LEGACY'",
+        },
+    )
+    _add_columns(
+        connection,
+        "verification_sessions",
+        {
+            "customer_request_id": "INTEGER REFERENCES customer_requests(id)",
+            "identifier_type_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "identifier_value_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "asset_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "need_wording_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "source_name_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "source_url_snapshot": "TEXT NOT NULL DEFAULT ''",
+            "source_type_snapshot": "TEXT NOT NULL DEFAULT ''",
+        },
+    )
+    lineage_columns = {
+        "research_session_id": "INTEGER REFERENCES verification_sessions(id)",
+        "research_evidence": "TEXT NOT NULL DEFAULT ''",
+        "research_notes": "TEXT NOT NULL DEFAULT ''",
+        "identified_at": "TEXT",
+    }
+    for table in ("basket_items", "work_revision_items", "job_parts", "quote_items"):
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ).fetchone():
+            _add_columns(connection, table, lineage_columns)
+
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS research_capture_proposals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            proposal_type TEXT NOT NULL
+                CHECK (proposal_type IN ('PART_RESULT','CART_RESULTS','SOURCE')),
+            status TEXT NOT NULL DEFAULT 'REVIEW'
+                CHECK (status IN ('REVIEW','CONFIRMED','REJECTED')),
+            verification_session_id INTEGER,
+            job_id INTEGER NOT NULL,
+            job_asset_id INTEGER,
+            requested_need_id INTEGER,
+            connector_profile_id INTEGER,
+            page_url TEXT NOT NULL DEFAULT '',
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            submitted_by TEXT NOT NULL DEFAULT 'FUTURE_EXTENSION',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            reviewed_at TEXT,
+            FOREIGN KEY (verification_session_id) REFERENCES verification_sessions(id),
+            FOREIGN KEY (job_id) REFERENCES jobs(id),
+            FOREIGN KEY (job_asset_id) REFERENCES job_assets(id),
+            FOREIGN KEY (requested_need_id) REFERENCES requested_needs(id),
+            FOREIGN KEY (connector_profile_id) REFERENCES connector_profiles(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_capture_context
+            ON research_capture_proposals(job_id,job_asset_id,requested_need_id,status,id);
+        CREATE INDEX IF NOT EXISTS idx_verification_sessions_need
+            ON verification_sessions(job_id,job_asset_id,requested_need_id,status,id);
+        """
+    )
+
+    # A URL-less general option is honest fallback context, not a fabricated site.
+    connection.execute(
+        """INSERT INTO connector_profiles (
+            connector_key,display_name,category,trust_level,launch_url,
+            connector_type,parser_key,is_enabled,sort_order,
+            manufacturer_applicability,notes,source_type,
+            asset_category_applicability,market_applicability,
+            source_priority,is_default,provenance
+        )
+        SELECT 'general_research','General Research','Research','NEEDS_REVIEW','',
+               'CATALOG','',1,999,'',
+               'No saved external destination. Add a confirmed source when one is known.',
+               'GENERAL_RESEARCH','','',999,0,'PPS_DEFAULT'
+        WHERE NOT EXISTS (
+            SELECT 1 FROM connector_profiles WHERE connector_key='general_research'
+        )"""
+    )
+
+
+MIGRATIONS.append(("0041_need_aware_research_sources", _migration_0041_need_aware_research_sources))
+
+
+def _migration_0042_source_routing_corrections(connection: sqlite3.Connection) -> None:
+    """Scope existing legacy catalogs without creating replacement records."""
+    connection.execute(
+        """UPDATE connector_profiles
+           SET source_type='OEM_CATALOG',
+               manufacturer_applicability='Caterpillar,CAT',
+               asset_category_applicability='machine,equipment,heavy equipment',
+               market_applicability='GLOBAL',
+               source_priority=50,
+               is_default=1,
+               updated_at=CURRENT_TIMESTAMP
+           WHERE lower(display_name) IN ('cat sis','caterpillar sis')"""
+    )
+    connection.execute(
+        """UPDATE connector_profiles
+           SET source_type='AFTERMARKET_CATALOG',
+               manufacturer_applicability='',
+               asset_category_applicability='vehicle,automotive',
+               market_applicability='GLOBAL',
+               source_priority=50,
+               is_default=1,
+               updated_at=CURRENT_TIMESTAMP
+           WHERE lower(display_name)='worldpac'"""
+    )
+
+
+MIGRATIONS.append(("0042_source_routing_corrections", _migration_0042_source_routing_corrections))
+
+
+def _migration_0043_unified_source_directory(connection: sqlite3.Connection) -> None:
+    """Use connector_profiles as the single Admin and Job research source directory."""
+    requested_sources = (
+        ("amazon", "Amazon", "https://www.amazon.com", "Supplier", "SUPPLIER", "CART", "", "", "GLOBAL", 50, 1,
+         "General parts marketplace source."),
+        ("ebay", "eBay", "https://www.ebay.com", "Supplier", "SUPPLIER", "CART", "", "", "GLOBAL", 60, 1,
+         "General parts marketplace source."),
+        ("miami_star", "Miami Star", "https://miamistar.com", "Supplier", "SUPPLIER", "CART", "", "machine", "GLOBAL", 70, 1,
+         "Heavy-duty truck and equipment parts supplier."),
+        ("oem_parts_online", "OEM Parts Online", "https://oempartsonline.com", "OEM Catalog", "OEM_CATALOG", "CATALOG", "", "vehicle", "GLOBAL", 70, 1,
+         "OEM automotive parts catalog source."),
+        ("fcp_euro", "FCP Euro", "https://www.fcpeuro.com", "Aftermarket Catalog", "AFTERMARKET_CATALOG", "CATALOG", "", "vehicle", "GLOBAL", 80, 1,
+         "European automotive parts source."),
+    )
+    for (key, name, url, category, source_type, connector_type, manufacturer,
+         asset_category, market, priority, recommended, notes) in requested_sources:
+        existing = connection.execute(
+            "SELECT id FROM connector_profiles WHERE lower(trim(display_name))=lower(trim(?)) ORDER BY id LIMIT 1",
+            (name,),
+        ).fetchone()
+        if existing is None:
+            connection.execute(
+                """INSERT INTO connector_profiles (
+                       connector_key,display_name,category,trust_level,launch_url,connector_type,
+                       parser_key,is_enabled,is_archived,sort_order,manufacturer_applicability,notes,
+                       source_type,asset_category_applicability,market_applicability,source_priority,
+                       is_default,provenance
+                   ) VALUES (?,?,?,'NEEDS_REVIEW',?,?,'',1,0,100,?,?,?,?,?,?,?,'PPS_DIRECTORY')""",
+                (key, name, category, url, connector_type, manufacturer, notes, source_type,
+                 asset_category, market, priority, recommended),
+            )
+        else:
+            connection.execute(
+                """UPDATE connector_profiles SET category=?,source_type=?,connector_type=?,
+                          manufacturer_applicability=?,asset_category_applicability=?,
+                          market_applicability=?,source_priority=?,is_default=?,notes=?,
+                          is_enabled=1,is_archived=0,updated_at=CURRENT_TIMESTAMP
+                   WHERE id=?""",
+                (category, source_type, connector_type, manufacturer, asset_category, market,
+                 priority, recommended, notes, int(existing["id"])),
+            )
+
+    # Existing catalogs retain their IDs and URLs; only directory metadata is normalized.
+    connection.execute(
+        """UPDATE connector_profiles SET source_type='OEM_CATALOG',category='OEM Catalog',
+                  manufacturer_applicability='John Deere',asset_category_applicability='machine',
+                  market_applicability='GLOBAL',source_priority=100,is_default=1,
+                  is_enabled=1,is_archived=0,updated_at=CURRENT_TIMESTAMP
+           WHERE lower(trim(display_name))='john deere parts catalog'"""
+    )
+    connection.execute(
+        """UPDATE connector_profiles SET source_type='OEM_CATALOG',category='OEM Catalog',
+                  manufacturer_applicability='Caterpillar,CAT',asset_category_applicability='machine',
+                  market_applicability='GLOBAL',source_priority=100,is_default=1,
+                  is_enabled=1,is_archived=0,updated_at=CURRENT_TIMESTAMP
+           WHERE lower(trim(display_name)) IN ('cat sis','caterpillar sis')"""
+    )
+    connection.execute(
+        """UPDATE connector_profiles SET source_type='AFTERMARKET_CATALOG',
+                  asset_category_applicability='vehicle',market_applicability='GLOBAL',
+                  source_priority=70,is_default=1,is_enabled=1,is_archived=0,
+                  updated_at=CURRENT_TIMESTAMP
+           WHERE lower(trim(display_name))='worldpac'"""
+    )
+    connection.execute(
+        """UPDATE connector_profiles SET source_type='VIN_OR_ASSET_DECODER',
+                  asset_category_applicability='vehicle',market_applicability='GLOBAL',
+                  source_priority=60,is_default=0,is_enabled=1,is_archived=0,
+                  updated_at=CURRENT_TIMESTAMP
+           WHERE lower(trim(display_name))='7zap'"""
+    )
+    connection.execute(
+        """UPDATE connector_profiles SET source_type='GENERAL_RESEARCH',
+                  manufacturer_applicability='',asset_category_applicability='',
+                  market_applicability='',source_priority=0,is_default=0,
+                  is_enabled=1,is_archived=0,updated_at=CURRENT_TIMESTAMP
+           WHERE connector_key='general_research' OR lower(trim(display_name))='general research'"""
+    )
+
+
+MIGRATIONS.append(("0043_unified_source_directory", _migration_0043_unified_source_directory))
+
+
+def _migration_0044_document_integrity(connection: sqlite3.Connection) -> None:
+    """Version issued quote documents and add immutable invoice manifests."""
+    quote_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(quote_documents_manifest)"
+        ).fetchall()
+    }
+
+    if "version" not in quote_columns:
+        connection.execute("ALTER TABLE quote_documents_manifest RENAME TO quote_documents_manifest_legacy")
+        connection.execute(
+            """
+            CREATE TABLE quote_documents_manifest (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quote_id INTEGER NOT NULL,
+                audience TEXT NOT NULL CHECK (audience IN ('CUSTOMER', 'INTERNAL')),
+                document_kind TEXT NOT NULL DEFAULT 'QUOTE',
+                file_path TEXT NOT NULL,
+                sha256 TEXT NOT NULL DEFAULT '',
+                generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                is_issued INTEGER NOT NULL DEFAULT 0 CHECK (is_issued IN (0, 1)),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+                quote_status TEXT NOT NULL DEFAULT '',
+                is_current INTEGER NOT NULL DEFAULT 1 CHECK (is_current IN (0, 1)),
+                UNIQUE (quote_id, audience, document_kind, version),
+                FOREIGN KEY (quote_id) REFERENCES quotes(id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO quote_documents_manifest (
+                id, quote_id, audience, document_kind, file_path, sha256,
+                generated_at, is_issued, created_at, version, quote_status,
+                is_current
+            )
+            SELECT legacy.id, legacy.quote_id, legacy.audience,
+                   legacy.document_kind, legacy.file_path, legacy.sha256,
+                   legacy.generated_at, legacy.is_issued, legacy.created_at,
+                   1, '', 1
+            FROM quote_documents_manifest_legacy legacy
+            """
+        )
+        connection.execute("DROP TABLE quote_documents_manifest_legacy")
+
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_quote_documents_manifest_quote
+        ON quote_documents_manifest(quote_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_quote_document_current
+        ON quote_documents_manifest(quote_id, document_kind, audience)
+        WHERE is_current = 1
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS invoice_documents_manifest (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_id INTEGER NOT NULL,
+            document_kind TEXT NOT NULL,
+            audience TEXT NOT NULL CHECK (audience IN ('CUSTOMER', 'INTERNAL')),
+            version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+            invoice_status TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            issued_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            is_current INTEGER NOT NULL DEFAULT 1 CHECK (is_current IN (0, 1)),
+            UNIQUE (invoice_id, document_kind, audience, version),
+            FOREIGN KEY (invoice_id) REFERENCES invoices(id)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_invoice_documents_manifest_invoice
+        ON invoice_documents_manifest(invoice_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_invoice_document_current
+        ON invoice_documents_manifest(invoice_id, document_kind, audience)
+        WHERE is_current = 1
+        """
+    )
+
+
+MIGRATIONS.append(("0044_document_integrity", _migration_0044_document_integrity))
+
+
+def _migration_0045_supplier_order_document_integrity(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add immutable, versioned Supplier Purchase Order manifests."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS supplier_order_documents_manifest (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            supplier_order_id INTEGER NOT NULL,
+            document_kind TEXT NOT NULL
+                CHECK(document_kind IN ('SUPPLIER_PURCHASE_ORDER')),
+            audience TEXT NOT NULL
+                CHECK(audience IN ('SUPPLIER','INTERNAL')),
+            version INTEGER NOT NULL DEFAULT 1
+                CHECK(version >= 1),
+            supplier_order_status TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            issued_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            is_current INTEGER NOT NULL DEFAULT 1
+                CHECK(is_current IN (0,1)),
+            UNIQUE(
+                supplier_order_id,
+                document_kind,
+                audience,
+                version
+            ),
+            FOREIGN KEY(supplier_order_id)
+                REFERENCES supplier_orders(id)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_supplier_order_documents_order
+        ON supplier_order_documents_manifest(supplier_order_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_order_document_current
+        ON supplier_order_documents_manifest(
+            supplier_order_id,
+            document_kind,
+            audience
+        )
+        WHERE is_current = 1
+        """
+    )
+
+
+MIGRATIONS.append(
+    (
+        "0045_supplier_order_document_integrity",
+        _migration_0045_supplier_order_document_integrity,
+    )
+)
+
+
+def _migration_0048_actual_supplier_costs(
+    connection: sqlite3.Connection,
+) -> None:
+    """Separate confirmed actual costs from booked and placed snapshots."""
+    item_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(supplier_order_items)"
+        ).fetchall()
+    }
+    if "actual_unit_cost" not in item_columns:
+        connection.execute(
+            """
+            ALTER TABLE supplier_order_items
+            ADD COLUMN actual_unit_cost REAL NULL
+                CHECK(actual_unit_cost >= 0)
+            """
+        )
+
+    order_columns = {
+        row["name"]
+        for row in connection.execute(
+            "PRAGMA table_info(supplier_orders)"
+        ).fetchall()
+    }
+    if "actual_shipping_total" not in order_columns:
+        connection.execute(
+            """
+            ALTER TABLE supplier_orders
+            ADD COLUMN actual_shipping_total REAL NULL
+                CHECK(actual_shipping_total >= 0)
+            """
+        )
+
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS supplier_cost_adjustments (
+            id INTEGER PRIMARY KEY,
+            supplier_order_id INTEGER NOT NULL,
+            supplier_order_item_id INTEGER NULL,
+            cost_kind TEXT NOT NULL,
+            old_amount REAL NULL,
+            new_amount REAL NOT NULL,
+            reason TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            request_id TEXT NOT NULL DEFAULT '',
+            supplier_reference TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CHECK(cost_kind IN ('ITEM','SHIPPING')),
+            FOREIGN KEY(supplier_order_id) REFERENCES supplier_orders(id),
+            FOREIGN KEY(supplier_order_item_id) REFERENCES supplier_order_items(id)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_supplier_cost_adjustments_order_created
+        ON supplier_cost_adjustments(supplier_order_id, created_at)
+        """
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_supplier_cost_adjustment_request
+        ON supplier_cost_adjustments(supplier_order_id, request_id)
+        WHERE request_id != ''
+        """
+    )
+
+
+MIGRATIONS.append(
+    ("0048_actual_supplier_costs", _migration_0048_actual_supplier_costs)
+)
+
+
+def _migration_0049_custom_invoice_presentation_adjustments(
+    connection: sqlite3.Connection,
+) -> None:
+    """Persist custom-invoice visibility without changing source invoices."""
+    _add_columns(
+        connection,
+        "custom_invoices",
+        {
+            "include_freight": (
+                "INTEGER NOT NULL DEFAULT 1 CHECK(include_freight IN (0,1))"
+            ),
+        },
+    )
+    _add_columns(
+        connection,
+        "custom_invoice_items",
+        {
+            "is_visible": (
+                "INTEGER NOT NULL DEFAULT 1 CHECK(is_visible IN (0,1))"
+            ),
+        },
+    )
+
+
+MIGRATIONS.append(
+    (
+        "0049_custom_invoice_presentation_adjustments",
+        _migration_0049_custom_invoice_presentation_adjustments,
+    )
+)

@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from legacy_app import get_connection, next_job_number, templates
 from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
 from plg_core.jobs.engine import JobEngine
+from plg_core.jobs.service import get_job_operational_snapshot
 from plg_core.jobs.workflow import derive_machine_work_status, summarize_job_work
 from plg_core.machines.identifiers import find_machine_by_identifier
 from plg_core.timeline import log_job_event
@@ -27,6 +28,8 @@ from plg_core.basket.service import (
     import_cart,
     update_item,
 )
+from plg_core.sources.service import SOURCE_TYPES, list_sources_for_context, validate_source_url
+from plg_core.research.service import derive_result_visibility
 
 
 router = APIRouter(tags=["basket"])
@@ -67,7 +70,25 @@ def remove_all_basket_items(job_id: int):
 @router.post("/api/basket/import-source-cart")
 async def import_source_cart(request: Request):
     payload = await request.json()
-    return import_cart(int(payload.get("job_id")), payload)
+    try:
+        job_id = int(payload.get("job_id"))
+        job_asset_id = int(payload.get("job_asset_id"))
+        verification_session_id = int(payload.get("verification_session_id"))
+        requested_need_id = (
+            int(payload["requested_need_id"])
+            if payload.get("requested_need_id") not in (None, "") else None
+        )
+    except (TypeError, ValueError) as error:
+        raise HTTPException(status_code=400, detail="Complete PPS capture context is required.") from error
+    return import_cart(
+        job_id, payload,
+        expected_revision_id=payload.get("expected_revision_id"),
+        expected_version=payload.get("expected_version"),
+        job_asset_id=job_asset_id,
+        requested_need_id=requested_need_id,
+        verification_session_id=verification_session_id,
+        require_capture_context=True,
+    )
 
 
 @router.post("/api/basket/import-sis-cart")
@@ -98,7 +119,12 @@ async def import_sis_cart(request: Request):
 
 
 @router.get("/jobs/{job_id}/basket", response_class=HTMLResponse)
-def basket_page(request: Request, job_id: int, asset_id: int | None = None):
+def basket_page(
+    request: Request,
+    job_id: int,
+    asset_id: int | None = None,
+    need_id: int | None = None,
+):
     basket = get_basket(job_id)
 
     with closing(get_connection()) as connection:
@@ -107,14 +133,7 @@ def basket_page(request: Request, job_id: int, asset_id: int | None = None):
             (job_id,),
         ).fetchone()
 
-        connectors = connection.execute(
-            """
-            SELECT *
-            FROM connector_profiles
-            WHERE is_enabled = 1
-            ORDER BY display_name
-            """
-        ).fetchall()
+        connectors = []
 
         customer_request = connection.execute(
             """
@@ -141,6 +160,29 @@ def basket_page(request: Request, job_id: int, asset_id: int | None = None):
                 "SELECT * FROM requested_needs WHERE job_id=? AND job_asset_id=? "
                 "AND state!='ARCHIVED' ORDER BY id", (job_id, item["id"]),
             ).fetchall()]
+            for need in item["needs"]:
+                need_result_count = int(connection.execute(
+                    "SELECT COUNT(DISTINCT bi.id) FROM basket_items bi "
+                    "LEFT JOIN basket_item_need_links link ON link.basket_item_id=bi.id "
+                    "WHERE bi.basket_id=? AND bi.job_asset_id=? "
+                    "AND (bi.primary_requested_need_id=? OR link.requested_need_id=?) "
+                    "AND bi.research_state IN ('RESEARCH_RESULT','QUOTE_CANDIDATE','LEGACY_CANDIDATE')",
+                    (basket["id"], item["id"], need["id"], need["id"]),
+                ).fetchone()[0])
+                need_candidate_count = int(connection.execute(
+                    "SELECT COUNT(DISTINCT bi.id) FROM basket_items bi "
+                    "LEFT JOIN basket_item_need_links link ON link.basket_item_id=bi.id "
+                    "WHERE bi.basket_id=? AND bi.job_asset_id=? "
+                    "AND (bi.primary_requested_need_id=? OR link.requested_need_id=?) "
+                    "AND bi.selected=1 "
+                    "AND bi.research_state IN ('QUOTE_CANDIDATE','LEGACY_CANDIDATE')",
+                    (basket["id"], item["id"], need["id"], need["id"]),
+                ).fetchone()[0])
+                need["work_status_label"] = (
+                    "Ready for Quote" if need_candidate_count else
+                    "Parts Found" if need_result_count else
+                    "Needs Research"
+                )
             item["need_count"] = len(item["needs"])
             item["open_need_count"] = sum(
                 1 for need in item["needs"] if need["state"] == "OPEN"
@@ -200,6 +242,71 @@ def basket_page(request: Request, job_id: int, asset_id: int | None = None):
             "AND state!='ARCHIVED' ORDER BY CASE state WHEN 'OPEN' THEN 0 ELSE 1 END,id",
             (job_id, selected_asset_id, selected_asset_id),
         ).fetchall()]
+        for need in requested_needs:
+            result_count = int(connection.execute(
+                "SELECT COUNT(DISTINCT bi.id) FROM basket_items bi "
+                "LEFT JOIN basket_item_need_links link ON link.basket_item_id=bi.id "
+                "WHERE bi.basket_id=? AND bi.job_asset_id=? "
+                "AND (bi.primary_requested_need_id=? OR link.requested_need_id=?) "
+                "AND bi.research_state IN ('RESEARCH_RESULT','QUOTE_CANDIDATE','LEGACY_CANDIDATE')",
+                (basket["id"], selected_asset_id, need["id"], need["id"]),
+            ).fetchone()[0])
+            candidate_count = int(connection.execute(
+                "SELECT COUNT(DISTINCT bi.id) FROM basket_items bi "
+                "LEFT JOIN basket_item_need_links link ON link.basket_item_id=bi.id "
+                "WHERE bi.basket_id=? AND bi.job_asset_id=? "
+                "AND (bi.primary_requested_need_id=? OR link.requested_need_id=?) "
+                "AND bi.selected=1 AND bi.research_state IN ('QUOTE_CANDIDATE','LEGACY_CANDIDATE')",
+                (basket["id"], selected_asset_id, need["id"], need["id"]),
+            ).fetchone()[0])
+            need["work_status_label"] = (
+                "Ready for Quote" if candidate_count else
+                "Parts Found" if result_count else
+                "Needs Research"
+            )
+        open_requested_needs = [need for need in requested_needs if need["state"] == "OPEN"]
+        selected_need_id = None
+        if need_id is not None:
+            selected_need = next(
+                (
+                    need for need in open_requested_needs
+                    if int(need["id"]) == int(need_id)
+                ),
+                None,
+            )
+            if selected_need is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Requested Need not found for this Job asset.",
+                )
+            selected_need_id = int(selected_need["id"])
+        if selected_asset:
+            connectors = list_sources_for_context(
+                connection,
+                manufacturer=selected_asset.get("manufacturer") or "",
+                asset_category=selected_asset.get("asset_type") or "other",
+                market=selected_asset.get("market_region") or "UNKNOWN",
+            )
+        active_research_context = connection.execute(
+            """SELECT vs.*,COALESCE(NULLIF(vs.source_name_snapshot,''),cp.display_name) AS source_name,
+                      COALESCE(NULLIF(vs.source_url_snapshot,''),cp.launch_url) AS launch_url,
+                      cp.source_type,rn.wording AS current_need_wording
+               FROM verification_sessions vs
+               JOIN connector_profiles cp ON cp.id=vs.connector_profile_id
+               LEFT JOIN requested_needs rn ON rn.id=vs.requested_need_id
+               WHERE vs.job_id=? AND vs.job_asset_id=? AND vs.status='ACTIVE'
+               ORDER BY vs.id DESC LIMIT 1""",
+            (job_id, selected_asset_id),
+        ).fetchone() if selected_asset_id is not None else None
+        if selected_need_id is None and active_research_context is not None:
+            active_need_id = active_research_context["requested_need_id"]
+            if active_need_id is not None and any(
+                int(need["id"]) == int(active_need_id)
+                for need in open_requested_needs
+            ):
+                selected_need_id = int(active_need_id)
+        if selected_need_id is None and len(open_requested_needs) == 1:
+            selected_need_id = int(open_requested_needs[0]["id"])
 
         request_attachment_count = 0
         if customer_request is not None:
@@ -333,7 +440,19 @@ def basket_page(request: Request, job_id: int, asset_id: int | None = None):
         if item.get("job_asset_id") == selected_asset_id
         and str(item.get("research_state") or "LEGACY_CANDIDATE") == "RESEARCH_RESULT"
     ]
+    need_wording_by_id = {int(need["id"]): need["wording"] for need in requested_needs}
     shipping_by_item = {int(row["basket_item_id"]): dict(row) for row in shipping_rows}
+    for item in research_results:
+        item["requested_need_wording"] = need_wording_by_id.get(
+            int(item["primary_requested_need_id"]) if item.get("primary_requested_need_id") else -1
+        )
+        try:
+            item["safe_evidence_url"] = validate_source_url(item.get("source_url") or "")
+        except HTTPException:
+            item["safe_evidence_url"] = ""
+        item.update(derive_result_visibility(
+            item, source_lookup.get(item.get("source_id")) or {}, shipping_by_item.get(int(item["id"])) or {}
+        ))
     unassigned_parts_found_count = sum(
         1 for item in basket["items"]
         if item.get("job_asset_id") is None
@@ -344,7 +463,7 @@ def basket_page(request: Request, job_id: int, asset_id: int | None = None):
         job_assets, len(all_quote_candidates), unassigned_parts_found_count
     )
 
-    for item in basket_items:
+    for item in all_quote_candidates:
         item["pricing"] = pricing_assessment(
             item.get("supplier_unit_cost") or 0,
             item.get("markup_percent"),
@@ -405,8 +524,11 @@ def basket_page(request: Request, job_id: int, asset_id: int | None = None):
         quote=quote,
         invoice=invoice,
     ).to_dict()
+    operational_snapshot = get_job_operational_snapshot(job_id)
 
-    return templates.TemplateResponse(
+    from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
+    csrf_token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(
         request=request,
         name="job_command_center.html",
         context={
@@ -420,6 +542,8 @@ def basket_page(request: Request, job_id: int, asset_id: int | None = None):
             "vendor_carts": vendor_carts,
             "source_lookup": source_lookup,
             "connectors": connectors,
+            "source_types": SOURCE_TYPES,
+            "active_research_context": active_research_context,
             "customer_request": customer_request,
             "job_assets": job_assets,
             "selected_asset": selected_asset,
@@ -427,6 +551,8 @@ def basket_page(request: Request, job_id: int, asset_id: int | None = None):
             "previous_asset": previous_asset,
             "next_asset": next_asset,
             "requested_needs": requested_needs,
+            "open_requested_needs": open_requested_needs,
+            "selected_need_id": selected_need_id,
             "job_summary": job_summary,
             "request_attachment_count": request_attachment_count,
             "quote": quote,
@@ -435,9 +561,68 @@ def basket_page(request: Request, job_id: int, asset_id: int | None = None):
             "follow_ups": follow_ups,
             "invoice": invoice,
             "intelligence": intelligence,
+            "operational_snapshot": operational_snapshot,
+            "csrf_token": csrf_token,
             "active_page": "jobs",
         },
     )
+    response.set_cookie(
+        CSRF_COOKIE_NAME, csrf_token, httponly=True, samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
+
+
+def _fulfillment_audit(request: Request) -> dict:
+    from plg_core.web_security import request_actor, request_id
+    return {
+        "actor": request_actor(request),
+        "request_id": request_id(request),
+        "source_path": str(request.url.path),
+    }
+
+
+@router.post("/jobs/{job_id}/fulfillment/order")
+def mark_job_fulfillment_ordered(
+    request: Request,
+    job_id: int,
+    csrf_token: Annotated[str, Form()] = "",
+):
+    from plg_core.jobs.fulfillment import mark_job_ordered
+    from plg_core.web_security import require_valid_csrf
+    require_valid_csrf(request, csrf_token)
+    mark_job_ordered(job_id, **_fulfillment_audit(request))
+    return RedirectResponse(url=f"/jobs/{job_id}/basket#fulfillment-checklist", status_code=303)
+
+
+@router.post("/jobs/{job_id}/fulfillment/items/{item_id}/received")
+def mark_job_fulfillment_received(
+    request: Request,
+    job_id: int,
+    item_id: int,
+    quantity: Annotated[int, Form()] = 1,
+    csrf_token: Annotated[str, Form()] = "",
+):
+    from plg_core.jobs.fulfillment import mark_fulfillment_item_received
+    from plg_core.web_security import require_valid_csrf
+    require_valid_csrf(request, csrf_token)
+    mark_fulfillment_item_received(job_id, item_id, quantity=quantity, **_fulfillment_audit(request))
+    return RedirectResponse(url=f"/jobs/{job_id}/basket#fulfillment-checklist", status_code=303)
+
+
+@router.post("/jobs/{job_id}/fulfillment/items/{item_id}/delivered")
+def mark_job_fulfillment_delivered(
+    request: Request,
+    job_id: int,
+    item_id: int,
+    quantity: Annotated[int, Form()] = 1,
+    csrf_token: Annotated[str, Form()] = "",
+):
+    from plg_core.jobs.fulfillment import mark_fulfillment_item_delivered
+    from plg_core.web_security import require_valid_csrf
+    require_valid_csrf(request, csrf_token)
+    mark_fulfillment_item_delivered(job_id, item_id, quantity=quantity, **_fulfillment_audit(request))
+    return RedirectResponse(url=f"/jobs/{job_id}/basket#fulfillment-checklist", status_code=303)
 
 
 @router.post("/jobs/{job_id}/vendor-carts/clone")
@@ -1148,6 +1333,7 @@ def delete_item_form(
         item_id, expected_job_id=job_id,
         expected_revision_id=expected_revision_id,
         expected_version=expected_version,
+        require_unpromoted_research_result=True,
     )
     return RedirectResponse(
         url=f"/jobs/{job_id}/basket",
@@ -1373,8 +1559,8 @@ def update_basket_item_form(
     alternate_part_number: str = Form(""),
     supplier_part_number: str = Form(""),
     part_status: str = Form(""),
-    verification_status: str = Form("UNVERIFIED"),
-    verification_note: str = Form(""),
+    verification_status: str | None = Form(None),
+    verification_note: str | None = Form(None),
     confidence: float | None = Form(None),
     expected_revision_id: int | None = Form(None),
     expected_version: int | None = Form(None),
@@ -1386,21 +1572,6 @@ def update_basket_item_form(
         "RECEIVED",
     }
     requested_status = part_status.strip().upper()
-
-    valid_verification_statuses = {
-        "UNVERIFIED",
-        "VERIFIED",
-        "REJECTED",
-        "OVERRIDE",
-    }
-    requested_verification_status = (
-        verification_status.strip().upper() or "UNVERIFIED"
-    )
-    if requested_verification_status not in valid_verification_statuses:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid verification status.",
-        )
 
     if confidence is not None and not 0.0 <= confidence <= 1.0:
         raise HTTPException(
@@ -1425,16 +1596,6 @@ def update_basket_item_form(
             )
     else:
         parsed_customer_unit_price_override = None
-
-    requested_verification_note = verification_note.strip()
-    if (
-        requested_verification_status == "OVERRIDE"
-        and not requested_verification_note
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="Manual Override requires a verification note.",
-        )
 
     with closing(get_connection()) as connection:
         old_item = connection.execute(
@@ -1463,6 +1624,22 @@ def update_basket_item_form(
     old_verification_note = (
         old_item["verification_note"] or ""
     ).strip()
+    requested_verification_status = old_verification_status
+    if verification_status is not None:
+        requested_verification_status = verification_status.strip().upper() or "UNVERIFIED"
+        if requested_verification_status not in {
+            "UNVERIFIED", "VERIFIED", "REJECTED", "OVERRIDE",
+            "NEEDS_REVIEW", "PROVISIONAL",
+        }:
+            raise HTTPException(status_code=400, detail="Invalid verification status.")
+    requested_verification_note = (
+        old_verification_note if verification_note is None else verification_note.strip()
+    )
+    if requested_verification_status == "OVERRIDE" and not requested_verification_note:
+        raise HTTPException(
+            status_code=400,
+            detail="Manual Override requires a verification note.",
+        )
 
     new_status = (
         requested_status
@@ -1478,27 +1655,30 @@ def update_basket_item_form(
     ):
         new_status = "QUOTED"
 
+    update_values = {
+        "quantity": quantity,
+        "supplier_unit_cost": supplier_unit_cost,
+        "markup_percent": markup_percent,
+        "customer_unit_price_override": parsed_customer_unit_price_override,
+        "manufacturer_part_number": manufacturer_part_number.strip(),
+        "alternate_part_number": alternate_part_number.strip(),
+        "supplier_part_number": supplier_part_number.strip(),
+        "part_status": new_status,
+        "confidence": confidence,
+    }
+    if verification_status is not None:
+        update_values["verification_status"] = requested_verification_status
+    if verification_note is not None:
+        update_values["verification_note"] = requested_verification_note
     update_item(
         item_id,
-        BasketItemUpdate(
-            quantity=quantity,
-            supplier_unit_cost=supplier_unit_cost,
-            markup_percent=markup_percent,
-            customer_unit_price_override=parsed_customer_unit_price_override,
-            manufacturer_part_number=manufacturer_part_number.strip(),
-            alternate_part_number=alternate_part_number.strip(),
-            supplier_part_number=supplier_part_number.strip(),
-            part_status=new_status,
-            verification_status=requested_verification_status,
-            verification_note=requested_verification_note,
-            confidence=confidence,
-        ),
+        BasketItemUpdate(**update_values),
         expected_job_id=job_id,
         expected_revision_id=expected_revision_id,
         expected_version=expected_version,
     )
 
-    if (
+    if (verification_status is not None or verification_note is not None) and (
         old_verification_status != requested_verification_status
         or old_verification_note != requested_verification_note
     ):
@@ -1507,6 +1687,8 @@ def update_basket_item_form(
             "VERIFIED": "Verified",
             "REJECTED": "Rejected",
             "OVERRIDE": "Manual Override",
+            "NEEDS_REVIEW": "Needs Review",
+            "PROVISIONAL": "Provisional",
         }
 
         description = (

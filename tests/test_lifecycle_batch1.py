@@ -15,6 +15,7 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 import legacy_app
+from plg_core.documents import invoice_pdf, quote_pdf
 from plg_core.database.migrations import run_migrations
 from plg_core.database.migrations import (
     _migration_0026_lifecycle_safety,
@@ -45,11 +46,18 @@ class LifecycleBatch1Tests(unittest.TestCase):
         self.db_path = Path(self.temp.name) / "test.db"
         shutil.copy2(ROOT / "data" / "plg_core.db", self.db_path)
         self.db_patch = patch.object(legacy_app, "DB_PATH", self.db_path)
+        document_root = Path(self.temp.name) / "documents" / "Customers"
+        self.quote_pdf_patch = patch.object(quote_pdf, "DOCUMENT_ROOT", document_root)
+        self.invoice_pdf_patch = patch.object(invoice_pdf, "DOCUMENT_ROOT", document_root)
         self.db_patch.start()
+        self.quote_pdf_patch.start()
+        self.invoice_pdf_patch.start()
         run_migrations()
         self._clear_business_data()
 
     def tearDown(self):
+        self.invoice_pdf_patch.stop()
+        self.quote_pdf_patch.stop()
         self.db_patch.stop()
         self.temp.cleanup()
 
@@ -63,7 +71,8 @@ class LifecycleBatch1Tests(unittest.TestCase):
                 "quote_documents_manifest", "work_revision_attachments",
                 "work_revision_items", "work_revision_sources", "work_revisions",
                 "delivery_items", "deliveries", "receiving_event_items", "receiving_events",
-                "supplier_order_items", "supplier_orders", "invoice_events", "invoice_items",
+                "supplier_order_items", "supplier_orders", "invoice_documents_manifest",
+                "invoice_events", "invoice_items",
                 "invoices", "quote_events", "quote_items", "quotes", "customer_transactions",
                 "part_sources", "job_parts", "basket_activity", "basket_attachments",
                 "basket_items", "basket_sources", "baskets", "customer_request_attachments",
@@ -327,7 +336,7 @@ class LifecycleBatch1Tests(unittest.TestCase):
     def test_invoice_conversion_is_idempotent_and_preserves_snapshot(self):
         cid = self.customer(); mid = self.machine(cid); jid = self.job(cid, mid)
         _, _, qid = self.part_and_quote(jid, "APPROVED")
-        with patch.object(legacy_app, "generate_invoice_pdfs", lambda *_: None):
+        with patch("plg_core.documents.integrity.issue_invoice_documents", lambda *_args, **_kwargs: None):
             legacy_app.convert_quote_to_invoice(qid)
             legacy_app.convert_quote_to_invoice(qid)
         with closing(self.connection()) as c:
@@ -383,7 +392,7 @@ class LifecycleBatch1Tests(unittest.TestCase):
             barrier.wait(timeout=5)
             return legacy_app.convert_quote_to_invoice(qid)
 
-        with patch.object(legacy_app, "generate_invoice_pdfs", lambda *_: None):
+        with patch("plg_core.documents.integrity.issue_invoice_documents", lambda *_args, **_kwargs: None):
             with ThreadPoolExecutor(max_workers=2) as pool:
                 responses = list(pool.map(convert, range(2)))
         with closing(self.connection()) as c:

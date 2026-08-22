@@ -141,6 +141,9 @@ def record_invoice_payment(
     payment_method: str,
     reference: str = "",
     payment_date: str = "",
+    *,
+    actor: str = "system",
+    request_id: str = "",
 ):
     amount = round(float(amount or 0), 2)
     payment_method = str(payment_method or "").strip().upper()
@@ -304,6 +307,8 @@ def record_invoice_payment(
                 "balance_due": max(new_balance, 0),
                 "job_id": int(invoice["job_id"]),
             },
+            actor=str(actor or "system"),
+            request_id=str(request_id or ""),
         )
 
         if new_status == "PAID":
@@ -335,19 +340,17 @@ def record_invoice_payment(
 
         if new_status == "PAID":
             from legacy_app import load_invoice
-            from plg_core.documents.invoice_pdf import (
-                generate_paid_invoice_pdfs,
-            )
+            from plg_core.documents.integrity import issue_invoice_documents
 
             updated_invoice, updated_items = load_invoice(
                 connection,
                 invoice_id,
             )
 
-            generate_paid_invoice_pdfs(
-                updated_invoice,
-                updated_items,
+            issue_invoice_documents(
+                connection, updated_invoice, updated_items, variant="PAID"
             )
+            connection.commit()
 
     return get_invoice(invoice_id)
 
@@ -617,20 +620,8 @@ def reverse_invoice_payment(
 
         connection.commit()
 
-        from legacy_app import (
-            generate_invoice_pdfs,
-            load_invoice,
-        )
-
-        updated_invoice, updated_items = load_invoice(
-            connection,
-            invoice_id,
-        )
-
-        generate_invoice_pdfs(
-            updated_invoice,
-            updated_items,
-        )
+        # The originally issued invoice and its paid variant remain immutable.
+        # A reversal changes accounting state, not either historical PDF.
 
     return get_invoice(invoice_id)
 
@@ -842,19 +833,17 @@ def void_invoice(invoice_id: int, reason: str):
 
         connection.commit()
 
-        from legacy_app import (
-            generate_invoice_pdfs,
-            load_invoice,
-        )
+        from legacy_app import load_invoice
+        from plg_core.documents.integrity import issue_invoice_documents
 
         updated_invoice, updated_items = load_invoice(
             connection,
             invoice_id,
         )
 
-        generate_invoice_pdfs(
-            updated_invoice,
-            updated_items,
+        issue_invoice_documents(
+            connection, updated_invoice, updated_items, variant="VOID"
         )
+        connection.commit()
 
     return get_invoice(invoice_id)

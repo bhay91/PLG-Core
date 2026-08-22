@@ -69,17 +69,17 @@ class MultiMachineBatch3BTests(unittest.TestCase):
     def job(self):
         with closing(self.connection()) as c:
             customer_id = c.execute(
-                "INSERT INTO customers(customer_number,name,company,active) VALUES ('3B-C','Norman Frater','Tropical Real Estate Development',1)"
+                "INSERT INTO customers(customer_number,name,company,active) VALUES ('3B-C','Synthetic Multi Machine Customer','Synthetic Equipment Company',1)"
             ).lastrowid
             job_id = c.execute(
-                "INSERT INTO jobs(job_number,created_date,customer_id,customer,company,status) VALUES ('PPS-J-3B','2026-08-11',?,'Norman Frater','Tropical Real Estate Development','REQUESTED')",
+                "INSERT INTO jobs(job_number,created_date,customer_id,customer,company,status) VALUES ('PPS-J-3B','2026-08-11',?,'Synthetic Multi Machine Customer','Synthetic Equipment Company','REQUESTED')",
                 (customer_id,),
             ).lastrowid
             c.commit(); return int(job_id)
 
     def assets(self, job_id):
         return [
-            add_job_asset(job_id, manufacturer="John Deere", model="350D", vin_pin_serial="1FF350DXTA0806941", asset_type="Excavator", make_primary=True),
+            add_job_asset(job_id, manufacturer="John Deere", model="350D", vin_pin_serial="TEST-PIN-MULTI-001", asset_type="Excavator", make_primary=True),
             add_job_asset(job_id, manufacturer="JCB", model="3CX", vin_pin_serial="JCB-PIN", asset_type="Backhoe"),
             add_job_asset(job_id, manufacturer="Toyota", model="Hilux", year="2020", vin_pin_serial="VIN-HILUX", asset_type="Vehicle"),
         ]

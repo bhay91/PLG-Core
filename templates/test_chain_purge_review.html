@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Permanently Delete Test Chain · Pinpoint Sourcing Co.{% endblock %}
+{% block content %}
+<section class="workspace-heading"><div><p class="eyebrow">DESTRUCTIVE TEST-DATA OPERATION</p><h1>PERMANENTLY DELETE TEST CHAIN</h1><p>This permanently removes the selected disposable test chain, including financial, purchasing, receiving, delivery, and historical test records. This cannot be undone.</p></div></section>
+<section class="panel" style="max-width:760px">
+  <dl class="summary-list">
+    <div><dt>Job</dt><dd>{{ plan.job_number }}</dd></div>
+    <div><dt>Invoice</dt><dd>{{ plan.invoice_number }}</dd></div>
+    <div><dt>Request</dt><dd>{{ plan.request_number }}</dd></div>
+    <div><dt>Quote</dt><dd>{{ plan.quote_numbers|join(', ') }}</dd></div>
+    <div><dt>Supplier Order</dt><dd>{{ plan.order_numbers|join(', ') }}</dd></div>
+    <div><dt>Customer</dt><dd>{{ plan.customer }} — preserved</dd></div>
+    <div><dt>Machine</dt><dd>{{ plan.machines|join(', ') }} — preserved</dd></div>
+  </dl>
+  <form method="post" action="{{ post_url }}" class="stack-form">
+    <input type="hidden" name="job_number" value="{{ plan.job_number }}">
+    <input type="hidden" name="invoice_number" value="{{ plan.invoice_number }}">
+    <input type="hidden" name="expected_token" value="{{ plan.token }}">
+    <label>Reason <textarea name="reason" required></textarea></label>
+    <label>Type the exact Job number: <strong>{{ plan.job_number }}</strong><input name="confirmation_job" required autocomplete="off"></label>
+    <label>Type the exact Invoice number: <strong>{{ plan.invoice_number }}</strong><input name="confirmation_invoice" required autocomplete="off"></label>
+    <label>Type: <strong>{{ purge_phrase }}</strong><input name="confirmation_phrase" required autocomplete="off"></label>
+    <div class="form-actions"><a class="button ghost" href="/jobs/{{ plan.job_id }}/basket">Cancel</a><button class="button danger" type="submit">PERMANENTLY DELETE TEST CHAIN</button></div>
+  </form>
+</section>
+{% endblock %}

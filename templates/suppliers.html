@@ -149,6 +149,7 @@
             class="workspace-action-form"
             method="post"
             action="/suppliers/{{ supplier.id }}/status"
+            data-archive-delete
           >
             <input type="hidden" name="status" value="INACTIVE">
 
@@ -156,7 +157,7 @@
               class="workspace-btn workspace-btn-secondary"
               type="submit"
             >
-              Inactive
+              Delete
             </button>
           </form>
 

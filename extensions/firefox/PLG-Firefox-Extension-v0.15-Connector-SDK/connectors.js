@@ -12,6 +12,14 @@
       return location.hostname === this.host;
     },
 
+    readPage() {
+      return SDK.normalizeCapture({
+        ...SDK.readProductPage({ source_key: this.key, source_name: this.name }),
+        source_key: this.key, source_name: this.name, configured_source: true,
+        capture_mode: "PAGE"
+      });
+    },
+
     readCart() {
       const items = [];
       const seen = new Set();
@@ -75,6 +83,7 @@
         trust_level: "OEM_VERIFIED",
         source_url: location.href,
         currency: "USD",
+        configured_source: true,
         items
       });
     }
@@ -87,6 +96,14 @@
 
     detect() {
       return location.hostname === this.host;
+    },
+
+    readPage() {
+      return SDK.normalizeCapture({
+        ...SDK.readProductPage({ source_key: this.key, source_name: this.name }),
+        source_key: this.key, source_name: this.name, configured_source: true,
+        capture_mode: "PAGE"
+      });
     },
 
     summaryValue(labelName) {
@@ -203,6 +220,7 @@
         trust_level: "SUPPLIER_VERIFIED",
         source_url: location.href,
         currency: "USD",
+        configured_source: true,
         subtotal,
         shipping,
         supplier_total: subtotal + (shipping || 0),

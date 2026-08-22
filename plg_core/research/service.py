@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from contextlib import closing
 from datetime import datetime, timezone
+import re
 
 from fastapi import HTTPException
 
 from legacy_app import get_connection
 from plg_core.audit import write_audit
-from plg_core.basket.models import BasketItemCreate
-from plg_core.basket.service import add_item
+from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
+from plg_core.basket.service import add_item, update_item
+from plg_core.sources.service import validate_source_url
 from plg_core.revisions.service import ensure_revision_mutable, touch_revision
 from plg_core.timeline import log_job_event
 
@@ -21,6 +23,29 @@ SHIPPING_RANK = {
     "VERIFIED": 40,
     "ACTUAL": 50,
 }
+
+
+def derive_result_visibility(item: dict, source: dict | None = None, shipping: dict | None = None) -> dict:
+    """Derive operator-facing observability without creating workflow state."""
+    source, shipping = source or {}, shipping or {}
+    state = str(item.get("research_state") or "").upper()
+    if item.get("selected") and state in {"QUOTE_CANDIDATE", "LEGACY_CANDIDATE"}:
+        next_action = "READY FOR QUOTE"
+    elif item.get("supplier_unit_cost") is None:
+        next_action = "ADD SUPPLIER PRICE"
+    elif not (item.get("research_evidence") or item.get("research_notes") or item.get("source_url")):
+        next_action = "REVIEW FITMENT / EVIDENCE"
+    else:
+        next_action = "CONFIRM FOR QUOTE"
+    evidence = str(item.get("research_evidence") or "")
+    match = re.search(r"Capture mode:\s*(PAGE|CART|MERGED)\b", evidence, re.I)
+    source_name = str(source.get("source_name") or item.get("supplier_name") or "").strip()
+    origin = "One-time Website" if str(source.get("source_key") or "").lower() == "one_time_website" or source_name == "One-time Website" else (match.group(1).upper() if match else "")
+    provenance = str(shipping.get("provenance") or "").strip()
+    if not provenance and shipping:
+        provenance = str(shipping.get("quality") or "").replace("_", " ").title()
+    return {"next_action": next_action, "source_display_name": source_name,
+            "capture_origin": origin, "shipping_provenance": provenance}
 
 
 def _revision(connection, job_id, expected_revision_id, expected_version):
@@ -120,9 +145,26 @@ def create_manual_research_result(
     job_id: int, *, job_asset_id: int | None, requested_need_id: int | None,
     description: str, manufacturer_part_number: str = "", quantity: int = 1,
     supplier_name: str = "", supplier_part_number: str = "",
+    alternate_part_number: str = "",
     supplier_unit_cost: float | None = None, source_type: str = "AFTERMARKET",
+    research_session_id: int | None = None, source_url: str = "",
+    verification_status: str = "NEEDS_REVIEW", research_evidence: str = "",
+    research_notes: str = "",
     expected_revision_id: int | None = None, expected_version: int | None = None,
 ):
+    verification_status = str(verification_status or "NEEDS_REVIEW").upper()
+    if verification_status not in {"VERIFIED", "PROVISIONAL", "NEEDS_REVIEW"}:
+        raise HTTPException(status_code=400, detail="Invalid Research Result verification status.")
+    if research_session_id is None and job_asset_id is not None:
+        with closing(get_connection()) as connection:
+            active = connection.execute(
+                "SELECT id FROM verification_sessions WHERE job_id=? AND job_asset_id=? "
+                "AND COALESCE(requested_need_id,0)=COALESCE(?,0) AND status='ACTIVE' "
+                "ORDER BY id DESC LIMIT 1",
+                (job_id, job_asset_id, requested_need_id),
+            ).fetchone()
+            research_session_id = int(active["id"]) if active else None
+    source_url = validate_source_url(source_url)
     return add_item(
         job_id,
         BasketItemCreate(
@@ -134,13 +176,69 @@ def create_manual_research_result(
             quantity=quantity,
             supplier_name=supplier_name,
             supplier_part_number=supplier_part_number,
+            alternate_part_number=alternate_part_number,
             supplier_unit_cost=supplier_unit_cost,
             source_type=source_type,
+            source_url=source_url,
+            verification_status=verification_status,
+            verification_note=str(research_evidence or "").strip(),
+            research_session_id=research_session_id,
+            research_evidence=str(research_evidence or "").strip(),
+            research_notes=str(research_notes or "").strip(),
+            identified_at=datetime.now(timezone.utc).isoformat(),
             selected=False,
         ),
         expected_revision_id=expected_revision_id,
         expected_version=expected_version,
     )
+
+
+def add_supplier_quote_to_result(
+    job_id: int, item_id: int, *, supplier_name: str,
+    supplier_unit_cost: float | None = None, supplier_part_number: str = "",
+    availability: str = "", source_url: str = "", evidence: str = "",
+    expected_revision_id: int | None = None, expected_version: int | None = None,
+):
+    supplier_name = str(supplier_name or "").strip()
+    if not supplier_name:
+        raise HTTPException(status_code=400, detail="Supplier name is required.")
+    source_url = validate_source_url(source_url)
+    with closing(get_connection()) as connection:
+        item = connection.execute(
+            "SELECT bi.* FROM basket_items bi JOIN baskets b ON b.id=bi.basket_id "
+            "WHERE bi.id=? AND b.job_id=?", (item_id, job_id),
+        ).fetchone()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Research Result not found.")
+    if str(item["research_state"] or "").upper() != "RESEARCH_RESULT":
+        raise HTTPException(status_code=409, detail="Supplier pricing can only be added to a Research Result here.")
+    updates = {
+        "supplier_name": supplier_name,
+        "supplier_part_number": str(supplier_part_number or "").strip(),
+        "supplier_unit_cost": supplier_unit_cost,
+        "availability": str(availability or "").strip(),
+        "source_url": source_url,
+    }
+    evidence = str(evidence or "").strip()
+    if evidence:
+        updates["research_evidence"] = evidence
+    basket = update_item(
+        item_id, BasketItemUpdate(**updates), expected_job_id=job_id,
+        expected_revision_id=expected_revision_id, expected_version=expected_version,
+    )
+    with closing(get_connection()) as connection:
+        write_audit(
+            connection, action="RESEARCH_RESULT_SUPPLIER_QUOTED",
+            entity_type="BASKET_ITEM", entity_id=item_id,
+            summary=f"Supplier quote recorded for {item['requested_description']}",
+            metadata={"job_id": job_id, "supplier_name": supplier_name},
+        )
+        log_job_event(
+            connection, job_id=job_id, event_type="RESEARCH_RESULT_SUPPLIER_QUOTED",
+            icon="$", message=f"Supplier quote added for {item['requested_description']} from {supplier_name}",
+        )
+        connection.commit()
+    return next(item for item in basket["items"] if int(item["id"]) == int(item_id))
 
 
 def set_quote_candidate(
@@ -158,7 +256,7 @@ def set_quote_candidate(
         if item is None:
             raise HTTPException(status_code=404, detail="Research Result not found.")
         if candidate and not (
-            str(item["manufacturer_part_number"] or item["internal_part_number"] or "").strip()
+            str(item["manufacturer_part_number"] or item["supplier_part_number"] or item["internal_part_number"] or "").strip()
             and str(item["requested_description"] or "").strip()
         ):
             raise HTTPException(status_code=409, detail="A Quote Candidate needs a part number or PPS internal reference and description.")
