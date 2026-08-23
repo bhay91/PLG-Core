@@ -32,9 +32,21 @@ def require_mobile_inbox_authorization(request: Request) -> str:
         )
 
     authorization = str(request.headers.get("Authorization") or "")
-    scheme, separator, supplied = authorization.partition(" ")
-    if not separator or scheme.lower() != "bearer" or not supplied.strip():
+    mobile_header = str(request.headers.get("X-PPS-Mobile-Token") or "").strip()
+    if authorization and mobile_header:
+        raise HTTPException(
+            status_code=401,
+            detail="PPS Mobile Inbox accepts only one authorization method per request.",
+        )
+
+    supplied = mobile_header
+    if authorization:
+        scheme, separator, bearer = authorization.partition(" ")
+        if not separator or scheme.lower() != "bearer" or not bearer.strip():
+            raise HTTPException(status_code=401, detail="PPS Mobile Inbox authorization is required.")
+        supplied = bearer.strip()
+    if not supplied:
         raise HTTPException(status_code=401, detail="PPS Mobile Inbox authorization is required.")
-    if not hmac.compare_digest(supplied.strip(), configured_token):
+    if not hmac.compare_digest(supplied, configured_token):
         raise HTTPException(status_code=401, detail="PPS Mobile Inbox authorization is invalid.")
     return MOBILE_INBOX_CREATE_SCOPE
