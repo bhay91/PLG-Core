@@ -39,6 +39,18 @@ releases/
 data/*.db
 data/*.db-shm
 data/*.db-wal
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
 
 # Customer request uploads
 uploads/requests/*
