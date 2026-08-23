@@ -143,17 +143,28 @@ class FirefoxChatGPTBridgeTests(unittest.TestCase):
         self.assertEqual(page.evaluate("window.__messages.length"), 2)
         page.close()
 
-    def background_page(self, response_status=200, response_body=None, offline=False, token="local-test-token"):
+    def background_page(self, response_status=200, response_body=None, offline=False,
+                        token="local-test-token", api_base=None, web_base=None,
+                        cloudflare_client_id="", cloudflare_client_secret=""):
         page = self.page()
         body = response_body or {"status": "DRAFT", "proposal_id": 44, "review_url": "/requests/smart-intake/proposals/44", "duplicate": False}
         page.add_init_script(f"""
-          window.__store = {{ppsFirefoxInboxToken:{json.dumps(token)}}};
+          window.__store = {{
+            ppsFirefoxToken:{json.dumps(token)},
+            ppsApiBase:{json.dumps(api_base)},
+            ppsWebBase:{json.dumps(web_base)},
+            cloudflareAccessClientId:{json.dumps(cloudflare_client_id)},
+            cloudflareAccessClientSecret:{json.dumps(cloudflare_client_secret)}
+          }};
           window.__listeners = {{message:[], startup:[], installed:[], notification:[], activated:[], updated:[], focused:[], storageChanged:[]}};
           window.__notifications=[]; window.__fetches=[]; window.__tabs=[]; window.__executions=[];
           window.__tabQuery = [];
           window.browser = {{
             runtime: {{id:'pps-extension-id', onMessage:{{addListener:f=>__listeners.message.push(f)}}, onStartup:{{addListener:f=>__listeners.startup.push(f)}}, onInstalled:{{addListener:f=>__listeners.installed.push(f)}}}},
-            storage: {{local: {{get: async key => ({{[key]:__store[key]}}), set: async values => Object.assign(__store, values)}}, onChanged:{{addListener:f=>__listeners.storageChanged.push(f)}}}},
+            storage: {{local: {{get: async key => {{
+              const keys=Array.isArray(key) ? key : [key];
+              return Object.fromEntries(keys.map(item => [item,__store[item]]));
+            }}, set: async values => Object.assign(__store, values)}}, onChanged:{{addListener:f=>__listeners.storageChanged.push(f)}}}},
             action: {{setBadgeText:async()=>{{}}, setBadgeBackgroundColor:async()=>{{}}}},
             notifications: {{create:async value=>{{__notifications.push(value);return String(__notifications.length)}}, onClicked:{{addListener:f=>__listeners.notification.push(f)}}}},
             tabs: {{
@@ -196,9 +207,40 @@ class FirefoxChatGPTBridgeTests(unittest.TestCase):
         self.assertNotIn("local-test-token", json.dumps(queue))
         fetches = page.evaluate("__fetches")
         self.assertEqual(len(fetches), 1)
-        self.assertEqual(fetches[0]["url"], "http://127.0.0.1:8000/api/extension/v1/inbox/intake-proposals")
+        self.assertEqual(fetches[0]["url"], "https://api.pinpointsourcing.com/api/extension/v1/inbox/intake-proposals")
         self.assertEqual(fetches[0]["options"]["headers"]["Authorization"], "Bearer local-test-token")
+        self.assertNotIn("CF-Access-Client-Id", fetches[0]["options"]["headers"])
+        self.assertEqual(queue[0]["pps_web_base"], "https://pinpointsourcing.com")
         self.assertEqual(page.evaluate("__notifications.at(-1).title"), "Sent to PPS Inbox")
+        page.evaluate("__listeners.notification[0]('1')")
+        page.wait_for_timeout(25)
+        self.assertEqual(
+            page.evaluate("__tabs.at(-1).url"),
+            "https://pinpointsourcing.com/requests/smart-intake/proposals/44",
+        )
+        page.close()
+
+    def test_05a_remote_headers_local_override_review_base_and_secret_redaction(self):
+        page = self.background_page(
+            response_status=500,
+            response_body={"detail": "failure cf-client-id-value cf-secret-value firefox-secret-value"},
+            token="firefox-secret-value",
+            api_base="http://127.0.0.1:8000",
+            web_base="http://localhost:8000",
+            cloudflare_client_id="cf-client-id-value",
+            cloudflare_client_secret="cf-secret-value",
+        )
+        self.invoke(page, payload(client_reference="configured-remote"))
+        page.wait_for_timeout(1800)
+        fetch = page.evaluate("__fetches[0]")
+        self.assertEqual(fetch["url"], "http://127.0.0.1:8000/api/extension/v1/inbox/intake-proposals")
+        self.assertEqual(fetch["options"]["headers"]["CF-Access-Client-Id"], "cf-client-id-value")
+        self.assertEqual(fetch["options"]["headers"]["CF-Access-Client-Secret"], "cf-secret-value")
+        self.assertEqual(fetch["options"]["headers"]["Authorization"], "Bearer firefox-secret-value")
+        item = page.evaluate("__store.ppsFirefoxInboxQueue[0]")
+        self.assertNotIn("cf-client-id-value", json.dumps(item))
+        self.assertNotIn("cf-secret-value", json.dumps(item))
+        self.assertNotIn("firefox-secret-value", json.dumps(item))
         page.close()
 
     def test_06_duplicate_auth_failure_and_strict_rejection(self):
@@ -236,7 +278,7 @@ class FirefoxChatGPTBridgeTests(unittest.TestCase):
         item = page.evaluate("__store.ppsFirefoxInboxQueue[0]")
         self.assertEqual(item["status"], "RETRY")
         self.assertEqual(item["attempt_count"], 3)
-        self.assertEqual(page.evaluate("__fetches.length"), 6, "each attempt tries both existing localhost bases")
+        self.assertEqual(page.evaluate("__fetches.length"), 3, "each attempt uses the configured API base once")
         self.assertIn("offline", item["last_error"])
         page.close()
 
@@ -244,6 +286,7 @@ class FirefoxChatGPTBridgeTests(unittest.TestCase):
         manifest = json.loads((EXT / "manifest.json").read_text())
         self.assertEqual(manifest["version"], "0.17.3")
         self.assertIn("https://chatgpt.com/*", manifest["host_permissions"])
+        self.assertIn("https://api.pinpointsourcing.com/*", manifest["host_permissions"])
         self.assertEqual(manifest["background"]["scripts"], ["background.js"])
         self.assertIn("notifications", manifest["permissions"])
         forbidden = {"clipboardRead", "nativeMessaging", "webRequest", "cookies", "history", "<all_urls>"}
@@ -366,8 +409,8 @@ class FirefoxChatGPTBridgeTests(unittest.TestCase):
         page.wait_for_timeout(100)
         self.assertEqual(page.evaluate("__store.ppsFirefoxInboxQueue[0].status"), "AUTH_FAILED")
         page.evaluate("""async () => {
-          __store.ppsFirefoxInboxToken='configured-test-token';
-          __listeners.storageChanged[0]({ppsFirefoxInboxToken:{oldValue:'',newValue:'configured-test-token'}},'local');
+          __store.ppsFirefoxToken='configured-test-token';
+          __listeners.storageChanged[0]({ppsFirefoxToken:{oldValue:'',newValue:'configured-test-token'}},'local');
         }""")
         page.wait_for_timeout(150)
         self.assertEqual(page.evaluate("__store.ppsFirefoxInboxQueue[0].status"), "SENT")

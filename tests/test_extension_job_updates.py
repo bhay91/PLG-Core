@@ -134,6 +134,18 @@ class ExtensionJobUpdateTests(unittest.TestCase):
                 f"/api/extension/v1/jobs/{action}", json=payload, headers=headers
             )
 
+    async def remote_request(self, action, payload):
+        transport = httpx2.ASGITransport(
+            app=self.app, client=("198.51.100.9", 48111)
+        )
+        async with httpx2.AsyncClient(
+            transport=transport, base_url="https://api.pinpointsourcing.com"
+        ) as client:
+            return await client.post(
+                f"/api/extension/v1/jobs/{action}", json=payload,
+                headers={"Authorization": f"Bearer {TOKEN}"},
+            )
+
     def post(self, action, payload, token=TOKEN):
         return anyio.run(lambda: self.request(action, payload, token))
 
@@ -230,6 +242,14 @@ class ExtensionJobUpdateTests(unittest.TestCase):
         payload = {"job_number": "EXT-J-0001", "request_id": "auth"}
         self.assertEqual(self.post("order-placed", payload, token=None).status_code, 401)
         self.assertEqual(self.post("order-placed", payload, token="wrong").status_code, 401)
+
+    def test_remote_enable_does_not_enable_job_updates(self):
+        payload = {"job_number": "EXT-J-0001", "request_id": "remote-auth"}
+        with patch.dict(os.environ, {"PPS_FIREFOX_REMOTE_ENABLED": "true"}):
+            response = anyio.run(
+                lambda: self.remote_request("order-placed", payload)
+            )
+        self.assertEqual(response.status_code, 403)
 
 
 if __name__ == "__main__":

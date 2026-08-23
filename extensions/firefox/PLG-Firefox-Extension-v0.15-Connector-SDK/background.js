@@ -1,8 +1,13 @@
 const MESSAGE_TYPE = "PPS_CHATGPT_INTAKE_PACKAGE_V1";
 const QUEUE_KEY = "ppsFirefoxInboxQueue";
-const TOKEN_KEY = "ppsFirefoxInboxToken";
+const API_BASE_KEY = "ppsApiBase";
+const WEB_BASE_KEY = "ppsWebBase";
+const CF_CLIENT_ID_KEY = "cloudflareAccessClientId";
+const CF_CLIENT_SECRET_KEY = "cloudflareAccessClientSecret";
+const TOKEN_KEY = "ppsFirefoxToken";
+const DEFAULT_API_BASE = "https://api.pinpointsourcing.com";
+const DEFAULT_WEB_BASE = "https://pinpointsourcing.com";
 const MAX_ATTEMPTS = 3;
-const BASES = ["http://127.0.0.1:8000", "http://localhost:8000"];
 const ENDPOINT = "/api/extension/v1/inbox/intake-proposals";
 const ALLOWED_STATES = new Set(["PENDING", "SENDING", "SENT", "SENT_DUPLICATE", "RETRY", "AUTH_FAILED", "REJECTED"]);
 const TOP_KEYS = ["schema_version", "source", "client_reference", "original_input", "customer", "machines", "requested_needs", "additional_notes", "research_evidence"];
@@ -144,8 +149,33 @@ async function notify(title, message) {
   await browser.notifications.create({ type: "basic", title, message });
 }
 
-function safeError(value) {
-  return String(value || "Unknown error").replace(/Bearer\s+\S+/gi, "Bearer [redacted]").slice(0, 300);
+function safeError(value, secrets = []) {
+  let message = String(value || "Unknown error").replace(/Bearer\s+\S+/gi, "Bearer [redacted]");
+  for (const secret of secrets.filter(Boolean)) message = message.split(secret).join("[redacted]");
+  return message.slice(0, 300);
+}
+
+function normalizedBase(value, fallback) {
+  try {
+    const url = new URL(String(value || fallback).trim());
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password ||
+        url.search || url.hash || !["", "/"].includes(url.pathname)) throw new Error();
+    return url.origin;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+async function readConnectionSettings() {
+  const keys = [API_BASE_KEY, WEB_BASE_KEY, CF_CLIENT_ID_KEY, CF_CLIENT_SECRET_KEY, TOKEN_KEY];
+  const stored = await browser.storage.local.get(keys);
+  return {
+    apiBase: normalizedBase(stored[API_BASE_KEY], DEFAULT_API_BASE),
+    webBase: normalizedBase(stored[WEB_BASE_KEY], DEFAULT_WEB_BASE),
+    cloudflareClientId: String(stored[CF_CLIENT_ID_KEY] || "").trim(),
+    cloudflareClientSecret: String(stored[CF_CLIENT_SECRET_KEY] || "").trim(),
+    token: String(stored[TOKEN_KEY] || "").trim()
+  };
 }
 
 async function updateItem(clientReference, changes) {
@@ -157,21 +187,21 @@ async function updateItem(clientReference, changes) {
   return item;
 }
 
-async function postPackage(payload, token) {
-  let networkError = null;
-  for (const base of BASES) {
-    try {
-      const response = await fetch(base + ENDPOINT, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      let data = {};
-      try { data = await response.json(); } catch (_) {}
-      return { response, data, base };
-    } catch (error) { networkError = error; }
+async function postPackage(payload, settings) {
+  const headers = {
+    "Authorization": `Bearer ${settings.token}`,
+    "Content-Type": "application/json"
+  };
+  if (settings.cloudflareClientId && settings.cloudflareClientSecret) {
+    headers["CF-Access-Client-Id"] = settings.cloudflareClientId;
+    headers["CF-Access-Client-Secret"] = settings.cloudflareClientSecret;
   }
-  throw networkError || new Error("PPS is offline.");
+  const response = await fetch(settings.apiBase + ENDPOINT, {
+    method: "POST", headers, body: JSON.stringify(payload)
+  });
+  let data = {};
+  try { data = await response.json(); } catch (_) {}
+  return { response, data };
 }
 
 function wait(milliseconds) {
@@ -182,35 +212,41 @@ async function sendQueuedItem(clientReference) {
   let queue = await readQueue();
   let item = queue.find(entry => entry.client_reference === clientReference);
   if (!item || ["SENT", "SENT_DUPLICATE", "AUTH_FAILED", "REJECTED"].includes(item.status)) return;
-  const token = String((await browser.storage.local.get(TOKEN_KEY))[TOKEN_KEY] || "").trim();
-  if (!token) {
+  const settings = await readConnectionSettings();
+  const secrets = [settings.token, settings.cloudflareClientId, settings.cloudflareClientSecret];
+  if (!settings.token) {
     await updateItem(clientReference, { status: "AUTH_FAILED", last_error: "PPS Firefox Inbox token is not configured." });
-    await notify("PPS Inbox authorization required", "Open the PPS extension and configure the local Inbox token.");
+    await notify("PPS Inbox authorization required", "Open the PPS extension and configure the Firefox Inbox token.");
+    return;
+  }
+  if (Boolean(settings.cloudflareClientId) !== Boolean(settings.cloudflareClientSecret)) {
+    await updateItem(clientReference, { status: "AUTH_FAILED", last_error: "Cloudflare Access credentials must be configured as a complete pair." });
+    await notify("PPS Inbox authorization required", "Configure both Cloudflare Access credential fields.");
     return;
   }
   while (item.attempt_count < MAX_ATTEMPTS) {
     item = await updateItem(clientReference, { status: "SENDING", attempt_count: item.attempt_count + 1, last_error: "" });
     try {
-      const { response, data, base } = await postPackage(item.payload, token);
+      const { response, data } = await postPackage(item.payload, settings);
       if (response.ok && data.status === "DRAFT" && Number.isFinite(Number(data.proposal_id))) {
         const status = data.duplicate ? "SENT_DUPLICATE" : "SENT";
-        await updateItem(clientReference, { status, review_url: data.review_url || "", proposal_id: Number(data.proposal_id), last_error: "", pps_base: base });
+        await updateItem(clientReference, { status, review_url: data.review_url || "", proposal_id: Number(data.proposal_id), last_error: "", pps_web_base: settings.webBase });
         await notify("Sent to PPS Inbox", "DRAFT Smart Intake proposal created.");
         return;
       }
       if (response.status === 401 || response.status === 403) {
-        await updateItem(clientReference, { status: "AUTH_FAILED", last_error: safeError(data.detail || "PPS authorization failed.") });
-        await notify("PPS Inbox authorization failed", "Open the PPS extension and verify the local Inbox token.");
+        await updateItem(clientReference, { status: "AUTH_FAILED", last_error: safeError(data.detail || "PPS authorization failed.", secrets) });
+        await notify("PPS Inbox authorization failed", "Open the PPS extension and verify its Inbox credentials.");
         return;
       }
       if ([400, 409, 413, 422].includes(response.status)) {
-        await updateItem(clientReference, { status: response.status === 409 ? "REJECTED" : "REJECTED", last_error: safeError(data.detail || `PPS rejected the package (${response.status}).`) });
-        await notify("PPS Inbox package rejected", safeError(data.detail || "Review the extension queue for details."));
+        await updateItem(clientReference, { status: "REJECTED", last_error: safeError(data.detail || `PPS rejected the package (${response.status}).`, secrets) });
+        await notify("PPS Inbox package rejected", safeError(data.detail || "Review the extension queue for details.", secrets));
         return;
       }
       throw new Error(data.detail || `PPS server error (${response.status}).`);
     } catch (error) {
-      item = await updateItem(clientReference, { status: "RETRY", last_error: safeError(error?.message || error) });
+      item = await updateItem(clientReference, { status: "RETRY", last_error: safeError(error?.message || error, secrets) });
       if (item.attempt_count < MAX_ATTEMPTS) await wait(500 * item.attempt_count);
     }
   }
@@ -347,7 +383,7 @@ browser.windows.onFocusChanged.addListener(windowId => {
 browser.notifications.onClicked.addListener(async () => {
   const queue = await readQueue();
   const latest = [...queue].reverse().find(item => item.review_url && ["SENT", "SENT_DUPLICATE"].includes(item.status));
-  if (latest) browser.tabs.create({ url: `${latest.pps_base || BASES[0]}${latest.review_url}` });
+  if (latest) browser.tabs.create({ url: `${latest.pps_web_base || DEFAULT_WEB_BASE}${latest.review_url}` });
 });
 
 scheduleRecovery().catch(() => {});

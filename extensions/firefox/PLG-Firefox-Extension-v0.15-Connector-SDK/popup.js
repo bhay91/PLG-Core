@@ -1,8 +1,14 @@
-const BASES = [
+const LOCAL_PPS_BASES = [
   "http://127.0.0.1:8000",
   "http://localhost:8000"
 ];
-const FIREFOX_INBOX_TOKEN_KEY = "ppsFirefoxInboxToken";
+const DEFAULT_PPS_API_BASE = "https://api.pinpointsourcing.com";
+const DEFAULT_PPS_WEB_BASE = "https://pinpointsourcing.com";
+const PPS_API_BASE_KEY = "ppsApiBase";
+const PPS_WEB_BASE_KEY = "ppsWebBase";
+const CF_ACCESS_CLIENT_ID_KEY = "cloudflareAccessClientId";
+const CF_ACCESS_CLIENT_SECRET_KEY = "cloudflareAccessClientSecret";
+const FIREFOX_INBOX_TOKEN_KEY = "ppsFirefoxToken";
 const FIREFOX_INBOX_QUEUE_KEY = "ppsFirefoxInboxQueue";
 
 let active = null;
@@ -19,7 +25,9 @@ function status(message, ok = true) {
 }
 
 async function renderFirefoxInboxQueue() {
-  const queue = (await browser.storage.local.get(FIREFOX_INBOX_QUEUE_KEY))[FIREFOX_INBOX_QUEUE_KEY];
+  const stored = await browser.storage.local.get([FIREFOX_INBOX_QUEUE_KEY, PPS_WEB_BASE_KEY]);
+  const queue = stored[FIREFOX_INBOX_QUEUE_KEY];
+  const webBase = normalizedBase(stored[PPS_WEB_BASE_KEY], DEFAULT_PPS_WEB_BASE);
   const container = $("firefoxInboxQueue");
   container.replaceChildren();
   if (!Array.isArray(queue) || !queue.length) {
@@ -40,7 +48,7 @@ async function renderFirefoxInboxQueue() {
     }
     if (item.review_url) {
       const link = document.createElement("a");
-      link.href = `${item.pps_base || BASES[0]}${item.review_url}`;
+      link.href = `${item.pps_web_base || webBase}${item.review_url}`;
       link.target = "_blank";
       link.textContent = "Open Smart Intake review";
       row.append(link);
@@ -50,21 +58,46 @@ async function renderFirefoxInboxQueue() {
 }
 
 async function initializeFirefoxInboxSettings() {
-  const configured = String((await browser.storage.local.get(FIREFOX_INBOX_TOKEN_KEY))[FIREFOX_INBOX_TOKEN_KEY] || "").trim();
-  $("firefoxInboxTokenStatus").textContent = configured ? "Local token configured." : "Local token not configured.";
+  const keys = [PPS_API_BASE_KEY, PPS_WEB_BASE_KEY, CF_ACCESS_CLIENT_ID_KEY, CF_ACCESS_CLIENT_SECRET_KEY, FIREFOX_INBOX_TOKEN_KEY];
+  const stored = await browser.storage.local.get(keys);
+  $("ppsApiBase").value = normalizedBase(stored[PPS_API_BASE_KEY], DEFAULT_PPS_API_BASE);
+  $("ppsWebBase").value = normalizedBase(stored[PPS_WEB_BASE_KEY], DEFAULT_PPS_WEB_BASE);
+  const tokenConfigured = Boolean(String(stored[FIREFOX_INBOX_TOKEN_KEY] || "").trim());
+  const cloudflareConfigured = Boolean(String(stored[CF_ACCESS_CLIENT_ID_KEY] || "").trim() && String(stored[CF_ACCESS_CLIENT_SECRET_KEY] || "").trim());
+  $("firefoxInboxTokenStatus").textContent = `Firefox token ${tokenConfigured ? "configured" : "not configured"}; Cloudflare Access ${cloudflareConfigured ? "configured" : "not configured"}.`;
   await renderFirefoxInboxQueue();
 }
 
-async function saveFirefoxInboxToken() {
-  const input = $("firefoxInboxToken");
-  const token = input.value.trim();
+function normalizedBase(value, fallback = "") {
+  const url = new URL(String(value || fallback).trim());
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password ||
+      url.search || url.hash || !["", "/"].includes(url.pathname)) {
+    throw new Error("Enter an HTTP(S) origin without a path, query, or credentials.");
+  }
+  return url.origin;
+}
+
+async function saveFirefoxInboxSettings() {
+  const token = $("firefoxInboxToken").value.trim();
+  const cloudflareClientId = $("cloudflareAccessClientId").value.trim();
+  const cloudflareClientSecret = $("cloudflareAccessClientSecret").value.trim();
   if (!token) {
     $("firefoxInboxTokenStatus").textContent = "Enter the dedicated PPS Firefox Inbox token.";
     return;
   }
-  await browser.storage.local.set({ [FIREFOX_INBOX_TOKEN_KEY]: token });
-  input.value = "";
-  $("firefoxInboxTokenStatus").textContent = "Local token saved.";
+  if (Boolean(cloudflareClientId) !== Boolean(cloudflareClientSecret)) {
+    $("firefoxInboxTokenStatus").textContent = "Enter both Cloudflare Access credentials or leave both blank.";
+    return;
+  }
+  await browser.storage.local.set({
+    [PPS_API_BASE_KEY]: normalizedBase($("ppsApiBase").value, DEFAULT_PPS_API_BASE),
+    [PPS_WEB_BASE_KEY]: normalizedBase($("ppsWebBase").value, DEFAULT_PPS_WEB_BASE),
+    [CF_ACCESS_CLIENT_ID_KEY]: cloudflareClientId,
+    [CF_ACCESS_CLIENT_SECRET_KEY]: cloudflareClientSecret,
+    [FIREFOX_INBOX_TOKEN_KEY]: token
+  });
+  for (const id of ["firefoxInboxToken", "cloudflareAccessClientId", "cloudflareAccessClientSecret"]) $(id).value = "";
+  $("firefoxInboxTokenStatus").textContent = "Inbox connection saved.";
 }
 
 function money(value) {
@@ -95,7 +128,7 @@ function captureDetails(item, index) {
 async function api(path, options = {}) {
   let lastError = null;
 
-  for (const base of BASES) {
+  for (const base of LOCAL_PPS_BASES) {
     try {
       return await fetch(base + path, options);
     } catch (error) {
@@ -430,10 +463,12 @@ async function importCart() {
 
     status(`Added ${data.imported_count} part(s) for review in PPS.`);
 
+    const stored = await browser.storage.local.get(PPS_WEB_BASE_KEY);
+    const webBase = normalizedBase(stored[PPS_WEB_BASE_KEY], DEFAULT_PPS_WEB_BASE);
     setTimeout(() => {
       browser.tabs.create({
         url:
-          `http://127.0.0.1:8000/jobs/${data.job_id}/basket` +
+          `${webBase}/jobs/${data.job_id}/basket` +
           `?refresh=${Date.now()}`
       });
     }, 500);
@@ -446,8 +481,8 @@ $("refresh").onclick = refresh;
 $("readPage").onclick = () => readCapture("PAGE");
 $("readCart").onclick = () => readCapture("CART");
 $("import").onclick = importCart;
-$("saveFirefoxInboxToken").onclick = () => saveFirefoxInboxToken().catch(error => {
-  $("firefoxInboxTokenStatus").textContent = error.message;
+$("saveFirefoxInboxSettings").onclick = () => saveFirefoxInboxSettings().catch(() => {
+  $("firefoxInboxTokenStatus").textContent = "Could not save the Inbox connection settings.";
 });
 $("refreshFirefoxInboxQueue").onclick = () => renderFirefoxInboxQueue().catch(error => {
   $("firefoxInboxQueue").textContent = error.message;

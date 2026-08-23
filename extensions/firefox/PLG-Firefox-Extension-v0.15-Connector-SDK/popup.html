@@ -12,11 +12,23 @@
 
   <details class="card inbox-settings">
     <summary><strong>ChatGPT → PPS Inbox</strong></summary>
-    <p class="muted">Configure the dedicated local Firefox Inbox token. It remains in privileged extension storage.</p>
+    <p class="muted">Configure the dedicated DRAFT Inbox connection. Credentials remain in privileged Firefox extension storage.</p>
+    <label>PPS API base URL
+      <input id="ppsApiBase" type="url" autocomplete="off" spellcheck="false">
+    </label>
+    <label>PPS web base URL
+      <input id="ppsWebBase" type="url" autocomplete="off" spellcheck="false">
+    </label>
+    <label>Cloudflare Access client ID
+      <input id="cloudflareAccessClientId" type="text" autocomplete="off" spellcheck="false">
+    </label>
+    <label>Cloudflare Access client secret
+      <input id="cloudflareAccessClientSecret" type="password" autocomplete="off" spellcheck="false">
+    </label>
     <label>PPS Firefox Inbox token
       <input id="firefoxInboxToken" type="password" autocomplete="off" spellcheck="false">
     </label>
-    <button id="saveFirefoxInboxToken" type="button">Save local token</button>
+    <button id="saveFirefoxInboxSettings" type="button">Save Inbox connection</button>
     <div id="firefoxInboxTokenStatus" class="muted"></div>
     <div class="queue-heading"><strong>Automatic submission queue</strong><button id="refreshFirefoxInboxQueue" type="button" class="compact">Refresh</button></div>
     <div id="firefoxInboxQueue" class="queue-list muted">No queued packages.</div>

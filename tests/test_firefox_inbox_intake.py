@@ -60,12 +60,14 @@ def package(**overrides) -> dict:
 
 async def request_endpoint(payload: object, *, token: str | None = TOKEN,
                            scopes: str = FIREFOX_INBOX_CREATE_SCOPE,
-                           client_host: str = "127.0.0.1"):
+                           client_host: str = "127.0.0.1",
+                           remote_enabled: str | None = None):
     headers = {"Content-Type": "application/json"}
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
     transport = httpx2.ASGITransport(app=app, client=(client_host, 45211))
     environment = {"PPS_FIREFOX_INBOX_TOKEN": TOKEN, "PPS_FIREFOX_INBOX_SCOPES": scopes}
+    environment["PPS_FIREFOX_REMOTE_ENABLED"] = remote_enabled or ""
     with patch.dict(os.environ, environment, clear=False):
         async with httpx2.AsyncClient(transport=transport, base_url="http://127.0.0.1:8000") as client:
             return await client.post("/api/extension/v1/inbox/intake-proposals", headers=headers, json=payload)
@@ -123,6 +125,17 @@ class FirefoxInboxIntakeTests(unittest.TestCase):
         self.assertEqual(call(package(), scopes="wrong:scope").status_code, 403)
         self.assertEqual(call(package(), client_host="198.51.100.9").status_code, 403)
         self.assertEqual(call(package()).status_code, 200)
+
+    def test_remote_inbox_requires_explicit_enable_token_and_create_scope(self):
+        remote = {"client_host": "198.51.100.9", "remote_enabled": "true"}
+        self.assertEqual(call(package(), **remote).status_code, 200)
+        self.assertEqual(call(package(), token=None, **remote).status_code, 401)
+        self.assertEqual(call(package(), token="wrong", **remote).status_code, 401)
+        self.assertEqual(call(package(), scopes="wrong:scope", **remote).status_code, 403)
+        self.assertEqual(
+            call(package(), scopes="pps:firefox:jobs:update", **remote).status_code,
+            403,
+        )
 
     def test_02_valid_package_creates_only_draft_and_appears_in_inbox(self):
         before = self.counts()

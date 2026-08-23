@@ -11,9 +11,18 @@ FIREFOX_JOB_UPDATE_SCOPE = "pps:firefox:jobs:update"
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
 
 
-def _require_firefox_authorization(request: Request, required_scope: str) -> str:
+def _remote_firefox_inbox_enabled() -> bool:
+    return os.getenv("PPS_FIREFOX_REMOTE_ENABLED", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def _require_firefox_authorization(
+    request: Request, required_scope: str, *, allow_remote: bool = False,
+) -> str:
     client_host = str(request.client.host if request.client else "")
-    if client_host not in _LOOPBACK_HOSTS:
+    is_loopback = client_host in _LOOPBACK_HOSTS
+    if not is_loopback and not (allow_remote and _remote_firefox_inbox_enabled()):
         raise HTTPException(status_code=403, detail="PPS Firefox Inbox is available only on loopback.")
 
     configured_token = os.getenv("PPS_FIREFOX_INBOX_TOKEN", "").strip()
@@ -37,7 +46,9 @@ def _require_firefox_authorization(request: Request, required_scope: str) -> str
 
 
 def require_firefox_inbox_authorization(request: Request) -> str:
-    return _require_firefox_authorization(request, FIREFOX_INBOX_CREATE_SCOPE)
+    return _require_firefox_authorization(
+        request, FIREFOX_INBOX_CREATE_SCOPE, allow_remote=True,
+    )
 
 
 def require_firefox_job_update_authorization(request: Request) -> str:
