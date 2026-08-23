@@ -8,6 +8,7 @@ from plg_core.basket.routes import router as basket_router
 from plg_core.machines.routes import router as machines_router
 from plg_core.requests.routes import router as requests_router
 from plg_core.requests.extension_routes import router as firefox_inbox_router
+from plg_core.requests.mobile_routes import router as mobile_inbox_router
 from plg_core.followups.routes import router as followups_router
 from plg_core.assets.routes import router as assets_router
 from plg_core.commercial.routes import router as commercial_router
@@ -24,6 +25,7 @@ app.include_router(basket_router)
 app.include_router(machines_router)
 app.include_router(requests_router)
 app.include_router(firefox_inbox_router)
+app.include_router(mobile_inbox_router)
 app.include_router(followups_router)
 app.include_router(assets_router)
 app.include_router(commercial_router)

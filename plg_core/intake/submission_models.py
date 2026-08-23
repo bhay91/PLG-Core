@@ -137,6 +137,11 @@ class FirefoxIntakePackage(StructuredIntakeContent):
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+class MobileIntakePackage(StructuredIntakeContent):
+    schema_version: Literal["1"]
+    source: Literal["CHATGPT_MOBILE", "CHATGPT_FIREFOX"]
+
+
 class IntakeSubmissionResult(StrictIntakeModel):
     schema_version: Literal["1"] = "1"
     proposal_id: int
@@ -144,6 +149,6 @@ class IntakeSubmissionResult(StrictIntakeModel):
     review_url: str
     blockers: list[str]
     review_count: int
-    origin: Literal["CHATGPT_MCP", "CHATGPT_FIREFOX"]
+    origin: Literal["CHATGPT_MCP", "CHATGPT_FIREFOX", "CHATGPT_MOBILE"]
     client_reference: str
     duplicate: bool

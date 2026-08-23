@@ -585,7 +585,7 @@ def submit_structured_intake(
     evidence: str,
 ) -> tuple[int, bool]:
     """Create or safely replay one transport-neutral structured DRAFT proposal."""
-    if origin not in {"CHATGPT_MCP", "CHATGPT_FIREFOX"}:
+    if origin not in {"CHATGPT_MCP", "CHATGPT_FIREFOX", "CHATGPT_MOBILE"}:
         raise HTTPException(status_code=400, detail="Unsupported structured intake origin.")
     connection.execute("BEGIN IMMEDIATE")
     try:
