@@ -103,13 +103,15 @@ class MobileInboxIntakeTests(unittest.TestCase):
         scopes=MOBILE_INBOX_CREATE_SCOPE, raw_body=None,
         content_type="application/json", extra_environment=None,
         path="/api/mobile/v1/inbox/intake-proposals", method="POST",
-        mobile_token=None,
+        mobile_token=None, shortcut_mobile_token=None,
     ):
         headers = {"Content-Type": content_type}
         if token is not None:
             headers["Authorization"] = f"Bearer {token}"
         if mobile_token is not None:
             headers["X-PPS-Mobile-Token"] = mobile_token
+        if shortcut_mobile_token is not None:
+            headers["PPS-Mobile-Token"] = shortcut_mobile_token
         environment = {
             "PPS_MOBILE_INBOX_ENABLED": enabled,
             "PPS_MOBILE_INBOX_TOKEN": TOKEN,
@@ -171,13 +173,21 @@ class MobileInboxIntakeTests(unittest.TestCase):
         self.assertEqual(self.call(token="synthetic-general-api-key").status_code, 401)
 
     def test_mobile_token_header_and_bearer_compatibility(self):
-        header_response = self.call(
+        x_header_response = self.call(
             package(client_reference="mobile-header-success"),
             token=None,
             mobile_token=TOKEN,
         )
-        self.assertEqual(header_response.status_code, 200, header_response.text)
-        self.assertEqual(header_response.json()["status"], "DRAFT")
+        self.assertEqual(x_header_response.status_code, 200, x_header_response.text)
+        self.assertEqual(x_header_response.json()["status"], "DRAFT")
+
+        shortcut_header_response = self.call(
+            package(client_reference="shortcut-mobile-header-success"),
+            token=None,
+            shortcut_mobile_token=TOKEN,
+        )
+        self.assertEqual(shortcut_header_response.status_code, 200, shortcut_header_response.text)
+        self.assertEqual(shortcut_header_response.json()["status"], "DRAFT")
 
         bearer_response = self.call(
             package(client_reference="mobile-bearer-success"),
@@ -188,14 +198,21 @@ class MobileInboxIntakeTests(unittest.TestCase):
 
         self.assertEqual(self.call(token=None, mobile_token=None).status_code, 401)
         self.assertEqual(self.call(token=None, mobile_token="wrong-mobile-token").status_code, 401)
+        self.assertEqual(
+            self.call(token=None, shortcut_mobile_token="wrong-mobile-token").status_code,
+            401,
+        )
 
-    def test_supplying_both_mobile_authentication_methods_fails_closed(self):
-        both_valid = self.call(token=TOKEN, mobile_token=TOKEN)
-        self.assertEqual(both_valid.status_code, 401)
-        bearer_valid_header_wrong = self.call(token=TOKEN, mobile_token="wrong-mobile-token")
-        self.assertEqual(bearer_valid_header_wrong.status_code, 401)
-        bearer_wrong_header_valid = self.call(token="wrong-mobile-token", mobile_token=TOKEN)
-        self.assertEqual(bearer_wrong_header_valid.status_code, 401)
+    def test_supplying_multiple_mobile_authentication_methods_fails_closed(self):
+        combinations = [
+            {"token": TOKEN, "mobile_token": TOKEN},
+            {"token": TOKEN, "shortcut_mobile_token": TOKEN},
+            {"token": None, "mobile_token": TOKEN, "shortcut_mobile_token": TOKEN},
+            {"token": TOKEN, "mobile_token": TOKEN, "shortcut_mobile_token": TOKEN},
+        ]
+        for authentication in combinations:
+            with self.subTest(authentication=tuple(authentication)):
+                self.assertEqual(self.call(**authentication).status_code, 401)
 
     def test_strict_json_markers_size_and_extra_fields_are_rejected(self):
         self.assertEqual(self.call(raw_body=b"{bad json").status_code, 422)

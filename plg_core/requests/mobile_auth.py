@@ -32,14 +32,15 @@ def require_mobile_inbox_authorization(request: Request) -> str:
         )
 
     authorization = str(request.headers.get("Authorization") or "")
-    mobile_header = str(request.headers.get("X-PPS-Mobile-Token") or "").strip()
-    if authorization and mobile_header:
+    x_mobile_header = str(request.headers.get("X-PPS-Mobile-Token") or "").strip()
+    mobile_header = str(request.headers.get("PPS-Mobile-Token") or "").strip()
+    if sum(bool(value) for value in (authorization, x_mobile_header, mobile_header)) > 1:
         raise HTTPException(
             status_code=401,
             detail="PPS Mobile Inbox accepts only one authorization method per request.",
         )
 
-    supplied = mobile_header
+    supplied = x_mobile_header or mobile_header
     if authorization:
         scheme, separator, bearer = authorization.partition(" ")
         if not separator or scheme.lower() != "bearer" or not bearer.strip():
