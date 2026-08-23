@@ -175,6 +175,46 @@ class MobileInboxIntakeTests(unittest.TestCase):
         self.assertEqual(self.call(raw_body=b"x" * (64 * 1024 + 1)).status_code, 413)
         self.assertEqual(self.call(package(extra="forbidden")).status_code, 422)
 
+    def test_wrapped_payload_string_creates_the_same_committed_draft(self):
+        before = self.authoritative_counts()
+        response = self.call({"payload": json.dumps(package())})
+        self.assertEqual(response.status_code, 200, response.text)
+        result = response.json()
+        self.assertEqual((result["status"], result["origin"], result["duplicate"]),
+                         ("DRAFT", "CHATGPT_MOBILE", False))
+        with closing(self.connection()) as connection:
+            row = connection.execute(
+                "SELECT status,created_request_id,created_job_id FROM intake_proposals WHERE id=?",
+                (result["proposal_id"],),
+            ).fetchone()
+        self.assertEqual(tuple(row), ("DRAFT", None, None))
+        self.assertEqual(before, self.authoritative_counts())
+
+    def test_wrapped_payload_preserves_idempotency(self):
+        first = self.call({"payload": json.dumps(package())}).json()
+        duplicate = self.call({"payload": json.dumps(package())}).json()
+        self.assertEqual(duplicate["proposal_id"], first["proposal_id"])
+        self.assertTrue(duplicate["duplicate"])
+
+    def test_wrapped_payload_validation_is_strict(self):
+        invalid = [
+            {"payload": "{bad json"},
+            {"payload": "[PPS_INTAKE_PACKAGE_V1]\n{}\n[/PPS_INTAKE_PACKAGE_V1]"},
+            {"payload": json.dumps({"not": "a mobile package"})},
+            {"payload": json.dumps(package()), "extra": "forbidden"},
+            {"payload": package()},
+        ]
+        for value in invalid:
+            with self.subTest(value=value):
+                self.assertEqual(self.call(value).status_code, 422)
+
+    def test_wrapped_payload_uses_unchanged_mobile_authorization(self):
+        wrapped = {"payload": json.dumps(package())}
+        self.assertEqual(self.call(wrapped, enabled="").status_code, 403)
+        self.assertEqual(self.call(wrapped, token=None).status_code, 401)
+        self.assertEqual(self.call(wrapped, token="wrong-mobile-token").status_code, 401)
+        self.assertEqual(self.call(wrapped, scopes="wrong:scope").status_code, 403)
+
     def test_valid_package_is_committed_draft_only_and_review_loads(self):
         before = self.authoritative_counts()
         response = self.call()

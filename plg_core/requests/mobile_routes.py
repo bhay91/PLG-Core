@@ -31,6 +31,12 @@ async def create_mobile_inbox_proposal(request: Request):
         raise HTTPException(status_code=413, detail="Mobile Inbox package is too large.")
     try:
         decoded = json.loads(body)
+        if isinstance(decoded, dict) and set(decoded) == {"payload"}:
+            if not isinstance(decoded["payload"], str):
+                raise ValueError("Wrapped mobile payload must be text.")
+            if "[PPS_INTAKE_PACKAGE_V1]" in decoded["payload"] or "[/PPS_INTAKE_PACKAGE_V1]" in decoded["payload"]:
+                raise ValueError("Wrapped mobile payload must not contain envelope markers.")
+            decoded = json.loads(decoded["payload"])
         package = MobileIntakePackage.model_validate(decoded)
     except (json.JSONDecodeError, UnicodeDecodeError, ValidationError, TypeError, ValueError):
         raise HTTPException(status_code=422, detail="Mobile Inbox package is invalid.") from None
