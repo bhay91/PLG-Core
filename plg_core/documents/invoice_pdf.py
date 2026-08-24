@@ -734,21 +734,19 @@ def _totals_box(invoice, internal: bool):
         elif status == "PARTIAL":
             rows.append(["BALANCE DUE", money(balance_due)])
     else:
+        customer_subtotal = (
+            float(_value(invoice, "customer_total", 0) or 0)
+            - shipping
+        )
         rows = [
             [
                 "Subtotal",
-                money(_value(invoice, "parts_subtotal", 0)),
+                money(customer_subtotal),
             ],
         ]
 
         if shipping > 0:
             rows.append(["Shipping", money(shipping)])
-
-        if service_charge > 0:
-            rows.append(["Service Charge", money(service_charge)])
-
-        if sourcing_fee > 0:
-            rows.append(["Sourcing Fee", money(sourcing_fee)])
 
         rows.append([
             "Invoice Total",

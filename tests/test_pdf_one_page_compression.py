@@ -175,7 +175,12 @@ class PDFOnePageCompressionTests(unittest.TestCase):
             self.assertLessEqual(level, 3)
             body = text(path)
             self.assertIn("PAYMENT INFORMATION", body)
-            self.assertIn("Service Charge", body)
+            if internal:
+                self.assertIn("Service Charge", body)
+            else:
+                self.assertNotIn("Service Charge", body)
+                self.assertNotIn("Sourcing Fee", body)
+                self.assertIn("$1,000.00", body)
             if name == "internal-invoice":
                 self.assertIn("Revenue", body)
                 self.assertIn("Expected Profit", body)

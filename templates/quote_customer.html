@@ -59,15 +59,9 @@
 
 <section class="panel">
   <div class="totals-block">
-    <div><span>Parts Subtotal</span><strong>${{ "%.2f"|format(quote.parts_subtotal) }}</strong></div>
+    <div><span>Subtotal</span><strong>${{ "%.2f"|format((quote.customer_total or 0) - (quote.shipping_total or 0)) }}</strong></div>
     {% if quote.shipping_total %}
     <div><span>Shipping</span><strong>${{ "%.2f"|format(quote.shipping_total) }}</strong></div>
-    {% endif %}
-    {% if quote.service_charge %}
-    <div><span>Service Charge</span><strong>${{ "%.2f"|format(quote.service_charge) }}</strong></div>
-    {% endif %}
-    {% if quote.sourcing_fee %}
-    <div><span>Sourcing Fee</span><strong>${{ "%.2f"|format(quote.sourcing_fee) }}</strong></div>
     {% endif %}
     <div><span>Total</span><strong>${{ "%.2f"|format(quote.customer_total) }}</strong></div>
   </div>

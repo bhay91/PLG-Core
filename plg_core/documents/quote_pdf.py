@@ -708,10 +708,14 @@ def _totals_box(quote, internal: bool):
             ],
         ])
     else:
+        customer_subtotal = (
+            float(_value(quote, "customer_total", 0) or 0)
+            - shipping
+        )
         rows = [
             [
                 "Subtotal",
-                money(_value(quote, "parts_subtotal", 0)),
+                money(customer_subtotal),
             ],
         ]
 
@@ -719,18 +723,6 @@ def _totals_box(quote, internal: bool):
             rows.append([
                 "Shipping",
                 money(shipping),
-            ])
-
-        if service_charge > 0:
-            rows.append([
-                "Service Charge",
-                money(service_charge),
-            ])
-
-        if sourcing_fee > 0:
-            rows.append([
-                "Sourcing Fee",
-                money(sourcing_fee),
             ])
 
         rows.append([
