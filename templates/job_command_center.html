@@ -55,6 +55,7 @@
 .ask-pps-panel{display:grid;gap:13px}.ask-pps-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px}.ask-pps-form input{width:100%;min-width:0}.ask-pps-examples{display:flex;flex-wrap:wrap;gap:7px}.ask-pps-result{display:grid;gap:12px;padding:14px;border:1px solid var(--line);border-radius:11px;background:var(--surface-soft)}.ask-pps-result[hidden]{display:none}.ask-pps-result h3{margin:0 0 5px;font-size:11px;letter-spacing:.08em;color:var(--muted)}.ask-pps-answer{margin:0;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}.ask-pps-facts{margin:0;padding-left:20px;display:grid;gap:4px;font-size:12px}.ask-pps-status{min-height:18px;margin:0;color:var(--muted);font-size:12px}.ask-pps-status.error{color:var(--danger)}
 @media(max-width:620px){.ask-pps-form{grid-template-columns:1fr}.ask-pps-form .button{width:100%}.ask-pps-panel{min-width:0;max-width:100%}}
 .job-progress-heading{display:flex;align-items:end;justify-content:space-between;gap:16px;margin:2px 2px 0}.job-progress-heading h2{margin:2px 0 0;font-size:20px}.job-progress-heading p{margin:0;color:var(--muted);font-size:12px}.job-command-groups{display:grid;gap:14px}.job-command-group{padding:0;overflow:hidden}.job-command-group>summary{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:19px 22px;cursor:pointer;list-style:none}.job-command-group>summary::-webkit-details-marker{display:none}.job-command-group>summary::after{content:'+';flex:0 0 auto;display:grid;place-items:center;width:28px;height:28px;border-radius:999px;background:var(--surface-soft);color:var(--accent-dark);font-size:20px}.job-command-group[open]>summary::after{content:'−'}.job-command-group-title{display:grid;gap:3px}.job-command-group-title strong{color:var(--ink-strong);font-size:19px}.job-command-group-title small{color:var(--muted);font-size:12px;font-weight:500}.job-command-group-body{display:grid;gap:12px;padding:0 14px 14px;border-top:1px solid var(--line);background:#f8fafc}.job-command-group-body>.cc-card,.job-command-group-body>.panel{margin:12px 0 0;box-shadow:none}.job-command-group-body>.job-disclosure,.job-command-group-body>.secondary-disclosure{border-radius:12px}.job-command-group-body:empty{display:none}#operational-movement{grid-column:1/-1}.fulfillment-checks{align-items:center}.fulfillment-state{padding:8px 10px;border-radius:8px;background:var(--surface-soft);color:var(--muted);font-size:11px;font-weight:850}
+.fulfillment-panel>.job-ops-movement{margin-bottom:14px}
 @media(max-width:620px){.job-progress-heading{align-items:flex-start;flex-direction:column}.job-command-group>summary{padding:16px}.job-command-group-title strong{font-size:17px}.job-command-group-body{padding:0 8px 8px}.job-command-group-body>.cc-card,.job-command-group-body>.panel{margin-top:8px}}
 </style>
 
@@ -95,19 +96,16 @@
         {% else %}<div class="job-ops-empty">No issued Invoice financial state yet.</div>{% endif %}
       </div></details>
 
-      <details class="cc-card job-disclosure" id="operational-movement" open><summary>Ordering, Receiving &amp; Delivery</summary><div class="job-disclosure-body">
-        <header class="job-ops-panel-head"><div><h2>Parts Movement</h2><p>Supplier-order quantities, not basket estimates.</p></div><a class="button ghost small" href="{{ operational_snapshot.delivery_url }}">Delivery</a></header>
-        {% set m = operational_snapshot.movement %}<div class="job-ops-movement">
+      <section class="cc-card job-ops-panel fulfillment-panel" id="fulfillment-checklist">
+        <header class="job-ops-panel-head"><div><h2>Fulfillment</h2><p>Paid invoice items tracked independently for receiving and delivery.</p></div><span class="job-ops-status">{{ fulfillment.stage }}</span></header>
+        {% set m = operational_snapshot.movement %}
+        <div class="job-ops-movement" aria-label="Supplier-order movement totals">
           <div class="job-ops-metric"><span>Ordered</span><strong>{{ m.ordered_units }}</strong></div>
           <div class="job-ops-metric"><span>Received</span><strong>{{ m.received_units }}</strong></div>
           <div class="job-ops-metric"><span>Remaining</span><strong>{{ m.remaining_units }}</strong></div>
           <div class="job-ops-metric"><span>Delivered</span><strong>{{ m.delivered_units }}</strong></div>
           <div class="job-ops-metric"><span>Available to Deliver</span><strong>{{ m.available_to_deliver_units }}</strong></div>
         </div>
-      </div></details>
-
-      <section class="cc-card job-ops-panel fulfillment-panel" id="fulfillment-checklist">
-        <header class="job-ops-panel-head"><div><h2>Fulfillment</h2><p>Paid invoice items tracked independently for receiving and delivery.</p></div><span class="job-ops-status">{{ fulfillment.stage }}</span></header>
         {% if fulfillment.available %}
         <div class="fulfillment-progress" aria-label="Fulfillment progress">
           <strong>Ordered {{ fc.ordered }}/{{ fc.total }}</strong><strong>Received {{ fc.received }}/{{ fc.total }}</strong><strong>Delivered {{ fc.delivered }}/{{ fc.total }}</strong>

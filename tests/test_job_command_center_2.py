@@ -128,7 +128,7 @@ class JobCommandCenter2Tests(unittest.TestCase):
 
     def test_template_has_operational_panels_draft_warning_and_responsive_contract(self):
         source=(ROOT/'templates/job_command_center.html').read_text()
-        for value in ('Job Operational Summary','NEXT ACTION','Financial State','Supplier Orders','Parts Movement','Documents','Recent Activity','UNQUOTED / DRAFT WORK','These are current editable basket values and are not the authoritative issued-invoice/accounting totals.'):
+        for value in ('Job Operational Summary','NEXT ACTION','Financial State','Supplier Orders','Supplier-order movement totals','Documents','Recent Activity','UNQUOTED / DRAFT WORK','These are current editable basket values and are not the authoritative issued-invoice/accounting totals.'):
             self.assertIn(value,source)
         self.assertIn('{% set operator_stage = operational_snapshot.workflow.stage %}',source)
         self.assertNotIn('operator_stage = "Waiting for Parts"',source)
