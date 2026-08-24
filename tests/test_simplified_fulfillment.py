@@ -238,9 +238,14 @@ class SimplifiedFulfillmentTests(unittest.TestCase):
             "Supplier Orders (", "Documents (", "Recent Activity",
             "Machines &amp; Requested Needs", "Research Sources", "Identified Parts",
             "Parts Ready for Quote", "Additional Charges", "Uncategorized / Draft Work",
-            "Quote History", "Purchasing / Supplier Parts",
+            "Quote History", "Supplier Parts",
         ):
             self.assertIn(summary, source)
+        for group in (
+            "Parts &amp; Purchasing", "Financial &amp; Customer",
+            "Documents &amp; Activity", "Job Details",
+        ):
+            self.assertIn(group, source)
         self.assertNotIn('<details class="cc-card job-disclosure" id="operational-orders" open', source)
 
 

@@ -54,6 +54,8 @@
 @media(max-width:620px){.job-ops-grid{grid-template-columns:1fr}.job-ops-next,.job-ops-panel-head{align-items:stretch;flex-direction:column}.job-ops-next .button,.job-ops-panel-head .button{width:100%}.job-ops-financial,.job-ops-movement{grid-template-columns:1fr 1fr}.job-ops-order-values{grid-template-columns:1fr 1fr}.job-ops-document{flex-direction:column}.job-ops-document .job-ops-actions{width:100%}.job-ops-document .button{flex:1}.job-ops,.job-ops-panel,.job-ops-order,.job-ops-document{min-width:0;max-width:100%}}
 .ask-pps-panel{display:grid;gap:13px}.ask-pps-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px}.ask-pps-form input{width:100%;min-width:0}.ask-pps-examples{display:flex;flex-wrap:wrap;gap:7px}.ask-pps-result{display:grid;gap:12px;padding:14px;border:1px solid var(--line);border-radius:11px;background:var(--surface-soft)}.ask-pps-result[hidden]{display:none}.ask-pps-result h3{margin:0 0 5px;font-size:11px;letter-spacing:.08em;color:var(--muted)}.ask-pps-answer{margin:0;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}.ask-pps-facts{margin:0;padding-left:20px;display:grid;gap:4px;font-size:12px}.ask-pps-status{min-height:18px;margin:0;color:var(--muted);font-size:12px}.ask-pps-status.error{color:var(--danger)}
 @media(max-width:620px){.ask-pps-form{grid-template-columns:1fr}.ask-pps-form .button{width:100%}.ask-pps-panel{min-width:0;max-width:100%}}
+.job-progress-heading{display:flex;align-items:end;justify-content:space-between;gap:16px;margin:2px 2px 0}.job-progress-heading h2{margin:2px 0 0;font-size:20px}.job-progress-heading p{margin:0;color:var(--muted);font-size:12px}.job-command-groups{display:grid;gap:14px}.job-command-group{padding:0;overflow:hidden}.job-command-group>summary{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:19px 22px;cursor:pointer;list-style:none}.job-command-group>summary::-webkit-details-marker{display:none}.job-command-group>summary::after{content:'+';flex:0 0 auto;display:grid;place-items:center;width:28px;height:28px;border-radius:999px;background:var(--surface-soft);color:var(--accent-dark);font-size:20px}.job-command-group[open]>summary::after{content:'−'}.job-command-group-title{display:grid;gap:3px}.job-command-group-title strong{color:var(--ink-strong);font-size:19px}.job-command-group-title small{color:var(--muted);font-size:12px;font-weight:500}.job-command-group-body{display:grid;gap:12px;padding:0 14px 14px;border-top:1px solid var(--line);background:#f8fafc}.job-command-group-body>.cc-card,.job-command-group-body>.panel{margin:12px 0 0;box-shadow:none}.job-command-group-body>.job-disclosure,.job-command-group-body>.secondary-disclosure{border-radius:12px}.job-command-group-body:empty{display:none}#operational-movement{grid-column:1/-1}.fulfillment-checks{align-items:center}.fulfillment-state{padding:8px 10px;border-radius:8px;background:var(--surface-soft);color:var(--muted);font-size:11px;font-weight:850}
+@media(max-width:620px){.job-progress-heading{align-items:flex-start;flex-direction:column}.job-command-group>summary{padding:16px}.job-command-group-title strong{font-size:17px}.job-command-group-body{padding:0 8px 8px}.job-command-group-body>.cc-card,.job-command-group-body>.panel{margin-top:8px}}
 </style>
 
 {% set has_request = customer_request is not none %}
@@ -74,8 +76,9 @@
       <div class="job-primary-next"><div><span>NEXT ACTION</span><strong>{{ operational_snapshot.workflow.next_action }}</strong></div><a class="button" href="{{ operational_snapshot.workflow.next_url }}">Continue</a></div>
     </section>
 
+    <div class="job-progress-heading"><div><p class="cc-label">OPERATIONAL PROGRESS</p><h2>Payment → Ordering → Receiving → Delivery</h2></div><p>Open only the active work needed for the next step.</p></div>
     <div class="job-ops-grid">
-      <details class="cc-card job-disclosure" id="operational-financials"><summary>Financial State</summary><div class="job-disclosure-body">
+      <details class="cc-card job-disclosure" id="operational-financials"><summary>Internal Details</summary><div class="job-disclosure-body">
         <header class="job-ops-panel-head"><div><h2>Financial State</h2><p>Issued Invoice and authoritative accounting values.</p></div><a class="button ghost small" href="{{ operational_snapshot.accounting_url }}">Open Accounting</a></header>
         {% if operational_snapshot.financial %}{% set f = operational_snapshot.financial %}
         <div class="job-ops-financial">
@@ -92,7 +95,7 @@
         {% else %}<div class="job-ops-empty">No issued Invoice financial state yet.</div>{% endif %}
       </div></details>
 
-      <details class="cc-card job-disclosure" id="operational-movement"><summary>Parts Movement</summary><div class="job-disclosure-body">
+      <details class="cc-card job-disclosure" id="operational-movement" open><summary>Ordering, Receiving &amp; Delivery</summary><div class="job-disclosure-body">
         <header class="job-ops-panel-head"><div><h2>Parts Movement</h2><p>Supplier-order quantities, not basket estimates.</p></div><a class="button ghost small" href="{{ operational_snapshot.delivery_url }}">Delivery</a></header>
         {% set m = operational_snapshot.movement %}<div class="job-ops-movement">
           <div class="job-ops-metric"><span>Ordered</span><strong>{{ m.ordered_units }}</strong></div>
@@ -116,8 +119,8 @@
           {% for item in fulfillment["items"] %}<article class="fulfillment-item {% if item.delivered %}is-complete{% endif %}">
             <div><strong>{{ item.description }}</strong><small>{{ item.supplier_name }} · {{ item.po_number }}</small><div class="fulfillment-quantities"><span>Qty {{ item.quantity_ordered }}</span><span>Received {{ item.quantity_received }}/{{ item.quantity_ordered }}</span><span>Delivered {{ item.quantity_delivered }}/{{ item.quantity_ordered }}</span><span>Remaining {{ item.quantity_remaining }}</span></div></div>
             <div class="fulfillment-checks">
-              <form method="post" action="/jobs/{{ job.id }}/fulfillment/items/{{ item.id }}/received"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input aria-label="Quantity received for {{ item.description }}" type="number" name="quantity" value="1" min="1" max="{{ item.quantity_to_receive }}" {% if item.received or not item.ordered %}disabled{% endif %}><button class="fulfillment-checkbox" type="submit" {% if item.received or not item.ordered %}disabled{% endif %}>{{ '☑' if item.received else '☐' }} Receive</button></form>
-              <form method="post" action="/jobs/{{ job.id }}/fulfillment/items/{{ item.id }}/delivered"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input aria-label="Quantity delivered for {{ item.description }}" type="number" name="quantity" value="1" min="1" max="{{ item.quantity_available_to_deliver }}" {% if item.delivered or item.quantity_available_to_deliver < 1 %}disabled{% endif %}><button class="fulfillment-checkbox" type="submit" {% if item.delivered or item.quantity_available_to_deliver < 1 %}disabled{% endif %}>{{ '☑' if item.delivered else '☐' }} Deliver</button></form>
+              {% if not item.received and item.ordered %}<form method="post" action="/jobs/{{ job.id }}/fulfillment/items/{{ item.id }}/received"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input aria-label="Quantity received for {{ item.description }}" type="number" name="quantity" value="1" min="1" max="{{ item.quantity_to_receive }}"><button class="fulfillment-checkbox" type="submit">☐ Receive</button></form>{% else %}<span class="fulfillment-state">{{ '☑ Received' if item.received else 'Awaiting order' }}</span>{% endif %}
+              {% if not item.delivered and item.quantity_available_to_deliver > 0 %}<form method="post" action="/jobs/{{ job.id }}/fulfillment/items/{{ item.id }}/delivered"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input aria-label="Quantity delivered for {{ item.description }}" type="number" name="quantity" value="1" min="1" max="{{ item.quantity_available_to_deliver }}"><button class="fulfillment-checkbox" type="submit">☐ Deliver</button></form>{% else %}<span class="fulfillment-state">{{ '☑ Delivered' if item.delivered else 'Awaiting receipt' }}</span>{% endif %}
             </div>
           </article>{% else %}<div class="job-ops-empty">Mark the paid invoice order placed to begin fulfillment.</div>{% endfor %}
         </div>
@@ -162,6 +165,25 @@
         <div data-ask-pps-facts-wrap hidden><h3>PPS FACTS USED</h3><ul class="ask-pps-facts" data-ask-pps-facts></ul></div>
       </div>
     </div></details>
+  </section>
+
+  <section class="job-command-groups" aria-label="Job workspace">
+    <details class="cc-card job-command-group" id="parts-purchasing-group" open>
+      <summary><span class="job-command-group-title"><strong>Parts &amp; Purchasing</strong><small>Machines, requested needs, identified parts, quote readiness, and supplier work</small></span></summary>
+      <div class="job-command-group-body" data-job-group="parts"></div>
+    </details>
+    <details class="cc-card job-command-group" id="financial-customer-group">
+      <summary><span class="job-command-group-title"><strong>Financial &amp; Customer</strong><small>Quote, invoice, payment, charges, and internal financial detail</small></span></summary>
+      <div class="job-command-group-body" data-job-group="financial"></div>
+    </details>
+    <details class="cc-card job-command-group" id="documents-activity-group">
+      <summary><span class="job-command-group-title"><strong>Documents &amp; Activity</strong><small>Current documents first, with quote history and recent activity on demand</small></span></summary>
+      <div class="job-command-group-body" data-job-group="documents"></div>
+    </details>
+    <details class="cc-card job-command-group" id="job-details-group">
+      <summary><span class="job-command-group-title"><strong>Job Details</strong><small>Customer request, machine context, notes, and lifecycle administration</small></span></summary>
+      <div class="job-command-group-body" data-job-group="details"></div>
+    </details>
   </section>
 
   {% if job.status == "CANCELLED" %}
@@ -225,7 +247,7 @@
 
   {% set selected_need = open_requested_needs|selectattr('id','equalto',selected_need_id)|first %}
   {% set active_need_label = selected_need.wording if selected_need else ('Choose a Need' if open_requested_needs|length > 1 else 'General machine research') %}
-  <details class="cc-card job-bar" id="job-overview"><summary>Job Details</summary><div class="job-disclosure-body" aria-label="Current Job context">
+  <details class="cc-card job-bar" id="job-overview"><summary>Customer, Machine &amp; Request</summary><div class="job-disclosure-body" aria-label="Current Job context">
     <div class="job-bar-main">
       <div class="job-bar-title">
         <p class="cc-kicker">{{ job.job_number }}</p>
@@ -902,7 +924,7 @@
     </div>
   </details>
 
-  <details class="cc-card cc-summary secondary-disclosure">
+  <details class="cc-card cc-summary secondary-disclosure" id="draft-work-details">
     <summary>Uncategorized / Draft Work{% if not invoice %} · Detailed totals &amp; profitability{% endif %}<span class="sr-only">{% if invoice %}UNQUOTED / DRAFT WORK · {% endif %}Detailed totals &amp; profitability</span></summary>
     <div class="secondary-disclosure-body">
     {% if invoice %}<div class="draft-work-warning"><strong>UNQUOTED / DRAFT WORK</strong><p>These are current editable basket values and are not the authoritative issued-invoice/accounting totals.</p></div>{% endif %}
@@ -1097,7 +1119,7 @@
   {% endif %}
 
   {% if invoice and not delivered_job %}
-  <details class="cc-card job-disclosure purchasing-stage-card"><summary>Purchasing / Supplier Parts</summary><div class="job-disclosure-body">
+  <details class="cc-card job-disclosure purchasing-stage-card" id="purchasing-stage"><summary>Supplier Parts</summary><div class="job-disclosure-body">
     <div class="cc-section-head">
       <div><p class="cc-label">PURCHASING STAGE</p><h2>Order and receive supplier parts</h2><p class="cc-muted">Part editing is complete for this invoiced sale. Create and manage supplier orders in Purchasing.</p></div>
       <a class="button" href="/purchasing">Open Purchasing</a>
@@ -1180,6 +1202,71 @@
 
 <script>
 (() => {
+  const organizeJobWorkspace = () => {
+    const groups = {
+      parts: [
+        "#operational-orders",
+        "#job-assets",
+        "#machine-workspace",
+        "#parts-research",
+        "#parts-ready",
+        "#purchasing-stage"
+      ],
+      financial: [
+        "#operational-financials",
+        "#revenue-adjustments",
+        "#draft-work-details"
+      ],
+      documents: [
+        "#operational-documents",
+        "#quote-history",
+        "#operational-activity"
+      ],
+      details: [
+        "#job-overview",
+        "#ask-pps"
+      ]
+    };
+
+    Object.entries(groups).forEach(([name, selectors]) => {
+      const body = document.querySelector(`[data-job-group="${name}"]`);
+      if (!body) return;
+      selectors.forEach((selector) => {
+        const section = document.querySelector(selector);
+        if (section) body.append(section);
+      });
+    });
+
+    const revealTarget = (target) => {
+      if (!target) return;
+      let node = target;
+      while (node) {
+        if (node instanceof HTMLDetailsElement) node.open = true;
+        node = node.parentElement;
+      }
+    };
+
+    const currentTarget = window.location.hash
+      ? document.querySelector(window.location.hash)
+      : null;
+    revealTarget(currentTarget);
+
+    if (document.documentElement.dataset.jobGroupLinksBound !== "1") {
+      document.documentElement.dataset.jobGroupLinksBound = "1";
+      document.addEventListener("click", (event) => {
+        const link = event.target.closest('a[href^="#"]');
+        if (!link) return;
+        revealTarget(document.querySelector(link.getAttribute("href")));
+      });
+    }
+
+    if (window.matchMedia("(max-width: 620px)").matches && !currentTarget) {
+      document.getElementById("parts-purchasing-group")?.removeAttribute("open");
+    }
+  };
+
+  organizeJobWorkspace();
+
   function bindAskPPS() {
     const form = document.querySelector("[data-ask-pps-form]");
     if (!form || form.dataset.boundAskPps === "1") return;
@@ -1386,6 +1473,7 @@
     const scrollPosition = window.scrollY;
 
     currentMain.replaceWith(incomingMain);
+    organizeJobWorkspace();
     applyRevisionTokens();
     bindInternalPartNumberEditors();
     bindQuoteFinalReview();
