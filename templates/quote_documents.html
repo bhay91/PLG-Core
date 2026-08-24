@@ -148,4 +148,19 @@
 
   {% if split_successors %}<details class="panel quote-review-advanced"><summary>Successor quotes</summary><div class="quote-history-content">{% for successor in split_successors %}<div class="quote-document-row"><div><strong>{{ successor.quote_number }}</strong><p>{{ successor.bill_to_name_snapshot or successor.bill_to_company_snapshot }}</p></div><a class="button ghost small" href="/quotes/{{ successor.id }}/documents">Open · {{ successor.status }}</a></div>{% endfor %}</div></details>{% endif %}
 </div>
+<script>
+(() => {
+  const internalDocument = document.querySelector('.quote-document-secondary');
+  if (!internalDocument || !internalDocument.parentElement) return;
+  const disclosure = document.createElement('details');
+  disclosure.className = 'density-disclosure';
+  const summary = document.createElement('summary');
+  summary.innerHTML = '<span>Internal Financial Document</span><small>Cost and profitability detail</small>';
+  const body = document.createElement('div');
+  body.className = 'density-disclosure-body';
+  internalDocument.parentElement.insertBefore(disclosure, internalDocument);
+  disclosure.append(summary, body);
+  body.appendChild(internalDocument);
+})();
+</script>
 {% endblock %}

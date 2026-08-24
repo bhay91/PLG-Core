@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -1337,4 +1338,140 @@ def get_dashboard_data(
         ),
         "stats": get_dashboard_stats(connection),
         "financial": get_financial_snapshot(connection),
+    }
+
+
+def _dashboard_source_label(payload_json: Any) -> str:
+    """Return a human label for a proposal's authenticated transport origin."""
+    try:
+        origin = json.loads(str(payload_json or "{}")).get("origin", "")
+    except (json.JSONDecodeError, TypeError, ValueError):
+        origin = ""
+    return {
+        "CHATGPT_FIREFOX": "ChatGPT / Firefox",
+        "CHATGPT_MOBILE": "ChatGPT / Mobile",
+        "CHATGPT_MCP": "ChatGPT / MCP",
+    }.get(str(origin).upper(), "Smart Intake")
+
+
+def _dashboard_age_label(age_days: int | None) -> str:
+    if age_days is None or age_days <= 0:
+        return "New"
+    if age_days == 1:
+        return "Waiting 1 day"
+    if age_days >= 3:
+        return "Waiting 3+ days"
+    return f"Waiting {age_days} days"
+
+
+def get_operator_dashboard_data(
+    connection: sqlite3.Connection,
+    *,
+    accounting_rows: list[dict[str, Any]] | None = None,
+    today: date | None = None,
+    section_limit: int = 5,
+) -> dict[str, Any]:
+    """Build the read-only daily operator dashboard from existing PPS state."""
+    report_date = today or date.today()
+    safe_limit = max(1, min(int(section_limit), 10))
+
+    proposal_rows = connection.execute(
+        """
+        SELECT p.id,p.contact_name,p.company_name,p.raw_input,p.review_state,
+               p.created_at,p.updated_at,
+               (SELECT GROUP_CONCAT(TRIM(a.manufacturer || ' ' || a.model), ', ')
+                  FROM intake_proposal_assets a
+                 WHERE a.proposal_id=p.id AND a.included=1) AS machine_summary,
+               (SELECT GROUP_CONCAT(n.wording, ', ')
+                  FROM intake_proposal_needs n
+                 WHERE n.proposal_id=p.id AND n.included=1) AS need_summary,
+               (SELECT c.payload_json
+                  FROM intake_proposal_contributions c
+                 WHERE c.proposal_id=p.id AND c.contributor_type='AI'
+                 ORDER BY c.id DESC LIMIT 1) AS transport_payload
+          FROM intake_proposals p
+         WHERE UPPER(COALESCE(p.status,''))='DRAFT'
+         ORDER BY COALESCE(p.created_at,p.updated_at),p.id
+        """
+    ).fetchall()
+    inbox = []
+    for row in proposal_rows[:safe_limit]:
+        age_days = _age_days(row["created_at"] or row["updated_at"], report_date)
+        raw_request = " ".join(str(row["raw_input"] or "").split())
+        inbox.append({
+            "proposal_id": int(row["id"]),
+            "identity": row["company_name"] or row["contact_name"] or "Sender needs review",
+            "request": raw_request[:157] + "…" if len(raw_request) > 160 else raw_request or "Smart Intake proposal",
+            "context": " · ".join(filter(None, (row["machine_summary"], row["need_summary"]))),
+            "source": _dashboard_source_label(row["transport_payload"]),
+            "age_days": age_days,
+            "age_label": _dashboard_age_label(age_days),
+            "status": "Ready for Review" if str(row["review_state"] or "").upper() == "CONFIDENT" else "Needs Review",
+            "url": f"/requests/smart-intake/proposals/{int(row['id'])}",
+        })
+
+    queue = get_work_queue_data(connection, today=report_date, limit=500)
+    queue_items = queue["items"]
+
+    def select(categories: set[str], *, unique_jobs: bool = True) -> list[dict[str, Any]]:
+        selected = []
+        seen_jobs: set[int] = set()
+        for item in queue_items:
+            if item["category"] not in categories:
+                continue
+            job_id = int(item["job_id"])
+            if unique_jobs and job_id in seen_jobs:
+                continue
+            seen_jobs.add(job_id)
+            selected.append(item)
+            if len(selected) >= safe_limit:
+                break
+        return selected
+
+    operational_job_categories = {
+        "NEEDS_RESEARCH", "WAITING_SUPPLIER_PRICING", "READY_TO_QUOTE",
+        "CUSTOMER_DECISION_FOLLOW_UP", "READY_TO_INVOICE",
+    }
+    sections = {
+        "jobs": select(operational_job_categories),
+        "payments": select({"WAITING_FOR_PAYMENT"}),
+        "ordering": select({"READY_TO_ORDER"}),
+        "receiving": select({"WAITING_FOR_PARTS"}),
+        "delivery": select({"READY_FOR_DELIVERY"}),
+    }
+    for item in sections["jobs"]:
+        item["dashboard_url"] = f"/jobs/{int(item['job_id'])}/basket"
+        item["dashboard_action"] = "Open Job"
+
+    exceptions = []
+    for row in accounting_rows or []:
+        actual_state = str(row.get("actual_cost_state") or "")
+        cost_variance = float(row.get("cost_variance") or 0)
+        profit_variance = float(row.get("profit_variance") or 0)
+        has_variance = actual_state != "NOT_CONFIRMED" and (
+            abs(cost_variance) > 0.005 or abs(profit_variance) > 0.005
+        )
+        if actual_state == "NOT_CONFIRMED":
+            state = "Awaiting Final Cost"
+        elif has_variance:
+            state = "Variance Detected"
+        else:
+            continue
+        exceptions.append({
+            "invoice_number": row.get("invoice_number") or "Invoice",
+            "job_number": row.get("job_number") or "",
+            "customer": row.get("customer") or "Customer",
+            "state": state,
+            "url": row.get("invoice_url") or "/accounting#invoice-reconciliation",
+        })
+        if len(exceptions) >= safe_limit:
+            break
+
+    return {
+        "inbox": inbox,
+        "inbox_total": len(proposal_rows),
+        **sections,
+        "accounting_exceptions": exceptions,
+        "section_limit": safe_limit,
+        "report_date": report_date.isoformat(),
     }

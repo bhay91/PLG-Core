@@ -35,14 +35,24 @@ class InvoiceCardActionPresentationTests(unittest.TestCase):
 
     def test_next_action_has_dedicated_scoped_panel(self):
         self.assertIn("invoice-action-panel", self.template)
+        self.assertIn("invoice-secondary-actions", self.template)
+        self.assertIn("<summary>More Actions</summary>", self.template)
         self.assertRegex(
             self.css,
-            r"\.invoice-row\s*\{[\s\S]*?minmax\(460px, 1\.2fr\)",
+            r"\.invoice-row\s*\{[\s\S]*?minmax\(260px,\.85fr\)",
         )
         self.assertRegex(
             self.css,
             r"@media \(max-width: 1200px\)[\s\S]*?\.invoice-action-panel\s*\{[\s\S]*?grid-column: 2 / -1",
         )
+
+    def test_open_invoice_is_primary_and_secondary_controls_are_disclosed(self):
+        paid = self.template.index('{% if invoice.status == "PAID" %}')
+        primary = self.template.index("workspace-btn workspace-btn-primary", paid)
+        disclosure = self.template.index("invoice-secondary-actions", paid)
+        worksheet = self.template.index("Internal Parts Order Worksheet", disclosure)
+        self.assertLess(primary, disclosure)
+        self.assertGreater(worksheet, disclosure)
 
     def test_two_columns_are_equal_and_shrink_safely(self):
         self.assertIn("container-type: inline-size", self.css)

@@ -56,7 +56,7 @@
 
     {% for connector in connectors %}
     <article
-      class="workspace-row connector-workspace-row"
+      class="workspace-row connector-workspace-row directory-summary-row"
       data-search="
         {{ connector.display_name }}
         {{ connector.launch_url }}
@@ -84,20 +84,7 @@
           {% endif %}
         </strong>
 
-        <p>
-          {{ connector.launch_url or "No launch URL configured" }}
-        </p>
-        <p>
-          <strong>Applies to:</strong>
-          {{ connector.manufacturer_applicability or "Any manufacturer" }} ·
-          {{ connector.asset_category_applicability or "Any asset category" }} ·
-          {{ connector.market_applicability or "Any market" }}
-        </p>
-        <p>
-          {% if connector.is_default %}<span class="workspace-status-badge workspace-status-paid">Recommended</span>{% endif %}
-          Priority {{ connector.source_priority }} · {{ connector.connector_type|title }} · {{ connector.trust_level|replace('_',' ')|title }}
-        </p>
-        {% if connector.notes %}<p>{{ connector.notes }}</p>{% endif %}
+        <p>{{ connector.trust_level|replace('_',' ')|title }} trust{% if connector.is_default %} · Recommended{% endif %}</p>
       </div>
 
       <div class="workspace-row-status">
@@ -133,8 +120,16 @@
         >
           Edit Source
         </a>
+      </div>
 
-        <div class="workspace-btn-row">
+      <details class="workspace-secondary-actions directory-secondary-actions"><summary>Details &amp; More Actions</summary><div class="directory-secondary-body">
+          <div class="directory-configuration">
+            <span>{{ connector.launch_url or "No launch URL configured" }}</span>
+            <span><strong>Applies to:</strong> {{ connector.manufacturer_applicability or "Any manufacturer" }} · {{ connector.asset_category_applicability or "Any asset category" }} · {{ connector.market_applicability or "Any market" }}</span>
+            <span>Priority {{ connector.source_priority }} · {{ connector.connector_type|title }} · {{ connector.trust_level|replace('_',' ')|title }}</span>
+            {% if connector.notes %}<span>{{ connector.notes }}</span>{% endif %}
+          </div>
+          <div class="workspace-btn-row">
           {% if connector.is_archived %}
           <form
             class="workspace-action-form workspace-action-wide"
@@ -181,7 +176,7 @@
           </form>
           {% endif %}
         </div>
-      </div>
+      </div></details>
     </article>
     {% endfor %}
 

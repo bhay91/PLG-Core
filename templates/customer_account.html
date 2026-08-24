@@ -18,7 +18,7 @@
   </article>
   <article class="context-card">
     <span>Outstanding Balance</span>
-    <strong>${{ "%.2f"|format(account.outstanding_balance) }}</strong>
+    <strong>${{ "%.2f"|format(account.outstanding_balance if account.outstanding_balance < -0.005 or account.outstanding_balance > 0.005 else 0) }}</strong>
     <small>Amount customer owes</small>
   </article>
   <article class="context-card">
@@ -204,4 +204,23 @@
   {% endif %}
 </section>
 
+<script>
+const customerDensityPanel = (heading, title, hint) => {
+  const panel = [...document.querySelectorAll("section.panel")]
+    .find((section) => section.querySelector("h2")?.textContent.trim() === heading);
+  if (panel) {
+    panel.dataset.densityCollapse = title;
+    panel.dataset.densityHint = hint;
+  }
+};
+const secondaryAccountActions = [...document.querySelectorAll(".account-action-card")].slice(1);
+secondaryAccountActions.forEach((panel) => {
+  panel.dataset.densityCollapse = panel.querySelector("h2")?.textContent.trim() || "Account Administration";
+  panel.dataset.densityHint = "Exception and administrative workflow";
+});
+customerDensityPanel("Customer Information", "Customer Details", "Contact and billing information");
+customerDensityPanel("Transactions", "Transaction History", "Complete payment, refund, and adjustment ledger");
+customerDensityPanel("Customer Quotes", "Quote Activity", "Customer quote history");
+customerDensityPanel("Customer Invoices", "Invoice Activity", "Customer invoice history");
+</script>
 {% endblock %}

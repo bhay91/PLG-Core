@@ -63,7 +63,7 @@
 
     {% for supplier in suppliers %}
     <article
-      class="workspace-row supplier-workspace-row"
+      class="workspace-row supplier-workspace-row directory-summary-row"
       data-search="
         {{ supplier.name }}
         {{ supplier.website }}
@@ -142,8 +142,9 @@
         >
           Open Supplier
         </a>
+      </div>
 
-        <div class="workspace-btn-row">
+      <details class="workspace-secondary-actions directory-secondary-actions"><summary>More Actions</summary><div class="workspace-btn-row">
           {% if supplier.status == "ACTIVE" %}
           <form
             class="workspace-action-form"
@@ -191,8 +192,7 @@
             </button>
           </form>
           {% endif %}
-        </div>
-      </div>
+      </div></details>
     </article>
     {% endfor %}
 

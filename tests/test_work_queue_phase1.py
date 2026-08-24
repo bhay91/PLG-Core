@@ -354,19 +354,19 @@ class WorkQueuePhase1Tests(unittest.TestCase):
         self.assertEqual(result["counts"]["WAITING_FOR_PARTS"], 0)
         c.close()
 
-    def test_root_renders_work_queue_and_navigation_contract(self):
+    def test_work_queue_route_renders_queue_and_navigation_contract(self):
         empty = {
             "items": [], "counts": {key: 0 for key, _ in WORK_QUEUE_CATEGORIES},
             "total": 0, "selected_category": "ALL",
             "categories": WORK_QUEUE_CATEGORIES, "report_date": "2026-08-12",
         }
-        scope = {"type": "http", "method": "GET", "path": "/", "headers": [],
+        scope = {"type": "http", "method": "GET", "path": "/work-queue", "headers": [],
                  "query_string": b"", "app": legacy_app.app,
                  "router": legacy_app.app.router, "scheme": "http",
                  "server": ("testserver", 80), "client": ("testclient", 50000)}
         with patch.object(legacy_app, "get_connection", return_value=sqlite3.connect(":memory:")), \
              patch.object(legacy_app, "get_work_queue_data", return_value=empty):
-            body = legacy_app.dashboard(Request(scope)).body.decode()
+            body = legacy_app.work_queue(Request(scope)).body.decode()
         self.assertIn("<h1>Work Queue</h1>", body)
         self.assertIn("/requests/smart-intake", body)
         self.assertIn("No work in this queue", body)
@@ -386,7 +386,7 @@ class WorkQueuePhase1Tests(unittest.TestCase):
         self.assertIn(".work-queue-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))", css)
         self.assertIn("@media(max-width:1100px){.work-queue-row{grid-template-columns:repeat(2,minmax(0,1fr))}}", css)
         self.assertNotIn(".work-queue-tabs{display:flex;gap:8px;overflow-x:auto", css)
-        self.assertIn('href="/?queue={{ key }}"', template)
+        self.assertIn('href="/work-queue?queue={{ key }}"', template)
         self.assertIn("{{ counts[key] }}", template)
         self.assertIn("selected_category == key", template)
 

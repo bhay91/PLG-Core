@@ -64,6 +64,42 @@ class WorkQueueStageBrandUiTests(unittest.TestCase):
         self.assertIn("object-fit:contain", css)
         self.assertNotIn("overflow-x:auto", css[css.index("/* Phase 1 operator Work Queue */"):css.index(".quote-review-table")])
 
+    def test_requested_manufacturer_library_has_local_assets(self):
+        manufacturers = (
+            "Chevrolet", "GMC", "Ford", "Ram", "Dodge", "Toyota", "Nissan",
+            "Honda", "Mazda", "Hyundai", "Kia", "BMW", "Mercedes-Benz", "Audi",
+            "Volkswagen", "Jeep", "International", "Freightliner", "Mack",
+            "Peterbilt", "Kenworth", "Isuzu", "Hino", "Volvo Trucks",
+            "Caterpillar", "John Deere", "Komatsu", "JCB", "Bobcat", "CASE",
+            "New Holland", "Kubota", "BOMAG", "HAMM", "Gradall", "JLG",
+            "Cummins", "Detroit Diesel", "Perkins", "Deutz", "Yanmar", "Yamaha",
+            "Mercury Marine", "Suzuki Marine", "Volvo Penta",
+        )
+        for manufacturer in manufacturers:
+            with self.subTest(manufacturer=manufacturer):
+                identity = manufacturer_identity(manufacturer)
+                self.assertTrue(identity["has_logo"])
+                asset = ROOT / identity["logo_url"].lstrip("/")
+                self.assertTrue(asset.is_file())
+                self.assertGreater(asset.stat().st_size, 1000)
+
+    def test_gmc_and_narrow_aliases_share_assets(self):
+        aliases = {
+            "GMC Truck": "GMC", "GMC Trucks": "GMC", "CAT": "Caterpillar",
+            "Deere": "John Deere", "Mercedes": "Mercedes-Benz",
+            "International Truck": "International", "Ram Trucks": "Ram",
+            "VW": "Volkswagen", "Volvo Truck": "Volvo Trucks",
+            "Suzuki Outboard": "Suzuki Marine",
+        }
+        for alias, canonical in aliases.items():
+            with self.subTest(alias=alias):
+                self.assertEqual(
+                    manufacturer_identity(alias)["logo_url"],
+                    manufacturer_identity(canonical)["logo_url"],
+                )
+        self.assertEqual(manufacturer_identity("GMC")["logo_url"],
+                         "/static/manufacturer-logos/gmc.png")
+
     def test_registry_and_quote_use_single_logo_in_existing_identity_mark(self):
         macro = legacy_app.templates.env.get_template("_manufacturer_logo.html").module.manufacturer_logo
         logo_only = str(macro("CAT", True, False, True))

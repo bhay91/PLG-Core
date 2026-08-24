@@ -28,11 +28,16 @@
         </div>
       </div>
       <div class="request-card-open"><span>{{ item.next_action }}</span><span aria-hidden="true">→</span></div></a>
-      {% if item.removable %}<form class="inbox-remove-form" method="post" action="{{ item.remove_url }}" data-archive-delete>
-        {% if item.source == 'PROPOSAL' %}<input type="hidden" name="lock_version" value="{{ item.remove_version }}">{% else %}<input type="hidden" name="expected_updated_at" value="{{ item.remove_version }}">{% endif %}
-        <button class="button ghost" type="submit">Delete</button>
-      </form>{% endif %}
-      {% if item.disposable_eligible %}<div class="inbox-delete-disposable"><a class="button ghost" href="{{ item.delete_disposable_url }}">Permanently Delete</a></div>{% endif %}
+      {% if item.removable or item.disposable_eligible %}<details class="inbox-secondary-actions">
+        <summary>More Actions</summary>
+        <div class="inbox-secondary-actions-body">
+          {% if item.removable %}<form class="inbox-remove-form" method="post" action="{{ item.remove_url }}" data-archive-delete>
+            {% if item.source == 'PROPOSAL' %}<input type="hidden" name="lock_version" value="{{ item.remove_version }}">{% else %}<input type="hidden" name="expected_updated_at" value="{{ item.remove_version }}">{% endif %}
+            <button class="button ghost inbox-destructive-action" type="submit">Delete</button>
+          </form>{% endif %}
+          {% if item.disposable_eligible %}<div class="inbox-delete-disposable"><a class="button ghost inbox-destructive-action" href="{{ item.delete_disposable_url }}">Permanently Delete</a></div>{% endif %}
+        </div>
+      </details>{% endif %}
     </article>{% endfor %}
   </div>{% else %}<div class="empty-state request-empty-state"><div class="empty-state-icon" aria-hidden="true">▤</div><h2>No incoming work found</h2><p>Start with Smart Intake or record a manual customer request.</p><a class="button" href="/requests/smart-intake">＋ Smart Intake</a></div>{% endif %}
 </section>

@@ -293,5 +293,19 @@
     <button type="button" class="smart-image-modal-nav next" data-image-modal-next aria-label="Next image">›</button>
   </div>
 </div>
+<script>
+[
+  [".smart-mcp-evidence", "Source & Transport Details", "Untrusted transport candidates and research evidence"],
+  [".smart-document-analysis", "Document Analysis", "Classification, extraction evidence, and diagnostics"],
+  [".smart-match-explanation", "Matching Evidence", "Candidate matching rationale"],
+  [".smart-proposal-attachments", "Source Attachments", "Original documents and extraction status"]
+].forEach(([selector, title, hint]) => {
+  const panel = document.querySelector(selector);
+  if (panel) {
+    panel.dataset.densityCollapse = title;
+    panel.dataset.densityHint = hint;
+  }
+});
+</script>
 <script src="/static/smart_intake_attachments.js?v=smart-attachments-2" defer></script>
 {% endblock %}

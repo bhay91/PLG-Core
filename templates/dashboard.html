@@ -9,9 +9,9 @@
   </section>
 
   <nav class="work-queue-tabs" aria-label="Work Queue categories">
-    <a class="{% if selected_category == 'ALL' %}active{% endif %}" href="/?queue=ALL">All <strong>{{ total }}</strong></a>
-    {% for key, label in categories %}<a class="{% if selected_category == key %}active{% endif %}" href="/?queue={{ key }}">{{ label }} <strong>{{ counts[key] }}</strong></a>{% endfor %}
-    <a class="{% if selected_category == 'FOLLOW_UP' %}active{% endif %}" href="/?queue=FOLLOW_UP">Follow-Ups</a>
+    <a class="{% if selected_category == 'ALL' %}active{% endif %}" href="/work-queue?queue=ALL">All <strong>{{ total }}</strong></a>
+    {% for key, label in categories %}<a class="{% if selected_category == key %}active{% endif %}" href="/work-queue?queue={{ key }}">{{ label }} <strong>{{ counts[key] }}</strong></a>{% endfor %}
+    <a class="{% if selected_category == 'FOLLOW_UP' %}active{% endif %}" href="/work-queue?queue=FOLLOW_UP">Follow-Ups</a>
   </nav>
 
   {% if items %}

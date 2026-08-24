@@ -16,7 +16,10 @@
     </a>
 
     <nav class="sidebar-nav" aria-label="Primary navigation">
-      <a class="{% if active_page == 'work_queue' %}active{% endif %}" href="/">
+      <a class="{% if active_page == 'dashboard' %}active{% endif %}" href="/dashboard">
+        <span class="nav-icon" aria-hidden="true">◫</span><span>Dashboard</span>
+      </a>
+      <a class="{% if active_page == 'work_queue' %}active{% endif %}" href="/work-queue">
         <span class="nav-icon" aria-hidden="true">⌂</span><span>Work Queue</span>
       </a>
       <a class="{% if active_page == 'requests' %}active{% endif %}" href="/requests">
@@ -71,6 +74,9 @@
 
   <main class="main-shell">
     <header class="topbar">
+      <button class="mobile-nav-toggle" type="button" aria-controls="primary-sidebar" aria-expanded="false">
+        <span aria-hidden="true">☰</span><span>Menu</span>
+      </button>
       <div class="topbar-title">
         <strong>Pinpoint Sourcing Co.</strong>
         <small>Parts Sourcing Control Center</small>
@@ -113,6 +119,7 @@
       {% block content %}{% endblock %}
     </section>
   </main>
+  <button class="mobile-nav-backdrop" type="button" aria-label="Close navigation" hidden></button>
   <dialog id="archive-delete-dialog" class="archive-delete-dialog" aria-labelledby="archive-delete-title">
     <form method="dialog">
       <h2 id="archive-delete-title">Delete this item?</h2>
@@ -122,6 +129,8 @@
   </dialog>
   <script>
   (()=>{const dialog=document.getElementById('archive-delete-dialog');const confirmButton=document.getElementById('archive-delete-confirm');let pending=null;if(!dialog)return;document.addEventListener('submit',(event)=>{const form=event.target.closest('form[data-archive-delete],form[action$="/archive"],form[action$="/deactivate"]');if(!form||form.dataset.archiveConfirmed==='1')return;event.preventDefault();event.stopImmediatePropagation();pending=form;dialog.showModal();},true);confirmButton?.addEventListener('click',(event)=>{event.preventDefault();if(!pending)return;pending.dataset.archiveConfirmed='1';dialog.close();pending.requestSubmit();pending=null;});dialog.addEventListener('close',()=>{if(dialog.returnValue==='cancel')pending=null;});})();
+  (()=>{const sidebar=document.querySelector('.sidebar');const toggle=document.querySelector('.mobile-nav-toggle');const backdrop=document.querySelector('.mobile-nav-backdrop');if(!sidebar||!toggle||!backdrop)return;sidebar.id='primary-sidebar';const setOpen=(open)=>{sidebar.classList.toggle('mobile-open',open);toggle.setAttribute('aria-expanded',String(open));backdrop.hidden=!open;document.body.classList.toggle('mobile-nav-open',open)};toggle.addEventListener('click',()=>setOpen(!sidebar.classList.contains('mobile-open')));backdrop.addEventListener('click',()=>setOpen(false));sidebar.addEventListener('click',(event)=>{if(event.target.closest('a')&&window.matchMedia('(max-width:720px)').matches)setOpen(false)});document.addEventListener('keydown',(event)=>{if(event.key==='Escape')setOpen(false)});})();
+  (()=>{document.querySelectorAll('[data-density-collapse]').forEach((panel)=>{if(panel.closest('.density-disclosure'))return;const details=document.createElement('details');details.className='density-disclosure';if(panel.dataset.densityOpen==='true')details.open=true;const summary=document.createElement('summary');const title=document.createElement('strong');title.textContent=panel.dataset.densityCollapse;const hint=document.createElement('span');hint.textContent=panel.dataset.densityHint||'Supporting information';summary.append(title,hint);const body=document.createElement('div');body.className='density-disclosure-body';panel.before(details);details.append(summary,body);body.append(panel);panel.classList.add('density-disclosure-panel')})})();
   </script>
 </body>
 </html>

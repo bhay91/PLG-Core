@@ -35,7 +35,7 @@
   </section>
 
   <section class="panel invoice-desk-totals">
-    <div class="invoice-desk-breakdown"><div><span>Parts</span><strong>${{ "%.2f"|format(invoice.parts_subtotal or 0) }}</strong></div><div><span>Shipping</span><strong>${{ "%.2f"|format(invoice.shipping_total or 0) }}</strong></div><div><span>Sourcing Fee</span><strong>${{ "%.2f"|format(invoice.sourcing_fee or 0) }}</strong></div><div><span>Service Charge</span><strong>${{ "%.2f"|format(invoice.service_charge or 0) }}</strong></div></div>
+    <div class="invoice-desk-breakdown invoice-desk-breakdown-summary"><div><span>Parts</span><strong>${{ "%.2f"|format(invoice.parts_subtotal or 0) }}</strong></div><div><span>Shipping</span><strong>${{ "%.2f"|format(invoice.shipping_total or 0) }}</strong></div><details class="invoice-internal-pricing"><summary>Internal Pricing Breakdown</summary><div><span>Sourcing Fee</span><strong>${{ "%.2f"|format(invoice.sourcing_fee or 0) }}</strong></div><div><span>Service Charge</span><strong>${{ "%.2f"|format(invoice.service_charge or 0) }}</strong></div></details></div>
     <div class="invoice-desk-total"><span>Invoice Total</span><strong>${{ "%.2f"|format(invoice.customer_total or 0) }}</strong></div>
     <div class="invoice-desk-balance {% if invoice.status in ['UNPAID','PARTIAL'] %}balance-attention{% endif %}"><span>Balance Due</span><strong>${{ "%.2f"|format(invoice.balance_due or 0) }}</strong>{% if invoice.credit_applied %}<small>${{ "%.2f"|format(invoice.credit_applied or 0) }} credit applied</small>{% endif %}{% if payment_total %}<small>${{ "%.2f"|format(payment_total or 0) }} received</small>{% endif %}</div>
   </section>
@@ -77,4 +77,25 @@
     {% if can_void_invoice or void_block_reason %}<details class="panel invoice-payment-history"><summary>Invoice Administration</summary><div class="invoice-secondary-content">{% if can_void_invoice %}<form method="post" action="/invoices/{{ invoice.id }}/void" class="invoice-payment-form" onsubmit="return confirm('Void this invoice? The invoice will be cancelled and the job returned to quoting.');"><label><span>Void Reason</span><input name="reason" maxlength="1000" required></label><button class="button danger" type="submit">Void Invoice</button></form>{% else %}<div class="invoice-void-state"><strong>Void unavailable</strong><p>{{ void_block_reason }}</p></div>{% endif %}</div></details>{% endif %}
   </section>
 </div>
+<script>
+(() => {
+  const billTo = document.querySelector('.invoice-desk-bill-to');
+  if (billTo) {
+    billTo.dataset.densityCollapse = 'Billing Details';
+    billTo.dataset.densityHint = 'Customer and machine information';
+  }
+
+  const internalDocument = document.querySelector('.invoice-document-secondary');
+  if (!internalDocument || !internalDocument.parentElement) return;
+  const disclosure = document.createElement('details');
+  disclosure.className = 'density-disclosure';
+  const summary = document.createElement('summary');
+  summary.innerHTML = '<span>Internal Financial Document</span><small>Cost and profitability detail</small>';
+  const body = document.createElement('div');
+  body.className = 'density-disclosure-body';
+  internalDocument.parentElement.insertBefore(disclosure, internalDocument);
+  disclosure.append(summary, body);
+  body.appendChild(internalDocument);
+})();
+</script>
 {% endblock %}

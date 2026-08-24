@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_manufacturer_logo.html" import manufacturer_logo %}
+{% block title %}Dashboard · Pinpoint Sourcing Co.{% endblock %}
+{% block content %}
+<div class="operator-dashboard">
+  <section class="workspace-heading dashboard-heading">
+    <div><p class="eyebrow">DAILY CONTROL CENTER</p><h1>PPS Dashboard</h1><p>What needs attention next?</p></div>
+    <a class="button ghost" href="/work-queue">Open Full Work Queue</a>
+  </section>
+
+  <section class="dashboard-section dashboard-section-priority" aria-labelledby="dashboard-inbox-title">
+    <header class="dashboard-section-head"><div><p class="eyebrow">HIGHEST PRIORITY</p><h2 id="dashboard-inbox-title">Inbox &amp; Intake</h2></div><a href="/requests">View Inbox</a></header>
+    <div class="dashboard-count"><strong>{{ inbox_total }}</strong><span>proposal{% if inbox_total != 1 %}s{% endif %} waiting for review</span></div>
+    {% if inbox %}<div class="dashboard-list">
+      {% for item in inbox %}<article class="dashboard-row dashboard-intake-row">
+        <div class="dashboard-identity"><small>{{ item.source }} · {{ item.age_label }}</small><strong>{{ item.identity }}</strong><span>{{ item.request }}</span>{% if item.context %}<span class="dashboard-context">{{ item.context }}</span>{% endif %}</div>
+        <div class="dashboard-state"><span>{{ item.status }}</span></div>
+        <a class="dashboard-primary-action" href="{{ item.url }}">Review Intake →</a>
+      </article>{% endfor %}
+    </div>{% else %}<p class="dashboard-empty">No DRAFT intake proposals are waiting for review.</p>{% endif %}
+  </section>
+
+  <section class="dashboard-section" aria-labelledby="dashboard-jobs-title">
+    <header class="dashboard-section-head"><div><p class="eyebrow">ACTIVE WORK</p><h2 id="dashboard-jobs-title">Jobs Needing Action</h2></div><a href="/jobs">View All Jobs</a></header>
+    {% if jobs %}<div class="dashboard-list">{% for item in jobs %}{% include "_operator_dashboard_job_row.html" %}{% endfor %}</div>{% else %}<p class="dashboard-empty">No sourcing, quoting, or customer-decision work needs attention.</p>{% endif %}
+  </section>
+
+  <div class="dashboard-workflow-grid">
+    {% set workflow_sections = [
+      ('payments','Payments / Balances',payments,'/invoices','View Invoices','Nothing is waiting for payment.'),
+      ('ordering','Ordering',ordering,'/purchasing','View Orders','Nothing is waiting to be ordered.'),
+      ('receiving','Receiving',receiving,'/purchasing','View Orders','Nothing is waiting to be received.'),
+      ('delivery','Delivery',delivery,'/work-queue?queue=READY_FOR_DELIVERY','View Delivery Queue','Nothing is waiting for delivery.')
+    ] %}
+    {% for key, title, rows, all_url, all_label, empty_label in workflow_sections %}
+    <section class="dashboard-section dashboard-workflow-section" aria-labelledby="dashboard-{{ key }}-title">
+      <header class="dashboard-section-head"><h2 id="dashboard-{{ key }}-title">{{ title }}</h2><a href="{{ all_url }}">{{ all_label }}</a></header>
+      {% if rows %}<div class="dashboard-list">{% for item in rows %}{% include "_operator_dashboard_job_row.html" %}{% endfor %}</div>{% else %}<p class="dashboard-empty">{{ empty_label }}</p>{% endif %}
+    </section>
+    {% endfor %}
+  </div>
+
+  <section class="dashboard-section" aria-labelledby="dashboard-accounting-title">
+    <header class="dashboard-section-head"><div><p class="eyebrow">EXCEPTIONS ONLY</p><h2 id="dashboard-accounting-title">Accounting Exceptions</h2></div><a href="/accounting#invoice-reconciliation">Open Accounting</a></header>
+    {% if accounting_exceptions %}<div class="dashboard-list">{% for item in accounting_exceptions %}<article class="dashboard-row dashboard-accounting-row"><div class="dashboard-identity"><small>{{ item.invoice_number }}{% if item.job_number %} · {{ item.job_number }}{% endif %}</small><strong>{{ item.customer }}</strong></div><div class="dashboard-state dashboard-state-warning"><span>{{ item.state }}</span></div><a class="dashboard-primary-action" href="{{ item.url }}">Review Invoice →</a></article>{% endfor %}</div>{% else %}<p class="dashboard-empty">No cost or reconciliation exceptions need attention.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

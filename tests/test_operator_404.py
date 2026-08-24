@@ -36,7 +36,7 @@ def test_operator_and_machine_404_behavior() -> None:
     assert operator.status_code == 404
     assert operator.headers["content-type"].startswith("text/html")
     assert "Page Not Found · Pinpoint Sourcing Co." in operator.text
-    assert 'href="/">Work Queue</a>' in operator.text
+    assert 'href="/work-queue">Work Queue</a>' in operator.text
     assert 'href="/requests">Inbox</a>' in operator.text
     assert 'href="/search">Search</a>' in operator.text
     assert (

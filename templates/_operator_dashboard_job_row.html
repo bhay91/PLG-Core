@@ -1,0 +1,5 @@
+<article class="dashboard-row">
+  <div class="dashboard-identity"><small>{{ item.job_number }} · {{ item.customer }}</small><strong>{{ item.need_label }}</strong><span class="machine-identity-line">{{ manufacturer_logo(item.manufacturer, true, false) }}<span>{{ item.machine }}</span></span>{% if item.context_detail %}<span class="dashboard-context">{{ item.context_detail }}</span>{% endif %}</div>
+  <div class="dashboard-state"><small>{{ item.category|replace('_',' ') }}</small><span>{{ item.action_detail }}</span></div>
+  <a class="dashboard-primary-action" href="{{ item.dashboard_url or item.url }}">{{ item.dashboard_action or item.next_action }} →</a>
+</article>

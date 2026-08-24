@@ -127,55 +127,56 @@
         <span>NEXT ACTION</span>
 
         {% if invoice.status == "PAID" %}
-      <strong>Create Internal Parts Order Worksheet</strong>
+          <strong>Create Internal Parts Order Worksheet</strong>
 
-      <div class="invoice-paid-grid">
-        <a class="workspace-btn workspace-btn-secondary"
+          <a class="workspace-btn workspace-btn-primary"
            href="/invoices/{{ invoice.id }}/documents">
-          Open Invoice
-        </a>
+            Open Invoice
+          </a>
 
-        <a class="workspace-btn workspace-btn-secondary"
-           target="_blank"
-           href="/invoices/{{ invoice.id }}/parts-order-sheet/pdf?v={{ invoice.status }}-{{ invoice.invoice_date }}">
-          Internal Parts Order Worksheet
-        </a>
+          <details class="workspace-secondary-actions invoice-secondary-actions">
+            <summary>More Actions</summary>
+            <div class="invoice-paid-grid">
+              <a class="workspace-btn workspace-btn-secondary"
+                 target="_blank"
+                 href="/invoices/{{ invoice.id }}/parts-order-sheet/pdf?v={{ invoice.status }}-{{ invoice.invoice_date }}">
+                Internal Parts Order Worksheet
+              </a>
 
-        <a class="workspace-btn workspace-btn-secondary"
-           target="_blank"
-           href="/invoices/{{ invoice.id }}/customer/paid-pdf?v={{ invoice.customer_document_version }}">
-          Customer PDF — Paid
-        </a>
+              <a class="workspace-btn workspace-btn-secondary"
+                 target="_blank"
+                 href="/invoices/{{ invoice.id }}/customer/paid-pdf?v={{ invoice.customer_document_version }}">
+                Customer PDF — Paid
+              </a>
 
-        {% if invoice.custom_invoice_exists %}
-        <a class="workspace-btn workspace-btn-secondary"
-           href="/invoices/{{ invoice.id }}/custom">
-          Edit Custom Invoice
-        </a>
-        {% else %}
-        <a class="workspace-btn workspace-btn-secondary"
-           href="/invoices/{{ invoice.id }}/custom">
-          Custom Invoice
-        </a>
-        {% endif %}
+              {% if invoice.custom_invoice_exists %}
+              <a class="workspace-btn workspace-btn-secondary"
+                 href="/invoices/{{ invoice.id }}/custom">
+                Edit Custom Invoice
+              </a>
+              {% else %}
+              <a class="workspace-btn workspace-btn-secondary"
+                 href="/invoices/{{ invoice.id }}/custom">
+                Custom Invoice
+              </a>
+              {% endif %}
 
-        <a class="workspace-btn workspace-btn-secondary"
-           target="_blank"
-           href="/invoices/{{ invoice.id }}/internal/paid-pdf?v={{ invoice.internal_document_version }}">
-          Internal PDF — Current
-        </a>
+              <a class="workspace-btn workspace-btn-secondary"
+                 target="_blank"
+                 href="/invoices/{{ invoice.id }}/internal/paid-pdf?v={{ invoice.internal_document_version }}">
+                Internal PDF — Current
+              </a>
 
-        {% if invoice.custom_invoice_exists %}
-        <a class="workspace-btn workspace-btn-secondary"
-           target="_blank"
-           href="/invoices/{{ invoice.id }}/custom/pdf">
-          Custom Invoice
-        </a>
-        {% else %}
-        <span></span>
-        {% endif %}
-      </div>
-    {% elif invoice.status == "VOID" %}
+              {% if invoice.custom_invoice_exists %}
+              <a class="workspace-btn workspace-btn-secondary"
+                 target="_blank"
+                 href="/invoices/{{ invoice.id }}/custom/pdf">
+                Custom Invoice
+              </a>
+              {% endif %}
+            </div>
+          </details>
+        {% elif invoice.status == "VOID" %}
           <strong>Invoice Closed</strong>
 
           <a

@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from plg_core.jobs.engine import JobEngine
-from plg_core.dashboard.service import get_work_queue_data
+from plg_core.dashboard.service import get_operator_dashboard_data, get_work_queue_data
 from plg_core.machines.identifiers import find_machine_by_identifier
 from plg_core.pricing import customer_unit_price as calculate_customer_unit_price
 from plg_core.sources.service import (
@@ -750,8 +750,8 @@ def startup() -> None:
     initialize_database()
 
 
-@app.get("/", response_class=HTMLResponse)
-def dashboard(request: Request, queue: str = "ALL"):
+@app.get("/work-queue", response_class=HTMLResponse)
+def work_queue(request: Request, queue: str = "ALL"):
     with closing(get_connection()) as connection:
         work_queue = get_work_queue_data(connection, category=queue)
 
@@ -762,6 +762,24 @@ def dashboard(request: Request, queue: str = "ALL"):
             **work_queue,
             "active_page": "work_queue",
         },
+    )
+
+
+@app.get("/", response_class=HTMLResponse, name="dashboard")
+@app.get("/dashboard", response_class=HTMLResponse, name="dashboard_alias")
+def operator_dashboard(request: Request):
+    from plg_core.admin.service import accounting_snapshot
+
+    accounting = accounting_snapshot()
+    with closing(get_connection()) as connection:
+        dashboard_data = get_operator_dashboard_data(
+            connection,
+            accounting_rows=accounting["invoice_reconciliation"],
+        )
+    return templates.TemplateResponse(
+        request=request,
+        name="operator_dashboard.html",
+        context={**dashboard_data, "active_page": "dashboard"},
     )
 
 
