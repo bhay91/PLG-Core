@@ -321,7 +321,7 @@ def _header(invoice, internal: bool):
             s["contact"],
         ),
         Paragraph("USA: +1 (561) 978-4452 &nbsp; | &nbsp; Jamaica: +1 (876) 429-0046", s["contact"]),
-        Paragraph("pinpointsourcing@icloud.com", s["contact"]),
+        Paragraph("info@pinpointsourcing.com", s["contact"]),
     ]
 
     title = "INTERNAL INVOICE" if internal else "INVOICE"

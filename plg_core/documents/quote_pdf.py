@@ -223,7 +223,7 @@ def _header(quote, internal: bool):
     business = [
         Paragraph("2033 W McNab Rd Ste S, Pompano Beach, FL 33069", s["contact"]),
         Paragraph("USA: +1 (561) 978-4452 &nbsp; | &nbsp; Jamaica: +1 (876) 429-0046", s["contact"]),
-        Paragraph("pinpointsourcing@icloud.com", s["contact"]),
+        Paragraph("info@pinpointsourcing.com", s["contact"]),
     ]
 
     title = "INTERNAL QUOTE" if internal else "QUOTE"
