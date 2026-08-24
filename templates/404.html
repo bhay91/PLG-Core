@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Page Not Found · Pinpoint Sourcing Co.{% endblock %}
+{% block content %}
+<div class="workspace-v2">
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">404 · PAGE NOT FOUND</p>
+      <h1>This page is not available.</h1>
+      <p>The address may be incorrect, or the page may have moved. Continue from a primary PPS workspace.</p>
+    </div>
+  </section>
+
+  <section class="workspace-empty" aria-labelledby="not-found-actions">
+    <strong id="not-found-actions">Where would you like to go?</strong>
+    <p>Your PPS records have not been changed.</p>
+    <div class="workspace-heading-actions">
+      <a class="button" href="/">Work Queue</a>
+      <a class="button ghost" href="/requests">Inbox</a>
+      <a class="button ghost" href="/search">Search</a>
+    </div>
+  </section>
+</div>
+{% endblock %}

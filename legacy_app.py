@@ -16,10 +16,12 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from plg_core.jobs.engine import JobEngine
 from plg_core.dashboard.service import get_work_queue_data
 from plg_core.machines.identifiers import find_machine_by_identifier
@@ -86,6 +88,32 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+
+
+def _is_operator_html_request(request: Request) -> bool:
+    path = request.url.path
+    machine_route_prefixes = ("/api", "/mcp", "/openapi", "/docs", "/redoc")
+    return (
+        request.method in {"GET", "HEAD"}
+        and "text/html" in request.headers.get("accept", "").lower()
+        and not any(path == prefix or path.startswith(f"{prefix}/") for prefix in machine_route_prefixes)
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def operator_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if (
+        exc.status_code == 404
+        and exc.detail == "Not Found"
+        and _is_operator_html_request(request)
+    ):
+        return templates.TemplateResponse(
+            request=request,
+            name="404.html",
+            context={"active_page": ""},
+            status_code=404,
+        )
+    return await http_exception_handler(request, exc)
 
 
 def get_connection() -> sqlite3.Connection:
