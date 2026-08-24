@@ -6,6 +6,8 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
+from plg_core.documents.paths import portable_manifest_path, resolve_manifest_path
+
 
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -18,7 +20,13 @@ def _versioned_path(path: Path, version: int) -> Path:
 
 
 def _verify_manifest_path(row: sqlite3.Row) -> Path:
-    path = Path(row["file_path"])
+    try:
+        path = resolve_manifest_path(row["file_path"])
+    except ValueError:
+        raise HTTPException(
+            status_code=409,
+            detail="Issued document is missing and cannot be regenerated silently.",
+        ) from None
     if not path.is_file():
         raise HTTPException(
             status_code=409,
@@ -69,7 +77,11 @@ def issue_quote_documents(
     *,
     force_new: bool = False,
 ) -> dict[str, str]:
-    from plg_core.documents.quote_pdf import build_quote_pdf, quote_paths
+    from plg_core.documents.quote_pdf import (
+        DOCUMENT_ROOT as quote_customer_root,
+        build_quote_pdf,
+        quote_paths,
+    )
 
     quote_id = int(quote["id"])
     status = str(quote["status"] or "").strip().upper()
@@ -118,7 +130,11 @@ def issue_quote_documents(
                 is_issued, version, quote_status, is_current
             ) VALUES (?,?,'QUOTE',?,?,1,?,?,1)
             """,
-            (quote_id, audience, str(path), _digest(path), version, status),
+            (
+                quote_id, audience,
+                portable_manifest_path(path, root=quote_customer_root.parent),
+                _digest(path), version, status,
+            ),
         )
     return {audience.lower(): str(path) for audience, path in paths.items()}
 
@@ -184,6 +200,7 @@ def issue_invoice_documents(
     variant: str = "ISSUED",
 ) -> dict[str, str]:
     from plg_core.documents.invoice_pdf import (
+        DOCUMENT_ROOT as invoice_customer_root,
         build_invoice_pdf,
         invoice_paths,
         paid_invoice_paths,
@@ -267,7 +284,11 @@ def issue_invoice_documents(
                 file_path, sha256, is_current
             ) VALUES (?,?,?,?,?,?,?,1)
             """,
-            (invoice_id, kind, audience, version, status, str(path), _digest(path)),
+            (
+                invoice_id, kind, audience, version, status,
+                portable_manifest_path(path, root=invoice_customer_root.parent),
+                _digest(path),
+            ),
         )
     return {audience.lower(): str(path) for audience, path in paths.items()}
 
@@ -279,7 +300,12 @@ def issue_current_internal_invoice_document(
     financial_state,
 ) -> str:
     """Create and register a new immutable internal financial document version."""
-    from plg_core.documents.invoice_pdf import build_invoice_pdf, invoice_paths, paid_invoice_paths
+    from plg_core.documents.invoice_pdf import (
+        DOCUMENT_ROOT as invoice_customer_root,
+        build_invoice_pdf,
+        invoice_paths,
+        paid_invoice_paths,
+    )
     from plg_core.documents.pdf_fit import page_count
 
     invoice_id = int(invoice["id"])
@@ -312,7 +338,10 @@ def issue_current_internal_invoice_document(
             """INSERT INTO invoice_documents_manifest (
                  invoice_id,document_kind,audience,version,invoice_status,file_path,sha256,is_current
                ) VALUES (?,?,'INTERNAL',?,?,?,?,1)""",
-            (invoice_id, kind, version, status, str(path), digest),
+            (
+                invoice_id, kind, version, status,
+                portable_manifest_path(path, root=invoice_customer_root.parent), digest,
+            ),
         )
         manifest = current_invoice_document(connection, invoice_id, kind, "INTERNAL")
         if manifest is None or _verify_manifest_path(manifest) != path:
@@ -361,7 +390,7 @@ def issue_custom_invoice_document(
             file_path,sha256,is_current
         ) VALUES (?,'CUSTOM_INVOICE','CUSTOMER',?,'PAID',?,?,1)
         """,
-        (invoice_id, version, str(path), _digest(path)),
+        (invoice_id, version, portable_manifest_path(path), _digest(path)),
     )
     return str(path)
 

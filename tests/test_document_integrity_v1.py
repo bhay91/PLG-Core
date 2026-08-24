@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import sqlite3
 import subprocess
 import tempfile
@@ -17,6 +18,7 @@ from plg_core.documents.integrity import (
     issue_quote_documents,
     verified_invoice_document,
 )
+from plg_core.documents.paths import resolve_manifest_path
 
 
 class DocumentIntegrityV1Tests(unittest.TestCase):
@@ -28,6 +30,10 @@ class DocumentIntegrityV1Tests(unittest.TestCase):
         self.connection.execute("PRAGMA foreign_keys=ON")
         self._legacy_schema()
         _migration_0044_document_integrity(self.connection)
+        self.env_patch = patch.dict(
+            os.environ, {"PPS_DOCUMENT_ROOT": str(self.root / "documents")}
+        )
+        self.env_patch.start()
         self.quote_patch = patch.object(
             quote_pdf, "DOCUMENT_ROOT", self.root / "documents" / "Customers"
         )
@@ -40,6 +46,7 @@ class DocumentIntegrityV1Tests(unittest.TestCase):
     def tearDown(self):
         self.invoice_patch.stop()
         self.quote_patch.stop()
+        self.env_patch.stop()
         self.connection.close()
         self.temp.cleanup()
 
@@ -157,6 +164,9 @@ class DocumentIntegrityV1Tests(unittest.TestCase):
         self.assertTrue(all(row["is_current"] == 0 for row in rows[:2]))
         self.assertTrue(all(row["version"] == 2 and row["is_current"] == 1 for row in rows[2:]))
         self.assertTrue(all(row["quote_status"] == "SENT" for row in rows[2:]))
+        self.assertTrue(
+            all(row["file_path"].startswith("documents/Customers/") for row in rows[2:])
+        )
         for path in paths.values():
             text = subprocess.run(
                 ["pdftotext", path, "-"], check=True, capture_output=True, text=True
@@ -187,7 +197,8 @@ class DocumentIntegrityV1Tests(unittest.TestCase):
         ).fetchall()
         self.assertEqual(len(rows), 2)
         for row in rows:
-            path = Path(row["file_path"])
+            self.assertTrue(row["file_path"].startswith("documents/Customers/"))
+            path = resolve_manifest_path(row["file_path"])
             self.assertEqual(row["sha256"], hashlib.sha256(path.read_bytes()).hexdigest())
         customer = subprocess.run(
             ["pdftotext", paths["customer"], "-"], check=True,
@@ -213,7 +224,7 @@ class DocumentIntegrityV1Tests(unittest.TestCase):
         customer = self.connection.execute(
             "SELECT file_path FROM invoice_documents_manifest WHERE audience='CUSTOMER'"
         ).fetchone()[0]
-        Path(customer).unlink()
+        resolve_manifest_path(customer).unlink()
         with self.assertRaises(HTTPException) as missing:
             verified_invoice_document(
                 self.connection, 1, "CUSTOMER_INVOICE", "CUSTOMER"
@@ -223,7 +234,7 @@ class DocumentIntegrityV1Tests(unittest.TestCase):
         internal = self.connection.execute(
             "SELECT file_path FROM invoice_documents_manifest WHERE audience='INTERNAL'"
         ).fetchone()[0]
-        Path(internal).write_bytes(b"corrupt")
+        resolve_manifest_path(internal).write_bytes(b"corrupt")
         with self.assertRaises(HTTPException) as corrupt:
             verified_invoice_document(
                 self.connection, 1, "INTERNAL_INVOICE", "INTERNAL"

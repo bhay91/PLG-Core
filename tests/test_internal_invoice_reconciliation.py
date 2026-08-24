@@ -14,6 +14,7 @@ import legacy_app
 from plg_core.database.migrations import run_migrations
 from plg_core.documents import invoice_pdf
 from plg_core.documents.integrity import issue_invoice_documents, verified_invoice_document
+from plg_core.documents.paths import resolve_manifest_path
 from plg_core.documents.reconciliation import (
     find_stale_internal_invoice_documents,
     internal_invoice_reconciliation_status,
@@ -161,7 +162,7 @@ class InternalInvoiceReconciliationTests(unittest.TestCase):
                 "SELECT * FROM invoice_documents_manifest WHERE invoice_id=? AND document_kind=? AND audience='INTERNAL' AND is_current=1",
                 (fixture["invoice_id"], fixture["kind"]),
             ).fetchone())
-        old_bytes = Path(old["file_path"]).read_bytes()
+        old_bytes = resolve_manifest_path(old["file_path"]).read_bytes()
         result = self._apply(fixture["invoice_id"])
         self.assertEqual(len(result), 1)
         with closing(legacy_app.get_connection()) as connection:
@@ -174,9 +175,9 @@ class InternalInvoiceReconciliationTests(unittest.TestCase):
             )
         self.assertEqual([row["version"] for row in rows], [1, 2])
         self.assertEqual([row["is_current"] for row in rows], [0, 1])
-        self.assertEqual(Path(old["file_path"]).read_bytes(), old_bytes)
+        self.assertEqual(resolve_manifest_path(old["file_path"]).read_bytes(), old_bytes)
         self.assertEqual(Path(fixture["paths"]["customer"]).read_bytes(), customer_bytes)
-        self.assertEqual(str(current_path), rows[-1]["file_path"])
+        self.assertEqual(current_path, resolve_manifest_path(rows[-1]["file_path"]))
         self.assertEqual(hashlib.sha256(current_path.read_bytes()).hexdigest(), rows[-1]["sha256"])
         text = subprocess.run(
             ["pdftotext", str(current_path), "-"], check=True,

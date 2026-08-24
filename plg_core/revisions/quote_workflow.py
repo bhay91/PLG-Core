@@ -227,7 +227,8 @@ def _insert_quote_items(connection, quote_id: int, rows) -> None:
 
 def _write_documents(quote_id: int) -> None:
     from legacy_app import load_quote
-    from plg_core.documents.quote_pdf import generate_quote_pdfs
+    from plg_core.documents.paths import portable_manifest_path
+    from plg_core.documents.quote_pdf import DOCUMENT_ROOT, generate_quote_pdfs
 
     with closing(get_connection()) as connection:
         quote, items = load_quote(connection, quote_id)
@@ -248,7 +249,8 @@ def _write_documents(quote_id: int) -> None:
                               is_current=1
                 """,
                 (
-                    quote_id, audience.upper(), path, digest,
+                    quote_id, audience.upper(),
+                    portable_manifest_path(path, root=DOCUMENT_ROOT.parent), digest,
                     str(quote["status"] or "").upper(),
                 ),
             )

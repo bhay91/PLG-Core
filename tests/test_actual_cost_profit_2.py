@@ -15,6 +15,7 @@ from plg_core.admin.service import accounting_snapshot
 from plg_core.database.migrations import run_migrations
 from plg_core.documents import invoice_pdf
 from plg_core.documents.integrity import issue_invoice_documents, verified_invoice_document
+from plg_core.documents.paths import resolve_manifest_path
 from plg_core.supply.models import DeliveryCreate, DeliveryItemCreate, ReceiptCreate, ReceiptItem
 from plg_core.supply.service import (
     complete_delivery, create_delivery, create_orders_from_paid_invoice,
@@ -164,9 +165,9 @@ class ActualCostProfit2Tests(unittest.TestCase):
             invoice_before = tuple(c.execute("SELECT customer_total,supplier_total,profit_total,status,balance_due FROM invoices WHERE id=?", (self.invoice_id,)).fetchone())
             po_before = tuple(c.execute("SELECT unit_cost,line_cost FROM supplier_order_items WHERE id=?", (order["items"][0]["id"],)).fetchone())
             manifest = c.execute("SELECT * FROM supplier_order_documents_manifest WHERE supplier_order_id=?", (order["id"],)).fetchone(); manifest_before = dict(manifest)
-            file_before = hashlib.sha256(Path(manifest["file_path"]).read_bytes()).hexdigest()
+            file_before = hashlib.sha256(resolve_manifest_path(manifest["file_path"]).read_bytes()).hexdigest()
             customer_manifests_before = [dict(r) for r in c.execute("SELECT * FROM invoice_documents_manifest WHERE invoice_id=? AND audience='CUSTOMER' ORDER BY id", (self.invoice_id,))]
-            customer_hashes_before = [hashlib.sha256(Path(r["file_path"]).read_bytes()).hexdigest() for r in customer_manifests_before]
+            customer_hashes_before = [hashlib.sha256(resolve_manifest_path(r["file_path"]).read_bytes()).hexdigest() for r in customer_manifests_before]
             original_internal = dict(c.execute("SELECT * FROM invoice_documents_manifest WHERE invoice_id=? AND audience='INTERNAL' AND is_current=1", (self.invoice_id,)).fetchone())
         record_actual_cost_adjustment(order["id"], cost_kind="SHIPPING", new_amount=0, reason="No freight", actor="Synthetic Tester", request_id="ship-confirmed")
         self._adjust(get_order(order["id"]), 550)
@@ -174,15 +175,15 @@ class ActualCostProfit2Tests(unittest.TestCase):
             self.assertEqual(tuple(c.execute("SELECT customer_total,supplier_total,profit_total,status,balance_due FROM invoices WHERE id=?", (self.invoice_id,)).fetchone()), invoice_before)
             self.assertEqual(tuple(c.execute("SELECT unit_cost,line_cost FROM supplier_order_items WHERE id=?", (order["items"][0]["id"],)).fetchone()), po_before)
             self.assertEqual(dict(c.execute("SELECT * FROM supplier_order_documents_manifest WHERE supplier_order_id=?", (order["id"],)).fetchone()), manifest_before)
-            self.assertEqual(hashlib.sha256(Path(manifest_before["file_path"]).read_bytes()).hexdigest(), file_before)
+            self.assertEqual(hashlib.sha256(resolve_manifest_path(manifest_before["file_path"]).read_bytes()).hexdigest(), file_before)
             self.assertEqual([dict(r) for r in c.execute("SELECT * FROM invoice_documents_manifest WHERE invoice_id=? AND audience='CUSTOMER' ORDER BY id", (self.invoice_id,))], customer_manifests_before)
-            self.assertEqual([hashlib.sha256(Path(r["file_path"]).read_bytes()).hexdigest() for r in customer_manifests_before], customer_hashes_before)
+            self.assertEqual([hashlib.sha256(resolve_manifest_path(r["file_path"]).read_bytes()).hexdigest() for r in customer_manifests_before], customer_hashes_before)
             internal = [dict(r) for r in c.execute("SELECT * FROM invoice_documents_manifest WHERE invoice_id=? AND audience='INTERNAL' ORDER BY version", (self.invoice_id,))]
             self.assertEqual([r["version"] for r in internal], [1, 2, 3])
             self.assertEqual([r["is_current"] for r in internal], [0, 0, 1])
             self.assertEqual(internal[0]["file_path"], original_internal["file_path"])
             current_path = verified_invoice_document(c, self.invoice_id, "INTERNAL_INVOICE_PAID", "INTERNAL")
-            self.assertEqual(str(current_path), internal[-1]["file_path"])
+            self.assertEqual(current_path, resolve_manifest_path(internal[-1]["file_path"]))
             self.assertEqual(hashlib.sha256(current_path.read_bytes()).hexdigest(), internal[-1]["sha256"])
         text = subprocess.run(["pdftotext", str(current_path), "-"], check=True, capture_output=True, text=True).stdout
         self.assertIn("$550.00", text)
@@ -195,7 +196,7 @@ class ActualCostProfit2Tests(unittest.TestCase):
             self.assertEqual([r["is_current"] for r in versions], [0, 0, 0, 1])
             self.assertEqual(len({r["file_path"] for r in versions}), 4)
             for row in versions:
-                self.assertEqual(hashlib.sha256(Path(row["file_path"]).read_bytes()).hexdigest(), row["sha256"])
+                self.assertEqual(hashlib.sha256(resolve_manifest_path(row["file_path"]).read_bytes()).hexdigest(), row["sha256"])
         self.assertEqual(Path(issued["customer"]).read_bytes(), customer_before)
 
     def test_07b_document_failure_rolls_back_actual_cost(self):

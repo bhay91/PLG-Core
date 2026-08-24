@@ -179,6 +179,18 @@ class DocumentCenter2Tests(unittest.TestCase):
             self.assertEqual(rows[manifest_id]["open_url"], "")
             self.assertEqual(rows[manifest_id]["download_url"], "")
 
+    def test_portable_manifest_path_is_valid_under_document_root(self):
+        self.connection.execute(
+            "UPDATE quote_documents_manifest SET file_path=? WHERE id=2",
+            ("documents/quote-2.pdf",),
+        )
+        row = next(
+            item for item in self.query(document_type="QUOTE")["items"]
+            if item["manifest_id"] == 2
+        )
+        self.assertEqual(row["integrity"], "VALID")
+        self.assertTrue(row["is_valid"])
+
     def test_customer_internal_supplier_audiences_are_explicit(self):
         rows = self.query()["items"]
         self.assertEqual({item["audience"] for item in rows}, {"CUSTOMER", "INTERNAL", "SUPPLIER"})

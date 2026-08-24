@@ -22,6 +22,7 @@ from plg_core.database.migrations import run_migrations
 from plg_core.documents import invoice_pdf, quote_pdf
 from plg_core.documents.integrity import verified_invoice_document
 from plg_core.documents.library import query_authoritative_documents, resolve_manifest_document
+from plg_core.documents.paths import resolve_manifest_path
 from plg_core.intake.service import confirm_proposal, create_proposal, load_proposal
 from plg_core.lifecycle import transition_quote
 from plg_core.sales.service import record_invoice_payment
@@ -70,7 +71,7 @@ class FullEndToEndAcceptanceTests(unittest.TestCase):
 
     @staticmethod
     def digest(path):
-        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        return hashlib.sha256(resolve_manifest_path(path).read_bytes()).hexdigest()
 
     def test_complete_connected_lifecycle(self):
         report = {}
@@ -161,7 +162,10 @@ class FullEndToEndAcceptanceTests(unittest.TestCase):
             self.assertEqual((invoice["customer_total"], invoice["supplier_total"], invoice["profit_total"]), (450, 270, 180))
             customer_issued = c.execute("SELECT * FROM invoice_documents_manifest WHERE invoice_id=? AND document_kind='CUSTOMER_INVOICE'", (invoice_id,)).fetchone()
             customer_issued_hash = self.digest(customer_issued["file_path"])
-            issued_poison = subprocess.run(["pdftotext", customer_issued["file_path"], "-"], check=True, capture_output=True, text=True).stdout.upper()
+            issued_poison = subprocess.run(
+                ["pdftotext", str(resolve_manifest_path(customer_issued["file_path"])), "-"],
+                check=True, capture_output=True, text=True,
+            ).stdout.upper()
             for forbidden in ("SUPPLIER COST", "ACTUAL COST", "MARKUP", "PROFIT"):
                 self.assertNotIn(forbidden, issued_poison)
 

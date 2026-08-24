@@ -8,6 +8,8 @@ from urllib.parse import urlencode
 
 from fastapi import HTTPException
 
+from plg_core.documents.paths import resolve_manifest_path
+
 
 DOCUMENT_FAMILIES = {
     "quote": {
@@ -61,14 +63,10 @@ def _sha256(path: Path) -> str:
 
 
 def _contained_document_path(root: Path, supplied: str) -> Path | None:
-    root = Path(root).resolve()
-    path = Path(str(supplied or ""))
-    candidate = path.resolve() if path.is_absolute() else (Path.cwd() / path).resolve()
     try:
-        candidate.relative_to(root)
+        return resolve_manifest_path(supplied, root=root)
     except ValueError:
         return None
-    return candidate
 
 
 def _integrity(root: Path, item: dict) -> tuple[str, str]:
