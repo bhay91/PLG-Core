@@ -371,9 +371,10 @@ class WorkQueuePhase1Tests(unittest.TestCase):
         self.assertIn("/requests/smart-intake", body)
         self.assertIn("No work in this queue", body)
         base = (ROOT / "templates" / "base.html").read_text()
-        for label in ("Work Queue", "Inbox", "Jobs", "Quotes", "Orders", "Invoices",
+        for label in ("Inbox", "Jobs", "Quotes", "Orders", "Invoices",
                       "Customers", "Machines", "Sources", "Suppliers", "Administration"):
             self.assertIn(f"<span>{label}</span>", base)
+        self.assertNotIn("<span>Work Queue</span>", base)
         self.assertEqual(base.count('href="/requests"'), 1)
         self.assertNotIn("Open Inbox", base)
         self.assertIn("active_page == 'requests'", base)

@@ -146,7 +146,8 @@ class OperatorDashboardTests(unittest.TestCase):
         self.assertNotIn("<form", template)
         self.assertNotIn('method="post"', template.lower())
         self.assertIn('href="/dashboard"', base)
-        self.assertIn('href="/work-queue"', base)
+        self.assertNotIn('href="/work-queue"', base)
+        self.assertIn('href="/work-queue"', template)
         self.assertIn("active_page == 'dashboard'", base)
         Environment(loader=FileSystemLoader(ROOT / "templates")).get_template(
             "operator_dashboard.html"
