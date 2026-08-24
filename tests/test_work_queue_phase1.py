@@ -374,6 +374,9 @@ class WorkQueuePhase1Tests(unittest.TestCase):
         for label in ("Work Queue", "Inbox", "Jobs", "Quotes", "Orders", "Invoices",
                       "Customers", "Machines", "Sources", "Suppliers", "Administration"):
             self.assertIn(f"<span>{label}</span>", base)
+        self.assertEqual(base.count('href="/requests"'), 1)
+        self.assertNotIn("Open Inbox", base)
+        self.assertIn("active_page == 'requests'", base)
         self.assertNotIn("<span>Follow-Up Center</span>", base)
 
     def test_category_navigation_wraps_without_horizontal_scrolling(self):
