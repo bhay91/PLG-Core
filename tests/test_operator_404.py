@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import anyio
 import httpx2
 
@@ -37,6 +39,12 @@ def test_operator_and_machine_404_behavior() -> None:
     assert 'href="/">Work Queue</a>' in operator.text
     assert 'href="/requests">Inbox</a>' in operator.text
     assert 'href="/search">Search</a>' in operator.text
+    assert (
+        'rel="icon" type="image/webp" '
+        'href="http://127.0.0.1:8000/static/pinpoint-logo-stacked.webp"'
+    ) in operator.text
+
+    assert (Path(__file__).parents[1] / "static" / "pinpoint-logo-stacked.webp").is_file()
 
     for response in (api, machine):
         assert response.status_code == 404
