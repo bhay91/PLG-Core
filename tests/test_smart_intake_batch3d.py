@@ -34,6 +34,13 @@ class SmartIntakeBatch3DTests(unittest.TestCase):
     def connection(self):
         return legacy_app.get_connection()
 
+    def authoritative_counts(self):
+        with closing(self.connection()) as connection:
+            return {
+                table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                for table in ("customers", "machines", "customer_requests", "jobs", "requested_needs")
+            }
+
     def test_original_failure_and_three_unlabeled_forms(self):
         original = "Jordan Example Example Equipment Development Kingston, Jamaica John Deere 350D PIN: TEST0000000000001 Need: Fuel Filter Kit"
         multiline = "Jordan Example\nExample Equipment Development\nTest City\nJohn Deere 350D\nTEST0000000000001\nFuel Filter Kit"
@@ -93,6 +100,68 @@ Please call if you need more information.""")
         needs = proposal["assets"][0]["needs"]
         self.assertEqual([item["wording"] for item in needs], ["Seal kit — Qty 2", "Filter — Qty 3", "Hose — Qty 4", "Belt"])
         self.assertIsNone(needs[-1]["quantity"])
+
+    def test_qa_labeled_input_is_parsed_deterministically_and_remains_draft_only(self):
+        raw = """Customer: Synthetic QA Operator
+Email: qa-operator@example.test
+Location: Test Location
+Registry Type: Heavy Equipment
+Manufacturer: Synthetic Manufacturer
+Model: QA-Loader-001
+Identifier: TEST-PIN-QA-20260824
+
+Requested Parts:
+Synthetic Test Part A
+Synthetic Test Part B"""
+        parsed = parse_intake(raw)
+        self.assertEqual(parsed["contact_name"], "Synthetic QA Operator")
+        self.assertEqual(parsed["company_name"], "")
+        self.assertEqual(parsed["email"], "qa-operator@example.test")
+        self.assertEqual(parsed["phone"], "")
+        self.assertEqual(parsed["location"], "Test Location")
+        self.assertEqual(len(parsed["assets"]), 1)
+        asset = parsed["assets"][0]
+        self.assertEqual(
+            (asset["manufacturer"], asset["model"], asset["year"]),
+            ("Synthetic Manufacturer", "QA-Loader-001", ""),
+        )
+        self.assertEqual(asset["identifiers"][0]["value"], "TEST-PIN-QA-20260824")
+        self.assertEqual(
+            [item["wording"] for item in asset["needs"]],
+            ["Synthetic Test Part A", "Synthetic Test Part B"],
+        )
+
+        before = self.authoritative_counts()
+        with closing(self.connection()) as connection:
+            proposal_id = create_proposal(connection, raw)
+            proposal = load_proposal(connection, proposal_id)
+        self.assertEqual(proposal["status"], "DRAFT")
+        self.assertIsNone(proposal["created_request_id"])
+        self.assertIsNone(proposal["created_job_id"])
+        self.assertEqual(before, self.authoritative_counts())
+
+    def test_explicit_company_phone_year_and_identifier_labels_override_heuristics(self):
+        parsed = parse_intake("""Customer: Labeled Test Person
+Company: Synthetic Labeled Company
+Email: labeled@example.test
+Phone: +1 555 010 9001
+Location: Test City
+Manufacturer: Test Manufacturer
+Model: Test Model
+Year: 2024
+VIN: TESTVIN00000000001
+PIN: TEST-PIN-LABELED-001
+Serial: TEST-SERIAL-LABELED-001
+Requested Parts: Test Filter""")
+        self.assertEqual(parsed["company_name"], "Synthetic Labeled Company")
+        self.assertEqual(parsed["phone"], "+1 555 010 9001")
+        asset = parsed["assets"][0]
+        self.assertEqual(asset["year"], "2024")
+        self.assertEqual(
+            [item["value"] for item in asset["identifiers"]],
+            ["TESTVIN00000000001", "TEST-PIN-LABELED-001", "TEST-SERIAL-LABELED-001"],
+        )
+        self.assertEqual(asset["needs"][0]["wording"], "Test Filter")
 
     def test_multi_machine_needs_do_not_leak(self):
         proposal = parse_intake("""PPS-BATCH3D-TEST-001

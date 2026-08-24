@@ -23,6 +23,10 @@ LOCATION_PATTERN = re.compile(
     r"\b(Montego Bay(?:\s*,?\s*Jamaica)?|Nassau(?:\s*,?\s*Bahamas)?|[A-Z][a-z]+\s*,\s*(?:Jamaica|Bahamas))\b",
     re.I,
 )
+LABELED_LINE_PATTERN = re.compile(
+    r"^(Customer|Company|Email|Phone|Location|Manufacturer|Model|Year|VIN|PIN|Serial|Identifier|Requested\s+Parts)\s*:\s*(.*)$",
+    re.I,
+)
 
 
 @dataclass
@@ -121,6 +125,34 @@ def _split_needs(value: str) -> list[str]:
         cleaned for part in re.split(r"[\n;,]+", value)
         if (cleaned := _clean_need(part)) and not re.fullmatch(r"(?:19|20)\d{2}", cleaned)
     ]
+
+
+def _labeled_values(text: str) -> tuple[dict[str, str], list[dict]]:
+    """Extract explicit operator labels before applying heuristic parsing."""
+    values: dict[str, str] = {}
+    requested_parts: list[dict] = []
+    collecting_parts = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if collecting_parts and not line and requested_parts:
+            collecting_parts = False
+            continue
+        match = LABELED_LINE_PATTERN.match(line)
+        if match:
+            label = re.sub(r"\s+", "_", match.group(1).strip().lower())
+            value = match.group(2).strip()
+            collecting_parts = label == "requested_parts"
+            if collecting_parts:
+                if value and (item := _need_item(value)):
+                    requested_parts.append(item)
+            else:
+                values[label] = value
+            continue
+        if collecting_parts and line:
+            item = _need_item(line)
+            if item:
+                requested_parts.append(item)
+    return values, requested_parts
 
 
 def _identity_prefix(text: str, first_make: int) -> tuple[str, str, str]:
@@ -224,13 +256,18 @@ def parse_intake(raw_input: str) -> dict:
     """Deterministic proposal parser. It proposes; confirmation remains authoritative."""
     raw = str(raw_input or "").strip()
     normalized = re.sub(r"\r\n?", "\n", raw)
+    labeled, labeled_needs = _labeled_values(normalized)
     # Natural sentence form gets structural line breaks without destroying evidence.
     working = re.sub(r"^(.+?)\s+from\s+(.+?)\s+in\s+(.+?)\s+needs\s+(.+?)\s+for\s+(?:their|his|her)\s+", r"\1\n\2\n\3\nNeed: \4\n", normalized, flags=re.I)
     matches = _coalesce_asset_references(working, _asset_matches(working))
     first_make = matches[0][0] if matches else len(working)
     contact, company, location = _identity_prefix(working, first_make)
     email_match = re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", raw)
-    phone_match = re.search(r"(?:\+?\d[\d ()-]{6,}\d)", raw)
+    phone_search_text = "\n".join(
+        line for line in raw.splitlines()
+        if not re.match(r"^\s*(?:VIN|PIN|Serial|Identifier|Year)\s*:", line, re.I)
+    )
+    phone_match = re.search(r"(?:\+?\d[\d ()-]{6,}\d)", phone_search_text)
     assets: list[Asset] = []
     for index, (start, end, canonical, category) in enumerate(matches):
         segment_end = matches[index + 1][0] if index + 1 < len(matches) else len(working)
@@ -335,13 +372,59 @@ def parse_intake(raw_input: str) -> dict:
             assets[-1].needs = [n for n in assets[-1].needs if n["wording"].lower() != wording.lower()]
             unassigned.append({"wording": wording, "original_wording": wording, "review_state": "UNASSIGNED"})
 
+    if labeled:
+        if "customer" in labeled:
+            contact = labeled["customer"]
+        if "company" in labeled or "customer" in labeled or "email" in labeled:
+            company = labeled.get("company", "")
+        if "location" in labeled:
+            location = labeled["location"]
+
+        manufacturer = labeled.get("manufacturer", "")
+        if manufacturer:
+            canonical, category = ALIASES.get(
+                manufacturer.lower(), (manufacturer, "other")
+            )
+            asset = Asset(
+                canonical,
+                labeled.get("model", ""),
+                labeled.get("year", ""),
+                category,
+                review_state="CONFIDENT" if labeled.get("model") else "REVIEW",
+            )
+            for label in ("vin", "pin", "serial", "identifier"):
+                value = labeled.get(label, "")
+                if not value:
+                    continue
+                normalized_value = normalize_identifier(value)
+                kind = classify_identifier(
+                    normalized_value,
+                    label=label,
+                    manufacturer=asset.manufacturer,
+                    asset_category=asset.asset_category,
+                )
+                asset.identifiers.append(
+                    Identifier(kind, normalized_value, primary=not asset.identifiers)
+                )
+            assets = [asset]
+
+        if labeled_needs:
+            if len(assets) == 1:
+                assets[0].needs = labeled_needs
+                unassigned = []
+            elif not assets:
+                unassigned = [
+                    {**item, "review_state": "UNASSIGNED"}
+                    for item in labeled_needs
+                ]
+
     return {
         "raw_input": raw,
         "contact_name": contact,
         "company_name": company,
         "location": location,
-        "phone": phone_match.group().strip() if phone_match else "",
-        "email": email_match.group() if email_match else "",
+        "phone": labeled.get("phone", phone_match.group().strip() if phone_match else ""),
+        "email": labeled.get("email", email_match.group() if email_match else ""),
         "review_state": "REVIEW" if not (contact or company) else "CONFIDENT",
         "assets": [asdict(asset) for asset in assets],
         "unassigned_needs": unassigned,
