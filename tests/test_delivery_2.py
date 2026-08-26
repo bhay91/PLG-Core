@@ -18,6 +18,7 @@ import legacy_app
 from plg_core.admin.service import accounting_snapshot
 from plg_core.database.migrations import run_migrations
 from plg_core.documents.integrity import verified_delivery_document
+from plg_core.documents.paths import resolve_manifest_path
 from plg_core.supply.models import (
     DeliveryCreate, DeliveryItemCreate, ReceiptCreate, ReceiptItem,
 )
@@ -139,8 +140,13 @@ class Delivery2Tests(unittest.TestCase):
         with closing(legacy_app.get_connection()) as c: self.assertEqual(c.execute("SELECT COUNT(*) FROM delivery_documents_manifest WHERE delivery_id=?",(d["id"],)).fetchone()[0],1)
     def test_20_delivery_note_hash_valid(self):
         d=self._prepare(1); self._complete(d)
-        with closing(legacy_app.get_connection()) as c: row=c.execute("SELECT * FROM delivery_documents_manifest WHERE delivery_id=?",(d["id"],)).fetchone()
-        self.assertEqual(hashlib.sha256(Path(row["file_path"]).read_bytes()).hexdigest(),row["sha256"])
+        with closing(legacy_app.get_connection()) as c:
+            row=c.execute("SELECT * FROM delivery_documents_manifest WHERE delivery_id=?",(d["id"],)).fetchone()
+            path=verified_delivery_document(c,d["id"])
+        self.assertTrue(row["file_path"].startswith("documents/"))
+        self.assertNotIn(str(ROOT),row["file_path"])
+        self.assertEqual(resolve_manifest_path(row["file_path"]),path)
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),row["sha256"])
     def test_21_missing_note_fails_closed(self):
         d=self._prepare(1); self._complete(d)
         with closing(legacy_app.get_connection()) as c: path=verified_delivery_document(c,d["id"])

@@ -482,7 +482,13 @@ def issue_supplier_order_document(
             supplier_order_status,file_path,sha256,is_current
         ) VALUES (?,'SUPPLIER_PURCHASE_ORDER','SUPPLIER',?,?,?,?,1)
         """,
-        (supplier_order_id, version, status, str(path), _digest(path)),
+        (
+            supplier_order_id,
+            version,
+            status,
+            portable_manifest_path(path),
+            _digest(path),
+        ),
     )
     return str(path)
 
@@ -563,7 +569,7 @@ def issue_receiving_document(
             receipt_id,document_kind,audience,version,file_path,sha256,is_current
         ) VALUES (?,'RECEIVING_SUMMARY','INTERNAL',1,?,?,1)
         """,
-        (receipt_id, str(path), _digest(path)),
+        (receipt_id, portable_manifest_path(path), _digest(path)),
     )
     return str(path)
 
@@ -616,6 +622,6 @@ def issue_delivery_document(
             delivery_id,document_kind,audience,version,file_path,sha256,is_current
         ) VALUES (?,'DELIVERY_NOTE','CUSTOMER',1,?,?,1)
         """,
-        (delivery_id, str(path), _digest(path)),
+        (delivery_id, portable_manifest_path(path), _digest(path)),
     )
     return str(path)

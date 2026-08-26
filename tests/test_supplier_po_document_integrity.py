@@ -17,6 +17,7 @@ from plg_core.documents.integrity import (
     preview_supplier_order_document,
     verified_supplier_order_document,
 )
+from plg_core.documents.paths import resolve_manifest_path
 from plg_core.supply.models import ReceiptCreate, ReceiptItem
 from plg_core.supply.service import (
     create_orders_from_paid_invoice,
@@ -207,6 +208,9 @@ class SupplierPODocumentIntegrityTests(unittest.TestCase):
             path = verified_supplier_order_document(connection, order_id)
         self.assertEqual(row["version"], 1)
         self.assertEqual(row["supplier_order_status"], "ORDERED")
+        self.assertTrue(row["file_path"].startswith("documents/"))
+        self.assertNotIn(str(ROOT), row["file_path"])
+        self.assertEqual(resolve_manifest_path(row["file_path"]), path)
         self.assertEqual(row["sha256"], hashlib.sha256(path.read_bytes()).hexdigest())
         before = (path.read_bytes(), path.stat().st_mtime_ns)
         place_order(order_id)

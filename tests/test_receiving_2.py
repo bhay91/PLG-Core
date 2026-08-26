@@ -16,6 +16,7 @@ from starlette.requests import Request
 import legacy_app
 from plg_core.database.migrations import run_migrations
 from plg_core.documents.integrity import verified_receiving_document
+from plg_core.documents.paths import resolve_manifest_path
 from plg_core.supply.models import DeliveryCreate, DeliveryItemCreate, ReceiptCreate, ReceiptItem
 from plg_core.supply.service import (
     create_delivery,
@@ -268,6 +269,9 @@ class Receiving2Tests(unittest.TestCase):
             manifest = c.execute("SELECT * FROM receiving_documents_manifest WHERE receipt_id=?", (receipt["id"],)).fetchone()
             path = verified_receiving_document(c, receipt["id"])
         self.assertEqual(manifest["version"], 1)
+        self.assertTrue(manifest["file_path"].startswith("documents/"))
+        self.assertNotIn(str(ROOT), manifest["file_path"])
+        self.assertEqual(resolve_manifest_path(manifest["file_path"]), path)
         self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), manifest["sha256"])
         text = subprocess.run(["pdftotext", str(path), "-"], check=True, capture_output=True, text=True).stdout
         for expected in ("RECEIVING SUMMARY", receipt["receipt_number"], "Casey Receiver", "A-5", "PARTIAL", "Packing slip R2"):
