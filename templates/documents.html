@@ -7,17 +7,18 @@
 @media(max-width:1180px){.docs-filters{grid-template-columns:repeat(3,minmax(0,1fr))}.docs-filters>label:first-child{grid-column:span 2}.docs-list-head,.docs-row-main{grid-template-columns:minmax(190px,1.3fr) minmax(150px,1fr) minmax(110px,.65fr) minmax(175px,1fr)}}
 @media(max-width:850px){.docs-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.docs-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.docs-filters>label:first-child{grid-column:1/-1}.docs-list-head{display:none}.docs-row-main{grid-template-columns:minmax(0,1fr) minmax(0,.8fr);align-items:start}.docs-identity{grid-column:1}.docs-context{grid-column:1}.docs-status{grid-column:2;grid-row:1}.docs-row-actions{grid-column:2;grid-row:2}.docs-mobile-label{display:block}.docs-history-row{grid-template-columns:repeat(2,minmax(0,1fr))}.docs-history-actions{grid-column:1/-1}}
 @media(max-width:520px){.docs-summary,.docs-filters,.docs-row-main,.docs-history-row,.docs-secondary-grid{grid-template-columns:minmax(0,1fr)}.docs-filters>label:first-child{grid-column:1}.docs-filter-actions{display:grid;grid-template-columns:minmax(0,1fr)}.docs-filter-actions .button{width:100%}.docs-row-main{gap:10px}.docs-identity,.docs-context,.docs-status,.docs-row-actions{grid-column:1;grid-row:auto}.docs-context,.docs-status,.docs-row-actions{padding-top:9px;border-top:1px solid var(--line)}.docs-row-actions{grid-template-columns:repeat(2,minmax(0,1fr))}.docs-integrity-exception{grid-template-columns:minmax(0,1fr);margin:0 12px 9px}.docs-secondary-details{margin:0 12px 9px}.docs-history{margin:0 12px 12px}.docs-history-actions{display:grid;grid-template-columns:minmax(0,1fr)}.docs-history-actions .button{width:100%}.workspace-heading:has(+.docs-summary){align-items:stretch;flex-direction:column}.workspace-heading:has(+.docs-summary)>.button{width:100%}}
+@media(min-width:851px){.docs-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:520px){.docs-row-main{grid-template-columns:minmax(0,1fr) auto;padding:12px}.docs-identity{grid-column:1}.docs-status{grid-column:2;grid-row:1;padding:0;border:0;justify-items:end;text-align:right}.docs-context{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:3px 8px;padding-top:7px}.docs-context .docs-mobile-label{display:none}.docs-row-actions{grid-column:1/-1}}
 </style>
 
 <div class="docs-shell">
   <section class="workspace-heading">
-    <div><p class="eyebrow">DOCUMENT CENTER</p><h1>PPS Documents</h1><p>Manifest-backed customer, internal, supplier, receiving and delivery documents.</p></div>
+    <div><p class="eyebrow">DOCUMENT CENTER</p><h1>PPS Documents</h1><p>Customer, internal, supplier, receiving and delivery documents.</p></div>
     <a class="button ghost" href="/accounting">Accounting &amp; Audit</a>
   </section>
 
   <section class="docs-summary" aria-label="Document summary">
-    <article class="docs-card"><strong>{{ summary.total }}</strong><span>Current PPS Documents</span><small>Current filter results</small></article>
-    <article class="docs-card"><strong>{{ summary.current }}</strong><span>Current</span><small>Current manifest versions</small></article>
+    <article class="docs-card"><strong>{{ summary.total }}</strong><span>Documents</span><small>Current filter results</small></article>
     <article class="docs-card"><strong>{{ summary.valid }}</strong><span>Valid</span><small>Parent, file and SHA-256 verified</small></article>
     <article class="docs-card"><strong>{{ summary.issues }}</strong><span>Integrity Issues</span><small>Actions fail closed</small></article>
   </section>

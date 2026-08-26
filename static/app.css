@@ -5996,11 +5996,13 @@ textarea:focus {
 .supplier-order-history[open] > summary::after { content: "▴"; }
 .supplier-order-history > summary span { margin-left: 10px; color: var(--muted); font-size: 12px; }
 .supplier-order-history-content { padding: 0 20px 18px; border-top: 1px solid var(--line); }
-.receiving-history-card { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.receiving-history-card { padding: 0; border-bottom: 1px solid var(--line); }
 .receiving-history-card:last-child { border-bottom: 0; }
-.receiving-history-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.receiving-history-card header div { display: grid; gap: 3px; }
-.receiving-history-card header span { color: var(--muted); font-size: 12px; }
+.receiving-history-card > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; cursor: pointer; list-style: none; }
+.receiving-history-card > summary::-webkit-details-marker { display: none; }
+.receiving-history-card > summary > span:first-child { display: grid; gap: 3px; }
+.receiving-history-card > summary small { color: var(--muted); font-size: 12px; }
+.receiving-history-detail { padding: 0 0 16px; }
 .receiving-history-lines { margin: 12px 0; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 .receiving-history-line { display: grid; grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(90px, .7fr)); gap: 10px; padding: 9px 11px; border-top: 1px solid var(--line); font-size: 13px; }
 .receiving-history-line:first-child { border-top: 0; }
@@ -6076,13 +6078,16 @@ textarea:focus {
 .delivery-ready-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 14px; }
 .delivery-ready-actions form { margin: 0; }
 .delivery-history-list { display: grid; gap: 14px; }
-.delivery-history-card { padding: 16px; border: 1px solid var(--line); border-radius: 11px; }
-.delivery-history-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.delivery-history-card header div { display: grid; gap: 3px; }
-.delivery-history-card header span { color: var(--muted); font-size: 12px; }
+.delivery-history-card { padding: 0; border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
+.delivery-history-card > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; cursor: pointer; list-style: none; }
+.delivery-history-card > summary::-webkit-details-marker { display: none; }
+.delivery-history-card > summary > span:first-child { display: grid; gap: 3px; }
+.delivery-history-card > summary small { color: var(--muted); font-size: 12px; }
+.delivery-history-detail { padding: 0 16px 16px; border-top: 1px solid var(--line); }
 .delivery-history-card .button { margin-top: 12px; }
 @media(max-width:820px){.delivery-context{grid-template-columns:repeat(2,minmax(0,1fr))}.delivery-line{grid-template-columns:minmax(130px,.8fr) minmax(180px,1.3fr) 80px 100px;gap:10px}}
 @media(max-width:520px){.delivery-heading{align-items:stretch;flex-direction:column}.delivery-heading .button{width:100%}.delivery-context{grid-template-columns:1fr}.delivery-line-head{display:none}.delivery-line{grid-template-columns:1fr 1fr;padding:15px}.delivery-line>div:nth-child(-n+2){grid-column:1/-1}.delivery-line>div:nth-child(2){padding-bottom:9px;border-bottom:1px solid var(--line)}.delivery-mobile-label{display:block}.delivery-meta{grid-template-columns:1fr}.delivery-prepare-submit{width:100%}.delivery-ready-actions{display:grid}.delivery-ready-actions form,.delivery-ready-actions .button{width:100%}.delivery-ready-lines>div,.delivery-history-lines>div{grid-template-columns:1fr auto}.delivery-ready-lines>div>span:first-child,.delivery-history-lines>div>span:first-child{grid-column:1/-1;padding-bottom:6px;border-bottom:1px solid var(--line)}.delivery-history-card header{align-items:flex-start;flex-direction:column}}
+@media(max-width:520px){.delivery-history-card>summary,.receiving-history-card>summary{align-items:flex-start}}
 .work-queue-need-label{color:var(--ink-strong,#172033);font-size:.96rem;font-weight:800;line-height:1.3;overflow-wrap:anywhere}
 .work-queue-action-detail{color:#52647a;font-size:.86rem;line-height:1.35;overflow-wrap:anywhere}
 .work-queue-context-detail{color:#334155;font-size:.82rem;line-height:1.35;overflow-wrap:anywhere}
