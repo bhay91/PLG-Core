@@ -200,7 +200,7 @@ def _styles():
     }
 
 
-def _page_footer(canvas, doc, title, number):
+def _page_footer(canvas, doc, title, number, invoice):
     canvas.saveState()
     width, _ = PDF_PAGE_SIZE
     canvas.setStrokeColor(NAVY)
@@ -216,7 +216,7 @@ def _page_footer(canvas, doc, title, number):
     canvas.drawString(
         PDF_LEFT_MARGIN,
         fit_value(0.21, 0.18, 0.16, 0.14) * inch,
-        "Pinpoint Sourcing Co. | Worldwide Parts Sourcing & Logistics",
+        "Pinpoint Sourcing Co. | Worldwide Sourcing & Logistics",
     )
     canvas.drawRightString(
         width - PDF_RIGHT_MARGIN,
@@ -224,7 +224,7 @@ def _page_footer(canvas, doc, title, number):
         f"{title} {number} | Page {doc.page}",
     )
 
-    footer_blocks = _footer_blocks()
+    footer_blocks = _footer_blocks(invoice)
     footer_blocks.wrapOn(canvas, PDF_CONTENT_WIDTH, 0.70 * inch)
     footer_blocks.drawOn(
         canvas, PDF_LEFT_MARGIN,
@@ -267,6 +267,7 @@ def _document(path: Path, invoice, title: str):
                 d,
                 title,
                 str(_value(invoice, "invoice_number")),
+                invoice,
             ),
         )
     ])
@@ -463,12 +464,15 @@ def _information(invoice, internal=False):
         ("Phone", _value(invoice, "phone")),
         ("Email", _value(invoice, "email")),
     ], hide_empty=not internal)
-    machine = _info_box("EQUIPMENT INFORMATION", [
+    asset_values = [
         ("Manufacturer", _value(invoice, "manufacturer")),
         ("Model", _value(invoice, "machine")),
         ("Year", _value(invoice, "year")),
         ("VIN / PIN / Serial", _value(invoice, "pin_serial")),
-    ], hide_empty=not internal)
+    ]
+    if not any(str(value or "").strip() for _, value in asset_values):
+        return Table([[customer]], colWidths=[PDF_CONTENT_WIDTH])
+    machine = _info_box("ASSET / EQUIPMENT CONTEXT", asset_values, hide_empty=not internal)
     table = Table(
         [[customer, machine]],
         colWidths=[3.97 * inch, 3.97 * inch],
@@ -500,7 +504,7 @@ def _customer_items(items):
 
     rows = [[
         "QTY",
-        "PART NUMBER",
+        "ITEM / REFERENCE",
         "DESCRIPTION",
         "UNIT PRICE",
         "TOTAL",
@@ -843,21 +847,24 @@ def _bottom_blocks(invoice, internal):
     return table
 
 
-def _footer_blocks():
+def _footer_blocks(invoice):
     s = _styles()
+    has_asset_context = any(_value(invoice, key) for key in ("manufacturer", "machine", "pin_serial"))
     left = [
-        Paragraph("PARTS IDENTIFICATION", s["footer_heading"]),
+        Paragraph("PARTS IDENTIFICATION" if has_asset_context else "ITEM IDENTIFICATION", s["footer_heading"]),
         Spacer(1, fit_value(4, 3, 2, 1)),
         Paragraph(
-            "Parts are supplied based on the vehicle or equipment information provided "
-            "by the customer. Please verify compatibility before installation.",
+            ("Parts are supplied based on the vehicle or equipment information provided "
+             "by the customer. Please verify compatibility before installation.")
+            if has_asset_context else
+            "Items are supplied according to the descriptions and specifications shown. Please review before acceptance.",
             s["footer"],
         ),
     ]
     center = [
         Paragraph("THANK YOU FOR CHOOSING", s["footer_heading"]),
         Paragraph("PINPOINT SOURCING CO.", s["center_brand"]),
-        Paragraph("Worldwide Parts Sourcing &amp; Logistics", s["center_tag"]),
+        Paragraph("Worldwide Sourcing &amp; Logistics", s["center_tag"]),
     ]
     right = [
         Paragraph("WARRANTY INFORMATION", s["footer_heading"]),
@@ -940,7 +947,7 @@ def _build_invoice_pdf_once(
         Spacer(1, fit_value(5, 3, 2, 1)),
 
         _section_bar(
-            "PARTS & SERVICES"
+            "ITEMS & SERVICES"
             if not internal
             else "INTERNAL COST & PROFIT DETAIL"
         ),

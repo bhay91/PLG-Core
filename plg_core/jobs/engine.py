@@ -83,7 +83,7 @@ class JobEngine:
         "WAITING_CUSTOMER": "Waiting for Customer",
         "WAITING_PAYMENT": "Waiting for Payment",
         "READY_TO_ORDER": "Ready to Order",
-        "WAITING_PARTS": "Waiting for Parts",
+        "WAITING_PARTS": "Waiting for Supplier",
         "READY_TO_COMPLETE": "Ready for Delivery",
         "COMPLETE": "Completed",
     }
@@ -327,7 +327,7 @@ class JobEngine:
         elif not has_parts:
             stage = "RESEARCH"
             action = (
-                "Research Parts",
+                "Research Need",
                 "RESEARCH_PARTS",
                 "#parts-research",
                 "GET",

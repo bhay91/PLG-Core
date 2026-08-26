@@ -248,7 +248,7 @@ def add_need(
         sequence = int(connection.execute("SELECT COALESCE(MAX(sequence),0)+1 FROM intake_proposal_needs WHERE proposal_id=?", (proposal_id,)).fetchone()[0])
         connection.execute(
             "INSERT INTO intake_proposal_needs (proposal_id,proposal_asset_id,sequence,wording,original_wording,review_state) VALUES (?,?,?,?,?,?)",
-            (proposal_id, asset_id, sequence, wording, wording, "CONFIDENT" if asset_id else "UNASSIGNED"),
+            (proposal_id, asset_id, sequence, wording, wording, "CONFIDENT"),
         )
         changed = connection.execute(
             "UPDATE intake_proposals SET lock_version=lock_version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND lock_version=?",
@@ -274,7 +274,7 @@ def update_need(
         elif wording.strip():
             connection.execute(
                 "UPDATE intake_proposal_needs SET wording=?,proposal_asset_id=?,review_state=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND proposal_id=?",
-                (wording.strip(), asset_id, "CONFIDENT" if asset_id else "UNASSIGNED", need_id, proposal_id),
+                (wording.strip(), asset_id, "CONFIDENT", need_id, proposal_id),
             )
         else:
             raise HTTPException(status_code=400, detail="Requested need wording is required.")

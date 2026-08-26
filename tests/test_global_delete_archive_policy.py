@@ -51,7 +51,7 @@ class GlobalDeleteArchivePolicyTests(unittest.TestCase):
             source = self.read(filename)
             self.assertNotIn("data-archive-delete", source, filename)
         self.assertIn("Void Invoice", self.read("templates/invoice_documents.html"))
-        self.assertIn("Receive Parts", self.read("templates/supplier_order_detail.html"))
+        self.assertIn("Receive Items", self.read("templates/supplier_order_detail.html"))
         self.assertIn("Mark Delivered", self.read("templates/job_delivery.html"))
 
     def test_specialized_research_result_removal_remains_specialized(self):

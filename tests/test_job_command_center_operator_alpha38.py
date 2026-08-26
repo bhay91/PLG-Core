@@ -14,7 +14,7 @@ class JobCommandCenterOperatorAlpha38Tests(unittest.TestCase):
 
     def test_compact_job_bar_exposes_operator_context(self):
         for label in (
-            "Current Stage", "Machine", "Active Need", "Ready for Quote",
+            "Current Stage", "Payment", "Next Action", "Items Ready for Quote",
         ):
             self.assertIn(label, self.source)
         self.assertIn('class="cc-card job-bar"', self.source)
@@ -22,16 +22,15 @@ class JobCommandCenterOperatorAlpha38Tests(unittest.TestCase):
         self.assertNotIn('class="cc-command-progress"', self.source)
 
     def test_machine_selector_is_compact_and_management_is_secondary(self):
-        self.assertIn("Manage Machines", self.source)
-        self.assertIn("Select Machine", self.source)
-        self.assertIn("No machine has been assigned", self.source)
+        self.assertIn("Manage Assets", self.source)
+        self.assertIn("Asset / Equipment Context", self.source)
         self.assertNotIn('class="asset-need-list"', self.source)
 
     def test_need_source_parts_workbench_keeps_context_and_routes(self):
-        for label in ("machine-need-list", "RESEARCH SOURCE", "PARTS FOUND"):
+        for label in ("machine-need-list", "RESEARCH SOURCE", "RESEARCH CANDIDATES"):
             self.assertIn(label, self.source)
         self.assertNotIn("MACHINE WORKBENCH", self.source)
-        self.assertNotIn('id="customer-needs"', self.source)
+        self.assertIn('id="customer-needs"', self.source)
         self.assertIn('id="research-open-form"', self.source)
         self.assertIn('data-dialog-open="quick-open-dialog"', self.source)
         self.assertIn('data-dialog-open="manual-part-dialog"', self.source)
@@ -163,22 +162,16 @@ class JobCommandCenterOperatorAlpha38Tests(unittest.TestCase):
         self.assertIn('{% if delivered_job %}', self.source)
         self.assertIn('{% if not delivered_job %}', self.source)
         for text in (
-            "operational_snapshot.workflow.stage", "PIN / VIN / Serial",
+            "operational_snapshot.workflow.stage", "Asset / Equipment Context",
             "Job Delivered",
-            "All purchased parts have been delivered to the customer.",
+            "All purchased items have been delivered to the customer.",
             "Open Invoice", "View Quote History", "View Delivery History",
             "View Original Customer Request",
         ):
             self.assertIn(text, self.source)
         self.assertIn('{% if invoice and not delivered_job %}', self.source)
-        self.assertIn(
-            '{% if delivered_job %}<div><span>PIN / VIN / Serial</span>',
-            self.source,
-        )
-        self.assertIn(
-            '{% else %}<div><span>Active Need</span>',
-            self.source,
-        )
+        self.assertIn("Asset / Equipment Context", self.source)
+        self.assertIn("Requested Needs", self.source)
 
     def test_late_lifecycle_stage_precedes_invoice_presentation(self):
         self.assertIn(

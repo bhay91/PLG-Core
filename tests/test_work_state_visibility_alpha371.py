@@ -39,7 +39,7 @@ class WorkStateVisibilityAlpha371Tests(unittest.TestCase):
         summary = _review_summary({"contact_name":"", "company_name":"", "review_state":"REVIEW", "assets":[],
                                    "unassigned_needs":[{"review_state":"REVIEW"}]})
         self.assertIn("Customer name or company", summary["missing"])
-        self.assertTrue(any("Machine assignment" in value for value in summary["missing"]))
+        self.assertNotIn("Machine assignment", " ".join(summary["missing"]))
         self.assertGreater(summary["review_count"], 0)
 
     def test_next_action_derivation_uses_existing_state_only(self):

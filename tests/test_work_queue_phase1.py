@@ -222,7 +222,7 @@ class WorkQueuePhase1Tests(unittest.TestCase):
             "J6": ("READY_TO_INVOICE", "Create Invoice for Payment", "Open Quote", "/quotes/6/documents"),
             "J7": ("WAITING_FOR_PAYMENT", "Waiting for Payment", "Open Invoice", "/invoices/7/documents"),
             "J8": ("READY_TO_ORDER", "Order 1 part", "Open Paid Invoice", "/invoices/8/documents"),
-            "J9": ("WAITING_FOR_PARTS", "Receive 3 remaining parts", "Open Supplier Order", "/purchasing/orders/9"),
+            "J9": ("WAITING_FOR_PARTS", "Receive 3 remaining items", "Open Supplier Order", "/purchasing/orders/9"),
             "J10": ("READY_FOR_DELIVERY", "Prepare Delivery", "Prepare Delivery", "/jobs/10/delivery"),
             "J11": ("COMPLETE", "Completed", "Open Job", "/jobs/11/basket"),
         }
@@ -233,14 +233,14 @@ class WorkQueuePhase1Tests(unittest.TestCase):
                 values,
             )
         self.assertEqual((rows["J4"]["need_label"], rows["J4"]["action_detail"]),
-                         ("DRAFT QUOTE", "Review Draft Quote"))
+                         ("STARTER", "Review Draft Quote"))
         self.assertEqual(rows["J4"]["context_detail"], "PPS-Q-0004 · $1,000.00")
         self.assertEqual((rows["J5"]["need_label"], rows["J5"]["action_detail"]),
                          ("CUSTOMER DECISION", "Waiting for Customer"))
         self.assertEqual((rows["J7"]["need_label"], rows["J7"]["action_detail"]),
                          ("INVOICE", "Waiting for Payment"))
         self.assertEqual((rows["J9"]["need_label"], rows["J9"]["action_detail"]),
-                         ("SUPPLIER PARTS", "Receive 3 remaining parts"))
+                         ("SUPPLIER ITEMS", "Receive 3 remaining items"))
         self.assertEqual(
             rows["J9"]["context_detail"],
             "Synthetic Supplier · PPS-PO-0009 · 3 remaining · Expected Aug 20",
@@ -303,7 +303,7 @@ class WorkQueuePhase1Tests(unittest.TestCase):
             result = get_work_queue_data(c, today=date(2026, 8, 12))
         by_need = {row["need_label"]: row for row in result["items"]
                    if row["key"].startswith("need:")}
-        self.assertEqual(by_need["Starter"]["action_detail"], "Research Parts")
+        self.assertEqual(by_need["Starter"]["action_detail"], "Research Need")
         self.assertEqual(by_need["Turbo"]["action_detail"], "Add Supplier Price")
         self.assertEqual(by_need["Radiator"]["action_detail"], "Confirm for Quote")
         self.assertEqual(by_need["Turbo"]["need_action"], "Turbo")
@@ -372,7 +372,7 @@ class WorkQueuePhase1Tests(unittest.TestCase):
         self.assertIn("No work in this queue", body)
         base = (ROOT / "templates" / "base.html").read_text()
         for label in ("Inbox", "Jobs", "Quotes", "Orders", "Invoices",
-                      "Customers", "Machines", "Sources", "Suppliers", "Administration"):
+                      "Customers", "Assets / Equipment", "Sources", "Suppliers", "Administration"):
             self.assertIn(f"<span>{label}</span>", base)
         self.assertNotIn("<span>Work Queue</span>", base)
         self.assertEqual(base.count('href="/requests"'), 1)

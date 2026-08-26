@@ -31,7 +31,7 @@
 
   <section class="panel invoice-center-items">
     <div class="invoice-center-section-heading"><div><p class="eyebrow">ITEMS</p><h2>Invoice items</h2></div><span class="invoice-item-count">{{ items|length }} item{% if items|length != 1 %}s{% endif %}</span></div>
-    {% if items %}<div class="invoice-center-table-wrap"><table class="invoice-center-table"><thead><tr><th>Qty</th><th>Part Number</th><th>Description</th><th>Customer Price</th><th>Line Total</th></tr></thead><tbody>{% for item in items %}<tr><td>{{ item.quantity }}</td><td><strong>{{ item.supplier_part_number or item.internal_part_number or "—" }}</strong></td><td>{{ item.description }}</td><td>${{ "%.2f"|format(item.customer_unit_price or 0) }}</td><td><strong>${{ "%.2f"|format(item.customer_line_total or 0) }}</strong></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty-state">No invoice items were found.</div>{% endif %}
+    {% if items %}<div class="invoice-center-table-wrap"><table class="invoice-center-table"><thead><tr><th>Qty</th><th>Item / Reference</th><th>Description</th><th>Customer Price</th><th>Line Total</th></tr></thead><tbody>{% for item in items %}<tr><td>{{ item.quantity }}</td><td><strong>{{ item.supplier_part_number or item.internal_part_number or "—" }}</strong></td><td>{{ item.description }}</td><td>${{ "%.2f"|format(item.customer_unit_price or 0) }}</td><td><strong>${{ "%.2f"|format(item.customer_line_total or 0) }}</strong></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty-state">No invoice items were found.</div>{% endif %}
   </section>
 
   <section class="panel invoice-desk-totals">

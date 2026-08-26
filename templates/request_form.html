@@ -6,13 +6,14 @@
 <link rel="stylesheet" href="/static/app_v2.css?v=alpha8-3-revenue-v1">
 
 <div class="request-create-page">
+  <style>.request-create-form{display:flex;flex-direction:column}.request-create-form>.request-create-section:nth-of-type(1){order:1}.request-create-form>.request-create-section:nth-of-type(2){order:3}.request-create-form>.request-create-section:nth-of-type(3){order:2}.request-create-form>.request-create-section:nth-of-type(4){order:4}.request-create-form>.request-create-section:nth-of-type(5){order:5}.request-create-form>.form-actions{order:6}</style>
 
   <section class="workspace-heading request-create-heading">
     <div>
       <p class="eyebrow">INBOX</p>
       <h1>{{ title }}</h1>
       <p>
-        Enter the customer, machine, and requested parts once.
+        Enter the customer and Requested Need once. Add asset context only when relevant.
         PPS will carry the information into the Job workflow.
       </p>
     </div>
@@ -35,7 +36,7 @@
 
         <div>
           <p class="eyebrow">CUSTOMER</p>
-          <h2>Who is requesting the parts?</h2>
+          <h2>Who is this for?</h2>
           <p>
             Add the individual, company, and contact information available.
           </p>
@@ -95,13 +96,13 @@
 
     <section class="panel request-create-section">
       <div class="request-create-section-head">
-        <div class="request-create-step">2</div>
+        <div class="request-create-step">3</div>
 
         <div>
-          <p class="eyebrow">MACHINE / VEHICLE / ENGINE</p>
-          <h2>What are we sourcing parts for?</h2>
+          <p class="eyebrow">OPTIONAL ASSET / EQUIPMENT CONTEXT</p>
+          <h2>Does compatibility depend on an asset?</h2>
           <p>
-            Enter the identifying information available from the customer.
+            Leave this section blank for general goods, materials, equipment purchases, or services.
           </p>
         </div>
       </div>
@@ -163,23 +164,23 @@
 
     <section class="panel request-create-section">
       <div class="request-create-section-head">
-        <div class="request-create-step">3</div>
+        <div class="request-create-step">2</div>
 
         <div>
-          <p class="eyebrow">REQUESTED PARTS</p>
+          <p class="eyebrow">REQUESTED NEED</p>
           <h2>What does the customer need?</h2>
           <p>
-            Enter one requested part per line. Include quantities when known.
+            Preserve the customer’s wording. Enter one need per line with quantity and specifications when known.
           </p>
         </div>
       </div>
 
       <label>
-        <span>Parts Needed</span>
+        <span>Requested Needs</span>
         <textarea
           name="requested_parts"
           rows="7"
-          placeholder="1 × Starter&#10;1 × Gasket Set&#10;2 × Fuel Injectors"
+          placeholder="2 × King mattress, medium firm&#10;1 × Used forklift, 5,000 lb capacity, LPG&#10;3 pallets bottled water"
         >{{ record.requested_parts or '' }}</textarea>
       </label>
     </section>
@@ -215,7 +216,7 @@
           <p class="eyebrow">ATTACHMENTS</p>
           <h2>Photos, screenshots, or documents</h2>
           <p>
-            Upload nameplates, part photos, screenshots, or PDF documents.
+            Upload product photos, nameplates, screenshots, specifications, or PDF documents.
           </p>
         </div>
       </div>

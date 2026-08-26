@@ -165,9 +165,9 @@ def _purchasing_snapshot(connection, order_id: int, *, document_root=None, inclu
     if status == "DRAFT":
         next_action, next_url = "Review supplier costs before placing PO", f"/purchasing/orders/{order_id}#purchase-details"
     elif status == "PARTIAL" or (status == "ORDERED" and received > 0):
-        next_action, next_url = "Receive remaining supplier parts", f"/purchasing/orders/{order_id}#receive-parts"
+        next_action, next_url = "Receive remaining supplier items", f"/purchasing/orders/{order_id}#receive-parts"
     elif status == "ORDERED":
-        next_action, next_url = "Receive incoming supplier parts", f"/purchasing/orders/{order_id}#receive-parts"
+        next_action, next_url = "Receive incoming supplier items", f"/purchasing/orders/{order_id}#receive-parts"
     elif status == "RECEIVED" and available > 0:
         next_action, next_url = "Prepare delivery", f"/jobs/{int(order['job_id'])}/delivery"
     elif status == "RECEIVED":

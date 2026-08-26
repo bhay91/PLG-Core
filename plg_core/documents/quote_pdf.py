@@ -166,7 +166,7 @@ def _styles():
     }
 
 
-def _page_footer(canvas, doc, title, number):
+def _page_footer(canvas, doc, title, number, quote):
     canvas.saveState()
     width, _ = LETTER
     canvas.setStrokeColor(NAVY)
@@ -176,9 +176,9 @@ def _page_footer(canvas, doc, title, number):
     canvas.setFont("Helvetica", 6.5)
     canvas.setFillColor(MUTED)
     baseline = fit_value(0.21, 0.18, 0.16, 0.14) * inch
-    canvas.drawString(0.28 * inch, baseline, "Pinpoint Sourcing Co. | Worldwide Parts Sourcing & Logistics")
+    canvas.drawString(0.28 * inch, baseline, "Pinpoint Sourcing Co. | Worldwide Sourcing & Logistics")
     canvas.drawRightString(width - 0.28 * inch, baseline, f"{title} {number} | Page {doc.page}")
-    footer_blocks = _footer_blocks()
+    footer_blocks = _footer_blocks(quote)
     footer_blocks.wrapOn(canvas, 7.94 * inch, 0.70 * inch)
     footer_blocks.drawOn(canvas, 0.28 * inch, fit_value(0.47, 0.43, 0.39, 0.36) * inch)
     canvas.restoreState()
@@ -199,7 +199,7 @@ def _document(path: Path, quote, title: str):
             id="corporate",
             frames=[frame],
             onPage=lambda canvas, d: _page_footer(
-                canvas, d, title, str(_value(quote, "quote_number"))
+                canvas, d, title, str(_value(quote, "quote_number")), quote
             ),
         )
     ])
@@ -351,12 +351,15 @@ def _information(quote, internal=False):
         ("Phone", _value(quote, "bill_to_phone_snapshot") or _value(quote, "phone")),
         ("Email", _value(quote, "bill_to_email_snapshot") or _value(quote, "email")),
     ], hide_empty=not internal)
-    machine = _info_box("EQUIPMENT INFORMATION", [
+    asset_values = [
         ("Manufacturer", _value(quote, "manufacturer")),
         ("Model", _value(quote, "machine")),
         ("Year", _value(quote, "year")),
         ("VIN / PIN / Serial", _value(quote, "pin_serial")),
-    ], hide_empty=not internal)
+    ]
+    if not any(str(value or "").strip() for _, value in asset_values):
+        return Table([[customer]], colWidths=[7.94 * inch])
+    machine = _info_box("ASSET / EQUIPMENT CONTEXT", asset_values, hide_empty=not internal)
     table = Table([[customer, machine]], colWidths=[3.97 * inch, 3.97 * inch])
     table.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
@@ -495,7 +498,7 @@ def _customer_items(items):
 
     rows = [[
         "QTY",
-        "PART NUMBER",
+        "ITEM / REFERENCE",
         "DESCRIPTION",
         "UNIT PRICE",
         "TOTAL",
@@ -775,21 +778,24 @@ def _bottom_blocks(quote, internal):
     return table
 
 
-def _footer_blocks():
+def _footer_blocks(quote):
     s = _styles()
+    has_asset_context = any(_value(quote, key) for key in ("manufacturer", "machine", "pin_serial"))
     left = [
-        Paragraph("PARTS IDENTIFICATION", s["footer_heading"]),
+        Paragraph("PARTS IDENTIFICATION" if has_asset_context else "ITEM IDENTIFICATION", s["footer_heading"]),
         Spacer(1, fit_value(4, 3, 2, 1)),
         Paragraph(
-            "Parts are supplied based on the vehicle or equipment information provided "
-            "by the customer. Please verify compatibility before installation.",
+            ("Parts are supplied based on the vehicle or equipment information provided "
+             "by the customer. Please verify compatibility before installation.")
+            if has_asset_context else
+            "Items are supplied according to the descriptions and specifications shown. Please review before acceptance.",
             s["footer"],
         ),
     ]
     center = [
         Paragraph("THANK YOU FOR CHOOSING", s["footer_heading"]),
         Paragraph("PINPOINT SOURCING CO.", s["center_brand"]),
-        Paragraph("Worldwide Parts Sourcing &amp; Logistics", s["center_tag"]),
+        Paragraph("Worldwide Sourcing &amp; Logistics", s["center_tag"]),
     ]
     right = [
         Paragraph("WARRANTY INFORMATION", s["footer_heading"]),

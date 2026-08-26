@@ -137,18 +137,18 @@ def build_supplier_order_pdf(order: dict, output_path: Path, *, draft: bool) -> 
         [Paragraph("SUPPLIER", label), Paragraph("PO DATE", label), Paragraph("ORDER STATUS", label)],
         [Paragraph(_text(order["supplier_name"]), value), Paragraph(_text(_date(order.get("ordered_at") or order.get("created_at"))), value), Paragraph(_text(status), value)],
         [Paragraph(_text(contact or "No supplier contact stored"), small), "", ""],
-        [Paragraph("JOB / INVOICE", label), Paragraph("CUSTOMER", label), Paragraph("MACHINE / PIN / SERIAL", label)],
+        [Paragraph("JOB / INVOICE", label), Paragraph("CUSTOMER", label), Paragraph("ASSET / EQUIPMENT CONTEXT", label)],
         [Paragraph(_text(f"{order.get('job_number') or '—'} · {order.get('invoice_number') or '—'}"), value), Paragraph(_text(customer or "—"), value), Paragraph(_text(machine_text), value)],
     ]
     info = Table(info_rows, colWidths=[2.45 * inch, 2.25 * inch, 2.7 * inch])
     info.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), .5, LINE), ("INNERGRID", (0, 0), (-1, -1), .25, LINE), ("BACKGROUND", (0, 0), (-1, 0), SOFT), ("BACKGROUND", (0, 3), (-1, 3), SOFT), ("SPAN", (0, 2), (-1, 2)), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7), ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
 
-    rows = [["QTY", "SUPPLIER PART #", "DESCRIPTION", "UNIT COST", "LINE TOTAL"]]
+    rows = [["QTY", "SUPPLIER REFERENCE", "DESCRIPTION", "UNIT COST", "LINE TOTAL"]]
     for item in order["items"]:
         rows.append([
             str(item["quantity_ordered"]),
             Paragraph(_text(item.get("supplier_part_number") or "—"), small),
-            Paragraph(_text(item.get("description") or "Part"), value),
+            Paragraph(_text(item.get("description") or "Item"), value),
             _money(item.get("unit_cost"), order.get("currency")),
             _money(item.get("line_cost"), order.get("currency")),
         ])

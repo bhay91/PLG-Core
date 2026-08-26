@@ -176,7 +176,7 @@ class PurchasingCommandCenter2Tests(unittest.TestCase):
         self.assertEqual(self.snapshot()["movement"]["remaining"], 0)
 
     def test_06_next_action(self):
-        self.assertEqual(self.snapshot()["status"]["next_action"], "Receive incoming supplier parts")
+        self.assertEqual(self.snapshot()["status"]["next_action"], "Receive incoming supplier items")
 
     def test_07_booked_cost(self):
         self.assertEqual(self.snapshot()["costs"]["booked_cost"], 250.0)

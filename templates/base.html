@@ -40,7 +40,7 @@
         <span class="nav-icon" aria-hidden="true">♙</span><span>Customers</span>
       </a>
       <a class="{% if active_page == 'machines' %}active{% endif %}" href="/machines">
-        <span class="nav-icon" aria-hidden="true">▱</span><span>Machines</span>
+        <span class="nav-icon" aria-hidden="true">▱</span><span>Assets / Equipment</span>
       </a>
       <a class="{% if active_page == 'connectors' %}active{% endif %}" href="/connectors">
         <span class="nav-icon" aria-hidden="true">⌁</span><span>Sources</span>
@@ -76,7 +76,7 @@
       </button>
       <div class="topbar-title">
         <strong>Pinpoint Sourcing Co.</strong>
-        <small>Parts Sourcing Control Center</small>
+        <small>Universal Sourcing Control Center</small>
       </div>
 
       <div class="topbar-tools">
@@ -90,7 +90,7 @@
             name="q"
             value="{{ query if query is defined else '' }}"
             placeholder="Search PPS..."
-            aria-label="Search customers, machines, jobs, quotes, invoices and supplier purchases"
+            aria-label="Search customers, Requested Needs, assets, jobs, quotes, invoices and supplier purchases"
             style="width:min(280px, 100%); min-width:0;"
           >
           <button

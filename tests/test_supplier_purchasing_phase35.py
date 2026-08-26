@@ -139,7 +139,7 @@ class SupplierPurchasingPhase35PresentationTests(unittest.TestCase):
         self.assertEqual(context["filtered_invoice_number"], "PPS-INV-0011")
 
     def test_state_actions_and_routes_are_preserved(self):
-        for label in ("Update Cost", "Save Purchase Details", "Place Purchase Order", "Receive Parts", "Record Receipt", "Open Delivery"):
+        for label in ("Update Cost", "Save Purchase Details", "Place Purchase Order", "Receive Items", "Record Receipt", "Open Delivery"):
             self.assertIn(label, self.detail_template)
         for path in ("/items/{{ item.id }}/cost", "/update", "/place", "/receive", "/jobs/{{ order.job_id }}/delivery"):
             self.assertIn(path, self.detail_template)

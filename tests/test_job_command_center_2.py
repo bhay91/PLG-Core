@@ -94,8 +94,8 @@ class JobCommandCenter2Tests(unittest.TestCase):
         result=self.snapshot()
         self.assertEqual([o['status'] for o in result['supplier_orders']],['ORDERED','ORDERED'])
         self.assertEqual(result['movement'],{'ordered_units':7,'received_units':0,'delivered_units':0,'remaining_units':7,'available_to_deliver_units':0})
-        self.assertEqual(result['workflow']['stage'],'Waiting for Parts')
-        self.assertEqual(result['workflow']['next_action'],'Receive incoming parts')
+        self.assertEqual(result['workflow']['stage'],'Waiting for Supplier')
+        self.assertEqual(result['workflow']['next_action'],'Receive incoming items')
 
     def test_mixed_supplier_and_partial_receiving_stages(self):
         with closing(self.connection()) as c:

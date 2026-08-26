@@ -236,14 +236,14 @@ class SimplifiedFulfillmentTests(unittest.TestCase):
         self.assertLess(source.index('id="fulfillment-checklist"'), source.index("Supplier Orders ("))
         for summary in (
             "Supplier Orders (", "Documents (", "Recent Activity",
-            "Machines &amp; Requested Needs", "Research Sources", "Identified Parts",
-            "Parts Ready for Quote", "Additional Charges", "Uncategorized / Draft Work",
-            "Quote History", "Supplier Parts",
+            "Asset / Equipment Context", "Research", "RESEARCH CANDIDATES",
+            "Items Ready for Quote", "Additional Charges", "Uncategorized / Draft Work",
+            "Quote History", "Supplier Orders",
         ):
             self.assertIn(summary, source)
         for group in (
-            "Parts &amp; Purchasing", "Financial &amp; Customer",
-            "Documents &amp; Activity", "Job Details",
+            "Sourcing &amp; Fulfillment", "Financial &amp; Customer",
+            "Documents &amp; Activity", "Job Administration",
         ):
             self.assertIn(group, source)
         self.assertNotIn('<details class="cc-card job-disclosure" id="operational-orders" open', source)

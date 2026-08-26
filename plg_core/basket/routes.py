@@ -42,6 +42,16 @@ def normalize_source_url(value):
     return url
 
 
+def _display_specifications(notes: str) -> list[dict[str, str]]:
+    """Present simple Label: Value notes without rewriting stored text."""
+    specifications = []
+    for raw_line in str(notes or "").splitlines():
+        label, separator, value = raw_line.partition(":")
+        if separator and label.strip() and value.strip():
+            specifications.append({"label": label.strip(), "value": value.strip()})
+    return specifications
+
+
 @router.get("/api/baskets/{job_id}")
 def read_basket(job_id: int):
     return get_basket(job_id)
@@ -246,22 +256,25 @@ def basket_page(
             result_count = int(connection.execute(
                 "SELECT COUNT(DISTINCT bi.id) FROM basket_items bi "
                 "LEFT JOIN basket_item_need_links link ON link.basket_item_id=bi.id "
-                "WHERE bi.basket_id=? AND bi.job_asset_id=? "
+                "WHERE bi.basket_id=? AND ((? IS NULL AND bi.job_asset_id IS NULL) OR bi.job_asset_id=?) "
                 "AND (bi.primary_requested_need_id=? OR link.requested_need_id=?) "
                 "AND bi.research_state IN ('RESEARCH_RESULT','QUOTE_CANDIDATE','LEGACY_CANDIDATE')",
-                (basket["id"], selected_asset_id, need["id"], need["id"]),
+                (basket["id"], selected_asset_id, selected_asset_id, need["id"], need["id"]),
             ).fetchone()[0])
             candidate_count = int(connection.execute(
                 "SELECT COUNT(DISTINCT bi.id) FROM basket_items bi "
                 "LEFT JOIN basket_item_need_links link ON link.basket_item_id=bi.id "
-                "WHERE bi.basket_id=? AND bi.job_asset_id=? "
+                "WHERE bi.basket_id=? AND ((? IS NULL AND bi.job_asset_id IS NULL) OR bi.job_asset_id=?) "
                 "AND (bi.primary_requested_need_id=? OR link.requested_need_id=?) "
                 "AND bi.selected=1 AND bi.research_state IN ('QUOTE_CANDIDATE','LEGACY_CANDIDATE')",
-                (basket["id"], selected_asset_id, need["id"], need["id"]),
+                (basket["id"], selected_asset_id, selected_asset_id, need["id"], need["id"]),
             ).fetchone()[0])
+            need["research_candidate_count"] = result_count
+            need["quote_candidate_count"] = candidate_count
+            need["specifications"] = _display_specifications(need.get("notes") or "")
             need["work_status_label"] = (
                 "Ready for Quote" if candidate_count else
-                "Parts Found" if result_count else
+                "Options Found" if result_count else
                 "Needs Research"
             )
         open_requested_needs = [need for need in requested_needs if need["state"] == "OPEN"]
@@ -280,13 +293,12 @@ def basket_page(
                     detail="Requested Need not found for this Job asset.",
                 )
             selected_need_id = int(selected_need["id"])
-        if selected_asset:
-            connectors = list_sources_for_context(
-                connection,
-                manufacturer=selected_asset.get("manufacturer") or "",
-                asset_category=selected_asset.get("asset_type") or "other",
-                market=selected_asset.get("market_region") or "UNKNOWN",
-            )
+        connectors = list_sources_for_context(
+            connection,
+            manufacturer=selected_asset.get("manufacturer") or "" if selected_asset else "",
+            asset_category=selected_asset.get("asset_type") or "other" if selected_asset else "other",
+            market=selected_asset.get("market_region") or "UNKNOWN" if selected_asset else "UNKNOWN",
+        )
         active_research_context = connection.execute(
             """SELECT vs.*,COALESCE(NULLIF(vs.source_name_snapshot,''),cp.display_name) AS source_name,
                       COALESCE(NULLIF(vs.source_url_snapshot,''),cp.launch_url) AS launch_url,
@@ -294,10 +306,12 @@ def basket_page(
                FROM verification_sessions vs
                JOIN connector_profiles cp ON cp.id=vs.connector_profile_id
                LEFT JOIN requested_needs rn ON rn.id=vs.requested_need_id
-               WHERE vs.job_id=? AND vs.job_asset_id=? AND vs.status='ACTIVE'
+               WHERE vs.job_id=?
+                 AND ((? IS NULL AND vs.job_asset_id IS NULL) OR vs.job_asset_id=?)
+                 AND vs.status='ACTIVE'
                ORDER BY vs.id DESC LIMIT 1""",
-            (job_id, selected_asset_id),
-        ).fetchone() if selected_asset_id is not None else None
+            (job_id, selected_asset_id, selected_asset_id),
+        ).fetchone()
         if selected_need_id is None and active_research_context is not None:
             active_need_id = active_research_context["requested_need_id"]
             if active_need_id is not None and any(

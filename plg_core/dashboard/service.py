@@ -17,7 +17,7 @@ WORK_QUEUE_CATEGORIES = (
     ("READY_TO_INVOICE", "Ready to Invoice"),
     ("WAITING_FOR_PAYMENT", "Waiting for Payment"),
     ("READY_TO_ORDER", "Ready to Order"),
-    ("WAITING_FOR_PARTS", "Waiting for Parts"),
+    ("WAITING_FOR_PARTS", "Waiting for Supplier"),
     ("READY_FOR_DELIVERY", "Ready for Delivery"),
     ("COMPLETE", "Complete"),
 )
@@ -178,7 +178,7 @@ def get_work_queue_data(
             "need_action": need["wording"],
             "need_label": need["wording"],
             "action_detail": (
-                "Research Parts"
+                "Research Need"
                 if queue_key == "NEEDS_RESEARCH"
                 else action_label
             ),
@@ -282,7 +282,7 @@ def get_work_queue_data(
                 )
                 need_action = (
                     f"Receive {outstanding_order_quantity} remaining "
-                    f"part{'s' if outstanding_order_quantity != 1 else ''}"
+                    f"item{'s' if outstanding_order_quantity != 1 else ''}"
                 )
         elif stage == "READY_TO_COMPLETE":
             queue_key, action_label, url = (
@@ -311,19 +311,13 @@ def get_work_queue_data(
             "CUSTOMER_DECISION_FOLLOW_UP": "CUSTOMER DECISION",
             "READY_TO_INVOICE": "INVOICE",
             "WAITING_FOR_PAYMENT": "INVOICE",
-            "READY_TO_ORDER": "SUPPLIER PARTS",
-            "WAITING_FOR_PARTS": "SUPPLIER PARTS",
+            "READY_TO_ORDER": "SUPPLIER ITEMS",
+            "WAITING_FOR_PARTS": "SUPPLIER ITEMS",
             "READY_FOR_DELIVERY": "DELIVERY",
             "COMPLETE": "COMPLETED",
         }
-        need_label = (
-            "DRAFT QUOTE"
-            if quote_status == "DRAFT"
-            else job["requested_need_wording"]
-            if queue_key == "READY_TO_QUOTE"
-            and str(job["requested_need_wording"] or "").strip()
-            else commercial_labels.get(queue_key, "REQUESTED PARTS")
-        )
+        requested_need = str(job["requested_need_wording"] or "").strip()
+        need_label = requested_need or commercial_labels.get(queue_key, "REQUESTED NEED")
         context_detail = ""
         quote_number = str(_row_value(job, "quote_number", "") or "").strip()
         invoice_number = str(_row_value(job, "invoice_number", "") or "").strip()

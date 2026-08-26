@@ -166,9 +166,9 @@ class PartsResearchBatch3ETests(unittest.TestCase):
         )
         request = Request({"type": "http", "method": "GET", "path": f"/jobs/{job_id}/basket", "query_string": b"", "headers": [], "app": app, "router": app.router})
         html = basket_page(request, job_id, asset_id=deere["id"]).body.decode()
-        self.assertIn("<h3><small>Supplier Part</small> DER-93592 · Supplier-only starter</h3>", html)
-        self.assertIn("<h3>MPN-PRIMARY · OEM starter</h3>", html)
-        self.assertNotIn("<small>Supplier Part</small> SUP-SECONDARY · OEM starter", html)
+        self.assertIn("Supplier-only starter · DER-93592", html)
+        self.assertIn("OEM starter · MPN-PRIMARY", html)
+        self.assertNotIn("OEM starter · SUP-SECONDARY", html)
 
     def test_universal_quote_candidate_identifier_contract(self):
         job_id, deere, _ = self.make_job()
@@ -211,7 +211,7 @@ class PartsResearchBatch3ETests(unittest.TestCase):
         self.assertIn("FleetPride starter", html)
         self.assertIn("MPN-1", html)
         self.assertIn("OEM starter", html)
-        self.assertIn("Parts Ready for Quote", html)
+        self.assertIn("Items Ready for Quote", html)
         self.assertNotIn("Missing identifier —", html)
 
     def test_imported_supplier_identifier_mappings_all_promote(self):
@@ -449,7 +449,7 @@ class PartsResearchBatch3ETests(unittest.TestCase):
         ).body.decode()
         self.assertIn(f'name="requested_need_id" value="{oil["id"]}"', selected_html)
         self.assertIn("Oil Filter", selected_html)
-        self.assertNotIn('id="customer-needs"', selected_html)
+        self.assertIn('id="customer-needs"', selected_html)
 
     def test_zero_need_session_remains_general_research(self):
         job_id, deere, _ = self.make_job()

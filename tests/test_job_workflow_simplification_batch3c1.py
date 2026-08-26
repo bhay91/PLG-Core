@@ -164,8 +164,8 @@ class JobWorkflowSimplificationBatch3C1Tests(unittest.TestCase):
         self.assertIn("machine-need-list", source)
         self.assertIn("RESEARCH SOURCE", source)
         self.assertIn("Open Source", source)
-        self.assertIn("PARTS FOUND", source)
-        self.assertIn("Next Machine ·", source)
+        self.assertIn("RESEARCH CANDIDATES", source)
+        self.assertIn("Next Asset ·", source)
         self.assertNotIn("<h2>What the customer needs</h2>", source)
 
 

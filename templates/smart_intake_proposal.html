@@ -14,7 +14,7 @@
   <div>
     <p class="eyebrow">SMART INTAKE · OPERATOR REVIEW</p>
     <h1>Confirm what PPS understood</h1>
-    <p>Correct anything uncertain. No Job or quoteable part exists until you confirm.</p>
+    <p>Correct anything uncertain. No Job or quoteable item exists until you confirm.</p>
   </div>
   <div class="workspace-heading-actions"><a class="button ghost" href="/requests">Back to Inbox</a><span class="status-pill {{ proposal.review_state|lower }}">{{ proposal.review_state }}</span></div>
 </section>
@@ -23,7 +23,7 @@
   <div class="panel-heading"><div><p class="eyebrow">{% if ready_to_create %}READY TO CREATE JOB{% else %}REVIEW REQUIRED{% endif %}</p><h2>{% if ready_to_create %}All required items are confirmed{% else %}{{ summary.core_review_count }} item{% if summary.core_review_count != 1 %}s{% endif %} need your confirmation{% endif %}</h2></div>{% if ready_to_create %}<form method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/confirm"><input type="hidden" name="lock_version" value="{{ proposal.lock_version }}"><button class="button" type="submit">Confirm &amp; Create Job</button></form>{% endif %}</div>
   <div class="smart-core-review-grid">
     <article class="smart-core-review-card"><header><h3>Customer</h3><span class="status-pill {{ 'confident' if core.customer == 'CONFIRMED' else 'review' }}">{{ core.customer }}</span></header><p>{{ proposal.contact_name or proposal.company_name or 'Customer details require review' }}</p><a class="button ghost compact" href="#customer-review">Save Customer Details</a></article>
-    <article class="smart-core-review-card"><header><h3>Machine / Asset</h3><span class="status-pill {{ 'confident' if core.machine == 'CONFIRMED' else 'review' }}">{{ core.machine }}</span></header><p>{% if proposal.assets %}{{ proposal.assets|length }} proposed asset{% if proposal.assets|length != 1 %}s{% endif %}{% else %}No asset confirmed{% endif %}</p><a class="button ghost compact" href="#machine-review">Save Asset</a></article>
+    <article class="smart-core-review-card"><header><h3>Asset / Equipment Context</h3><span class="status-pill {{ 'confident' if core.machine == 'CONFIRMED' else 'review' }}">{{ 'OPTIONAL' if not proposal.assets else core.machine }}</span></header><p>{% if proposal.assets %}{{ proposal.assets|length }} proposed context record{% if proposal.assets|length != 1 %}s{% endif %}{% else %}Not required for this request{% endif %}</p>{% if proposal.assets %}<a class="button ghost compact" href="#machine-review">Review Asset Context</a>{% endif %}</article>
     <article class="smart-core-review-card"><header><h3>Requested Need</h3><span class="status-pill {{ 'confident' if core.requested_need == 'CONFIRMED' else 'review' }}">{{ core.requested_need }}</span></header><p>{{ summary.need_count }} requested need{% if summary.need_count != 1 %}s{% endif %}</p><a class="button ghost compact" href="#requested-needs-review">Save</a></article>
   </div>
   {% if summary.core_review_count == 0 and not ready_to_create %}<div class="smart-review-alert"><strong>Additional review is still required</strong>{% if analysis.blockers %}<ul>{% for blocker in analysis.blockers %}<li>{{ blocker }}</li>{% endfor %}</ul>{% endif %}</div>{% endif %}
@@ -195,7 +195,7 @@
       </form>
       {% endif %}
       <div class="smart-asset-needs" {% if loop.first %}id="requested-needs-review"{% endif %}>
-        <p class="eyebrow">PARTS NEEDED</p>
+    <p class="eyebrow">REQUESTED NEEDS</p>
         {% if asset.needs %}
           {% for need in asset.needs %}
           <form class="smart-need-row" method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/needs/{{ need.id }}">
@@ -219,7 +219,7 @@
 
 {% if proposal.unassigned_needs %}
 <section class="panel smart-unassigned" {% if not proposal.assets %}id="requested-needs-review"{% endif %}>
-  <p class="eyebrow">NEEDS REVIEW · UNASSIGNED</p><h2>Choose the correct machine</h2>
+  <p class="eyebrow">REQUESTED NEEDS · NO ASSET CONTEXT</p><h2>Review customer wording</h2><p>Keeping a need unassigned is valid when no vehicle or equipment context is relevant.</p>
   {% for need in proposal.unassigned_needs %}
   <form class="smart-need-row" method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/needs/{{ need.id }}">
     <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
@@ -235,9 +235,9 @@
 
 <form class="panel smart-add-need" method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/needs/add">
   <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
-  <div><p class="eyebrow">ADD REQUESTED NEED</p><p>Add customer wording without creating a quoteable part.</p></div>
+  <div><p class="eyebrow">ADD REQUESTED NEED</p><p>Add customer wording without creating or selecting a quoteable candidate.</p></div>
   <input name="wording" required placeholder="Example: Fuel Filter Kit">
-  <select name="proposal_asset_id"><option value="">Unassigned / machine unknown</option>{% for asset in proposal.assets %}<option value="{{ asset.id }}">{{ asset.manufacturer }} {{ asset.model }}</option>{% endfor %}</select>
+  <select name="proposal_asset_id"><option value="">No asset context</option>{% for asset in proposal.assets %}<option value="{{ asset.id }}">{{ asset.manufacturer }} {{ asset.model }}</option>{% endfor %}</select>
   <button class="button ghost" type="submit">＋ Add Need</button>
 </form>
 
@@ -254,7 +254,7 @@
 </section>
 
 <section class="smart-proposal-confirm panel">
-  <div><p class="eyebrow">AUTHORITY BOUNDARY</p><h2>Ready to create the Job?</h2><p>Confirmation creates the Request, Job, assets, and Requested Needs in one transaction. It does not create parts or prices.</p></div>
+  <div><p class="eyebrow">AUTHORITY BOUNDARY</p><h2>Ready to create the Job?</h2><p>Confirmation creates the Request, Job, Requested Needs, and any optional asset context in one transaction. It does not select research candidates or create prices.</p></div>
   {% if ready_to_create %}<form method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/confirm">
     <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
     <button class="button" type="submit">Confirm &amp; Create Job</button>

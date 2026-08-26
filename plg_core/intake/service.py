@@ -462,15 +462,24 @@ def _ai_review_blockers(connection: sqlite3.Connection, proposal_id: int) -> lis
         (SELECT COUNT(*) FROM intake_proposal_needs WHERE proposal_id=? AND included=1 AND review_state='REVIEW')""",
         (proposal_id, proposal_id, proposal_id, proposal_id),
     ).fetchone()[0])
-    unassigned = int(connection.execute(
-        "SELECT COUNT(*) FROM intake_proposal_needs WHERE proposal_id=? AND included=1 AND (proposal_asset_id IS NULL OR review_state='UNASSIGNED')",
-        (proposal_id,),
-    ).fetchone()[0])
     blockers = []
     if review_count:
         blockers.append(f"{source_label} proposal has {review_count} item(s) requiring explicit operator review.")
-    if unassigned:
-        blockers.append(f"{source_label} proposal has {unassigned} unassigned Requested Need(s).")
+    candidates = submission.get("structured_candidates") or {}
+    known_asset_references = {
+        str(asset.get("reference") or "").strip()
+        for asset in (candidates.get("assets") or candidates.get("machines") or [])
+        if str(asset.get("reference") or "").strip()
+    }
+    unresolved_associations = sum(
+        bool(reference) and reference not in known_asset_references
+        for need in candidates.get("requested_needs") or []
+        if (reference := str(need.get("machine_reference") or "").strip())
+    )
+    if unresolved_associations:
+        blockers.append(
+            f"{source_label} proposal has {unresolved_associations} unassigned Requested Need association(s)."
+        )
     return blockers
 
 
@@ -739,12 +748,9 @@ def _review_summary(proposal: dict) -> dict:
             all_needs.append(need)
             review_count += str(need.get("review_state") or "").upper() == "REVIEW"
     unassigned_count = len(proposal.get("unassigned_needs") or [])
-    review_count += unassigned_count
-    if unassigned_count:
-        missing.append(f"Machine assignment for {unassigned_count} Requested Need{'s' if unassigned_count != 1 else ''}")
     customer_confirmed = str(proposal.get("review_state") or "").upper() == "CONFIDENT"
     included_assets = list(proposal.get("assets") or [])
-    machine_confirmed = bool(included_assets) and all(
+    machine_confirmed = not included_assets or all(
         str(asset.get("review_state") or "").upper() == "CONFIDENT"
         and all(
             str(identifier.get("review_state") or "").upper() == "CONFIDENT"
@@ -753,8 +759,7 @@ def _review_summary(proposal: dict) -> dict:
         for asset in included_assets
     )
     need_confirmed = bool(all_needs) and all(
-        need.get("proposal_asset_id") is not None
-        and str(need.get("review_state") or "").upper() == "CONFIDENT"
+        str(need.get("review_state") or "").upper() == "CONFIDENT"
         for need in all_needs
     )
     core_reviews = {
@@ -767,7 +772,7 @@ def _review_summary(proposal: dict) -> dict:
             "need_count": len(all_needs), "assigned_need_count": len(all_needs) - unassigned_count,
             "unassigned_need_count": unassigned_count, "review_count": review_count, "missing": missing,
             "core_reviews": core_reviews, "core_review_count": core_review_count,
-            "confirmation_action": f"{customer_action.title()} the customer, create or link {len(machines)} machine{'s' if len(machines) != 1 else ''}, create {len(all_needs)} Requested Need{'s' if len(all_needs) != 1 else ''}, and open the new Job."}
+            "confirmation_action": f"{customer_action.title()} the customer, create {len(all_needs)} Requested Need{'s' if len(all_needs) != 1 else ''}{f', create or link {len(machines)} optional asset context record' if machines else ''}, and open the new Job."}
 
 
 def _primary_identifier(connection: sqlite3.Connection, asset_id: int):

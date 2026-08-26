@@ -58,7 +58,7 @@ class InvoiceReviewPhase34Tests(unittest.TestCase):
                       "Test City", "DER-93592", "Starter", "$50.00", "$100.00",
                       "Parts", "Shipping", "Sourcing Fee", "Service Charge", "$125.00"):
             self.assertIn(value, html)
-        for label in ("Qty", "Part Number", "Description", "Customer Price", "Line Total"):
+        for label in ("Qty", "Item / Reference", "Description", "Customer Price", "Line Total"):
             self.assertIn(f"<th>{label}</th>", html)
 
     def test_unpaid_and_partial_offer_record_payment(self):

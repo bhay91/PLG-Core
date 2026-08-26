@@ -28,7 +28,7 @@
       <textarea
         name="raw_text"
         rows="16"
-        placeholder="Customer: Marcus Rolle&#10;Phone: 242-555-0198&#10;Location: George Town, Exuma&#10;Registry Type: Heavy Equipment&#10;Manufacturer: Caterpillar&#10;Model: 420D Backhoe Loader&#10;Identifier: FDP12345&#10;&#10;Requested Parts:&#10;Water pump&#10;Upper radiator hose"
+        placeholder="John needs 3 pallets of water delivered to Nassau.&#10;&#10;Or: Brandon needs a water pump for his truck, VIN 1HGBH41JXMN109186."
       >{{ raw_text or "" }}</textarea>
     </label>
 
@@ -240,7 +240,7 @@
     </label>
 
     <label>
-      Requested Parts
+      Requested Needs
       <textarea name="requested_parts" rows="7">{{ parsed.requested_parts }}</textarea>
     </label>
 

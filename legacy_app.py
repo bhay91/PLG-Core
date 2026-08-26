@@ -1321,6 +1321,22 @@ def list_jobs(request: Request, view: str = "active"):
                 ) AS request_description,
 
                 (
+                    SELECT requested_needs.wording
+                    FROM requested_needs
+                    WHERE requested_needs.job_id = jobs.id
+                      AND requested_needs.state = 'OPEN'
+                    ORDER BY requested_needs.id
+                    LIMIT 1
+                ) AS requested_need_wording,
+
+                (
+                    SELECT COUNT(*)
+                    FROM requested_needs
+                    WHERE requested_needs.job_id = jobs.id
+                      AND requested_needs.state = 'OPEN'
+                ) AS open_requested_need_count,
+
+                (
                     SELECT GROUP_CONCAT(
                         basket_items.requested_description,
                         ', '
@@ -1451,6 +1467,7 @@ def list_jobs(request: Request, view: str = "active"):
                 quoted_items=item.get("quoted_items", 0),
                 ordered_items=item.get("ordered_items", 0),
                 received_items=item.get("received_items", 0),
+                open_requested_needs=item.get("open_requested_need_count", 0),
                 outstanding_parts=outstanding_parts,
                 basket_status=item.get("basket_status") or "OPEN",
             ).to_dict()
@@ -1520,7 +1537,7 @@ def list_jobs(request: Request, view: str = "active"):
 
             elif job_status == "ORDERED":
                 stage_key = "WAITING"
-                stage_label = "Waiting for Parts"
+                stage_label = "Waiting for Supplier"
                 stage_icon = "🚚"
                 progress = 88
                 priority_rank = 40
@@ -1555,7 +1572,7 @@ def list_jobs(request: Request, view: str = "active"):
 
             elif selected_items > 0:
                 stage_key = "RESEARCH"
-                stage_label = "Parts Research"
+                stage_label = "Research"
                 stage_icon = "🔍"
                 progress = 42
                 priority_rank = 20
@@ -1590,6 +1607,15 @@ def list_jobs(request: Request, view: str = "active"):
                 "received": received_items,
                 "total": selected_items,
             }
+            item["payment_label"] = (
+                "Paid" if invoice_status in paid_statuses else
+                "Awaiting Payment" if item.get("invoice_id") else
+                "Not Invoiced"
+            )
+            item["requested_need_display"] = (
+                item.get("requested_need_wording")
+                or item["job_description"]
+            )
 
             item["last_activity_display"] = (
                 item.get("last_activity")

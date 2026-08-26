@@ -70,8 +70,8 @@ def build_delivery_pdf(delivery: dict, output_path: Path) -> Path:
         [_date(delivery.get("delivery_date")),
          f"{delivery.get('customer') or 'Customer'} · {delivery.get('recipient') or '—'}",
          f"{delivery.get('job_number') or '—'} · {delivery.get('invoice_number') or '—'}"],
-        ["MACHINE / PIN / SERIAL", "STATUS", "NOTES"],
-        [delivery.get("machine_context") or "Not assigned", delivery.get("status") or "DELIVERED",
+        ["ASSET / EQUIPMENT CONTEXT", "STATUS", "NOTES"],
+        [delivery.get("machine_context") or "Not applicable", delivery.get("status") or "DELIVERED",
          delivery.get("notes") or "No delivery notes."],
     ]
     info = Table(
@@ -85,11 +85,11 @@ def build_delivery_pdf(delivery: dict, output_path: Path) -> Path:
         ("RIGHTPADDING", (0, 0), (-1, -1), 7), ("TOPPADDING", (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
-    rows = [["PART NUMBER", "DESCRIPTION", "SUPPLIER PO", "QUANTITY DELIVERED"]]
+    rows = [["ITEM / REFERENCE", "DESCRIPTION", "SUPPLIER PO", "QUANTITY DELIVERED"]]
     for item in delivery.get("items", []):
         rows.append([
             Paragraph(_text(item.get("supplier_part_number") or "—"), small),
-            Paragraph(_text(item.get("description") or "Part"), small),
+            Paragraph(_text(item.get("description") or "Item"), small),
             Paragraph(_text(item.get("po_number") or "—"), small),
             str(item.get("quantity_delivered") or 0),
         ])

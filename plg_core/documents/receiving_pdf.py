@@ -90,7 +90,7 @@ def build_receiving_pdf(receipt: dict, output_path: Path) -> Path:
     info_data = [
         ["RECEIPT DATE / TIME", "RECEIVER", "STATUS"],
         [_date(receipt.get("received_at")), receipt.get("receiver") or "Not recorded", receipt.get("status_after")],
-        ["SUPPLIER / PO", "JOB / INVOICE", "MACHINE / PIN / SERIAL"],
+        ["SUPPLIER / PO", "JOB / INVOICE", "ASSET / EQUIPMENT CONTEXT"],
         [
             f"{receipt.get('supplier_name') or '—'} · {receipt.get('po_number') or '—'}",
             f"{receipt.get('job_number') or '—'} · {receipt.get('invoice_number') or '—'}",
@@ -109,11 +109,11 @@ def build_receiving_pdf(receipt: dict, output_path: Path) -> Path:
         ("RIGHTPADDING", (0, 0), (-1, -1), 7), ("TOPPADDING", (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
-    rows = [["PART NUMBER", "DESCRIPTION", "QTY ORDERED", "THIS RECEIPT", "TOTAL RECEIVED", "REMAINING"]]
+    rows = [["ITEM / REFERENCE", "DESCRIPTION", "QTY ORDERED", "THIS RECEIPT", "TOTAL RECEIVED", "REMAINING"]]
     for item in receipt.get("items", []):
         rows.append([
             Paragraph(_text(item.get("supplier_part_number") or "—"), small),
-            Paragraph(_text(item.get("description") or "Part"), small),
+            Paragraph(_text(item.get("description") or "Item"), small),
             str(item.get("quantity_ordered") or 0),
             str(item.get("quantity_received") or 0),
             str(item.get("cumulative_received") or 0),

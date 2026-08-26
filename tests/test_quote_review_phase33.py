@@ -50,7 +50,7 @@ class QuoteReviewPhase33Tests(unittest.TestCase):
         self.assertIn("Reject Quote", self.template)
 
     def test_items_total_and_document_contract(self):
-        for label in ("Qty", "Part Number", "Description", "Customer Price", "Line Total"):
+        for label in ("Qty", "Item / Reference", "Description", "Customer Price", "Line Total"):
             self.assertIn(f"<th>{label}</th>", self.template)
         self.assertNotIn("<th>Type</th>", self.template)
         for label in ("Parts", "Shipping", "Sourcing Fee", "Service Charge", "Customer Total"):

@@ -109,7 +109,7 @@ class OperatorWorkflowAlpha33Tests(unittest.TestCase):
         self.assertIn("Open Website", template)
         self.assertIn("ONE-TIME WEBSITE", template)
         self.assertIn("Confirm for Quote", template)
-        self.assertIn("Parts Ready for Quote", template)
+        self.assertIn("Items Ready for Quote", template)
         self.assertNotIn("ACTIVE RESEARCH CONTEXT", template)
         self.assertNotIn("<strong>Quote Candidate</strong>", template)
 

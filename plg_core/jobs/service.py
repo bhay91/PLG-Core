@@ -38,7 +38,7 @@ def _job_operator_state(job, invoice, orders, movement, financial, fallback):
     if partial_count or (movement["received_units"] and movement["remaining_units"]):
         return "Partial Receiving", "Receive incoming parts", "/purchasing"
     if movement["remaining_units"] > 0:
-        return "Waiting for Parts", "Receive incoming parts", "/purchasing"
+        return "Waiting for Supplier", "Receive incoming items", "/purchasing"
     if movement["ordered_units"] and movement["delivered_units"] < movement["ordered_units"]:
         return "Ready to Deliver", "Complete remaining delivery", f"/jobs/{int(job['id'])}/delivery"
     if financial and financial["actual_cost_state"] != "CONFIRMED":
