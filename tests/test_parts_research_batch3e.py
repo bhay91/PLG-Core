@@ -193,12 +193,12 @@ class PartsResearchBatch3ETests(unittest.TestCase):
             c.execute("UPDATE basket_items SET requested_description='' WHERE id=?", (missing_description["id"],))
             c.commit()
 
-        for item_id in (supplier["id"], mpn["id"], internal["id"]):
+        for item_id in (supplier["id"], mpn["id"], internal["id"], missing_id["id"]):
             revision = self.revision(job_id)
             promoted = set_quote_candidate(job_id, item_id, candidate=True, requested_need_ids=[need["id"]],
                                            expected_revision_id=revision["id"], expected_version=revision["lock_version"])
             self.assertEqual((promoted["research_state"], promoted["selected"]), ("QUOTE_CANDIDATE", 1))
-        for item_id in (missing_id["id"], missing_description["id"]):
+        for item_id in (missing_description["id"],):
             revision = self.revision(job_id)
             with self.assertRaises(HTTPException) as rejected:
                 set_quote_candidate(job_id, item_id, candidate=True, requested_need_ids=[need["id"]],

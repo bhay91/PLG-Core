@@ -138,6 +138,7 @@ def get_work_queue_data(
         intelligence = JobEngine.evaluate(
             job,
             selected_items=int(job["selected_items"] or 0),
+            open_requested_needs=1,
             quote=quote,
             invoice=invoice,
         )

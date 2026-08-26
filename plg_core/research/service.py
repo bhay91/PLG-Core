@@ -255,11 +255,15 @@ def set_quote_candidate(
         ).fetchone()
         if item is None:
             raise HTTPException(status_code=404, detail="Research Result not found.")
-        if candidate and not (
-            str(item["manufacturer_part_number"] or item["supplier_part_number"] or item["internal_part_number"] or "").strip()
-            and str(item["requested_description"] or "").strip()
-        ):
-            raise HTTPException(status_code=409, detail="A Quote Candidate needs a part number or PPS internal reference and description.")
+        # The persisted basket-item id is the stable PPS identity for every
+        # candidate. Product references remain available for parts-specialist
+        # work, but universal goods and services do not need an invented part
+        # number in order to receive explicit operator approval.
+        if candidate and not str(item["requested_description"] or "").strip():
+            raise HTTPException(
+                status_code=409,
+                detail="A Quote Candidate needs a description.",
+            )
         need_ids = sorted({int(value) for value in (requested_need_ids or [])})
         if item["primary_requested_need_id"] and not need_ids:
             need_ids = [int(item["primary_requested_need_id"])]

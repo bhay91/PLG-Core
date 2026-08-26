@@ -518,6 +518,10 @@ def basket_page(
         quoted_items=quoted_items,
         ordered_items=ordered_items,
         received_items=received_items,
+        open_requested_needs=sum(
+            1 for need in requested_needs
+            if str(need.get("state") or "").upper() == "OPEN"
+        ),
         outstanding_parts=outstanding_parts,
         basket_status=basket["status"],
         customer_request=customer_request,

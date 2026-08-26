@@ -112,6 +112,7 @@ class JobEngine:
         quoted_items: int = 0,
         ordered_items: int = 0,
         received_items: int = 0,
+        open_requested_needs: int = 0,
         outstanding_parts: Sequence[str] | None = None,
         basket_status: str = "OPEN",
         customer_request: Any = None,
@@ -127,6 +128,7 @@ class JobEngine:
         quoted_items = max(int(quoted_items or 0), 0)
         ordered_items = max(int(ordered_items or 0), 0)
         received_items = max(int(received_items or 0), 0)
+        open_requested_needs = max(int(open_requested_needs or 0), 0)
 
         outstanding = tuple(
             str(name).strip()
@@ -146,6 +148,7 @@ class JobEngine:
             _present(_value(job, field))
             for field in ("manufacturer", "machine", "pin_serial")
         )
+        has_open_requested_need = open_requested_needs > 0
 
         has_linked_request = (
             customer_request is not None
@@ -161,7 +164,7 @@ class JobEngine:
         # Customer Request stage.
         has_request = (
             has_linked_request
-            or (has_customer and has_registry)
+            or (has_customer and (has_registry or has_open_requested_need))
         )
 
         has_parts = selected_items > 0
@@ -311,7 +314,7 @@ class JobEngine:
             )
             blocked_reason = "Customer information is missing."
 
-        elif not has_registry:
+        elif not has_registry and not has_open_requested_need:
             stage = "REGISTRY"
             action = (
                 "Link Registry",

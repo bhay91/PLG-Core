@@ -162,6 +162,9 @@ def get_job_operational_snapshot(
         base = JobEngine.evaluate(
             job, selected_items=selected, research_items=research, quoted_items=quoted,
             ordered_items=movement["ordered_units"], received_items=movement["received_units"],
+            open_requested_needs=sum(
+                str(need.get("state") or "").upper() == "OPEN" for need in needs
+            ),
             basket_status=basket["status"] if basket else "OPEN",
             customer_request=connection.execute("SELECT id FROM customer_requests WHERE job_id=? LIMIT 1", (job_id,)).fetchone(),
             quote=quote, invoice=invoice,

@@ -15,6 +15,7 @@ from plg_core.assets.service import add_job_asset
 from plg_core.basket.service import get_basket, import_cart
 from plg_core.basket.routes import clone_supplier_quote
 from plg_core.database.migrations import MIGRATIONS, run_migrations
+from plg_core.jobs.engine import JobEngine
 from plg_core.commercial.service import create_selective_draft_quote
 from plg_core.revisions.quote_workflow import start_quote_revision
 from plg_core.research.branding import manufacturer_brand
@@ -88,6 +89,84 @@ class MachineFirstResearchBatch3CTests(unittest.TestCase):
 
     def revision(self, job_id):
         return get_basket(job_id)["work_revision"]
+
+    def test_open_requested_need_without_asset_enters_research(self):
+        job_id = self.job()
+        revision = self.revision(job_id)
+        create_requested_need(
+            job_id, job_asset_id=None, wording="King mattress",
+            expected_revision_id=revision["id"],
+            expected_version=revision["lock_version"],
+        )
+        with closing(self.connection()) as c:
+            job = c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+            open_need_count = c.execute(
+                "SELECT COUNT(*) FROM requested_needs WHERE job_id=? AND state='OPEN'",
+                (job_id,),
+            ).fetchone()[0]
+        intelligence = JobEngine.evaluate(
+            job, open_requested_needs=open_need_count,
+        )
+        self.assertEqual(intelligence.workflow_stage, "RESEARCH")
+        self.assertEqual(intelligence.action_key, "RESEARCH_PARTS")
+
+    def test_missing_requested_need_and_asset_still_blocks_readiness(self):
+        job_id = self.job()
+        with closing(self.connection()) as c:
+            job = c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+        intelligence = JobEngine.evaluate(job, open_requested_needs=0)
+        self.assertEqual(intelligence.workflow_stage, "REQUEST")
+        self.assertNotEqual(intelligence.workflow_stage, "RESEARCH")
+
+    def _assert_universal_candidate_promotes_without_part_number(self, description):
+        job_id = self.job()
+        revision = self.revision(job_id)
+        need = create_requested_need(
+            job_id, job_asset_id=None, wording=description,
+            expected_revision_id=revision["id"],
+            expected_version=revision["lock_version"],
+        )
+        revision = self.revision(job_id)
+        item = create_manual_research_result(
+            job_id, job_asset_id=None, requested_need_id=need["id"],
+            description=description,
+            expected_revision_id=revision["id"],
+            expected_version=revision["lock_version"],
+        )["items"][-1]
+        with closing(self.connection()) as c:
+            c.execute(
+                "UPDATE basket_items SET internal_part_number='',"
+                "manufacturer_part_number='',supplier_part_number='' WHERE id=?",
+                (item["id"],),
+            )
+            c.commit()
+        self.assertEqual(item["research_state"], "RESEARCH_RESULT")
+        self.assertFalse(item["selected"])
+        revision = self.revision(job_id)
+        promoted = set_quote_candidate(
+            job_id, item["id"], candidate=True,
+            requested_need_ids=[need["id"]],
+            expected_revision_id=revision["id"],
+            expected_version=revision["lock_version"],
+        )
+        self.assertEqual(promoted["research_state"], "QUOTE_CANDIDATE")
+        self.assertEqual(promoted["selected"], 1)
+        self.assertEqual(promoted["requested_description"], description)
+
+    def test_mattress_candidate_promotes_without_part_number(self):
+        self._assert_universal_candidate_promotes_without_part_number(
+            "Sealy King Mattress, Medium Firm"
+        )
+
+    def test_forklift_candidate_promotes_without_part_number(self):
+        self._assert_universal_candidate_promotes_without_part_number(
+            "Used Toyota 8FGCU25 Forklift"
+        )
+
+    def test_pallet_water_candidate_promotes_without_part_number(self):
+        self._assert_universal_candidate_promotes_without_part_number(
+            "Crystal Springs 16.9 oz Bottled Water, 60 cases"
+        )
 
     def test_requested_need_is_machine_scoped_and_not_quote_ready(self):
         job_id = self.job(); deere, jcb, _ = self.assets(job_id)
