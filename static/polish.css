@@ -395,6 +395,9 @@ small,
     padding: 10px 0;
     border-top: 1px solid var(--line);
   }
+  .invoice-center-table tbody tr {
+    grid-template-columns: 58px minmax(0, 1fr) 96px;
+  }
   .quote-review-table tbody tr:first-child,
   .invoice-center-table tbody tr:first-child { border-top: 0; }
   .quote-review-table td,
@@ -420,6 +423,11 @@ small,
   .quote-review-table td:nth-child(3), .invoice-center-table td:nth-child(3) { grid-column: 1 / 4; grid-row: 2; }
   .quote-review-table td:nth-child(4), .invoice-center-table td:nth-child(4) { grid-column: 2; grid-row: 3; }
   .quote-review-table td:nth-child(5), .invoice-center-table td:nth-child(5) { grid-column: 3; grid-row: 3; text-align: right; }
+  .invoice-center-table td:nth-child(4),
+  .invoice-center-table td:nth-child(5) {
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
   .quote-review-table td:nth-child(1)::before, .invoice-center-table td:nth-child(1)::before { content: "Qty"; }
   .quote-review-table td:nth-child(2)::before, .invoice-center-table td:nth-child(2)::before { content: "Item / Reference"; }
   .quote-review-table td:nth-child(3)::before, .invoice-center-table td:nth-child(3)::before { content: "Description"; }
