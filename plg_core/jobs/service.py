@@ -104,6 +104,50 @@ def get_job_operational_snapshot(
         movement["available_to_deliver_units"] = sum(max(
             int(row["quantity_received"] or 0) - int(row["delivered"] or 0) - int(row["reserved"] or 0), 0
         ) for row in movement_rows)
+        exception_rows = connection.execute(
+            """
+            SELECT rei.id,rei.disposition,rei.quantity,rei.reason,po.id AS order_id,
+                   COALESCE((SELECT SUM(rr.quantity)
+                     FROM receiving_exception_resolutions rr
+                     WHERE rr.exception_item_id=rei.id
+                       AND rr.resolution NOT IN ('REPLACEMENT_EXPECTED','BACKORDER_CONFIRMED')),0)
+                     AS resolved_quantity
+            FROM receiving_exception_items rei
+            JOIN receiving_events r ON r.id=rei.receipt_id
+            JOIN supplier_orders po ON po.id=r.order_id
+            WHERE po.job_id=? ORDER BY rei.id DESC
+            """,
+            (job_id,),
+        ).fetchall()
+        unresolved_exceptions = []
+        for source in exception_rows:
+            row = dict(source)
+            row["unresolved_quantity"] = max(
+                int(row["quantity"] or 0) - int(row["resolved_quantity"] or 0), 0
+            )
+            if row["unresolved_quantity"]:
+                unresolved_exceptions.append(row)
+        backorder_rows = connection.execute(
+            """
+            SELECT be.*,oi.quantity_ordered,oi.quantity_received,po.id AS order_id
+            FROM supplier_order_item_backorder_events be
+            JOIN supplier_order_items oi ON oi.id=be.order_item_id
+            JOIN supplier_orders po ON po.id=oi.order_id
+            WHERE po.job_id=? AND be.id=(
+              SELECT MAX(latest.id) FROM supplier_order_item_backorder_events latest
+              WHERE latest.order_item_id=be.order_item_id)
+            """,
+            (job_id,),
+        ).fetchall()
+        active_backorders = []
+        for source in backorder_rows:
+            row = dict(source)
+            row["effective_quantity"] = min(
+                int(row["backordered_quantity"] or 0),
+                max(int(row["quantity_ordered"] or 0) - int(row["quantity_received"] or 0), 0),
+            )
+            if row["event_kind"] != "RESOLVED" and row["effective_quantity"]:
+                active_backorders.append(row)
 
         financial = None
         if invoice is not None:
@@ -173,6 +217,24 @@ def get_job_operational_snapshot(
             job, invoice, order_rows, movement, financial,
             (base.workflow_label, base.next_action, base.action_url),
         )
+        overlay_stages = {
+            "Partial Receiving", "Waiting for Supplier", "Ready to Deliver",
+            "Costs Pending", "Completed", "Completed · Costs Pending",
+        }
+        if unresolved_exceptions and stage in overlay_stages:
+            dispositions = {row["disposition"] for row in unresolved_exceptions}
+            stage = "Receiving Exception"
+            if "QUARANTINED" in dispositions:
+                next_action = "Review quarantined units"
+            elif "SHORT" in dispositions or active_backorders:
+                next_action = "Follow up with supplier"
+            else:
+                next_action = "Resolve supplier exception"
+            next_url = f"/purchasing/orders/{unresolved_exceptions[0]['order_id']}#receiving-exceptions"
+        elif active_backorders and stage in overlay_stages:
+            stage = "Supplier Backorder"
+            next_action = "Track supplier backorder"
+            next_url = f"/purchasing/orders/{active_backorders[0]['order_id']}#backorders"
         from plg_core.jobs.fulfillment import fulfillment_snapshot
         fulfillment = fulfillment_snapshot(job_id, connection=connection)
 
@@ -197,6 +259,8 @@ def get_job_operational_snapshot(
             "quote": ({"id": int(quote["id"]), "quote_number": quote["quote_number"], "status": quote["status"]} if quote else None),
             "invoice": ({"id": int(invoice["id"]), "invoice_number": invoice["invoice_number"], "status": invoice["status"], "customer_total": float(invoice["customer_total"] or 0), "balance_due": float(invoice["balance_due"] or 0), "amount_paid": round(max(float(invoice["customer_total"] or 0) - float(invoice["balance_due"] or 0), 0), 2), "payment_state": payment_state, "url": f"/invoices/{int(invoice['id'])}/documents"} if invoice else None),
             "financial": financial, "supplier_orders": orders, "movement": movement,
+            "receiving_exceptions": unresolved_exceptions,
+            "active_backorders": active_backorders,
             "fulfillment": fulfillment,
             "documents": documents, "documents_url": f"/documents?q={job['job_number']}",
             "accounting_url": f"/accounting?invoice={invoice['invoice_number']}" if invoice else "/accounting",

@@ -3113,6 +3113,8 @@ def purchasing_order_detail(
             "items": order["items"],
             "csrf_token": csrf_token,
             "receipt_idempotency_key": new_idempotency_key(),
+            "exception_action_key": new_idempotency_key(),
+            "backorder_action_key": new_idempotency_key(),
             "actual_cost_request_id": new_idempotency_key(),
             "receiver_default": "" if actor == "system" else actor,
             "receipt_result": receipt_result,
@@ -3308,8 +3310,10 @@ async def receive_supplier_order_web(
     request: Request,
     order_id: int,
 ):
+    from pydantic import ValidationError
     from plg_core.supply.models import (
         ReceiptCreate,
+        ReceiptExceptionItem,
         ReceiptItem,
     )
     from plg_core.supply.service import (
@@ -3324,8 +3328,12 @@ async def receive_supplier_order_web(
     notes = str(form.get("notes", "") or "").strip()
     receiver = str(form.get("receiver", "") or "").strip()
     idempotency_key = str(form.get("idempotency_key", "") or "").strip()
+    if not idempotency_key:
+        raise HTTPException(status_code=400, detail="Receipt idempotency key is required. Reload and retry.")
 
     receipt_items = []
+    receipt_exceptions = []
+    dispositions = ("DAMAGED", "WRONG_ITEM", "QUARANTINED", "REJECTED", "SHORT")
 
     for item in order["items"]:
         item_id = int(item["id"])
@@ -3360,24 +3368,50 @@ async def receive_supplier_order_web(
                     quantity_received=quantity,
                 )
             )
+        for disposition in dispositions:
+            prefix = f"exception_{item_id}_{disposition.lower()}"
+            raw_exception = str(form.get(f"{prefix}_quantity", "0") or "0").strip()
+            try:
+                exception_quantity = int(raw_exception)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Exception quantities must be whole numbers.")
+            if exception_quantity < 0:
+                raise HTTPException(status_code=400, detail="Exception quantity cannot be negative.")
+            if exception_quantity:
+                exception_reason = str(form.get(f"{prefix}_reason", "") or "").strip()
+                if not exception_reason:
+                    raise HTTPException(status_code=400, detail=f"A reason is required for {disposition.lower().replace('_', ' ')} quantity.")
+                try:
+                    receipt_exceptions.append(ReceiptExceptionItem(
+                        order_item_id=item_id,
+                        disposition=disposition,
+                        quantity=exception_quantity,
+                        reason=exception_reason,
+                        supplier_reference=str(form.get(f"{prefix}_supplier_reference", "") or "").strip(),
+                    ))
+                except ValidationError as exc:
+                    raise HTTPException(status_code=400, detail="Invalid receiving exception input.") from exc
 
-    if not receipt_items:
+    if not receipt_items and not receipt_exceptions:
         raise HTTPException(
             status_code=400,
             detail=(
-                "Enter a received quantity for at "
-                "least one part."
+                "Enter an accepted or exception quantity for at least one item."
             ),
         )
 
-    receipt = record_receipt(
-        order_id,
-        ReceiptCreate(
+    try:
+        payload = ReceiptCreate(
             items=receipt_items,
+            exceptions=receipt_exceptions,
             notes=notes,
             receiver=receiver,
-            idempotency_key=idempotency_key or None,
-        ),
+            idempotency_key=idempotency_key,
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail="Invalid receiving submission.") from exc
+    receipt = record_receipt(
+        order_id, payload,
         actor=request_actor(request),
         request_id=request_id(request),
         source_path=str(request.url.path),
@@ -3387,6 +3421,84 @@ async def receive_supplier_order_web(
         url=f"/purchasing/orders/{order_id}?receipt_id={receipt['id']}",
         status_code=303,
     )
+
+
+@app.post("/purchasing/exceptions/{exception_id}/resolve")
+async def resolve_receiving_exception_web(request: Request, exception_id: int):
+    from pydantic import ValidationError
+    from plg_core.supply.models import ReceivingExceptionResolutionCreate
+    from plg_core.supply.service import resolve_receiving_exception
+    from plg_core.web_security import request_actor, request_id, require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, str(form.get("csrf_token", "") or ""))
+    related = str(form.get("related_receipt_id", "") or "").strip()
+    try:
+        payload = ReceivingExceptionResolutionCreate(
+            quantity=int(str(form.get("quantity", "0") or "0")),
+            resolution=str(form.get("resolution", "") or "").strip().upper(),
+            related_receipt_id=int(related) if related else None,
+            reason=str(form.get("reason", "") or "").strip(),
+            notes=str(form.get("notes", "") or "").strip(),
+            supplier_reference=str(form.get("supplier_reference", "") or "").strip(),
+            idempotency_key=str(form.get("idempotency_key", "") or "").strip(),
+        )
+    except (ValidationError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid receiving-exception action.") from exc
+    result = resolve_receiving_exception(
+        exception_id, payload,
+        actor=request_actor(request), request_id=request_id(request),
+    )
+    return RedirectResponse(url=f"/purchasing/orders/{result['order_id']}#receiving-exceptions", status_code=303)
+
+
+@app.post("/purchasing/exceptions/{exception_id}/clear")
+async def clear_receiving_exception_web(request: Request, exception_id: int):
+    from plg_core.supply.service import clear_quarantined_exception
+    from plg_core.web_security import request_actor, request_id, require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, str(form.get("csrf_token", "") or ""))
+    try:
+        quantity = int(str(form.get("quantity", "0") or "0"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid quarantine-clearance quantity or order reference.") from exc
+    result = clear_quarantined_exception(
+        exception_id,
+        quantity=quantity,
+        reason=str(form.get("reason", "") or "").strip(),
+        receiver=str(form.get("receiver", "") or "").strip(),
+        notes=str(form.get("notes", "") or "").strip(),
+        idempotency_key=str(form.get("idempotency_key", "") or "").strip(),
+        actor=request_actor(request), request_id=request_id(request),
+    )
+    return RedirectResponse(url=f"/purchasing/orders/{result['order_id']}#receiving-exceptions", status_code=303)
+
+
+@app.post("/purchasing/order-items/{item_id}/backorder")
+async def supplier_backorder_web(request: Request, item_id: int):
+    from pydantic import ValidationError
+    from plg_core.supply.models import BackorderEventCreate
+    from plg_core.supply.service import record_backorder_event
+    from plg_core.web_security import request_actor, request_id, require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, str(form.get("csrf_token", "") or ""))
+    related = str(form.get("related_receipt_id", "") or "").strip()
+    event_kind = str(form.get("event_kind", "") or "").strip().upper()
+    try:
+        payload = BackorderEventCreate(
+            event_kind=event_kind,
+            backordered_quantity=(0 if event_kind == "RESOLVED" else int(str(form.get("backordered_quantity", "0") or "0"))),
+            reason=str(form.get("reason", "") or "").strip(),
+            supplier_reference=str(form.get("supplier_reference", "") or "").strip(),
+            related_receipt_id=int(related) if related else None,
+            idempotency_key=str(form.get("idempotency_key", "") or "").strip(),
+        )
+    except (ValidationError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid supplier backorder action.") from exc
+    result = record_backorder_event(
+        item_id, payload,
+        actor=request_actor(request), request_id=request_id(request),
+    )
+    return RedirectResponse(url=f"/purchasing/orders/{result['order_id']}#backorders", status_code=303)
 
 
 @app.get("/purchasing/receipts/{receipt_id}/summary/pdf")

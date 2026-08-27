@@ -17,7 +17,7 @@ import legacy_app
 from plg_core.database.migrations import run_migrations
 from plg_core.documents.integrity import verified_receiving_document
 from plg_core.documents.paths import resolve_manifest_path
-from plg_core.supply.models import DeliveryCreate, DeliveryItemCreate, ReceiptCreate, ReceiptItem
+from plg_core.supply.models import DeliveryCreate, DeliveryItemCreate, ReceiptCreate, ReceiptExceptionItem, ReceiptItem
 from plg_core.supply.service import (
     create_delivery,
     create_orders_from_paid_invoice,
@@ -196,6 +196,163 @@ class Receiving2Tests(unittest.TestCase):
             audit = c.execute("SELECT actor FROM audit_logs WHERE action='PARTS_RECEIVED' AND entity_id=? ORDER BY id DESC", (self.order_a["id"],)).fetchone()
         self.assertEqual(tuple(event), ("Pat Receiver", "web-receipt-request", path))
         self.assertEqual(audit["actor"], "web.receiver")
+
+    def test_web_receiving_records_accepted_and_structured_exception_separately(self):
+        item_id = self.order_a["items"][0]["id"]
+        path = f"/purchasing/orders/{self.order_a['id']}/receive"
+        token = "phase2-receiving-csrf-token-123456"
+        fields = {
+            "csrf_token": token, "idempotency_key": "phase2-mixed-web",
+            "receiver": "Phase 2 Receiver", f"qty_{item_id}": "1",
+            f"exception_{item_id}_damaged_quantity": "1",
+            f"exception_{item_id}_damaged_reason": "Crushed packaging",
+            f"exception_{item_id}_damaged_supplier_reference": "SUP-CASE-9",
+        }
+        response = asyncio.run(legacy_app.receive_supplier_order_web(
+            self._web_request(path, fields, cookie_token=token), self.order_a["id"]
+        ))
+        self.assertEqual(response.status_code, 303)
+        with closing(legacy_app.get_connection()) as c:
+            accepted = c.execute("SELECT quantity_received FROM supplier_order_items WHERE id=?", (item_id,)).fetchone()[0]
+            exception = c.execute("SELECT disposition,quantity,reason FROM receiving_exception_items WHERE order_item_id=?", (item_id,)).fetchone()
+        self.assertEqual(accepted, 1)
+        self.assertEqual(tuple(exception), ("DAMAGED", 1, "Crushed packaging"))
+
+    def test_web_receiving_accepts_exception_only_and_rejects_blank_reason(self):
+        item_id = self.order_a["items"][0]["id"]
+        path = f"/purchasing/orders/{self.order_a['id']}/receive"
+        token = "phase2-short-csrf-token-123456"
+        base = {"csrf_token": token, "idempotency_key": "phase2-short", f"exception_{item_id}_short_quantity": "2"}
+        with self.assertRaises(HTTPException) as failure:
+            asyncio.run(legacy_app.receive_supplier_order_web(
+                self._web_request(path, {**base, f"exception_{item_id}_short_reason": "   "}, cookie_token=token), self.order_a["id"]
+            ))
+        self.assertEqual(failure.exception.status_code, 400)
+        response = asyncio.run(legacy_app.receive_supplier_order_web(
+            self._web_request(path, {**base, f"exception_{item_id}_short_reason": "Two units absent"}, cookie_token=token), self.order_a["id"]
+        ))
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(get_order(self.order_a["id"])["items"][0]["quantity_received"], 0)
+
+    def test_phase2_template_distinguishes_accepted_exceptions_and_backorders(self):
+        html = self._render_order_detail()
+        for label in ("Accepted now", "Usable and deliverable", "Not deliverable", "Not physically received", "Outstanding supplier commitments"):
+            self.assertIn(label, html)
+        self.assertNotIn("Backordered</legend>", html)
+
+    def test_phase2_action_routes_return_controlled_400_for_malformed_numbers(self):
+        token = "phase2-actions-csrf-token-123456"
+        cases = (
+            (legacy_app.resolve_receiving_exception_web, "/purchasing/exceptions/1/resolve", 1, {
+                "csrf_token": token, "order_id": str(self.order_a["id"]), "quantity": "not-a-number",
+                "resolution": "CLOSED", "reason": "Close", "idempotency_key": "bad-resolution",
+            }),
+            (legacy_app.clear_receiving_exception_web, "/purchasing/exceptions/1/clear", 1, {
+                "csrf_token": token, "order_id": str(self.order_a["id"]), "quantity": "not-a-number",
+                "reason": "Clear", "idempotency_key": "bad-clearance",
+            }),
+            (legacy_app.supplier_backorder_web, "/purchasing/order-items/1/backorder", 1, {
+                "csrf_token": token, "order_id": str(self.order_a["id"]), "event_kind": "DECLARED",
+                "backordered_quantity": "not-a-number", "reason": "Supplier delay", "idempotency_key": "bad-backorder",
+            }),
+        )
+        for handler, path, entity_id, fields in cases:
+            with self.subTest(path=path), self.assertRaises(HTTPException) as failure:
+                asyncio.run(handler(self._web_request(path, fields, cookie_token=token), entity_id))
+            self.assertEqual(failure.exception.status_code, 400)
+
+    def test_receiving_requires_nonblank_idempotency_key_atomically(self):
+        item_id = self.order_a["items"][0]["id"]
+        path = f"/purchasing/orders/{self.order_a['id']}/receive"
+        token = "phase2-key-csrf-token-123456"
+        with closing(legacy_app.get_connection()) as connection:
+            before = {
+                "events": connection.execute("SELECT COUNT(*) FROM receiving_events WHERE order_id=?", (self.order_a["id"],)).fetchone()[0],
+                "exceptions": connection.execute("SELECT COUNT(*) FROM receiving_exception_items").fetchone()[0],
+                "audits": connection.execute("SELECT COUNT(*) FROM audit_logs").fetchone()[0],
+                "manifests": connection.execute("SELECT COUNT(*) FROM receiving_documents_manifest").fetchone()[0],
+                "accepted": connection.execute("SELECT quantity_received FROM supplier_order_items WHERE id=?", (item_id,)).fetchone()[0],
+            }
+        for submitted in (None, "   "):
+            fields = {"csrf_token": token, f"qty_{item_id}": "1"}
+            if submitted is not None:
+                fields["idempotency_key"] = submitted
+            with self.subTest(key=submitted), self.assertRaises(HTTPException) as failure:
+                asyncio.run(legacy_app.receive_supplier_order_web(
+                    self._web_request(path, fields, cookie_token=token), self.order_a["id"]
+                ))
+            self.assertEqual(failure.exception.status_code, 400)
+        with closing(legacy_app.get_connection()) as connection:
+            after = {
+                "events": connection.execute("SELECT COUNT(*) FROM receiving_events WHERE order_id=?", (self.order_a["id"],)).fetchone()[0],
+                "exceptions": connection.execute("SELECT COUNT(*) FROM receiving_exception_items").fetchone()[0],
+                "audits": connection.execute("SELECT COUNT(*) FROM audit_logs").fetchone()[0],
+                "manifests": connection.execute("SELECT COUNT(*) FROM receiving_documents_manifest").fetchone()[0],
+                "accepted": connection.execute("SELECT quantity_received FROM supplier_order_items WHERE id=?", (item_id,)).fetchone()[0],
+            }
+        self.assertEqual(after, before)
+
+    def test_phase2_mutation_routes_succeed_and_redirect_to_authoritative_order(self):
+        item_id = self.order_a["items"][0]["id"]
+        damaged = record_receipt(self.order_a["id"], ReceiptCreate(
+            exceptions=[ReceiptExceptionItem(order_item_id=item_id, disposition="DAMAGED", quantity=1, reason="Bent")],
+            idempotency_key="route-damaged-source",
+        ))["exceptions"][0]
+        quarantined = record_receipt(self.order_a["id"], ReceiptCreate(
+            exceptions=[ReceiptExceptionItem(order_item_id=item_id, disposition="QUARANTINED", quantity=1, reason="Inspect")],
+            idempotency_key="route-quarantine-source",
+        ))["exceptions"][0]
+        token = "phase2-success-csrf-token-123456"
+        wrong_order = self.order_b["id"]
+        resolution_path = f"/purchasing/exceptions/{damaged['id']}/resolve"
+        resolution = asyncio.run(legacy_app.resolve_receiving_exception_web(
+            self._web_request(resolution_path, {
+                "csrf_token": token, "order_id": str(wrong_order), "quantity": "1",
+                "resolution": "REPLACEMENT_EXPECTED", "reason": "Supplier replacing",
+                "idempotency_key": "route-resolution",
+            }, cookie_token=token), damaged["id"]
+        ))
+        self.assertEqual(resolution.headers["location"], f"/purchasing/orders/{self.order_a['id']}#receiving-exceptions")
+        clearance_path = f"/purchasing/exceptions/{quarantined['id']}/clear"
+        clearance = asyncio.run(legacy_app.clear_receiving_exception_web(
+            self._web_request(clearance_path, {
+                "csrf_token": token, "order_id": str(wrong_order), "quantity": "1",
+                "reason": "Inspection passed", "receiver": "Route Receiver",
+                "idempotency_key": "route-clearance",
+            }, cookie_token=token), quarantined["id"]
+        ))
+        self.assertEqual(clearance.headers["location"], f"/purchasing/orders/{self.order_a['id']}#receiving-exceptions")
+
+        async def backorder(kind, quantity, key, hidden_order):
+            path = f"/purchasing/order-items/{item_id}/backorder"
+            return await legacy_app.supplier_backorder_web(self._web_request(path, {
+                "csrf_token": token, "order_id": str(hidden_order), "event_kind": kind,
+                "backordered_quantity": str(quantity), "reason": f"{kind} route test",
+                "idempotency_key": key,
+            }, cookie_token=token), item_id)
+        declared = asyncio.run(backorder("DECLARED", 2, "route-backorder-declare", wrong_order))
+        updated = asyncio.run(backorder("UPDATED", 1, "route-backorder-update", wrong_order))
+        resolved = asyncio.run(backorder("RESOLVED", 0, "route-backorder-resolve", wrong_order))
+        expected = f"/purchasing/orders/{self.order_a['id']}#backorders"
+        self.assertEqual([declared.headers["location"], updated.headers["location"], resolved.headers["location"]], [expected] * 3)
+        with closing(legacy_app.get_connection()) as connection:
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM receiving_exception_resolutions WHERE exception_item_id IN (?,?)", (damaged["id"], quarantined["id"])).fetchone()[0], 2)
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM supplier_order_item_backorder_events WHERE order_item_id=?", (item_id,)).fetchone()[0], 3)
+
+    def test_phase2_mutation_routes_require_csrf(self):
+        cases = (
+            (legacy_app.resolve_receiving_exception_web, "/purchasing/exceptions/1/resolve", 1),
+            (legacy_app.clear_receiving_exception_web, "/purchasing/exceptions/1/clear", 1),
+            (legacy_app.supplier_backorder_web, "/purchasing/order-items/1/backorder", 1),
+        )
+        for handler, path, entity_id in cases:
+            with self.subTest(path=path), self.assertRaises(HTTPException) as failure:
+                asyncio.run(handler(self._web_request(path, {"csrf_token": "wrong"}, cookie_token="right"), entity_id))
+            self.assertEqual(failure.exception.status_code, 403)
+
+    def test_wrong_item_offers_reclassified_rejected_action(self):
+        source = (ROOT / "templates" / "supplier_order_detail.html").read_text()
+        self.assertIn('<option value="RECLASSIFIED_REJECTED">Reject item</option>', source)
 
     def test_api_receiving_uses_header_idempotency_and_request_attribution(self):
         from plg_core.supply.routes import receive

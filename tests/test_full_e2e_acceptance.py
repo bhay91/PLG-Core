@@ -206,7 +206,7 @@ class FullEndToEndAcceptanceTests(unittest.TestCase):
         self.assertEqual(get_order(basket["id"])["status"], "ORDERED")
         self.assertTrue(record_receipt(cat["id"], ReceiptCreate(
             items=[ReceiptItem(order_item_id=cat_a["id"], quantity_received=1)],
-            idempotency_key="receipt-cat-partial"))["replayed"])
+            receiver="E2E Receiver", idempotency_key="receipt-cat-partial"))["replayed"])
         cat = get_order(cat["id"])
         remaining = [ReceiptItem(order_item_id=i["id"], quantity_received=i["quantity_ordered"]-i["quantity_received"]) for i in cat["items"] if i["quantity_ordered"] > i["quantity_received"]]
         receipt_two = record_receipt(cat["id"], ReceiptCreate(items=remaining, receiver="E2E Receiver", idempotency_key="receipt-cat-final"))

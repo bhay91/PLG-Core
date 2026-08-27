@@ -12,6 +12,7 @@ from unittest.mock import patch
 from fastapi import HTTPException, Request
 
 import legacy_app
+from plg_core.database.migrations import run_migrations
 from plg_core.supply.service import (
     get_purchasing_operational_snapshot,
     list_purchasing_operational_snapshots,
@@ -35,6 +36,7 @@ class PurchasingCommandCenter2Tests(unittest.TestCase):
         ]
         for item in self.patches:
             item.start()
+        run_migrations()
         self.configure_fixture()
 
     def tearDown(self):

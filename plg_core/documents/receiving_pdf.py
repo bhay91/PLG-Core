@@ -129,6 +129,59 @@ def build_receiving_pdf(receipt: dict, output_path: Path) -> Path:
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
     story = [header, Spacer(1, 12), info, Spacer(1, 12), items]
+    exceptions = receipt.get("exceptions", [])
+    if exceptions:
+        exception_rows = [[
+            "ITEM / REFERENCE", "DISPOSITION", "QTY", "CLASSIFICATION",
+            "REASON / SUPPLIER REFERENCE",
+        ]]
+        for exception in exceptions:
+            disposition = str(exception.get("disposition") or "").upper()
+            classification = (
+                "SHORT SHIPMENT — NOT PHYSICALLY RECEIVED"
+                if disposition == "SHORT"
+                else "NON-DELIVERABLE EXCEPTION"
+            )
+            reference = exception.get("supplier_part_number") or "—"
+            description = exception.get("description") or "Item"
+            supplier_reference = str(
+                exception.get("supplier_reference") or ""
+            ).strip()
+            reason = str(exception.get("reason") or "").strip()
+            detail = reason + (
+                f" · Supplier reference: {supplier_reference}"
+                if supplier_reference else ""
+            )
+            exception_rows.append([
+                Paragraph(f"{_text(reference)}<br/>{_text(description)}", small),
+                Paragraph(_text(disposition.replace("_", " ")), small),
+                str(exception.get("quantity") or 0),
+                Paragraph(_text(classification), small),
+                Paragraph(_text(detail), small),
+            ])
+        exception_table = Table(
+            exception_rows,
+            repeatRows=1,
+            colWidths=[1.65*inch,1.0*inch,.48*inch,1.65*inch,2.32*inch],
+        )
+        exception_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), NAVY),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 6.5),
+            ("GRID", (0, 0), (-1, -1), .4, LINE),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ALIGN", (2, 1), (2, -1), "CENTER"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        story.extend([
+            Spacer(1, 12),
+            Paragraph("RECEIVING EXCEPTIONS", label),
+            exception_table,
+        ])
     notes = str(receipt.get("notes") or "").strip()
     if notes:
         story.extend([

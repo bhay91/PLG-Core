@@ -454,3 +454,39 @@ small,
   .purchase-ops-metrics { grid-template-columns: 1fr 1fr; }
   .docs-card span { font-size: .72rem; line-height: 1.25; }
 }
+
+/* Structured receiving exceptions: compact operational presentation. */
+.receiving-exception-form { gap: 14px; }
+.receiving-entry { padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
+.receiving-entry > header, .receiving-exception-card > header, .backorder-card > header { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.receiving-entry header small, .receiving-exception-card header small, .backorder-card header small { display: block; color: var(--muted); }
+.receiving-entry-state { display: flex; gap: 12px; color: var(--muted); white-space: nowrap; }
+.receiving-accepted { display: grid; grid-template-columns: minmax(170px,1fr) minmax(90px,140px); gap: 12px; align-items: end; margin-top: 12px; padding: 12px; border-left: 4px solid var(--primary); background: var(--surface); }
+.receiving-accepted small, .receiving-exception-inputs small { color: var(--muted); font-weight: 500; }
+.receiving-exception-inputs { margin-top: 10px; }
+.receiving-exception-inputs > summary, .backorder-card > details > summary { cursor: pointer; font-weight: 750; }
+.receiving-exception-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-top: 10px; }
+.receiving-exception-grid fieldset { display: grid; grid-template-columns: 90px minmax(140px,1fr); gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+.receiving-exception-grid fieldset label:last-child { grid-column: 1/-1; }
+.receiving-exception-list, .backorder-list { display: grid; gap: 10px; }
+.receiving-exception-card, .backorder-card { padding: 12px; border: 1px solid var(--line); border-radius: 9px; }
+.exception-resolution-line { display: block; padding-top: 5px; }
+.exception-action-form { display: grid; grid-template-columns: 100px minmax(150px,1fr) minmax(180px,1fr) auto; gap: 9px; align-items: end; margin-top: 10px; }
+.exception-action-label { align-self: center; }
+.receipt-exception-summary { margin: 10px 0; padding: 9px 11px; border-left: 3px solid var(--warning); background: var(--surface-soft); }
+.receipt-exception-summary p { margin: 3px 0; }
+.job-receiving-alerts { display: flex; align-items: center; gap: 14px; margin: 12px 0; padding: 11px 13px; border-left: 4px solid var(--warning); background: var(--surface-soft); }
+.job-receiving-alerts div { display: grid; }
+.job-receiving-alerts span { color: var(--muted); font-size: .82rem; }
+.job-receiving-alerts .button { margin-left: auto; }
+@media (max-width: 720px) {
+  .receiving-entry > header, .receiving-exception-card > header, .backorder-card > header { display: grid; }
+  .receiving-entry-state { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; white-space: normal; }
+  .receiving-entry-state span { display: grid; padding: 7px; background: var(--surface); border-radius: 6px; }
+  .receiving-accepted { grid-template-columns: 1fr 90px; }
+  .receiving-exception-grid { grid-template-columns: 1fr; }
+  .receiving-exception-grid fieldset { grid-template-columns: 82px minmax(0,1fr); }
+  .exception-action-form { grid-template-columns: 1fr; }
+  .job-receiving-alerts { display: grid; }
+  .job-receiving-alerts .button { margin-left: 0; width: 100%; }
+}

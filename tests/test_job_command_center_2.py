@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import legacy_app
 from plg_core.jobs.service import get_job_operational_snapshot
+from plg_core.database.migrations import run_migrations
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +27,7 @@ class JobCommandCenter2Tests(unittest.TestCase):
         self.db_patch = patch.object(legacy_app, "DB_PATH", self.db_path)
         self.docs_patch = patch.object(legacy_app, "DOCUMENTS_DIR", self.document_root)
         self.db_patch.start(); self.docs_patch.start()
+        run_migrations()
         self._fixture()
 
     def tearDown(self):
@@ -126,6 +128,57 @@ class JobCommandCenter2Tests(unittest.TestCase):
         self.assertTrue(all(d['integrity']=='VALID' for d in first['documents']))
         self.assertEqual(first['activity'],second['activity']);self.assertEqual(first['activity'][0]['event_type'],'SUPPLIER_ORDER_PLACED')
 
+    def test_unresolved_exception_prioritizes_review_without_hiding_deliverable_quantity(self):
+        with closing(self.connection()) as c:
+            item = c.execute("SELECT id,order_id FROM supplier_order_items WHERE order_id=? ORDER BY id LIMIT 1", (self.order_ids[0],)).fetchone()
+            receipt = c.execute("INSERT INTO receiving_events(order_id,receipt_number) VALUES (?,'JCC2-R')", (item['order_id'],)).lastrowid
+            c.execute("INSERT INTO receiving_event_items(receipt_id,order_item_id,quantity_received) VALUES (?,?,1)", (receipt,item['id']))
+            c.execute("UPDATE supplier_order_items SET quantity_received=1 WHERE id=?", (item['id'],))
+            c.execute("INSERT INTO receiving_exception_items(receipt_id,order_item_id,disposition,quantity,reason) VALUES (?,?,'QUARANTINED',1,'Inspection pending')", (receipt,item['id']))
+            c.commit()
+        result = self.snapshot()
+        self.assertEqual(result['workflow']['stage'], 'Receiving Exception')
+        self.assertEqual(result['workflow']['next_action'], 'Review quarantined units')
+        self.assertEqual(result['movement']['available_to_deliver_units'], 1)
+        self.assertEqual(result['receiving_exceptions'][0]['unresolved_quantity'], 1)
+
+    def _add_receiving_overlay(self, disposition="QUARANTINED"):
+        with closing(self.connection()) as c:
+            item = c.execute("SELECT id,order_id FROM supplier_order_items WHERE order_id=? ORDER BY id LIMIT 1", (self.order_ids[0],)).fetchone()
+            receipt = c.execute("INSERT INTO receiving_events(order_id,receipt_number) VALUES (?,?)", (item['order_id'], f"JCC2-{disposition}")).lastrowid
+            return_item = int(item['id'])
+            if disposition:
+                c.execute("INSERT INTO receiving_exception_items(receipt_id,order_item_id,disposition,quantity,reason) VALUES (?,?,?,?,?)", (receipt,item['id'],disposition,1,"Operator follow-up"))
+            c.commit()
+        return return_item
+
+    def test_exception_overlay_does_not_outrank_unplaced_supplier_order(self):
+        self._add_receiving_overlay("QUARANTINED")
+        with closing(self.connection()) as c:
+            c.execute("UPDATE supplier_orders SET status='DRAFT' WHERE id=?", (self.order_ids[1],)); c.commit()
+        result = self.snapshot()
+        self.assertEqual(result['workflow']['stage'], 'Ordering')
+        self.assertIn('Place 1 remaining supplier order', result['workflow']['next_action'])
+        self.assertEqual(len(result['receiving_exceptions']), 1)
+
+    def test_backorder_overlay_does_not_outrank_unplaced_supplier_order(self):
+        item_id = self._add_receiving_overlay("")
+        with closing(self.connection()) as c:
+            c.execute("INSERT INTO supplier_order_item_backorder_events(order_item_id,event_kind,backordered_quantity,reason,idempotency_key) VALUES (?,'DECLARED',1,'Supplier delay','jcc-priority-backorder')", (item_id,))
+            c.execute("UPDATE supplier_orders SET status='DRAFT' WHERE id=?", (self.order_ids[1],)); c.commit()
+        result = self.snapshot()
+        self.assertEqual(result['workflow']['stage'], 'Ordering')
+        self.assertEqual(len(result['active_backorders']), 1)
+
+    def test_exception_overlay_does_not_outrank_payment(self):
+        self._add_receiving_overlay("DAMAGED")
+        with closing(self.connection()) as c:
+            c.execute("UPDATE invoices SET status='UNPAID',balance_due=100 WHERE id=?", (self.invoice_id,)); c.commit()
+        result = self.snapshot()
+        self.assertEqual(result['workflow']['stage'], 'Waiting for Payment')
+        self.assertEqual(result['workflow']['next_action'], 'Collect payment')
+        self.assertEqual(len(result['receiving_exceptions']), 1)
+
     def test_template_has_operational_panels_draft_warning_and_responsive_contract(self):
         source=(ROOT/'templates/job_command_center.html').read_text()
         for value in ('Job Operational Summary','NEXT ACTION','Financial State','Supplier Orders','Supplier-order movement totals','Documents','Recent Activity','UNQUOTED / DRAFT WORK','These are current editable basket values and are not the authoritative issued-invoice/accounting totals.'):
@@ -134,6 +187,30 @@ class JobCommandCenter2Tests(unittest.TestCase):
         self.assertNotIn('operator_stage = "Waiting for Parts"',source)
         self.assertIn('@media(max-width:620px)',source)
         self.assertIn('.job-ops-grid{grid-template-columns:1fr}',source)
+
+    def test_top_summary_uses_only_authoritative_operational_workflow(self):
+        source = (ROOT / 'templates' / 'job_command_center.html').read_text()
+        job_bar = source[source.index('<details class="cc-card job-bar"'):source.index('</details>', source.index('<details class="cc-card job-bar"'))]
+        self.assertIn('{{ operator_stage }}', job_bar)
+        self.assertIn('{{ operational_snapshot.workflow.next_action }}', job_bar)
+        self.assertIn('href="{{ operational_snapshot.workflow.next_url }}"', job_bar)
+        self.assertNotIn('{{ intelligence.next_action }}', job_bar)
+        self.assertNotIn('Open Invoice', job_bar)
+
+        self._add_receiving_overlay('QUARANTINED')
+        receiving = self.snapshot()['workflow']
+        self.assertEqual(receiving, {
+            'stage': 'Receiving Exception',
+            'next_action': 'Review quarantined units',
+            'next_url': f"/purchasing/orders/{self.order_ids[0]}#receiving-exceptions",
+        })
+        with closing(self.connection()) as c:
+            c.execute("UPDATE supplier_orders SET status='DRAFT' WHERE id=?", (self.order_ids[1],))
+            c.commit()
+        ordering = self.snapshot()['workflow']
+        self.assertEqual(ordering['stage'], 'Ordering')
+        self.assertIn('Place 1 remaining supplier order', ordering['next_action'])
+        self.assertEqual(ordering['next_url'], '/purchasing')
 
 
 if __name__ == '__main__':

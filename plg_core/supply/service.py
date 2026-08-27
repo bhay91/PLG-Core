@@ -1,13 +1,245 @@
 from contextlib import closing
+import hashlib
+import json
 from pathlib import Path
 from fastapi import HTTPException
 from legacy_app import get_connection
 from plg_core.audit import write_audit
 from plg_core.timeline import log_job_event
-from plg_core.supply.models import ReceiptCreate, DeliveryCreate
+from plg_core.supply.models import (
+    BackorderEventCreate,
+    DeliveryCreate,
+    ReceiptCreate,
+    ReceivingExceptionResolutionCreate,
+)
 
 
 ACTUAL_COST_STATUSES = {"ORDERED", "PARTIAL", "RECEIVED"}
+INTERIM_EXCEPTION_RESOLUTIONS = {
+    "REPLACEMENT_EXPECTED",
+    "BACKORDER_CONFIRMED",
+}
+EXCEPTION_RESOLUTION_MATRIX = {
+    "DAMAGED": {
+        "RETURNED", "DISPOSED", "REPLACEMENT_EXPECTED",
+        "REPLACED_BY_RECEIPT", "CLOSED",
+    },
+    "WRONG_ITEM": {
+        "RETURNED", "REPLACEMENT_EXPECTED", "REPLACED_BY_RECEIPT",
+        "RECLASSIFIED_REJECTED", "CLOSED",
+    },
+    "QUARANTINED": {"RECLASSIFIED_REJECTED", "CLOSED"},
+    "REJECTED": {
+        "RETURNED", "DISPOSED", "REPLACEMENT_EXPECTED",
+        "REPLACED_BY_RECEIPT", "CLOSED",
+    },
+    "SHORT": {"BACKORDER_CONFIRMED", "REPLACED_BY_RECEIPT", "CLOSED"},
+}
+
+
+def _receipt_request_fingerprint(order_id: int, payload: ReceiptCreate) -> str:
+    content = {
+        "order_id": int(order_id),
+        "items": sorted(
+            (
+                {
+                    "order_item_id": int(item.order_item_id),
+                    "quantity_received": int(item.quantity_received),
+                }
+                for item in payload.items
+            ),
+            key=lambda row: row["order_item_id"],
+        ),
+        "exceptions": sorted(
+            (
+                {
+                    "order_item_id": int(item.order_item_id),
+                    "disposition": str(item.disposition).upper(),
+                    "quantity": int(item.quantity),
+                    "reason": item.reason.strip(),
+                    "notes": item.notes.strip(),
+                    "supplier_reference": item.supplier_reference.strip(),
+                    "evidence_reference": item.evidence_reference.strip(),
+                }
+                for item in payload.exceptions
+            ),
+            key=lambda row: (row["order_item_id"], row["disposition"]),
+        ),
+        "notes": payload.notes.strip(),
+        "receiver": payload.receiver.strip(),
+    }
+    encoded = json.dumps(content, separators=(",", ":"), sort_keys=True).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _accepted_order_status(connection, order_id: int) -> str:
+    quantities = connection.execute(
+        """
+        SELECT COALESCE(SUM(quantity_received),0) AS accepted,
+               COALESCE(SUM(quantity_ordered),0) AS ordered,
+               SUM(CASE WHEN quantity_received < quantity_ordered THEN 1 ELSE 0 END)
+                   AS remaining_lines
+        FROM supplier_order_items
+        WHERE order_id=?
+        """,
+        (order_id,),
+    ).fetchone()
+    if int(quantities["remaining_lines"] or 0) == 0:
+        return "RECEIVED"
+    if int(quantities["accepted"] or 0) == 0:
+        return "ORDERED"
+    return "PARTIAL"
+
+
+def _apply_receiving_completion(connection, order, new_status: str) -> None:
+    connection.execute(
+        """
+        UPDATE supplier_orders
+        SET status=?,
+            received_at=CASE WHEN ?='RECEIVED'
+                THEN COALESCE(received_at,CURRENT_TIMESTAMP) ELSE received_at END,
+            updated_at=CURRENT_TIMESTAMP
+        WHERE id=?
+        """,
+        (new_status, new_status, int(order["id"])),
+    )
+    outstanding_orders = connection.execute(
+        """
+        SELECT COUNT(*) FROM supplier_orders
+        WHERE job_id=? AND UPPER(COALESCE(status,'DRAFT'))!='RECEIVED'
+        """,
+        (int(order["job_id"]),),
+    ).fetchone()[0]
+    if int(outstanding_orders or 0) != 0:
+        return
+    job = connection.execute(
+        "SELECT status FROM jobs WHERE id=?",
+        (int(order["job_id"]),),
+    ).fetchone()
+    if job is not None and str(job["status"] or "").upper() == "RECEIVED":
+        return
+    connection.execute(
+        "UPDATE jobs SET status='RECEIVED' WHERE id=?",
+        (int(order["job_id"]),),
+    )
+    log_job_event(
+        connection,
+        job_id=int(order["job_id"]),
+        event_type="RECEIVING_COMPLETE",
+        icon="✅",
+        message="All supplier purchases have been received.",
+    )
+
+
+def _clearance_request_fingerprint(
+    exception_item_id: int,
+    *,
+    quantity: int,
+    reason: str,
+    receiver: str,
+    notes: str,
+) -> str:
+    encoded = json.dumps(
+        {
+            "exception_item_id": int(exception_item_id),
+            "quantity": int(quantity),
+            "reason": str(reason or "").strip(),
+            "receiver": str(receiver or "").strip(),
+            "notes": str(notes or "").strip(),
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _ensure_receiving_document(receipt_id: int) -> None:
+    from plg_core.documents.integrity import (
+        current_receiving_document,
+        issue_receiving_document,
+        verified_receiving_document,
+    )
+    with closing(get_connection()) as connection:
+        if current_receiving_document(connection, receipt_id) is not None:
+            verified_receiving_document(connection, receipt_id)
+            return
+        issue_receiving_document(connection, receipt_id)
+        connection.commit()
+
+
+def _accepted_receipt_capacity(
+    connection,
+    *,
+    related_receipt_id: int,
+    order_item_id: int,
+    order_id: int,
+):
+    related = connection.execute(
+        """
+        SELECT r.id,r.order_id,COALESCE(SUM(ri.quantity_received),0) AS accepted
+        FROM receiving_events r
+        LEFT JOIN receiving_event_items ri
+          ON ri.receipt_id=r.id AND ri.order_item_id=?
+        WHERE r.id=?
+        GROUP BY r.id,r.order_id
+        """,
+        (int(order_item_id), int(related_receipt_id)),
+    ).fetchone()
+    if related is None or int(related["order_id"]) != int(order_id):
+        raise HTTPException(status_code=409, detail="Related receipt belongs to another order.")
+    replacement_allocated = connection.execute(
+        """
+        SELECT COALESCE(SUM(rr.quantity),0)
+        FROM receiving_exception_resolutions rr
+        JOIN receiving_exception_items rei ON rei.id=rr.exception_item_id
+        WHERE rr.related_receipt_id=? AND rei.order_item_id=?
+          AND rr.resolution='REPLACED_BY_RECEIPT'
+        """,
+        (int(related_receipt_id), int(order_item_id)),
+    ).fetchone()[0]
+    backorder_allocated = connection.execute(
+        """
+        SELECT COALESCE(SUM(fulfilled_quantity),0)
+        FROM supplier_order_item_backorder_events
+        WHERE related_receipt_id=? AND order_item_id=? AND event_kind='RESOLVED'
+        """,
+        (int(related_receipt_id), int(order_item_id)),
+    ).fetchone()[0]
+    accepted = int(related["accepted"] or 0)
+    allocated = int(replacement_allocated or 0) + int(backorder_allocated or 0)
+    return {
+        "receipt_id": int(related["id"]),
+        "accepted": accepted,
+        "allocated": allocated,
+        "remaining": max(accepted - allocated, 0),
+    }
+
+
+def _validate_related_accepted_receipt(
+    connection,
+    *,
+    exception,
+    related_receipt_id: int | None,
+    quantity: int,
+) -> None:
+    if related_receipt_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="This resolution requires a related accepted receipt.",
+        )
+    capacity = _accepted_receipt_capacity(
+        connection,
+        related_receipt_id=int(related_receipt_id),
+        order_item_id=int(exception["order_item_id"]),
+        order_id=int(exception["order_id"]),
+    )
+    if int(capacity["receipt_id"]) <= int(exception["receipt_id"]):
+        raise HTTPException(status_code=409, detail="Replacement receipt must postdate the exception.")
+    if int(capacity["remaining"]) < int(quantity):
+        raise HTTPException(
+            status_code=409,
+            detail="Related receipt has insufficient unallocated accepted quantity for this item.",
+        )
 
 def create_orders_from_paid_invoice(invoice_id: int):
     with closing(get_connection()) as connection:
@@ -357,6 +589,40 @@ def get_order(order_id: int):
             """,
             (order_id,),
         ).fetchall()
+        exception_rows = connection.execute(
+            """
+            SELECT rei.*,oi.description,oi.supplier_part_number,
+                   r.receipt_number,r.received_at,
+                   COALESCE((SELECT SUM(rr.quantity)
+                     FROM receiving_exception_resolutions rr
+                     WHERE rr.exception_item_id=rei.id
+                       AND rr.resolution NOT IN ('REPLACEMENT_EXPECTED','BACKORDER_CONFIRMED')),0)
+                     AS resolved_quantity
+            FROM receiving_exception_items rei
+            JOIN receiving_events r ON r.id=rei.receipt_id
+            JOIN supplier_order_items oi ON oi.id=rei.order_item_id
+            WHERE r.order_id=? ORDER BY rei.id DESC
+            """,
+            (order_id,),
+        ).fetchall()
+        resolution_rows = connection.execute(
+            """
+            SELECT rr.* FROM receiving_exception_resolutions rr
+            JOIN receiving_exception_items rei ON rei.id=rr.exception_item_id
+            JOIN receiving_events r ON r.id=rei.receipt_id
+            WHERE r.order_id=? ORDER BY rr.id DESC
+            """,
+            (order_id,),
+        ).fetchall()
+        backorder_rows = connection.execute(
+            """
+            SELECT be.*,oi.quantity_ordered,oi.quantity_received
+            FROM supplier_order_item_backorder_events be
+            JOIN supplier_order_items oi ON oi.id=be.order_item_id
+            WHERE oi.order_id=? ORDER BY be.id DESC
+            """,
+            (order_id,),
+        ).fetchall()
     result = dict(order)
     result_items = []
     for source in items:
@@ -378,6 +644,31 @@ def get_order(order_id: int):
         result_items.append(item)
     result["items"] = result_items
     result["receipts"] = [get_receipt(receipt_id) for receipt_id in receipt_ids]
+    resolutions_by_exception = {}
+    for source in resolution_rows:
+        resolutions_by_exception.setdefault(int(source["exception_item_id"]), []).append(dict(source))
+    result["receiving_exceptions"] = []
+    for source in exception_rows:
+        exception = dict(source)
+        exception["unresolved_quantity"] = max(
+            int(exception["quantity"] or 0) - int(exception["resolved_quantity"] or 0), 0
+        )
+        exception["resolutions"] = resolutions_by_exception.get(int(exception["id"]), [])
+        result["receiving_exceptions"].append(exception)
+    latest_backorders = {}
+    for source in backorder_rows:
+        item_id = int(source["order_item_id"])
+        if item_id in latest_backorders:
+            continue
+        event = dict(source)
+        remaining = max(int(event["quantity_ordered"] or 0) - int(event["quantity_received"] or 0), 0)
+        declared = int(event["backordered_quantity"] or 0)
+        event["declared_quantity"] = declared
+        event["effective_quantity"] = min(declared, remaining)
+        event["quantity_satisfied_by_receiving"] = max(declared - event["effective_quantity"], 0)
+        event["active"] = event["event_kind"] != "RESOLVED" and event["effective_quantity"] > 0
+        latest_backorders[item_id] = event
+    result["backorders"] = latest_backorders
     result["actual_adjustments"] = [dict(row) for row in adjustments]
     result["actual_shipping_confirmed"] = result["actual_shipping_total"] is not None
     result["actual_shipping_display"] = round(
@@ -594,6 +885,16 @@ def get_receipt(receipt_id: int):
             """,
             (receipt_id, receipt["order_id"]),
         ).fetchall()
+        exceptions = connection.execute(
+            """
+            SELECT rei.*,oi.supplier_part_number,oi.description
+            FROM receiving_exception_items rei
+            JOIN supplier_order_items oi ON oi.id=rei.order_item_id
+            WHERE rei.receipt_id=?
+            ORDER BY rei.id
+            """,
+            (receipt_id,),
+        ).fetchall()
     item_rows = []
     for source in items:
         item = dict(source)
@@ -611,13 +912,19 @@ def get_receipt(receipt_id: int):
         )
         for row in order_items
     )
+    total_accepted = sum(int(row["cumulative_received"] or 0) for row in order_items)
     result = dict(receipt)
     result["items"] = item_rows
+    result["exceptions"] = [dict(row) for row in exceptions]
     result["quantity_received"] = sum(
         int(row["quantity_received"] or 0) for row in item_rows
     )
     result["total_remaining"] = total_remaining
-    result["status_after"] = "RECEIVED" if total_remaining == 0 else "PARTIAL"
+    result["status_after"] = (
+        "RECEIVED" if total_remaining == 0
+        else "ORDERED" if total_accepted == 0
+        else "PARTIAL"
+    )
     result["status"] = result["status_after"]
     return result
 
@@ -1039,10 +1346,10 @@ def record_receipt(
     request_id: str = "",
     source_path: str = "",
 ):
-    if not payload.items:
+    if not payload.items and not payload.exceptions:
         raise HTTPException(
             status_code=400,
-            detail="Receipt requires at least one item.",
+            detail="Receipt requires an accepted quantity or an exception.",
         )
 
     incoming_ids = [
@@ -1059,12 +1366,23 @@ def record_receipt(
             ),
         )
 
+    exception_keys = [
+        (int(item.order_item_id), str(item.disposition).upper())
+        for item in payload.exceptions
+    ]
+    if len(set(exception_keys)) != len(exception_keys):
+        raise HTTPException(
+            status_code=400,
+            detail="Each exception disposition may appear once per supplier purchase item.",
+        )
+
     with closing(get_connection()) as connection:
         connection.execute("BEGIN IMMEDIATE")
         idempotency_key = str(payload.idempotency_key or "").strip()
+        request_fingerprint = _receipt_request_fingerprint(order_id, payload)
         if idempotency_key:
             existing_receipt = connection.execute(
-                "SELECT id,order_id FROM receiving_events WHERE idempotency_key=?",
+                "SELECT id,order_id,request_fingerprint FROM receiving_events WHERE idempotency_key=?",
                 (idempotency_key,),
             ).fetchone()
             if existing_receipt is not None:
@@ -1073,7 +1391,16 @@ def record_receipt(
                         status_code=409,
                         detail="Receipt idempotency key belongs to another Supplier Order.",
                     )
+                existing_fingerprint = str(
+                    existing_receipt["request_fingerprint"] or ""
+                )
+                if existing_fingerprint and existing_fingerprint != request_fingerprint:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Receipt idempotency key was already used with different content.",
+                    )
                 connection.rollback()
+                _ensure_receiving_document(int(existing_receipt["id"]))
                 result = get_receipt(int(existing_receipt["id"]))
                 result["replayed"] = True
                 return result
@@ -1125,6 +1452,7 @@ def record_receipt(
             )
 
         validated = []
+        validated_items = {}
 
         for incoming in payload.items:
             item = connection.execute(
@@ -1188,13 +1516,57 @@ def record_receipt(
                     str(item["description"] or "Part"),
                 )
             )
+            validated_items[int(item["id"])] = item
+
+        validated_exceptions = []
+        accepted_by_item = {item_id: quantity for item_id, quantity, _ in validated}
+        for incoming in payload.exceptions:
+            item_id = int(incoming.order_item_id)
+            item = validated_items.get(item_id)
+            if item is None:
+                item = connection.execute(
+                    "SELECT * FROM supplier_order_items WHERE id=? AND order_id=?",
+                    (item_id, order_id),
+                ).fetchone()
+            if item is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Order item {item_id} not found.",
+                )
+            validated_items[item_id] = item
+            if str(incoming.disposition).upper() == "SHORT":
+                remaining_after_accepted = (
+                    int(item["quantity_ordered"] or 0)
+                    - int(item["quantity_received"] or 0)
+                    - int(accepted_by_item.get(item_id, 0))
+                )
+                if int(incoming.quantity) > remaining_after_accepted:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "Short quantity exceeds the remaining ordered quantity "
+                            "after accepted units on this receipt."
+                        ),
+                    )
+            validated_exceptions.append(
+                (
+                    item_id,
+                    str(incoming.disposition).upper(),
+                    int(incoming.quantity),
+                    incoming.reason.strip(),
+                    incoming.notes.strip(),
+                    incoming.supplier_reference.strip(),
+                    incoming.evidence_reference.strip(),
+                )
+            )
 
         cur = connection.execute(
             """
             INSERT INTO receiving_events (
-                order_id,notes,receiver,request_id,source_path,idempotency_key
+                order_id,notes,receiver,request_id,source_path,idempotency_key,
+                event_kind,request_fingerprint
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, 'RECEIPT', ?)
             """,
             (
                 order_id,
@@ -1203,6 +1575,7 @@ def record_receipt(
                 str(request_id or ""),
                 str(source_path or ""),
                 idempotency_key or None,
+                request_fingerprint,
             ),
         )
 
@@ -1265,44 +1638,35 @@ def record_receipt(
 
             total_received += quantity
 
-        remaining_rows = connection.execute(
-            """
-            SELECT COUNT(*)
-            FROM supplier_order_items
-            WHERE order_id=?
-              AND quantity_received < quantity_ordered
-            """,
-            (order_id,),
-        ).fetchone()[0]
+        for (
+            item_id,
+            disposition,
+            quantity,
+            reason,
+            notes,
+            supplier_reference,
+            evidence_reference,
+        ) in validated_exceptions:
+            connection.execute(
+                """
+                INSERT INTO receiving_exception_items (
+                    receipt_id,order_item_id,disposition,quantity,reason,notes,
+                    supplier_reference,evidence_reference
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    receipt_id,
+                    item_id,
+                    disposition,
+                    quantity,
+                    reason,
+                    notes,
+                    supplier_reference,
+                    evidence_reference,
+                ),
+            )
 
-        new_status = (
-            "RECEIVED"
-            if int(remaining_rows or 0) == 0
-            else "PARTIAL"
-        )
-
-        connection.execute(
-            """
-            UPDATE supplier_orders
-            SET status=?,
-                received_at=
-                    CASE
-                        WHEN ?='RECEIVED'
-                        THEN COALESCE(
-                            received_at,
-                            CURRENT_TIMESTAMP
-                        )
-                        ELSE received_at
-                    END,
-                updated_at=CURRENT_TIMESTAMP
-            WHERE id=?
-            """,
-            (
-                new_status,
-                new_status,
-                order_id,
-            ),
-        )
+        new_status = _accepted_order_status(connection, order_id)
 
         summary = (
             f"{receipt_number}: "
@@ -1311,73 +1675,554 @@ def record_receipt(
             f"received from {order['supplier_name']}. "
             f"Purchase status {new_status}."
         )
+        if total_received:
+            write_audit(
+                connection,
+                action="PARTS_RECEIVED",
+                entity_type="SUPPLIER_ORDER",
+                entity_id=order_id,
+                summary=summary,
+                metadata={
+                    "receipt_id": receipt_id,
+                    "receipt_number": receipt_number,
+                    "quantity_received": total_received,
+                    "status": new_status,
+                    "job_id": int(order["job_id"]),
+                    "invoice_id": order["invoice_id"],
+                    "receiver": payload.receiver.strip(),
+                    "source_path": str(source_path or ""),
+                },
+                actor=str(actor or "system"),
+                request_id=str(request_id or ""),
+            )
+            log_job_event(
+                connection,
+                job_id=int(order["job_id"]),
+                event_type="PARTS_RECEIVED",
+                icon="📦",
+                message=summary,
+            )
+        if validated_exceptions:
+            exception_total = sum(row[2] for row in validated_exceptions)
+            write_audit(
+                connection,
+                action="RECEIVING_EXCEPTION_RECORDED",
+                entity_type="SUPPLIER_ORDER",
+                entity_id=order_id,
+                summary=f"{receipt_number}: {exception_total} exception unit(s) recorded.",
+                metadata={
+                    "receipt_id": receipt_id,
+                    "receipt_number": receipt_number,
+                    "exceptions": [
+                        {"order_item_id": row[0], "disposition": row[1], "quantity": row[2]}
+                        for row in validated_exceptions
+                    ],
+                    "status": new_status,
+                },
+                actor=str(actor or "system"),
+                request_id=str(request_id or ""),
+            )
 
+        _apply_receiving_completion(connection, order, new_status)
+
+        connection.commit()
+    _ensure_receiving_document(receipt_id)
+    result = get_receipt(receipt_id)
+    result["replayed"] = False
+    return result
+
+
+def resolve_receiving_exception(
+    exception_item_id: int,
+    payload: ReceivingExceptionResolutionCreate,
+    *,
+    actor: str = "system",
+    request_id: str = "",
+):
+    """Append a non-inventory resolution to a receiving exception."""
+    if payload.resolution == "CLEARED_TO_ACCEPTED":
+        raise HTTPException(
+            status_code=400,
+            detail="Use clear_quarantined_exception to move cleared units into accepted inventory.",
+        )
+    with closing(get_connection()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        exception = connection.execute(
+            """
+            SELECT rei.*,r.order_id,po.job_id
+            FROM receiving_exception_items rei
+            JOIN receiving_events r ON r.id=rei.receipt_id
+            JOIN supplier_orders po ON po.id=r.order_id
+            WHERE rei.id=?
+            """,
+            (exception_item_id,),
+        ).fetchone()
+        if exception is None:
+            raise HTTPException(status_code=404, detail="Receiving exception not found.")
+        allowed_resolutions = EXCEPTION_RESOLUTION_MATRIX.get(
+            str(exception["disposition"]), set()
+        )
+        if payload.resolution not in allowed_resolutions:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"{payload.resolution} is not valid for "
+                    f"{exception['disposition']}."
+                ),
+            )
+        existing = connection.execute(
+            """
+            SELECT * FROM receiving_exception_resolutions
+            WHERE exception_item_id=? AND idempotency_key=?
+            """,
+            (exception_item_id, payload.idempotency_key.strip()),
+        ).fetchone()
+        if existing is not None:
+            expected = (
+                int(payload.quantity), payload.resolution, payload.related_receipt_id,
+                payload.reason.strip(), payload.notes.strip(),
+                payload.supplier_reference.strip(), payload.evidence_reference.strip(),
+            )
+            actual = (
+                int(existing["quantity"]), existing["resolution"],
+                existing["related_receipt_id"], existing["reason"], existing["notes"],
+                existing["supplier_reference"], existing["evidence_reference"],
+            )
+            if actual != expected:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Resolution idempotency key was already used with different content.",
+                )
+            connection.rollback()
+            result = dict(existing)
+            result["replayed"] = True
+            result["order_id"] = int(exception["order_id"])
+            return result
+        if payload.resolution == "REPLACED_BY_RECEIPT":
+            _validate_related_accepted_receipt(
+                connection,
+                exception=exception,
+                related_receipt_id=payload.related_receipt_id,
+                quantity=int(payload.quantity),
+            )
+        elif payload.related_receipt_id is not None:
+            related = connection.execute(
+                "SELECT order_id FROM receiving_events WHERE id=?",
+                (payload.related_receipt_id,),
+            ).fetchone()
+            if related is None or int(related["order_id"]) != int(exception["order_id"]):
+                raise HTTPException(status_code=409, detail="Related receipt belongs to another order.")
+        consuming_placeholders = ",".join(
+            "?" for _ in INTERIM_EXCEPTION_RESOLUTIONS
+        )
+        resolved = connection.execute(
+            f"""
+            SELECT COALESCE(SUM(quantity),0)
+            FROM receiving_exception_resolutions
+            WHERE exception_item_id=?
+              AND resolution NOT IN ({consuming_placeholders})
+            """,
+            (exception_item_id, *sorted(INTERIM_EXCEPTION_RESOLUTIONS)),
+        ).fetchone()[0]
+        if (
+            payload.resolution not in INTERIM_EXCEPTION_RESOLUTIONS
+            and int(resolved or 0) + int(payload.quantity) > int(exception["quantity"])
+        ):
+            raise HTTPException(status_code=409, detail="Resolution exceeds unresolved exception quantity.")
+        if (
+            payload.resolution in INTERIM_EXCEPTION_RESOLUTIONS
+            and int(payload.quantity) > int(exception["quantity"]) - int(resolved or 0)
+        ):
+            raise HTTPException(status_code=409, detail="Interim state exceeds unresolved exception quantity.")
+        cur = connection.execute(
+            """
+            INSERT INTO receiving_exception_resolutions (
+                exception_item_id,quantity,resolution,related_receipt_id,actor,reason,
+                notes,supplier_reference,evidence_reference,request_id,idempotency_key
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                exception_item_id, payload.quantity, payload.resolution,
+                payload.related_receipt_id, str(actor or "system"), payload.reason.strip(),
+                payload.notes.strip(), payload.supplier_reference.strip(),
+                payload.evidence_reference.strip(), str(request_id or ""),
+                payload.idempotency_key.strip(),
+            ),
+        )
+        resolution_id = int(cur.lastrowid)
         write_audit(
             connection,
-            action="PARTS_RECEIVED",
-            entity_type="SUPPLIER_ORDER",
-            entity_id=order_id,
-            summary=summary,
+            action="RECEIVING_EXCEPTION_RESOLVED",
+            entity_type="RECEIVING_EXCEPTION",
+            entity_id=exception_item_id,
+            summary=f"Resolved {payload.quantity} {exception['disposition']} unit(s) as {payload.resolution}.",
             metadata={
-                "receipt_id": receipt_id,
-                "receipt_number": receipt_number,
-                "quantity_received": total_received,
-                "status": new_status,
-                "job_id": int(order["job_id"]),
-                "invoice_id": order["invoice_id"],
-                "receiver": payload.receiver.strip(),
-                "source_path": str(source_path or ""),
+                "order_id": int(exception["order_id"]),
+                "order_item_id": int(exception["order_item_id"]),
+                "quantity": int(payload.quantity),
+                "resolution": payload.resolution,
+                "related_receipt_id": payload.related_receipt_id,
             },
             actor=str(actor or "system"),
             request_id=str(request_id or ""),
         )
+        connection.commit()
+        result = dict(connection.execute(
+            "SELECT * FROM receiving_exception_resolutions WHERE id=?",
+            (resolution_id,),
+        ).fetchone())
+    result["replayed"] = False
+    result["order_id"] = int(exception["order_id"])
+    return result
 
+
+def record_backorder_event(
+    order_item_id: int,
+    payload: BackorderEventCreate,
+    *,
+    actor: str = "system",
+    request_id: str = "",
+):
+    """Append a supplier-line backorder state without changing ordered inventory."""
+    with closing(get_connection()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        item = connection.execute(
+            """
+            SELECT oi.*,po.job_id
+            FROM supplier_order_items oi
+            JOIN supplier_orders po ON po.id=oi.order_id
+            WHERE oi.id=?
+            """,
+            (order_item_id,),
+        ).fetchone()
+        if item is None:
+            raise HTTPException(status_code=404, detail="Supplier purchase item not found.")
+        existing = connection.execute(
+            """
+            SELECT * FROM supplier_order_item_backorder_events
+            WHERE order_item_id=? AND idempotency_key=?
+            """,
+            (order_item_id, payload.idempotency_key.strip()),
+        ).fetchone()
+        if existing is not None:
+            expected = (
+                payload.event_kind, int(payload.backordered_quantity), payload.reason.strip(),
+                payload.notes.strip(), payload.supplier_reference.strip(), payload.related_receipt_id,
+            )
+            actual = (
+                existing["event_kind"], int(existing["backordered_quantity"]),
+                existing["reason"], existing["notes"], existing["supplier_reference"],
+                existing["related_receipt_id"],
+            )
+            if actual != expected:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Backorder idempotency key was already used with different content.",
+                )
+            connection.rollback()
+            result = dict(existing)
+            result["replayed"] = True
+            result["order_id"] = int(item["order_id"])
+            return result
+        remaining = int(item["quantity_ordered"] or 0) - int(item["quantity_received"] or 0)
+        quantity = int(payload.backordered_quantity)
+        latest = connection.execute(
+            """
+            SELECT * FROM supplier_order_item_backorder_events
+            WHERE order_item_id=? ORDER BY id DESC LIMIT 1
+            """,
+            (order_item_id,),
+        ).fetchone()
+        if payload.event_kind == "RESOLVED" and quantity != 0:
+            raise HTTPException(status_code=400, detail="Resolved backorders must record zero quantity.")
+        if payload.event_kind != "RESOLVED" and (quantity <= 0 or quantity > remaining):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Backordered quantity must be between 1 and the remaining {remaining} unit(s).",
+            )
+        fulfilled_quantity = 0
+        if payload.event_kind == "RESOLVED":
+            if latest is None or str(latest["event_kind"]) not in {"DECLARED", "UPDATED"}:
+                raise HTTPException(
+                    status_code=409,
+                    detail="There is no active backorder declaration to resolve.",
+                )
+            if payload.related_receipt_id is not None:
+                if int(payload.related_receipt_id) <= int(latest["receipt_id_cutoff"] or 0):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Fulfillment receipt must postdate the active backorder declaration.",
+                    )
+                capacity = _accepted_receipt_capacity(
+                    connection,
+                    related_receipt_id=int(payload.related_receipt_id),
+                    order_item_id=int(order_item_id),
+                    order_id=int(item["order_id"]),
+                )
+                accepted_before_receipt = connection.execute(
+                    """
+                    SELECT COALESCE(SUM(ri.quantity_received),0)
+                    FROM receiving_event_items ri
+                    JOIN receiving_events r ON r.id=ri.receipt_id
+                    WHERE ri.order_item_id=? AND r.id<?
+                    """,
+                    (order_item_id, int(payload.related_receipt_id)),
+                ).fetchone()[0]
+                remaining_before_receipt = max(
+                    int(item["quantity_ordered"] or 0)
+                    - int(accepted_before_receipt or 0),
+                    0,
+                )
+                fulfilled_quantity = min(
+                    int(latest["backordered_quantity"] or 0),
+                    remaining_before_receipt,
+                )
+                if fulfilled_quantity <= 0 or int(capacity["remaining"]) < fulfilled_quantity:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Related receipt has insufficient unallocated accepted quantity to fulfill the active backorder.",
+                    )
+        receipt_id_cutoff = connection.execute(
+            """
+            SELECT COALESCE(MAX(id),0) FROM receiving_events WHERE order_id=?
+            """,
+            (int(item["order_id"]),),
+        ).fetchone()[0]
+        cur = connection.execute(
+            """
+            INSERT INTO supplier_order_item_backorder_events (
+                order_item_id,event_kind,backordered_quantity,reason,notes,
+                supplier_reference,actor,request_id,idempotency_key,related_receipt_id,
+                fulfilled_quantity,receipt_id_cutoff
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                order_item_id, payload.event_kind, quantity, payload.reason.strip(),
+                payload.notes.strip(), payload.supplier_reference.strip(),
+                str(actor or "system"), str(request_id or ""),
+                payload.idempotency_key.strip(), payload.related_receipt_id,
+                fulfilled_quantity, int(receipt_id_cutoff or 0),
+            ),
+        )
+        event_id = int(cur.lastrowid)
+        write_audit(
+            connection,
+            action="SUPPLIER_BACKORDER_UPDATED",
+            entity_type="SUPPLIER_ORDER_ITEM",
+            entity_id=order_item_id,
+            summary=f"Backorder {payload.event_kind.lower()}: {quantity} unit(s).",
+            metadata={
+                "order_id": int(item["order_id"]),
+                "event_kind": payload.event_kind,
+                "backordered_quantity": quantity,
+            },
+            actor=str(actor or "system"),
+            request_id=str(request_id or ""),
+        )
+        connection.commit()
+        result = dict(connection.execute(
+            "SELECT * FROM supplier_order_item_backorder_events WHERE id=?",
+            (event_id,),
+        ).fetchone())
+    result["replayed"] = False
+    result["order_id"] = int(item["order_id"])
+    return result
+
+
+def get_current_backorder(order_item_id: int):
+    """Return immutable declared state clamped to the current remaining obligation."""
+    with closing(get_connection()) as connection:
+        item = connection.execute(
+            "SELECT quantity_ordered,quantity_received FROM supplier_order_items WHERE id=?",
+            (order_item_id,),
+        ).fetchone()
+        if item is None:
+            raise HTTPException(status_code=404, detail="Supplier purchase item not found.")
+        latest = connection.execute(
+            """
+            SELECT * FROM supplier_order_item_backorder_events
+            WHERE order_item_id=? ORDER BY id DESC LIMIT 1
+            """,
+            (order_item_id,),
+        ).fetchone()
+    remaining = max(
+        int(item["quantity_ordered"] or 0) - int(item["quantity_received"] or 0),
+        0,
+    )
+    declared = int(latest["backordered_quantity"] or 0) if latest else 0
+    active = min(declared, remaining)
+    return {
+        "order_item_id": int(order_item_id),
+        "latest_event": dict(latest) if latest else None,
+        "declared_quantity": declared,
+        "remaining_quantity": remaining,
+        "active_quantity": active,
+        "quantity_satisfied_by_receiving": max(declared - active, 0),
+        "partially_satisfied_by_receiving": declared > active,
+    }
+
+
+def clear_quarantined_exception(
+    exception_item_id: int,
+    *,
+    quantity: int,
+    reason: str,
+    idempotency_key: str,
+    receiver: str = "",
+    notes: str = "",
+    actor: str = "system",
+    request_id: str = "",
+):
+    """Atomically clear quarantined units onto the accepted-inventory path."""
+    if int(quantity) <= 0 or not str(reason or "").strip() or not str(idempotency_key or "").strip():
+        raise HTTPException(status_code=400, detail="Clearance requires quantity, reason, and idempotency key.")
+    receipt_key = f"exception-clearance:{exception_item_id}:{idempotency_key.strip()}"
+    fingerprint = _clearance_request_fingerprint(
+        exception_item_id,
+        quantity=quantity,
+        reason=reason,
+        receiver=receiver,
+        notes=notes,
+    )
+    with closing(get_connection()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        exception = connection.execute(
+            """
+            SELECT rei.*,r.order_id,po.id AS supplier_order_id,po.job_id,
+                   po.supplier_name,oi.description,
+                   oi.quantity_ordered,oi.quantity_received
+            FROM receiving_exception_items rei
+            JOIN receiving_events r ON r.id=rei.receipt_id
+            JOIN supplier_orders po ON po.id=r.order_id
+            JOIN supplier_order_items oi ON oi.id=rei.order_item_id
+            WHERE rei.id=?
+            """,
+            (exception_item_id,),
+        ).fetchone()
+        if exception is None:
+            raise HTTPException(status_code=404, detail="Receiving exception not found.")
+        if exception["disposition"] != "QUARANTINED":
+            raise HTTPException(status_code=409, detail="Only quarantined quantities can be cleared to accepted.")
+        existing = connection.execute(
+            """
+            SELECT rr.*,r.id AS clearance_receipt_id,r.request_fingerprint
+            FROM receiving_exception_resolutions rr
+            JOIN receiving_events r ON r.id=rr.related_receipt_id
+            WHERE rr.exception_item_id=? AND rr.idempotency_key=?
+            """,
+            (exception_item_id, idempotency_key.strip()),
+        ).fetchone()
+        if existing is not None:
+            if str(existing["request_fingerprint"] or "") != fingerprint:
+                raise HTTPException(status_code=409, detail="Clearance key was already used with different content.")
+            connection.rollback()
+            _ensure_receiving_document(int(existing["clearance_receipt_id"]))
+            result = get_receipt(int(existing["clearance_receipt_id"]))
+            result["replayed"] = True
+            return result
+        consuming_placeholders = ",".join(
+            "?" for _ in INTERIM_EXCEPTION_RESOLUTIONS
+        )
+        resolved = connection.execute(
+            f"""
+            SELECT COALESCE(SUM(quantity),0)
+            FROM receiving_exception_resolutions
+            WHERE exception_item_id=?
+              AND resolution NOT IN ({consuming_placeholders})
+            """,
+            (exception_item_id, *sorted(INTERIM_EXCEPTION_RESOLUTIONS)),
+        ).fetchone()[0]
+        if int(resolved or 0) + int(quantity) > int(exception["quantity"]):
+            raise HTTPException(status_code=409, detail="Clearance exceeds unresolved quarantine quantity.")
+        remaining = int(exception["quantity_ordered"]) - int(exception["quantity_received"])
+        if int(quantity) > remaining:
+            raise HTTPException(status_code=409, detail="Clearance exceeds remaining ordered quantity.")
+        cur = connection.execute(
+            """
+            INSERT INTO receiving_events (
+                order_id,notes,receiver,request_id,source_path,idempotency_key,
+                event_kind,request_fingerprint
+            ) VALUES (?, ?, ?, ?, '', ?, 'EXCEPTION_CLEARANCE', ?)
+            """,
+            (
+                exception["order_id"], notes.strip(), receiver.strip(), str(request_id or ""),
+                receipt_key, fingerprint,
+            ),
+        )
+        receipt_id = int(cur.lastrowid)
+        receipt_number = f"PPS-RCPT-{receipt_id:04d}"
+        connection.execute("UPDATE receiving_events SET receipt_number=? WHERE id=?", (receipt_number, receipt_id))
+        connection.execute(
+            "INSERT INTO receiving_event_items(receipt_id,order_item_id,quantity_received) VALUES (?, ?, ?)",
+            (receipt_id, exception["order_item_id"], quantity),
+        )
+        updated = connection.execute(
+            """
+            UPDATE supplier_order_items
+            SET quantity_received=quantity_received+?,updated_at=CURRENT_TIMESTAMP
+            WHERE id=? AND quantity_received+?<=quantity_ordered
+            """,
+            (quantity, exception["order_item_id"], quantity),
+        )
+        if updated.rowcount != 1:
+            raise HTTPException(status_code=409, detail="Clearance conflicts with another receiving update.")
+        connection.execute(
+            """
+            INSERT INTO receiving_exception_resolutions (
+                exception_item_id,quantity,resolution,related_receipt_id,actor,reason,
+                request_id,idempotency_key
+            ) VALUES (?, ?, 'CLEARED_TO_ACCEPTED', ?, ?, ?, ?, ?)
+            """,
+            (
+                exception_item_id, quantity, receipt_id, str(actor or "system"),
+                reason.strip(), str(request_id or ""), idempotency_key.strip(),
+            ),
+        )
+        new_status = _accepted_order_status(connection, int(exception["order_id"]))
+        order_context = {
+            "id": int(exception["supplier_order_id"]),
+            "job_id": int(exception["job_id"]),
+        }
+        accepted_summary = (
+            f"{receipt_number}: {quantity} quarantined unit(s) cleared and accepted. "
+            f"Purchase status {new_status}."
+        )
+        write_audit(
+            connection,
+            action="PARTS_RECEIVED",
+            entity_type="SUPPLIER_ORDER",
+            entity_id=int(exception["order_id"]),
+            summary=accepted_summary,
+            metadata={
+                "receipt_id": receipt_id,
+                "receipt_number": receipt_number,
+                "quantity_received": int(quantity),
+                "status": new_status,
+                "job_id": int(exception["job_id"]),
+                "event_kind": "EXCEPTION_CLEARANCE",
+            },
+            actor=str(actor or "system"),
+            request_id=str(request_id or ""),
+        )
         log_job_event(
             connection,
-            job_id=int(order["job_id"]),
+            job_id=int(exception["job_id"]),
             event_type="PARTS_RECEIVED",
             icon="📦",
-            message=summary,
+            message=accepted_summary,
         )
-
-        outstanding_orders = connection.execute(
-            """
-            SELECT COUNT(*)
-            FROM supplier_orders
-            WHERE job_id=?
-              AND UPPER(
-                    COALESCE(status, 'DRAFT')
-                  ) != 'RECEIVED'
-            """,
-            (order["job_id"],),
-        ).fetchone()[0]
-
-        if int(outstanding_orders or 0) == 0:
-            connection.execute(
-                """
-                UPDATE jobs
-                SET status='RECEIVED'
-                WHERE id=?
-                """,
-                (order["job_id"],),
-            )
-
-            log_job_event(
-                connection,
-                job_id=int(order["job_id"]),
-                event_type="RECEIVING_COMPLETE",
-                icon="✅",
-                message=(
-                    "All supplier purchases have "
-                    "been received."
-                ),
-            )
-
+        _apply_receiving_completion(connection, order_context, new_status)
+        write_audit(
+            connection,
+            action="RECEIVING_EXCEPTION_RESOLVED",
+            entity_type="RECEIVING_EXCEPTION",
+            entity_id=exception_item_id,
+            summary=f"Cleared {quantity} quarantined unit(s) to accepted inventory.",
+            metadata={"receipt_id": receipt_id, "quantity": quantity, "status": new_status},
+            actor=str(actor or "system"), request_id=str(request_id or ""),
+        )
         connection.commit()
-    from plg_core.documents.integrity import issue_receiving_document
-    with closing(get_connection()) as connection:
-        issue_receiving_document(connection, receipt_id)
-        connection.commit()
+    _ensure_receiving_document(receipt_id)
     result = get_receipt(receipt_id)
     result["replayed"] = False
     return result

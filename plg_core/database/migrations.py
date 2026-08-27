@@ -1075,6 +1075,119 @@ MIGRATIONS.append(
 )
 
 
+def _migration_0050_structured_receiving_exceptions(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add structured receiving exceptions without changing accepted inventory."""
+    _add_columns(
+        connection,
+        "receiving_events",
+        {
+            "event_kind": "TEXT NOT NULL DEFAULT 'RECEIPT'",
+            "request_fingerprint": "TEXT NOT NULL DEFAULT ''",
+        },
+    )
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS receiving_exception_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            receipt_id INTEGER NOT NULL,
+            order_item_id INTEGER NOT NULL,
+            disposition TEXT NOT NULL
+                CHECK(disposition IN (
+                    'DAMAGED','WRONG_ITEM','QUARANTINED','REJECTED','SHORT'
+                )),
+            quantity INTEGER NOT NULL CHECK(quantity > 0),
+            reason TEXT NOT NULL CHECK(TRIM(reason) != ''),
+            notes TEXT NOT NULL DEFAULT '',
+            supplier_reference TEXT NOT NULL DEFAULT '',
+            evidence_reference TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(receipt_id) REFERENCES receiving_events(id),
+            FOREIGN KEY(order_item_id) REFERENCES supplier_order_items(id),
+            UNIQUE(receipt_id, order_item_id, disposition)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_receiving_exception_receipt
+        ON receiving_exception_items(receipt_id);
+
+        CREATE INDEX IF NOT EXISTS idx_receiving_exception_item_disposition
+        ON receiving_exception_items(order_item_id, disposition);
+
+        CREATE TABLE IF NOT EXISTS receiving_exception_resolutions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            exception_item_id INTEGER NOT NULL,
+            quantity INTEGER NOT NULL CHECK(quantity > 0),
+            resolution TEXT NOT NULL CHECK(resolution IN (
+                'RETURNED','DISPOSED','REPLACEMENT_EXPECTED',
+                'REPLACED_BY_RECEIPT','CLEARED_TO_ACCEPTED',
+                'RECLASSIFIED_REJECTED','BACKORDER_CONFIRMED','CLOSED'
+            )),
+            related_receipt_id INTEGER NULL,
+            actor TEXT NOT NULL DEFAULT 'system',
+            reason TEXT NOT NULL CHECK(TRIM(reason) != ''),
+            notes TEXT NOT NULL DEFAULT '',
+            supplier_reference TEXT NOT NULL DEFAULT '',
+            evidence_reference TEXT NOT NULL DEFAULT '',
+            request_id TEXT NOT NULL DEFAULT '',
+            idempotency_key TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(exception_item_id) REFERENCES receiving_exception_items(id),
+            FOREIGN KEY(related_receipt_id) REFERENCES receiving_events(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_receiving_resolution_exception_created
+        ON receiving_exception_resolutions(exception_item_id, created_at, id);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_receiving_resolution_idempotency
+        ON receiving_exception_resolutions(exception_item_id, idempotency_key)
+        WHERE idempotency_key != '';
+
+        CREATE TABLE IF NOT EXISTS supplier_order_item_backorder_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_item_id INTEGER NOT NULL,
+            event_kind TEXT NOT NULL
+                CHECK(event_kind IN ('DECLARED','UPDATED','RESOLVED')),
+            backordered_quantity INTEGER NOT NULL
+                CHECK(backordered_quantity >= 0),
+            reason TEXT NOT NULL CHECK(TRIM(reason) != ''),
+            notes TEXT NOT NULL DEFAULT '',
+            supplier_reference TEXT NOT NULL DEFAULT '',
+            actor TEXT NOT NULL DEFAULT 'system',
+            request_id TEXT NOT NULL DEFAULT '',
+            idempotency_key TEXT NOT NULL,
+            related_receipt_id INTEGER NULL,
+            fulfilled_quantity INTEGER NOT NULL DEFAULT 0
+                CHECK(fulfilled_quantity >= 0),
+            receipt_id_cutoff INTEGER NOT NULL DEFAULT 0
+                CHECK(receipt_id_cutoff >= 0),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CHECK(event_kind != 'RESOLVED' OR backordered_quantity = 0),
+            CHECK(event_kind = 'RESOLVED' OR backordered_quantity > 0),
+            CHECK(event_kind = 'RESOLVED' OR fulfilled_quantity = 0),
+            CHECK(related_receipt_id IS NOT NULL OR fulfilled_quantity = 0),
+            FOREIGN KEY(order_item_id) REFERENCES supplier_order_items(id),
+            FOREIGN KEY(related_receipt_id) REFERENCES receiving_events(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_backorder_item_created
+        ON supplier_order_item_backorder_events(order_item_id, created_at, id);
+
+        CREATE INDEX IF NOT EXISTS idx_backorder_receipt_item
+        ON supplier_order_item_backorder_events(related_receipt_id, order_item_id)
+        WHERE related_receipt_id IS NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_receiving_resolution_related_receipt
+        ON receiving_exception_resolutions(related_receipt_id, resolution)
+        WHERE related_receipt_id IS NOT NULL;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_backorder_event_idempotency
+        ON supplier_order_item_backorder_events(order_item_id, idempotency_key)
+        WHERE idempotency_key != '';
+        """
+    )
+
+
 def _migration_0047_delivery_2_integrity(
     connection: sqlite3.Connection,
 ) -> None:
@@ -3057,5 +3170,12 @@ MIGRATIONS.append(
     (
         "0049_custom_invoice_presentation_adjustments",
         _migration_0049_custom_invoice_presentation_adjustments,
+    )
+)
+
+MIGRATIONS.append(
+    (
+        "0050_structured_receiving_exceptions",
+        _migration_0050_structured_receiving_exceptions,
     )
 )

@@ -109,6 +109,11 @@
           <div class="job-ops-metric"><span>Delivered</span><strong>{{ m.delivered_units }}</strong></div>
           <div class="job-ops-metric"><span>Available to Deliver</span><strong>{{ m.available_to_deliver_units }}</strong></div>
         </div>
+        {% if operational_snapshot.receiving_exceptions or operational_snapshot.active_backorders %}<div class="job-receiving-alerts" role="status">
+          {% if operational_snapshot.receiving_exceptions %}<div><strong>{{ operational_snapshot.receiving_exceptions|length }} unresolved receiving exception{% if operational_snapshot.receiving_exceptions|length != 1 %}s{% endif %}</strong><span>Non-deliverable quantities still require operator review.</span></div>{% endif %}
+          {% if operational_snapshot.active_backorders %}<div><strong>{{ operational_snapshot.active_backorders|length }} active supplier backorder{% if operational_snapshot.active_backorders|length != 1 %}s{% endif %}</strong><span>Follow up on the remaining supplier commitment.</span></div>{% endif %}
+          <a class="button ghost small" href="{{ operational_snapshot.workflow.next_url }}">Review in Purchasing</a>
+        </div>{% endif %}
         {% if fulfillment.available %}
         <div class="fulfillment-progress" aria-label="Fulfillment progress">
           <strong>Ordered {{ fc.ordered }}/{{ fc.total }}</strong><strong>Received {{ fc.received }}/{{ fc.total }}</strong><strong>Delivered {{ fc.delivered }}/{{ fc.total }}</strong>
@@ -259,15 +264,10 @@
       <div class="job-bar-state">
         <div><span>Current Stage</span><strong>{{ operator_stage }}</strong></div>
         <div><span>Payment</span><strong class="{% if invoice and invoice.status == 'PAID' %}job-payment-paid{% endif %}">{% if invoice %}{{ invoice.status|replace('_',' ')|title }}{% else %}Not invoiced{% endif %}</strong></div>
-        <div><span>Next Action</span><strong>{{ intelligence.next_action }}</strong></div>
+        <div><span>Next Action</span><strong>{{ operational_snapshot.workflow.next_action }}</strong></div>
         <div><span>Items Ready for Quote</span><strong>{{ basket.totals.selected_items }}</strong></div>
       </div>
-      {% if job.status == "CANCELLED" %}<span class="button disabled job-bar-action" aria-disabled="true">Cancelled</span>
-      {% elif invoice %}<a class="button job-bar-action" href="/invoices/{{ invoice.id }}/documents">Open Invoice</a>
-      {% elif governed_revision %}<a class="button job-bar-action" href="#parts-ready">Continue Quote Changes</a>
-      {% elif quote %}<a class="button job-bar-action" href="/quotes/{{ quote.id }}/documents">Open Quote</a>
-      {% elif basket.totals.selected_items %}<a class="button job-bar-action" href="#parts-ready">Build Quote</a>
-      {% else %}<a class="button job-bar-action" href="#research-results">Continue Sourcing</a>{% endif %}
+      <a class="button job-bar-action" href="{{ operational_snapshot.workflow.next_url }}">{{ operational_snapshot.workflow.next_action }}</a>
     </div>
 
     {% if customer_request %}
