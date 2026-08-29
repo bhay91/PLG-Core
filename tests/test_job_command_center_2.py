@@ -204,6 +204,7 @@ class JobCommandCenter2Tests(unittest.TestCase):
             'stage': 'Receiving Exception',
             'next_action': 'Review quarantined units',
             'next_url': f"/purchasing/orders/{self.order_ids[0]}#receiving-exceptions",
+            'action_method': 'GET',
         })
         with closing(self.connection()) as c:
             c.execute("UPDATE supplier_orders SET status='DRAFT' WHERE id=?", (self.order_ids[1],))
@@ -212,6 +213,64 @@ class JobCommandCenter2Tests(unittest.TestCase):
         self.assertEqual(ordering['stage'], 'Ordering')
         self.assertIn('Place 1 remaining supplier order', ordering['next_action'])
         self.assertEqual(ordering['next_url'], '/purchasing')
+
+    def test_ready_to_order_exposes_existing_post_transition(self):
+        with closing(self.connection()) as c:
+            c.execute("DELETE FROM supplier_order_items WHERE order_id IN (?,?)", tuple(self.order_ids))
+            c.execute("DELETE FROM supplier_orders WHERE id IN (?,?)", tuple(self.order_ids))
+            c.commit()
+        workflow = self.snapshot()['workflow']
+        self.assertEqual(workflow, {
+            'stage': 'Ready to Order',
+            'next_action': 'Mark Order Placed',
+            'next_url': f'/jobs/{self.job_id}/fulfillment/order',
+            'action_method': 'POST',
+        })
+
+    def test_quote_and_invoice_creation_preserve_post_method(self):
+        with closing(self.connection()) as c:
+            c.execute("DELETE FROM supplier_order_items WHERE order_id IN (?,?)", tuple(self.order_ids))
+            c.execute("DELETE FROM supplier_orders WHERE id IN (?,?)", tuple(self.order_ids))
+            basket_id = c.execute(
+                "SELECT id FROM baskets WHERE job_id=? ORDER BY id DESC LIMIT 1",
+                (self.job_id,),
+            ).fetchone()[0]
+            c.execute(
+                "INSERT INTO basket_items"
+                "(basket_id,requested_description,selected,part_status) "
+                "VALUES (?,'Synthetic quoted part',1,'QUOTED')",
+                (basket_id,),
+            )
+            holding_job = c.execute(
+                "INSERT INTO jobs(job_number,created_date,customer,status) "
+                "VALUES ('JCC2-HOLD','2026-08-16','Synthetic Holding','VERIFIED')"
+            ).lastrowid
+            c.execute("UPDATE invoices SET job_id=? WHERE id=?", (holding_job, self.invoice_id))
+            quote_id = c.execute("SELECT id FROM quotes WHERE job_id=?", (self.job_id,)).fetchone()[0]
+            c.execute("UPDATE quotes SET status='APPROVED' WHERE id=?", (quote_id,))
+            c.commit()
+        invoice_action = self.snapshot()['workflow']
+        self.assertEqual(invoice_action['stage'], 'Ready to Invoice')
+        self.assertEqual(invoice_action['next_action'], 'Create Invoice for Payment')
+        self.assertEqual(invoice_action['next_url'], f'/quotes/{quote_id}/convert-to-invoice')
+        self.assertEqual(invoice_action['action_method'], 'POST')
+
+        with closing(self.connection()) as c:
+            c.execute("UPDATE quotes SET job_id=? WHERE id=?", (holding_job, quote_id))
+            c.execute("UPDATE jobs SET status='VERIFIED' WHERE id=?", (self.job_id,))
+            c.commit()
+        quote_action = self.snapshot()['workflow']
+        self.assertEqual(quote_action['next_url'], f'/jobs/{self.job_id}/generate-quote')
+        self.assertEqual(quote_action['action_method'], 'POST')
+
+    def test_jcc_renders_get_links_and_post_forms_without_getting_post_routes(self):
+        source = (ROOT / 'templates' / 'job_command_center.html').read_text()
+        self.assertIn("operational_snapshot.workflow.action_method == 'POST'", source)
+        self.assertIn('method="post" action="{{ operational_snapshot.workflow.next_url }}"', source)
+        self.assertIn('name="csrf_token" value="{{ csrf_token }}"', source)
+        self.assertIn('href="{{ operational_snapshot.workflow.next_url }}"', source)
+        self.assertNotIn('href="/jobs/{{ job.id }}/generate-quote"', source)
+        self.assertNotIn('href="/quotes/{{ quote.id }}/convert-to-invoice"', source)
 
 
 if __name__ == '__main__':

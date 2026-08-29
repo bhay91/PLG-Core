@@ -221,7 +221,7 @@ class WorkQueuePhase1Tests(unittest.TestCase):
             "J5": ("CUSTOMER_DECISION_FOLLOW_UP", "Waiting for Customer", "Open Quote", "/quotes/5/documents"),
             "J6": ("READY_TO_INVOICE", "Create Invoice for Payment", "Open Quote", "/quotes/6/documents"),
             "J7": ("WAITING_FOR_PAYMENT", "Waiting for Payment", "Open Invoice", "/invoices/7/documents"),
-            "J8": ("READY_TO_ORDER", "Order 1 part", "Open Paid Invoice", "/invoices/8/documents"),
+            "J8": ("READY_TO_ORDER", "Mark Order Placed", "Continue Job", "/jobs/8/basket#fulfillment-checklist"),
             "J9": ("WAITING_FOR_PARTS", "Receive 3 remaining items", "Open Supplier Order", "/purchasing/orders/9"),
             "J10": ("READY_FOR_DELIVERY", "Prepare Delivery", "Prepare Delivery", "/jobs/10/delivery"),
             "J11": ("COMPLETE", "Completed", "Open Job", "/jobs/11/basket"),
@@ -249,6 +249,34 @@ class WorkQueuePhase1Tests(unittest.TestCase):
                          ("DELIVERY", "Prepare Delivery"))
         self.assertEqual((rows["J11"]["need_label"], rows["J11"]["action_detail"]),
                          ("COMPLETED", "Completed"))
+        c.close()
+
+    def test_unpaid_invoice_outranks_missing_current_quote_and_stale_basket(self):
+        unpaid = job_row("J12", selected=1, quote_status=None, invoice_status="UNPAID")
+        intelligence = JobEngine.evaluate(
+            unpaid,
+            selected_items=1,
+            research_items=0,
+            basket_status="COMMITTED",
+            quote=None,
+            invoice={"id": 12, "status": "UNPAID"},
+        )
+        self.assertEqual(intelligence.workflow_stage, "WAITING_PAYMENT")
+        self.assertEqual(intelligence.next_action, "Waiting for Payment")
+        self.assertEqual(intelligence.action_url, "/invoices/12/documents")
+
+        c = self.connection()
+        with patch(
+            "plg_core.dashboard.service.get_recent_jobs",
+            return_value=[unpaid],
+        ):
+            result = get_work_queue_data(c, today=date(2026, 8, 12))
+        row = next(item for item in result["items"] if item["job_number"] == "J12")
+        self.assertEqual(row["category"], "WAITING_FOR_PAYMENT")
+        self.assertEqual(row["need_action"], "Waiting for Payment")
+        self.assertEqual(row["next_action"], "Open Invoice")
+        self.assertEqual(row["url"], "/invoices/12/documents")
+        self.assertNotEqual(row["category"], "READY_TO_QUOTE")
         c.close()
 
     def test_sent_quote_suppresses_open_need_and_is_not_manual_follow_up(self):
@@ -352,6 +380,24 @@ class WorkQueuePhase1Tests(unittest.TestCase):
             result = get_work_queue_data(c)
         self.assertEqual(result["items"][0]["category"], "READY_FOR_DELIVERY")
         self.assertEqual(result["counts"]["WAITING_FOR_PARTS"], 0)
+        c.close()
+
+    def test_paid_invoice_outranks_stale_quote_guidance(self):
+        job = job_row(
+            "J12", quote_status="DRAFT", invoice_status="PAID",
+            status="CONFIRMED",
+        ) | {"supplier_order_count": 0}
+        c = self.connection()
+        with patch(
+            "plg_core.dashboard.service.get_recent_jobs", return_value=[job]
+        ):
+            row = get_work_queue_data(c)["items"][0]
+        self.assertEqual(row["category"], "READY_TO_ORDER")
+        self.assertEqual(row["need_action"], "Mark Order Placed")
+        self.assertEqual(
+            row["url"], "/jobs/12/basket#fulfillment-checklist"
+        )
+        self.assertNotEqual(row["category"], "READY_TO_QUOTE")
         c.close()
 
     def test_work_queue_route_renders_queue_and_navigation_contract(self):

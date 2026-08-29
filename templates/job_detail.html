@@ -23,7 +23,26 @@
   <article class="context-card"><span>Customer</span><strong>{{ job.customer }}</strong><small>{{ job.company or "Individual Customer" }}</small></article>
   <article class="context-card"><span>Machine / Vehicle</span><strong>{{ job.manufacturer }} {{ job.machine }}</strong><small>Equipment information</small></article>
   <article class="context-card"><span>VIN / PIN / Serial</span><strong>{{ job.pin_serial or "Not Provided" }}</strong><small>Identification reference</small></article>
-  <article class="context-card"><span>Job Status</span><strong><span class="status status-{{ job.status|lower }}">{{ job.status }}</span></strong><small>Created {{ job.created_date }}</small></article>
+  <article class="context-card"><span>Current Stage</span><strong><span class="status status-{{ job.status|lower }}">{{ operational_snapshot.workflow.stage }}</span></strong><small>Created {{ job.created_date }}</small></article>
+</section>
+
+<section class="job-primary-actions job-current-next-action">
+  <div>
+    <p class="eyebrow">NEXT ACTION</p>
+    <h2>{{ operational_snapshot.workflow.next_action }}</h2>
+    <p>The Job Command Center is the authoritative workspace for advancing this Job.</p>
+  </div>
+  <div class="header-actions">
+    {% if operational_snapshot.workflow.action_method == "POST" %}
+    <form method="post" action="{{ operational_snapshot.workflow.next_url }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="button" type="submit">{{ operational_snapshot.workflow.next_action }}</button>
+    </form>
+    {% else %}
+    <a class="button" href="{{ operational_snapshot.workflow.next_url }}">{{ operational_snapshot.workflow.next_action }}</a>
+    {% endif %}
+    <a class="button ghost" href="/jobs/{{ job.id }}/basket">Open Parts Workspace</a>
+  </div>
 </section>
 
 <section class="job-primary-actions">
@@ -129,13 +148,14 @@
     </div>
   </div>
 
-  {% if ready_for_quote %}
+  {% if quote_is_next_action %}
   <p>
     All {{ selected_count }} part source{{ "" if selected_count == 1 else "s" }}
     selected.
   </p>
 
   <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button
       class="button"
       type="submit"
@@ -144,6 +164,10 @@
       Generate Quote
     </button>
   </form>
+  {% elif ready_for_quote %}
+  <p class="muted">
+    Supplier sources are selected. The Job has advanced beyond quote creation; use the current Next Action above.
+  </p>
   {% else %}
   <p class="muted">
     Select one supplier source for every part before generating the quote.
@@ -158,8 +182,8 @@
     <p class="eyebrow">QUOTE READINESS</p>
     <h2>{{ selected_count }} of {{ parts|length }} sources selected</h2>
   </div>
-  <span class="status {% if ready_for_quote %}ready{% endif %}">
-    {% if ready_for_quote %}READY FOR QUOTE{% else %}SELECT A SOURCE FOR EACH PART{% endif %}
+  <span class="status {% if quote_is_next_action %}ready{% endif %}">
+    {% if quote_is_next_action %}READY FOR QUOTE{% elif ready_for_quote %}SOURCES SELECTED{% else %}SELECT A SOURCE FOR EACH PART{% endif %}
   </span>
 </section>
 

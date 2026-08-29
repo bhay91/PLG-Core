@@ -211,10 +211,40 @@ def get_work_queue_data(
         )
         stage = intelligence.workflow_stage
         quote_status = str(job["quote_status"] or "").strip().upper()
+        invoice_status = str(job["invoice_status"] or "").strip().upper()
+        job_status = str(job["status"] or "").strip().upper()
+        payment_received = invoice_status in {
+            "PAID", "PAYMENT RECEIVED", "PAYMENT_RECEIVED",
+        }
+        supplier_order_count = int(_row_value(
+            job,
+            "supplier_order_count",
+            1 if job_status in {"ORDERED", "RECEIVED"} else 0,
+        ) or 0)
         outstanding_order_quantity = int(
             job["outstanding_order_quantity"] or 0
         )
-        if quote_status == "DRAFT":
+        # Durable paid/order evidence outranks stale quote or basket state.
+        # The Work Queue remains a categorized list, so its ready-to-order
+        # control opens the JCC at the real existing POST transition rather
+        # than pretending that the Purchasing directory creates an order.
+        if (
+            payment_received
+            and supplier_order_count == 0
+            and job_status not in {"DELIVERED", "COMPLETED", "COMPLETE", "CLOSED"}
+        ):
+            queue_key, action_label, url = (
+                "READY_TO_ORDER", "Continue Job",
+                f"/jobs/{job_id}/basket#fulfillment-checklist",
+            )
+            need_action = "Mark Order Placed"
+        elif job["invoice_id"] and not payment_received:
+            queue_key, action_label, url = (
+                "WAITING_FOR_PAYMENT", "Open Invoice",
+                f"/invoices/{job['invoice_id']}/documents",
+            )
+            need_action = "Waiting for Payment"
+        elif quote_status == "DRAFT":
             queue_key, action_label, url = (
                 "READY_TO_QUOTE", "Open Quote",
                 f"/quotes/{job['quote_id']}/documents",
@@ -246,7 +276,7 @@ def get_work_queue_data(
                 f"/quotes/{job['quote_id']}/documents",
             )
             need_action = intelligence.next_action
-        elif stage == "WAITING_PAYMENT" and not job["invoice_id"]:
+        elif stage == "READY_TO_INVOICE":
             queue_key, action_label, url = (
                 "READY_TO_INVOICE", "Open Quote",
                 f"/quotes/{job['quote_id']}/documents",

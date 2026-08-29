@@ -1216,6 +1216,8 @@ def record_customer_adjustment(customer_id: int,amount: Annotated[float,Form()],
 
 @app.get("/jobs", response_class=HTMLResponse)
 def list_jobs(request: Request, view: str = "active"):
+    from plg_core.jobs.service import get_job_operational_snapshot
+
     if view not in {"active", "archived", "all"}:
         view = "active"
     jobs_visibility = {
@@ -1472,6 +1474,21 @@ def list_jobs(request: Request, view: str = "active"):
                 basket_status=item.get("basket_status") or "OPEN",
             ).to_dict()
 
+            # The directory must describe the same durable operator state as
+            # the Job Command Center.  The engine remains useful for health,
+            # progress, and research counts; the operational snapshot owns the
+            # visible stage and forward action once commercial/supply evidence
+            # exists.
+            workflow = get_job_operational_snapshot(
+                int(item["id"]), connection=connection,
+            )["workflow"]
+            intelligence.update({
+                "workflow_label": workflow["stage"],
+                "next_action": workflow["next_action"],
+                "action_url": workflow["next_url"],
+                "action_method": workflow["action_method"],
+            })
+
             item["intelligence"] = intelligence
 
             description = (
@@ -1646,6 +1663,9 @@ def list_jobs(request: Request, view: str = "active"):
 
 @app.get("/jobs/{job_id}", response_class=HTMLResponse)
 def job_detail(request: Request, job_id: int):
+    from plg_core.jobs.service import get_job_operational_snapshot
+    from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
+
     with closing(get_connection()) as connection:
         job = connection.execute(
             "SELECT * FROM jobs WHERE id = ?",
@@ -1695,6 +1715,15 @@ def job_detail(request: Request, job_id: int):
             if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
         )
         ready_for_quote = bool(parts) and selected_count == len(parts)
+        operational_snapshot = get_job_operational_snapshot(
+            job_id,
+            connection=connection,
+        )
+        workflow = operational_snapshot["workflow"]
+        quote_is_next_action = (
+            workflow["action_method"] == "POST"
+            and workflow["next_url"] == f"/jobs/{job_id}/generate-quote"
+        )
 
         active = connection.execute(
             """
@@ -1736,7 +1765,8 @@ def job_detail(request: Request, job_id: int):
             (job_id,),
         ).fetchall()
 
-    return templates.TemplateResponse(
+    csrf_token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(
         request=request,
         name="job_detail.html",
         context={
@@ -1747,12 +1777,23 @@ def job_detail(request: Request, job_id: int):
             "brand_names": brand_names,
             "selected_count": selected_count,
             "ready_for_quote": ready_for_quote,
+            "quote_is_next_action": quote_is_next_action,
+            "operational_snapshot": operational_snapshot,
+            "csrf_token": csrf_token,
             "active_part_id": active["part_id"] if active else None,
             "connectors": connectors,
             "source_imports": source_imports,
             "active_page": "jobs",
         },
     )
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        csrf_token,
+        httponly=True,
+        samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
 
 
 @app.get("/jobs/{job_id}/edit", response_class=HTMLResponse)

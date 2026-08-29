@@ -79,7 +79,7 @@
     <section class="cc-card job-primary-summary">
       <div class="job-primary-identity"><div><p class="cc-label">{{ job.job_number }} · OPERATOR CONTEXT</p><h1>{{ job.customer or "Customer not linked" }}</h1><p class="job-primary-need">{{ active_need_label }}</p>{% if selected_asset or job.machine or job.manufacturer %}<p>{% if selected_asset %}{{ selected_asset.year or '' }} {{ selected_asset.manufacturer }} {{ selected_asset.model or selected_asset.name }}{% else %}{{ job.manufacturer }} {{ job.machine }}{% endif %}{% set serial = selected_asset.vin_pin_serial if selected_asset else job.pin_serial %}{% if serial %} · {{ serial }}{% endif %}</p>{% endif %}</div><span class="job-ops-status">{{ operator_stage }}</span></div>
       <div class="job-primary-status"><strong>{{ operational_snapshot.invoice.payment_state if operational_snapshot.invoice else 'NOT INVOICED' }}</strong><strong>{{ 'ORDERED' if fc.ordered else 'NOT ORDERED' }}</strong><strong>Received {{ fc.received }}/{{ fc.total }}</strong><strong>Delivered {{ fc.delivered }}/{{ fc.total }}</strong></div>
-      <div class="job-primary-next"><div><span>NEXT ACTION</span><strong>{% if operational_snapshot.workflow.next_action == 'Manage sourcing and documents' %}Continue Parts Sourcing{% else %}{{ operational_snapshot.workflow.next_action }}{% endif %}</strong></div><a class="button" href="{{ operational_snapshot.workflow.next_url }}">Continue</a></div>
+      <div class="job-primary-next"><div><span>NEXT ACTION</span><strong>{% if operational_snapshot.workflow.next_action == 'Manage sourcing and documents' %}Continue Parts Sourcing{% else %}{{ operational_snapshot.workflow.next_action }}{% endif %}</strong></div>{% if operational_snapshot.workflow.action_method == 'POST' %}<form method="post" action="{{ operational_snapshot.workflow.next_url }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button" type="submit">{{ operational_snapshot.workflow.next_action }}</button></form>{% else %}<a class="button" href="{{ operational_snapshot.workflow.next_url }}">Continue</a>{% endif %}</div>
     </section>
 
     <div class="job-progress-heading"><div><p class="cc-label">OPERATIONAL PROGRESS</p><h2>Payment → Ordering → Receiving → Delivery</h2></div><p>Open only the active work needed for the next step.</p></div>
@@ -272,7 +272,7 @@
       <div class="job-command-next">
         <span>Next Action</span>
         <strong>{{ operational_snapshot.workflow.next_action }}</strong>
-        <a class="button job-bar-action" href="{{ operational_snapshot.workflow.next_url }}">{{ operational_snapshot.workflow.next_action }}</a>
+        {% if operational_snapshot.workflow.action_method == 'POST' %}<form method="post" action="{{ operational_snapshot.workflow.next_url }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button job-bar-action" type="submit">{{ operational_snapshot.workflow.next_action }}</button></form>{% else %}<a class="button job-bar-action" href="{{ operational_snapshot.workflow.next_url }}">{{ operational_snapshot.workflow.next_action }}</a>{% endif %}
       </div>
     </div>
 

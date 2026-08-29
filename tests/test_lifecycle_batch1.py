@@ -145,6 +145,9 @@ class LifecycleBatch1Tests(unittest.TestCase):
             selected_items=1, basket_status="COMMITTED",
             quote={"id": 11, "status": "APPROVED"}, invoice=None,
         )
+        self.assertEqual(info.workflow_stage, "READY_TO_INVOICE")
+        self.assertEqual(info.workflow_label, "Ready to Invoice")
+        self.assertEqual(info.next_action, "Create Invoice for Payment")
         self.assertEqual(info.action_url, "/quotes/11/convert-to-invoice")
         self.assertEqual(info.action_method, "POST")
         existing = JobEngine.evaluate(
@@ -152,6 +155,8 @@ class LifecycleBatch1Tests(unittest.TestCase):
             basket_status="COMMITTED", quote={"id": 11, "status": "APPROVED"},
             invoice={"id": 4, "status": "UNPAID"},
         )
+        self.assertEqual(existing.workflow_stage, "WAITING_PAYMENT")
+        self.assertEqual(existing.next_action, "Waiting for Payment")
         self.assertEqual(existing.action_url, "/invoices/4/documents")
 
     def test_quote_transition_matrix_and_downstream_lock(self):
@@ -596,6 +601,77 @@ class LifecycleBatch1Tests(unittest.TestCase):
         self.assertIn(active, {row["id"] for row in active_context["jobs"]})
         self.assertNotIn(archived, {row["id"] for row in active_context["jobs"]})
         self.assertEqual({row["id"] for row in archived_context["jobs"]}, {archived})
+
+    def test_jobs_directory_uses_durable_jcc_stage_and_action(self):
+        cid = self.customer()
+        job_id = self.job(cid)
+        request = Request({"type": "http", "method": "GET", "path": "/jobs", "headers": []})
+        workflow = {
+            "stage": "Ready to Order",
+            "next_action": "Mark Order Placed",
+            "next_url": f"/jobs/{job_id}/fulfillment/order",
+            "action_method": "POST",
+        }
+
+        def context_response(*, request, name, context):
+            return context
+
+        with patch(
+            "plg_core.jobs.service.get_job_operational_snapshot",
+            return_value={"workflow": workflow},
+        ), patch.object(
+            legacy_app.templates,
+            "TemplateResponse",
+            side_effect=context_response,
+        ):
+            context = legacy_app.list_jobs(request, "active")
+
+        job = next(row for row in context["jobs"] if row["id"] == job_id)
+        self.assertEqual(job["intelligence"]["workflow_label"], "Ready to Order")
+        self.assertEqual(job["intelligence"]["next_action"], "Mark Order Placed")
+        self.assertEqual(job["intelligence"]["action_method"], "POST")
+
+    def test_legacy_job_detail_uses_durable_state_and_suppresses_stale_quote_action(self):
+        cid = self.customer()
+        job_id = self.job(cid)
+        self.part_and_quote(job_id, "CONVERTED")
+        request = Request({"type": "http", "method": "GET", "path": f"/jobs/{job_id}", "headers": []})
+        workflow = {
+            "stage": "Ready to Order",
+            "next_action": "Mark Order Placed",
+            "next_url": f"/jobs/{job_id}/fulfillment/order",
+            "action_method": "POST",
+        }
+
+        class CapturedResponse:
+            def __init__(self, context):
+                self.context = context
+
+            def set_cookie(self, *args, **kwargs):
+                return None
+
+        def context_response(*, request, name, context):
+            return CapturedResponse(context)
+
+        with patch(
+            "plg_core.jobs.service.get_job_operational_snapshot",
+            return_value={"workflow": workflow},
+        ), patch.object(
+            legacy_app.templates,
+            "TemplateResponse",
+            side_effect=context_response,
+        ):
+            response = legacy_app.job_detail(request, job_id)
+
+        self.assertEqual(response.context["operational_snapshot"]["workflow"], workflow)
+        self.assertFalse(response.context["quote_is_next_action"])
+
+        template = (ROOT / "templates" / "job_detail.html").read_text()
+        self.assertIn("{{ operational_snapshot.workflow.stage }}", template)
+        self.assertIn('{% if operational_snapshot.workflow.action_method == "POST" %}', template)
+        self.assertIn('method="post" action="{{ operational_snapshot.workflow.next_url }}"', template)
+        self.assertIn('name="csrf_token" value="{{ csrf_token }}"', template)
+        self.assertIn("{% if quote_is_next_action %}", template)
 
     def test_startup_defaults_do_not_advance_internal_sequences(self):
         legacy_app.initialize_database()

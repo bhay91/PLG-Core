@@ -23,27 +23,32 @@ def _job_operator_state(job, invoice, orders, movement, financial, fallback):
 
     if job_status in {"DELIVERED", "COMPLETED", "COMPLETE", "CLOSED"}:
         if financial and financial["actual_cost_state"] != "CONFIRMED":
-            return "Completed · Costs Pending", "Confirm actual supplier costs", "/purchasing"
-        return "Completed", "Review completed Job", f"/jobs/{int(job['id'])}/delivery"
+            return "Completed · Costs Pending", "Confirm actual supplier costs", "/purchasing", "GET"
+        return "Completed", "Review completed Job", f"/jobs/{int(job['id'])}/delivery", "GET"
     if not invoice:
-        return fallback[0], fallback[1], fallback[2]
+        return fallback[0], fallback[1], fallback[2], fallback[3]
     if not paid:
-        return "Waiting for Payment", "Collect payment", f"/invoices/{int(invoice['id'])}/documents"
+        return "Waiting for Payment", "Collect payment", f"/invoices/{int(invoice['id'])}/documents", "GET"
     if not orders:
-        return "Ready to Order", "Create supplier orders", "/purchasing"
+        return (
+            "Ready to Order",
+            "Mark Order Placed",
+            f"/jobs/{int(job['id'])}/fulfillment/order",
+            "POST",
+        )
     if draft_count and placed_count:
-        return "Ordering", f"Place {draft_count} remaining supplier order{'s' if draft_count != 1 else ''}", "/purchasing"
+        return "Ordering", f"Place {draft_count} remaining supplier order{'s' if draft_count != 1 else ''}", "/purchasing", "GET"
     if draft_count:
-        return "Ready to Order", f"Place {draft_count} supplier order{'s' if draft_count != 1 else ''}", "/purchasing"
+        return "Ready to Order", f"Place {draft_count} supplier order{'s' if draft_count != 1 else ''}", "/purchasing", "GET"
     if partial_count or (movement["received_units"] and movement["remaining_units"]):
-        return "Partial Receiving", "Receive incoming parts", "/purchasing"
+        return "Partial Receiving", "Receive incoming parts", "/purchasing", "GET"
     if movement["remaining_units"] > 0:
-        return "Waiting for Supplier", "Receive incoming items", "/purchasing"
+        return "Waiting for Supplier", "Receive incoming items", "/purchasing", "GET"
     if movement["ordered_units"] and movement["delivered_units"] < movement["ordered_units"]:
-        return "Ready to Deliver", "Complete remaining delivery", f"/jobs/{int(job['id'])}/delivery"
+        return "Ready to Deliver", "Complete remaining delivery", f"/jobs/{int(job['id'])}/delivery", "GET"
     if financial and financial["actual_cost_state"] != "CONFIRMED":
-        return "Costs Pending", "Confirm actual supplier costs", "/purchasing"
-    return "Completed", "Review completed Job", f"/jobs/{int(job['id'])}/delivery"
+        return "Costs Pending", "Confirm actual supplier costs", "/purchasing", "GET"
+    return "Completed", "Review completed Job", f"/jobs/{int(job['id'])}/delivery", "GET"
 
 
 def get_job_operational_snapshot(
@@ -213,9 +218,14 @@ def get_job_operational_snapshot(
             customer_request=connection.execute("SELECT id FROM customer_requests WHERE job_id=? LIMIT 1", (job_id,)).fetchone(),
             quote=quote, invoice=invoice,
         )
-        stage, next_action, next_url = _job_operator_state(
+        stage, next_action, next_url, action_method = _job_operator_state(
             job, invoice, order_rows, movement, financial,
-            (base.workflow_label, base.next_action, base.action_url),
+            (
+                base.workflow_label,
+                base.next_action,
+                base.action_url,
+                base.action_method,
+            ),
         )
         overlay_stages = {
             "Partial Receiving", "Waiting for Supplier", "Ready to Deliver",
@@ -231,10 +241,12 @@ def get_job_operational_snapshot(
             else:
                 next_action = "Resolve supplier exception"
             next_url = f"/purchasing/orders/{unresolved_exceptions[0]['order_id']}#receiving-exceptions"
+            action_method = "GET"
         elif active_backorders and stage in overlay_stages:
             stage = "Supplier Backorder"
             next_action = "Track supplier backorder"
             next_url = f"/purchasing/orders/{active_backorders[0]['order_id']}#backorders"
+            action_method = "GET"
         from plg_core.jobs.fulfillment import fulfillment_snapshot
         fulfillment = fulfillment_snapshot(job_id, connection=connection)
 
@@ -255,7 +267,12 @@ def get_job_operational_snapshot(
             "customer": dict(customer) if customer else {"name": job["customer"], "company": job["company"]},
             "assets": assets, "needs": needs,
             "needs_summary": {"total": len(needs), "open": sum(str(n["state"]).upper() == "OPEN" for n in needs), "covered": sum(str(n["state"]).upper() == "SATISFIED" for n in needs)},
-            "workflow": {"stage": stage, "next_action": next_action, "next_url": next_url},
+            "workflow": {
+                "stage": stage,
+                "next_action": next_action,
+                "next_url": next_url,
+                "action_method": action_method,
+            },
             "quote": ({"id": int(quote["id"]), "quote_number": quote["quote_number"], "status": quote["status"]} if quote else None),
             "invoice": ({"id": int(invoice["id"]), "invoice_number": invoice["invoice_number"], "status": invoice["status"], "customer_total": float(invoice["customer_total"] or 0), "balance_due": float(invoice["balance_due"] or 0), "amount_paid": round(max(float(invoice["customer_total"] or 0) - float(invoice["balance_due"] or 0), 0), 2), "payment_state": payment_state, "url": f"/invoices/{int(invoice['id'])}/documents"} if invoice else None),
             "financial": financial, "supplier_orders": orders, "movement": movement,

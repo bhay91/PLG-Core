@@ -67,6 +67,7 @@ class JobEngine:
         "RESEARCH",
         "READY_TO_QUOTE",
         "WAITING_CUSTOMER",
+        "READY_TO_INVOICE",
         "WAITING_PAYMENT",
         "READY_TO_ORDER",
         "WAITING_PARTS",
@@ -81,6 +82,7 @@ class JobEngine:
         "RESEARCH": "Research",
         "READY_TO_QUOTE": "Ready to Quote",
         "WAITING_CUSTOMER": "Waiting for Customer",
+        "READY_TO_INVOICE": "Ready to Invoice",
         "WAITING_PAYMENT": "Waiting for Payment",
         "READY_TO_ORDER": "Ready to Order",
         "WAITING_PARTS": "Waiting for Supplier",
@@ -95,6 +97,7 @@ class JobEngine:
         "RESEARCH": 32,
         "READY_TO_QUOTE": 45,
         "WAITING_CUSTOMER": 55,
+        "READY_TO_INVOICE": 60,
         "WAITING_PAYMENT": 65,
         "READY_TO_ORDER": 75,
         "WAITING_PARTS": 85,
@@ -294,6 +297,19 @@ class JobEngine:
                 f"part{'s' if remaining != 1 else ''}."
             )
 
+        # An authoritative unpaid invoice is later commercial evidence than
+        # any quote or editable-basket state.  Converted quotes are archived
+        # from current quote lists, so invoice precedence must be explicit.
+        elif has_invoice and not payment_received:
+            stage = "WAITING_PAYMENT"
+            action = (
+                "Waiting for Payment",
+                "WAITING_PAYMENT",
+                f"/invoices/{invoice_id}/documents",
+                "GET",
+            )
+            blocked_reason = "An invoice exists and is awaiting payment."
+
         elif not has_request:
             stage = "REQUEST"
             action = (
@@ -416,27 +432,16 @@ class JobEngine:
                 )
                 blocked_reason = "Waiting for customer approval."
 
-        elif quote_approved and not payment_received:
-            stage = "WAITING_PAYMENT"
-
-            if has_invoice:
-                action = (
-                    "Waiting for Payment",
-                    "WAITING_PAYMENT",
-                    f"/invoices/{invoice_id}/documents",
-                    "GET",
-                )
-            else:
-                action = (
-                    "Create Invoice for Payment",
-                    "CREATE_PAYMENT_INVOICE",
-                    f"/quotes/{quote_id}/convert-to-invoice",
-                    "POST",
-                )
-
+        elif quote_approved:
+            stage = "READY_TO_INVOICE"
+            action = (
+                "Create Invoice for Payment",
+                "CREATE_PAYMENT_INVOICE",
+                f"/quotes/{quote_id}/convert-to-invoice",
+                "POST",
+            )
             blocked_reason = (
-                "Customer approval is recorded, but payment "
-                "has not been received."
+                "Customer approval is recorded and the invoice is ready to create."
             )
 
         elif payment_received and (
@@ -523,6 +528,7 @@ class JobEngine:
 
         elif stage in {
             "READY_TO_QUOTE",
+            "READY_TO_INVOICE",
             "READY_TO_ORDER",
             "READY_TO_COMPLETE",
         }:
@@ -542,6 +548,7 @@ class JobEngine:
             "RESEARCH": has_parts and research_items == 0,
             "READY_TO_QUOTE": has_quote,
             "WAITING_CUSTOMER": quote_approved,
+            "READY_TO_INVOICE": has_invoice,
             "WAITING_PAYMENT": payment_received,
             "READY_TO_ORDER": ordered_items > 0 or received_items > 0,
             "WAITING_PARTS": (
@@ -571,6 +578,11 @@ class JobEngine:
             "RESEARCH": "#parts-research",
             "READY_TO_QUOTE": "#parts-ready",
             "WAITING_CUSTOMER": (
+                f"/quotes/{quote_id}/documents"
+                if has_quote
+                else ""
+            ),
+            "READY_TO_INVOICE": (
                 f"/quotes/{quote_id}/documents"
                 if has_quote
                 else ""
