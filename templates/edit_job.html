@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Edit {{ job.job_number }} · Pinpoint Sourcing Co.{% endblock %}
+{% block title %}Edit {{ job.job_number }} · Pinpoint Sourcing LLC{% endblock %}
 {% block content %}
 <section class="page-heading"><div><p class="eyebrow">EDIT JOB INFORMATION</p><h1>{{ job.job_number }}</h1><p>Correct the linked customer or machine while preserving the Job number.</p></div></section>
 {% if has_history %}<section class="panel lifecycle-warning"><strong>Historical identity is locked.</strong><p>This Job has an issued quote. Customer and machine snapshots cannot be changed in Batch 1; internal notes remain editable.</p></section>{% endif %}

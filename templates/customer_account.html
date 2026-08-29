@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ customer.name }} · Customer Account{% endblock %}
 {% block content %}
-<section class="workspace-heading">
+<section class="workspace-heading erp-record-summary">
   <div>
     <p class="eyebrow">CUSTOMER ACCOUNT</p>
     <h1>{{ customer.name }}</h1>
@@ -10,7 +10,7 @@
   <a class="button" href="/jobs/new?customer_id={{ customer.id }}">Create Job</a>
 </section>
 
-<section class="job-summary-grid customer-summary-grid">
+<section class="job-summary-grid customer-summary-grid erp-record-identity">
   <article class="context-card">
     <span>Available Credit</span>
     <strong>${{ "%.2f"|format(account.available_credit) }}</strong>
@@ -33,7 +33,7 @@
   </article>
 </section>
 
-<section class="account-action-grid">
+<section class="account-action-grid erp-commercial-current">
   <form class="panel account-action-card" method="post" action="/customers/{{ customer.id }}/transactions/payment">
     <p class="eyebrow">PAYMENT</p>
     <h2>Record Payment</h2>
@@ -87,7 +87,7 @@
   </form>
 </section>
 
-<section class="panel customer-profile-panel">
+<section class="panel customer-profile-panel erp-record-profile">
   <div class="panel-heading">
     <div><p class="eyebrow">CONTACT</p><h2>Customer Information</h2></div>
   </div>

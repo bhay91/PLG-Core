@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Customers · Pinpoint Sourcing Co.{% endblock %}
+{% block title %}Customers · Pinpoint Sourcing LLC{% endblock %}
 
 {% block content %}
-<div class="workspace-v2">
+<div class="workspace-v2 erp-records-directory erp-customers-directory">
 
   <section class="workspace-heading">
     <div>
@@ -85,7 +85,7 @@
 
     {% for customer in customers %}
     <article
-      class="workspace-row customer-workspace-row"
+      class="workspace-row customer-workspace-row erp-directory-row"
       data-search="
         {{ customer.customer_number }}
         {{ customer.name }}
@@ -161,7 +161,7 @@
         {% endif %}
       </div>
 
-      <div class="workspace-row-action workspace-action-panel">
+      <div class="workspace-row-action workspace-action-panel erp-record-action">
         <span>NEXT ACTION</span>
 
         {% if customer.active %}

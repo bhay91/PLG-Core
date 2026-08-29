@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Documents · Pinpoint Sourcing Co.{% endblock %}
+{% block title %}Documents · Pinpoint Sourcing LLC{% endblock %}
 
 {% block content %}
 <style>
@@ -11,7 +11,7 @@
 @media(max-width:520px){.docs-row-main{grid-template-columns:minmax(0,1fr) auto;padding:12px}.docs-identity{grid-column:1}.docs-status{grid-column:2;grid-row:1;padding:0;border:0;justify-items:end;text-align:right}.docs-context{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:3px 8px;padding-top:7px}.docs-context .docs-mobile-label{display:none}.docs-row-actions{grid-column:1/-1}}
 </style>
 
-<div class="docs-shell">
+<div class="docs-shell erp-records-directory erp-documents-directory">
   <section class="workspace-heading">
     <div><p class="eyebrow">DOCUMENT CENTER</p><h1>PPS Documents</h1><p>Customer, internal, supplier, receiving and delivery documents.</p></div>
     <a class="button ghost" href="/accounting">Accounting &amp; Audit</a>
@@ -34,10 +34,10 @@
   </form>
 
   {% if items %}
-  <section class="docs-list" aria-label="Current PPS documents">
+  <section class="docs-list erp-document-list" aria-label="Current PPS documents">
     <div class="docs-list-head"><span>Document</span><span>Customer / Job</span><span>Status</span><span>Actions</span></div>
     {% for item in items %}
-    <article class="docs-row" data-document-family="{{ item.family }}" data-manifest-id="{{ item.manifest_id }}">
+    <article class="docs-row erp-document-row" data-document-family="{{ item.family }}" data-manifest-id="{{ item.manifest_id }}">
       <div class="docs-row-main">
         <div class="docs-identity"><span class="docs-type">{{ item.document_type }}</span><strong>{{ item.document_number or 'Document #' ~ item.manifest_id }}</strong><small>{{ item.document_kind|replace('_',' ')|title }}</small></div>
         <div class="docs-context"><span class="docs-mobile-label docs-label">Customer / Job</span><strong>{{ item.customer }}</strong><small>{% if item.job_number %}Job {{ item.job_number }}{% else %}No job context{% endif %}</small></div>

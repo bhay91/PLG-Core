@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Suppliers · Pinpoint Sourcing Co.{% endblock %}
+{% block title %}Suppliers · Pinpoint Sourcing LLC{% endblock %}
 
 {% block content %}
-<div class="workspace-v2">
+<div class="workspace-v2 erp-records-directory erp-suppliers-directory">
 
   <section class="workspace-heading">
     <div>
@@ -63,7 +63,7 @@
 
     {% for supplier in suppliers %}
     <article
-      class="workspace-row supplier-workspace-row directory-summary-row"
+      class="workspace-row supplier-workspace-row directory-summary-row erp-directory-row"
       data-search="
         {{ supplier.name }}
         {{ supplier.website }}
@@ -127,7 +127,7 @@
         </div>
       </div>
 
-      <div class="workspace-row-action workspace-action-panel">
+      <div class="workspace-row-action workspace-action-panel erp-record-action">
         <span>NEXT ACTION</span>
 
         {% if supplier.status == "ACTIVE" %}

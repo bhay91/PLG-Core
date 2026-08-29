@@ -1508,3 +1508,233 @@
   .erp-app .erp-missing-info { display: block; }
   .erp-app .erp-missing-info ul { display: block; margin-top: 7px; }
 }
+
+/* 14. ERP-5 commercial and records operator workflow ------------------ */
+/* Shared record language keeps commercial work current and directories
+   compact without introducing calculations or workflow semantics. */
+.erp-app :is(.erp-commercial-directory,.erp-records-directory,.erp-commercial-detail) {
+  width: 100%;
+  min-width: 0;
+}
+.erp-app :is(.erp-commercial-directory,.erp-records-directory) .workspace-heading {
+  margin-bottom: 2px;
+}
+.erp-app :is(.erp-commercial-directory,.erp-records-directory) .workspace-toolbar {
+  position: sticky;
+  top: 63px;
+  z-index: 8;
+  padding: 10px 12px !important;
+  border-color: var(--erp-border) !important;
+  background: color-mix(in srgb,var(--erp-panel) 94%,transparent) !important;
+  backdrop-filter: blur(12px);
+}
+.erp-app :is(.erp-commercial-row,.erp-directory-row) {
+  min-height: 112px;
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel) !important;
+}
+.erp-app :is(.erp-commercial-row,.erp-directory-row):hover {
+  border-color: var(--erp-border-strong) !important;
+  background: var(--erp-panel-2) !important;
+}
+.erp-app :is(.erp-commercial-row,.erp-directory-row) .workspace-row-identity h2 {
+  color: var(--erp-text) !important;
+  font-size: 15px !important;
+}
+.erp-app :is(.erp-commercial-row,.erp-directory-row) .workspace-row-identity > p,
+.erp-app :is(.erp-commercial-row,.erp-directory-row) .workspace-row-meta,
+.erp-app :is(.erp-commercial-row,.erp-directory-row) .workspace-row-identity > small {
+  color: var(--erp-text-2) !important;
+}
+.erp-app :is(.erp-commercial-row,.erp-directory-row) .workspace-status-line > strong,
+.erp-app :is(.erp-commercial-row,.erp-directory-row) .workspace-balance strong {
+  color: var(--erp-text) !important;
+  font-variant-numeric: tabular-nums;
+}
+.erp-app .erp-record-action {
+  border-left-color: var(--erp-border) !important;
+  background: color-mix(in srgb,var(--erp-blue) 6%,var(--erp-panel-2)) !important;
+}
+.erp-app .erp-record-action > span,
+.erp-app .erp-record-action > small {
+  color: var(--erp-muted) !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.erp-app .erp-record-action > strong { color: #8bc2ff !important; }
+
+/* Compact command summaries keep record identity, money, state, and the
+   existing advancing action in the first viewport. */
+.erp-app .erp-record-summary {
+  border: 1px solid color-mix(in srgb,var(--erp-blue) 40%,var(--erp-border)) !important;
+  border-radius: 11px !important;
+  background: var(--erp-panel) !important;
+  box-shadow: none !important;
+}
+.erp-app .erp-record-summary :is(h1,h2,strong) { color: var(--erp-text) !important; }
+.erp-app .erp-record-summary :is(p,span,small) { color: var(--erp-text-2); }
+.erp-app .erp-record-summary .eyebrow { color: #8bc2ff !important; }
+.erp-app .erp-commercial-total,
+.erp-app .erp-commercial-totals {
+  font-variant-numeric: tabular-nums;
+}
+.erp-app .erp-commercial-total > strong,
+.erp-app .erp-commercial-totals strong { color: var(--erp-text) !important; }
+.erp-app .erp-commercial-current {
+  border-color: color-mix(in srgb,var(--erp-blue) 30%,var(--erp-border)) !important;
+  background: var(--erp-panel) !important;
+}
+.erp-app .erp-commercial-supporting {
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important;
+}
+.erp-app .erp-commercial-history,
+.erp-app .erp-commercial-history > details,
+.erp-app details.erp-commercial-history {
+  border-color: var(--erp-border) !important;
+  background: color-mix(in srgb,var(--erp-panel-2) 82%,var(--erp-panel)) !important;
+}
+.erp-app .erp-commercial-history summary { color: var(--erp-text-2) !important; }
+
+/* Quote and invoice line work remains dense, readable, and numerically aligned. */
+.erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) th {
+  color: var(--erp-muted) !important;
+  background: var(--erp-panel-2) !important;
+}
+.erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td {
+  color: var(--erp-text-2) !important;
+  background: var(--erp-panel) !important;
+}
+.erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td strong {
+  color: var(--erp-text) !important;
+}
+.erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) th:nth-last-child(-n+2),
+.erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td:nth-last-child(-n+2) {
+  text-align: right;
+}
+.erp-app .erp-commercial-detail :is(.quote-document-row,.invoice-document-row,.invoice-payment-record) {
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important;
+}
+.erp-app .erp-commercial-detail .quote-review-heading {
+  border-color: color-mix(in srgb,var(--erp-blue) 40%,var(--erp-border)) !important;
+  background: var(--erp-panel) !important;
+}
+.erp-app .erp-commercial-detail :is(.quote-review-command,.quote-review-items) {
+  border-color: color-mix(in srgb,var(--erp-blue) 30%,var(--erp-border)) !important;
+  background: var(--erp-panel) !important;
+}
+.erp-app .erp-commercial-detail .quote-review-documents { background: var(--erp-panel-2) !important; }
+.erp-app .erp-commercial-detail .quote-review-history { background: color-mix(in srgb,var(--erp-panel-2) 82%,var(--erp-panel)) !important; }
+:root[data-theme="dark"] .erp-app .erp-commercial-detail .quote-review-heading-total,
+:root[data-theme="dark"] .erp-app .erp-commercial-detail .invoice-desk-header-money > div,
+:root[data-theme="dark"] .erp-app .erp-commercial-detail .quote-total-breakdown,
+:root[data-theme="dark"] .erp-app .erp-commercial-detail .quote-total-breakdown > div,
+:root[data-theme="dark"] .erp-app .erp-commercial-detail .quote-total-main,
+:root[data-theme="dark"] .erp-app .erp-commercial-detail .invoice-desk-total,
+:root[data-theme="dark"] .erp-app .erp-commercial-detail .invoice-desk-balance {
+  color: var(--erp-text-2) !important;
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important;
+}
+:root[data-theme="dark"] .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) :is(thead,tbody,tr,th,td) {
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel) !important;
+}
+:root[data-theme="dark"] .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) th {
+  color: var(--erp-muted) !important;
+  background: var(--erp-panel-2) !important;
+}
+:root[data-theme="dark"] .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td {
+  color: var(--erp-text-2) !important;
+}
+:root[data-theme="dark"] .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td strong,
+:root[data-theme="dark"] .erp-app .erp-commercial-detail :is(.quote-review-heading-total,.quote-total-main,.invoice-desk-header-money,.invoice-desk-total,.invoice-desk-balance) strong {
+  color: var(--erp-text) !important;
+}
+:root[data-theme="dark"] .erp-app .erp-records-directory [data-archive-delete] button.workspace-btn.workspace-btn-secondary {
+  color: #ff9da4 !important;
+  border-color: color-mix(in srgb,var(--erp-red) 48%,var(--erp-border)) !important;
+  background: color-mix(in srgb,var(--erp-red) 8%,var(--erp-panel-2)) !important;
+}
+
+/* Customer and machine identity blocks lead linked commercial records. */
+.erp-app .erp-record-identity {
+  gap: 1px !important;
+  overflow: hidden;
+  border: 1px solid var(--erp-border);
+  border-radius: 11px;
+  background: var(--erp-border);
+}
+.erp-app .erp-record-identity > * {
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: var(--erp-panel) !important;
+  box-shadow: none !important;
+}
+.erp-app .erp-record-identity > * > span { color: var(--erp-muted) !important; }
+.erp-app .erp-record-identity > * > strong { color: var(--erp-text) !important; overflow-wrap: anywhere; }
+.erp-app .erp-record-profile { background: var(--erp-panel-2) !important; }
+.erp-app .erp-record-profile .customer-profile-grid > div {
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel) !important;
+}
+
+/* Document identity and integrity stay primary; technical evidence stays behind
+   the existing disclosure and uses the quieter evidence surface. */
+.erp-app .erp-documents-directory .docs-summary { gap: 10px; }
+.erp-app .erp-documents-directory .docs-card {
+  padding: 14px 16px !important;
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel) !important;
+  box-shadow: none !important;
+}
+.erp-app .erp-documents-directory .docs-card strong { color: var(--erp-text) !important; }
+.erp-app .erp-documents-directory .docs-card :is(span,small) { color: var(--erp-text-2) !important; }
+.erp-app .erp-document-list {
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel) !important;
+  box-shadow: none !important;
+}
+.erp-app .erp-document-list .docs-list-head { color: var(--erp-muted) !important; background: var(--erp-panel-2) !important; }
+.erp-app .erp-document-row { border-color: var(--erp-border) !important; background: var(--erp-panel) !important; }
+.erp-app .erp-document-row:hover { background: var(--erp-panel-2) !important; }
+.erp-app .erp-document-row .docs-identity strong,
+.erp-app .erp-document-row .docs-context strong,
+.erp-app .erp-document-row .docs-status strong { color: var(--erp-text) !important; }
+.erp-app .erp-document-row :is(small,.docs-muted) { color: var(--erp-muted) !important; }
+.erp-app .erp-document-row :is(.docs-secondary-details,.docs-history) {
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important;
+}
+
+@media (min-width: 1181px) {
+  .erp-app .erp-commercial-row { grid-template-columns: 72px minmax(320px,1.35fr) minmax(210px,.65fr) minmax(245px,.75fr) !important; }
+  .erp-app .erp-directory-row { grid-template-columns: 72px minmax(320px,1.35fr) minmax(240px,.7fr) minmax(230px,.7fr) !important; }
+}
+@media (max-width: 820px) {
+  .erp-app :is(.erp-commercial-directory,.erp-records-directory) .workspace-toolbar { position: static; }
+  .erp-app :is(.erp-commercial-row,.erp-directory-row) { grid-template-columns: 1fr !important; }
+  .erp-app :is(.erp-commercial-row,.erp-directory-row) .workspace-row-mark { display: none; }
+  .erp-app :is(.erp-commercial-row,.erp-directory-row) .erp-record-action { border-top: 1px solid var(--erp-border); border-left: 0 !important; }
+  .erp-app .erp-record-summary { border-radius: 10px !important; }
+  .erp-app .erp-commercial-detail :is(.quote-bill-to-summary,.quote-response-summary) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .erp-app .erp-commercial-detail .quote-bill-to-editor { width: 100%; min-width: 0; }
+  .erp-app .account-action-grid { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 540px) {
+  .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) thead { display: none; }
+  .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) tr { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; padding: 12px; border-top: 1px solid var(--erp-border); }
+  .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td { padding: 0 !important; border: 0 !important; text-align: left !important; }
+  .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td:nth-child(n+3) { grid-column: 1 / -1; }
+}

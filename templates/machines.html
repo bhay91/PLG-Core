@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% from "_manufacturer_logo.html" import manufacturer_logo %}
-{% block title %}Registry · Pinpoint Sourcing Co.{% endblock %}
+{% block title %}Registry · Pinpoint Sourcing LLC{% endblock %}
 
 {% block content %}
-<div class="workspace-v2">
+<div class="workspace-v2 erp-records-directory erp-assets-directory">
 
   <section class="workspace-heading">
     <div>
@@ -62,7 +62,7 @@
     ) %}
 
     <article
-      class="workspace-row registry-workspace-row"
+      class="workspace-row registry-workspace-row erp-directory-row"
       data-search="
         {{ machine.machine_number }}
         {{ machine.name }}
@@ -119,7 +119,7 @@
         </div>
       </div>
 
-      <div class="workspace-row-action workspace-action-panel">
+      <div class="workspace-row-action workspace-action-panel erp-record-action">
         <span>NEXT ACTION</span>
         <strong>Open Registry Record</strong>
 

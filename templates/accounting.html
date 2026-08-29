@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Accounting & Audit · Pinpoint Sourcing Co.{% endblock %}
+{% block title %}Accounting & Audit · Pinpoint Sourcing LLC{% endblock %}
 
 {% block content %}
 <style>
@@ -120,7 +120,7 @@
 }
 </style>
 
-<div class="accounting-shell">
+<div class="accounting-shell erp-commercial-detail erp-accounting-workspace">
   {% set reconciliation_state = namespace(confirmed=0, awaiting=0, variance=0) %}
   {% for row in invoice_reconciliation %}
     {% if row.actual_cost_state == "NOT_CONFIRMED" %}{% set reconciliation_state.awaiting = reconciliation_state.awaiting + 1 %}
@@ -222,7 +222,7 @@
     <article class="accounting-helper"><span>Adjustments</span><strong>${{ "%+.2f"|format(financials.adjustments) }}</strong></article>
   </section>
 
-  <section class="accounting-section" id="invoice-reconciliation">
+  <section class="accounting-section erp-commercial-current" id="invoice-reconciliation">
     <div class="accounting-section-head"><p class="eyebrow">INVOICE CONTROL</p><h2>Invoice Profit &amp; Cost Check</h2><p>See immediately which invoices are confirmed and which need a final supplier cost or variance review.</p></div>
     <div class="accounting-operational-list">
       {% for row in invoice_reconciliation %}{% set has_variance = row.actual_cost_state != "NOT_CONFIRMED" and ((row.cost_variance or 0) > 0.005 or (row.cost_variance or 0) < -0.005 or (row.profit_variance or 0) > 0.005 or (row.profit_variance or 0) < -0.005) %}

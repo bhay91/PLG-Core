@@ -7,13 +7,13 @@
   <script>
     (()=>{try{const saved=localStorage.getItem('pps-theme');document.documentElement.dataset.theme=saved==='light'||saved==='dark'?saved:'dark'}catch(_){document.documentElement.dataset.theme='dark'}})();
   </script>
-  <title>{% block title %}Pinpoint Sourcing Co.{% endblock %}</title>
+  <title>{% block title %}Pinpoint Sourcing LLC{% endblock %}</title>
   <link rel="icon" type="image/webp" href="{{ url_for('static', path='/pinpoint-logo-stacked.webp') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='/app.css') }}?v=invoice-action-grid-v2">
   <link rel="stylesheet" href="/static/app_v2.css?v=alpha8-3-revenue-v1">
   <link rel="stylesheet" href="/static/polish.css?v=pps-ui2-operations-v1">
   <link rel="stylesheet" href="/static/pps_modern.css?v=pps-ui3-modern-v1">
-  <link rel="stylesheet" href="/static/pps_erp.css?v=pps-erp4-intake-flow-v1">
+  <link rel="stylesheet" href="/static/pps_erp.css?v=pps-erp5-commercial-records-v1">
 </head>
 <body class="erp-app">
   <svg class="erp-icon-sprite" aria-hidden="true">
@@ -33,7 +33,7 @@
     <symbol id="erp-i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></symbol>
   </svg>
   <aside class="sidebar erp-sidebar">
-    <a href="/" class="brand" aria-label="Pinpoint Sourcing Co. home">
+    <a href="/" class="brand" aria-label="Pinpoint Sourcing LLC home">
       <svg class="erp-brand-mark" viewBox="0 0 40 48" aria-hidden="true"><circle cx="20" cy="17" r="12"/><circle cx="20" cy="17" r="4"/><path d="M11 26l9 14 9-14"/></svg>
       <span class="erp-brand-copy"><strong>PINPOINT</strong><small>SOURCING OPERATIONS</small></span>
     </a>
@@ -101,7 +101,7 @@
 
     <div class="sidebar-footer">
       <div class="support-card">
-        <strong>Pinpoint Sourcing Co.</strong>
+        <strong>Pinpoint Sourcing LLC</strong>
         <span>PPS Core · 1.0.0-alpha.19</span>
       </div>
     </div>
