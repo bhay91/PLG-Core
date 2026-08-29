@@ -40,6 +40,21 @@
     <div class="invoice-desk-balance {% if invoice.status in ['UNPAID','PARTIAL'] %}balance-attention{% endif %}"><span>Balance Due</span><strong>${{ "%.2f"|format(invoice.balance_due or 0) }}</strong>{% if invoice.credit_applied %}<small>${{ "%.2f"|format(invoice.credit_applied or 0) }} credit applied</small>{% endif %}{% if payment_total %}<small>${{ "%.2f"|format(payment_total or 0) }} received</small>{% endif %}</div>
   </section>
 
+  <section class="panel invoice-jmd-display erp-commercial-supporting">
+    <div>
+      <p class="eyebrow">JMD CUSTOMER TOTAL</p>
+      <h2>Optional currency reference</h2>
+      <p>USD remains the authoritative invoice and accounting currency.</p>
+      {% if invoice.address and "jamaica" in invoice.address|lower %}<small>Customer address appears to be in Jamaica. Confirm the exchange rate before enabling.</small>{% endif %}
+    </div>
+    <form method="post" action="/invoices/{{ invoice.id }}/jmd-display" class="invoice-jmd-form">
+      <label class="invoice-jmd-toggle"><input type="checkbox" name="show_jmd_total" value="1" {% if invoice.show_jmd_total %}checked{% endif %}> Show JMD Total on customer invoice</label>
+      <label><span>Exchange rate</span><span class="invoice-jmd-rate">1 USD = <input type="number" name="jmd_exchange_rate" min="0.000001" step="0.000001" inputmode="decimal" value="{{ invoice.jmd_exchange_rate or '' }}" placeholder="160"> JMD</span></label>
+      <div class="invoice-jmd-preview" data-usd-total="{{ invoice.customer_total or 0 }}"><span>JMD Preview</span><strong>—</strong></div>
+      <button class="button ghost" type="submit">Save JMD Display</button>
+    </form>
+  </section>
+
   {% if invoice.status in ["UNPAID", "PARTIAL"] %}
   <section class="panel invoice-desk-payment" id="record-payment">
     <div><p class="eyebrow">PAYMENT</p><h2>Record Payment</h2><p>Enter the payment received from the customer.</p></div>
@@ -79,6 +94,23 @@
 </div>
 <script>
 (() => {
+  const jmdForm = document.querySelector('.invoice-jmd-form');
+  if (jmdForm) {
+    const enabled = jmdForm.querySelector('[name="show_jmd_total"]');
+    const rate = jmdForm.querySelector('[name="jmd_exchange_rate"]');
+    const preview = jmdForm.querySelector('.invoice-jmd-preview strong');
+    const total = Number(jmdForm.querySelector('.invoice-jmd-preview').dataset.usdTotal || 0);
+    const renderJmd = () => {
+      const value = Number(rate.value);
+      preview.textContent = enabled.checked && Number.isFinite(value) && value > 0
+        ? `J$${(total * value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
+        : '—';
+      rate.required = enabled.checked;
+    };
+    enabled.addEventListener('change', renderJmd);
+    rate.addEventListener('input', renderJmd);
+    renderJmd();
+  }
   const billTo = document.querySelector('.invoice-desk-bill-to');
   if (billTo) {
     billTo.dataset.densityCollapse = 'Billing Details';

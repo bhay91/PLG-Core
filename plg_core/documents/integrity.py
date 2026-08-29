@@ -353,6 +353,100 @@ def issue_current_internal_invoice_document(
     return str(path)
 
 
+def issue_current_customer_invoice_document(
+    connection: sqlite3.Connection,
+    invoice,
+    items,
+) -> str:
+    """Create a new immutable customer copy after a presentation change."""
+    from plg_core.documents.invoice_pdf import (
+        DOCUMENT_ROOT as invoice_customer_root,
+        build_invoice_pdf,
+        invoice_paths,
+        paid_invoice_paths,
+    )
+    from plg_core.documents.pdf_fit import page_count
+
+    invoice_id = int(invoice["id"])
+    status = str(invoice["status"] or "").strip().upper()
+    if status == "PAID":
+        kind = "CUSTOMER_INVOICE_PAID"
+        base = paid_invoice_paths(
+            invoice["customer"], invoice["invoice_number"]
+        )["customer"]
+    elif status == "VOID":
+        kind = "CUSTOMER_INVOICE_VOID"
+        ordinary = invoice_paths(
+            invoice["customer"], invoice["invoice_number"]
+        )["customer"]
+        base = ordinary.with_name(f"{ordinary.stem}-VOID{ordinary.suffix}")
+    else:
+        kind = "CUSTOMER_INVOICE"
+        base = invoice_paths(
+            invoice["customer"], invoice["invoice_number"]
+        )["customer"]
+
+    version = int(connection.execute(
+        """SELECT COALESCE(MAX(version),0)+1
+           FROM invoice_documents_manifest
+           WHERE invoice_id=? AND document_kind=? AND audience='CUSTOMER'""",
+        (invoice_id, kind),
+    ).fetchone()[0])
+    path = _versioned_path(base, version)
+    if path.exists():
+        raise HTTPException(
+            status_code=409,
+            detail="Customer invoice version path already exists without a manifest.",
+        )
+
+    try:
+        build_invoice_pdf(invoice, items, path, internal=False)
+        data = path.read_bytes()
+        if (
+            not data.startswith(b"%PDF-")
+            or b"%%EOF" not in data[-1024:]
+            or page_count(path) < 1
+        ):
+            raise HTTPException(
+                status_code=500,
+                detail="Generated customer invoice PDF failed verification.",
+            )
+        digest = _digest(path)
+        connection.execute(
+            """UPDATE invoice_documents_manifest SET is_current=0
+               WHERE invoice_id=? AND document_kind=?
+                 AND audience='CUSTOMER' AND is_current=1""",
+            (invoice_id, kind),
+        )
+        connection.execute(
+            """INSERT INTO invoice_documents_manifest (
+                 invoice_id,document_kind,audience,version,invoice_status,
+                 file_path,sha256,is_current
+               ) VALUES (?,?,'CUSTOMER',?,?,?,?,1)""",
+            (
+                invoice_id,
+                kind,
+                version,
+                status,
+                portable_manifest_path(path, root=invoice_customer_root.parent),
+                digest,
+            ),
+        )
+        manifest = current_invoice_document(
+            connection, invoice_id, kind, "CUSTOMER"
+        )
+        if manifest is None or _verify_manifest_path(manifest) != path:
+            raise HTTPException(
+                status_code=500,
+                detail="Customer invoice manifest verification failed.",
+            )
+    except Exception:
+        if path.exists():
+            path.unlink()
+        raise
+    return str(path)
+
+
 def issue_custom_invoice_document(
     connection: sqlite3.Connection,
     invoice,

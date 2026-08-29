@@ -3179,3 +3179,28 @@ MIGRATIONS.append(
         _migration_0050_structured_receiving_exceptions,
     )
 )
+
+
+def _migration_0051_invoice_jmd_presentation(
+    connection: sqlite3.Connection,
+) -> None:
+    """Persist an optional invoice-specific JMD display snapshot."""
+    _add_columns(
+        connection,
+        "invoices",
+        {
+            "show_jmd_total": (
+                "INTEGER NOT NULL DEFAULT 0 "
+                "CHECK(show_jmd_total IN (0,1))"
+            ),
+            "jmd_exchange_rate": "TEXT NULL",
+        },
+    )
+
+
+MIGRATIONS.append(
+    (
+        "0051_invoice_jmd_presentation",
+        _migration_0051_invoice_jmd_presentation,
+    )
+)

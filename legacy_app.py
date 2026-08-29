@@ -4093,6 +4093,91 @@ def receive_invoice_payment(
     )
 
 
+@app.post("/invoices/{invoice_id}/jmd-display")
+def save_invoice_jmd_display(
+    invoice_id: int,
+    show_jmd_total: Annotated[str | None, Form()] = None,
+    jmd_exchange_rate: Annotated[str, Form()] = "",
+):
+    """Save a presentation-only JMD rate snapshot and version customer PDF."""
+    from decimal import Decimal, InvalidOperation
+
+    enabled = show_jmd_total == "1"
+    raw_rate = str(jmd_exchange_rate or "").strip()
+    rate = None
+    if raw_rate:
+        try:
+            rate = Decimal(raw_rate)
+        except InvalidOperation:
+            raise HTTPException(
+                status_code=400, detail="JMD exchange rate must be a valid number."
+            ) from None
+        if not rate.is_finite() or rate <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="JMD exchange rate must be greater than zero.",
+            )
+    if enabled and rate is None:
+        raise HTTPException(
+            status_code=400,
+            detail="A positive JMD exchange rate is required when JMD display is enabled.",
+        )
+    rate_snapshot = format(rate.normalize(), "f") if rate is not None else None
+
+    with closing(get_connection()) as connection:
+        invoice, items = load_invoice(connection, invoice_id)
+        previous = {
+            "show_jmd_total": int(invoice["show_jmd_total"] or 0),
+            "jmd_exchange_rate": invoice["jmd_exchange_rate"],
+        }
+        updated = {
+            "show_jmd_total": int(enabled),
+            "jmd_exchange_rate": rate_snapshot,
+        }
+        if previous != updated:
+            connection.execute(
+                """UPDATE invoices
+                   SET show_jmd_total=?,jmd_exchange_rate=?,
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE id=?""",
+                (int(enabled), rate_snapshot, invoice_id),
+            )
+            from plg_core.audit import write_audit
+            write_audit(
+                connection,
+                action="INVOICE_JMD_DISPLAY_UPDATED",
+                entity_type="INVOICE",
+                entity_id=invoice_id,
+                summary=(
+                    f"JMD customer display {'enabled' if enabled else 'disabled'} "
+                    f"for {invoice['invoice_number']}"
+                ),
+                metadata={"invoice_number": invoice["invoice_number"],
+                          "previous": previous, "new": updated},
+            )
+            updated_invoice, updated_items = load_invoice(connection, invoice_id)
+            from plg_core.documents.integrity import (
+                current_invoice_document,
+                issue_current_customer_invoice_document,
+            )
+            status = str(updated_invoice["status"] or "").strip().upper()
+            kind = (
+                "CUSTOMER_INVOICE_PAID" if status == "PAID"
+                else "CUSTOMER_INVOICE_VOID" if status == "VOID"
+                else "CUSTOMER_INVOICE"
+            )
+            if current_invoice_document(connection, invoice_id, kind, "CUSTOMER"):
+                issue_current_customer_invoice_document(
+                    connection, updated_invoice, updated_items
+                )
+            connection.commit()
+
+    return RedirectResponse(
+        url=f"/invoices/{invoice_id}/documents",
+        status_code=303,
+    )
+
+
 @app.post(
     "/invoices/{invoice_id}/payments/{payment_id}/reverse"
 )

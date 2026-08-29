@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 import os
 import re
@@ -70,6 +71,25 @@ def sanitize_path_name(value: str) -> str:
 
 def money(value) -> str:
     return f"${float(value or 0):,.2f}"
+
+
+def jmd_reference(invoice) -> tuple[Decimal, Decimal] | None:
+    """Return the saved presentation-only rate and JMD total, if enabled."""
+    if not int(_value(invoice, "show_jmd_total", 0) or 0):
+        return None
+    try:
+        rate = Decimal(str(_value(invoice, "jmd_exchange_rate", "")))
+        usd_total = Decimal(str(_value(invoice, "customer_total", "0")))
+    except (InvalidOperation, ValueError):
+        return None
+    if not rate.is_finite() or rate <= 0:
+        return None
+    total = (usd_total * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return rate, total
+
+
+def _decimal_text(value: Decimal) -> str:
+    return format(value.normalize(), "f")
 
 
 def invoice_paths(customer: str, invoice_number: str) -> dict[str, Path]:
@@ -752,9 +772,15 @@ def _totals_box(invoice, internal: bool):
             rows.append(["Shipping", money(shipping)])
 
         rows.append([
-            "Invoice Total",
+            "Invoice Total (USD)",
             money(_value(invoice, "customer_total", 0)),
         ])
+
+        jmd = jmd_reference(invoice)
+        if jmd is not None:
+            rate, jmd_total = jmd
+            rows.append(["JMD Total", f"J${jmd_total:,.2f}"])
+            rows.append(["Rate", f"1 USD = {_decimal_text(rate)} JMD"])
 
         credit_applied = float(
             _value(invoice, "credit_applied", 0) or 0
@@ -1082,6 +1108,9 @@ def generate_custom_invoice_pdf(
     custom_invoice_data["credit_applied"] = 0.0
     custom_invoice_data["balance_due"] = presentation["balance_due"]
     custom_invoice_data["status"] = "PAID"
+    # JMD display is intentionally limited to the standard customer invoice.
+    custom_invoice_data["show_jmd_total"] = 0
+    custom_invoice_data["jmd_exchange_rate"] = None
 
     items = []
 

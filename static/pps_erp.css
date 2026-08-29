@@ -1581,6 +1581,36 @@
   border-color: var(--erp-border) !important;
   background: var(--erp-panel-2) !important;
 }
+.erp-app .invoice-jmd-display {
+  display: grid;
+  grid-template-columns: minmax(220px, .8fr) minmax(360px, 1.2fr);
+  gap: 24px;
+  align-items: start;
+}
+.erp-app .invoice-jmd-display h2 { margin: 2px 0 6px; }
+.erp-app .invoice-jmd-display :is(p,small) { color: var(--erp-text-2); }
+.erp-app .invoice-jmd-form {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 12px 18px;
+  align-items: end;
+}
+.erp-app .invoice-jmd-form :is(.invoice-jmd-toggle,.invoice-jmd-preview) { grid-column: 1 / -1; }
+.erp-app .invoice-jmd-toggle { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+.erp-app .invoice-jmd-toggle input { width: auto; }
+.erp-app .invoice-jmd-rate { display: flex; align-items: center; gap: 8px; }
+.erp-app .invoice-jmd-rate input { width: 10rem; }
+.erp-app .invoice-jmd-preview {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--erp-border);
+  border-radius: 8px;
+  background: var(--erp-panel-3);
+  color: var(--erp-text-2);
+}
+.erp-app .invoice-jmd-preview strong { color: var(--erp-text); }
 .erp-app .erp-commercial-history,
 .erp-app .erp-commercial-history > details,
 .erp-app details.erp-commercial-history {
@@ -1728,6 +1758,10 @@
   }
   .erp-app .erp-commercial-detail .quote-bill-to-editor { width: 100%; min-width: 0; }
   .erp-app .account-action-grid { grid-template-columns: 1fr !important; }
+  .erp-app :is(.invoice-jmd-display,.invoice-jmd-form) { grid-template-columns: 1fr; }
+  .erp-app .invoice-jmd-form :is(.invoice-jmd-toggle,.invoice-jmd-preview) { grid-column: auto; }
+  .erp-app .invoice-jmd-form .button { width: 100%; }
+  .erp-app .invoice-jmd-rate { flex-wrap: wrap; }
 }
 @media (max-width: 540px) {
   .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) thead { display: none; }
