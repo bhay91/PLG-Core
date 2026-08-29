@@ -16,18 +16,19 @@
     </div>
   </form>
   {% if inbox_items %}<div class="request-list">
-    {% for item in inbox_items %}<article class="request-card inbox-card">
+    {% for item in inbox_items %}<article class="request-card inbox-card erp-intake-row">
       <a class="inbox-card-main" href="{{ item.url }}">
       <div class="request-card-content">
         <div class="request-card-topline"><span class="inbox-entry-type">{{ item.entry_type }}</span><span class="request-status inbox-status">{{ item.review_label }}</span></div>
-        <h2 class="request-customer">{{ item.customer }}</h2>
-        <p class="request-summary">{{ item.preview[:180] }}{% if item.preview|length > 180 %}…{% endif %}</p>
+        <div class="erp-intake-identity"><span>Customer / Request</span><h2 class="request-customer">{{ item.customer }}</h2></div>
+        <div class="erp-intake-need"><span>Request Preview</span><p class="request-summary">{{ item.preview[:180] }}{% if item.preview|length > 180 %}…{% endif %}</p></div>
         <div class="request-card-meta">
-          <span class="request-meta-item">{{ item.created_at[:10] if item.created_at else 'Date unavailable' }}{% if item.age_days is not none %} · {{ item.age_days }} day{% if item.age_days != 1 %}s{% endif %} ago{% endif %}</span>
-          {% if item.machine_need_summary %}<span class="request-meta-item inbox-context">{{ item.machine_need_summary|replace('\n',', ') }}</span>{% endif %}
+          <span class="request-meta-item"><strong>Received</strong> {{ item.created_at[:10] if item.created_at else 'Date unavailable' }}{% if item.age_days is not none %} · {{ item.age_days }} day{% if item.age_days != 1 %}s{% endif %} ago{% endif %}</span>
+          <span class="request-meta-item inbox-context"><strong>Machine / Asset</strong> {{ item.machine_need_summary|replace('\n',', ') if item.machine_need_summary else 'No asset context recorded' }}</span>
         </div>
       </div>
-      <div class="request-card-open"><span>{{ item.next_action }}</span><span aria-hidden="true">→</span></div></a>
+      <div class="erp-intake-review"><small>Review State</small><strong>{{ item.review_label }}</strong></div>
+      <div class="request-card-open erp-next-action"><small>Next Action</small><span>{{ item.next_action }}</span><strong aria-hidden="true">→</strong></div></a>
       {% if item.removable or item.disposable_eligible %}<details class="inbox-secondary-actions">
         <summary>More Actions</summary>
         <div class="inbox-secondary-actions-body">

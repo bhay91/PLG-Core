@@ -1341,3 +1341,170 @@
   .erp-app .supplier-order-context { grid-template-columns: 1fr !important; }
   .erp-app .part-summary-metric:last-of-type { grid-column: auto; }
 }
+
+/* 13. ERP-4 intake, job directory, and work-queue flow ----------------- */
+/* Shared identity, review, next-action, and authority-boundary language. */
+.erp-app .erp-intake-summary {
+  display: grid;
+  grid-template-columns: minmax(150px,.7fr) minmax(220px,1.25fr) minmax(190px,1fr) minmax(180px,.85fr) minmax(220px,1fr);
+  gap: 1px;
+  overflow: hidden;
+  padding: 0 !important;
+  border-color: color-mix(in srgb,var(--erp-blue) 42%,var(--erp-border)) !important;
+  background: var(--erp-border) !important;
+}
+.erp-app .erp-intake-summary > div:not(.panel-heading):not(.smart-core-review-grid),
+.erp-app .erp-intake-summary > .erp-identity-block {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 13px 14px;
+  background: var(--erp-panel);
+}
+.erp-app .erp-intake-summary > div > span,
+.erp-app .erp-intake-summary > .erp-identity-block > span {
+  color: var(--erp-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.erp-app .erp-intake-summary > div > strong,
+.erp-app .erp-intake-summary > .erp-identity-block > strong {
+  color: var(--erp-text);
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+.erp-app .erp-intake-summary > div > small,
+.erp-app .erp-intake-summary > .erp-identity-block > small {
+  color: var(--erp-text-2);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.erp-app .erp-intake-summary > .erp-next-action {
+  border-left: 3px solid var(--erp-blue);
+  background: color-mix(in srgb,var(--erp-blue) 8%,var(--erp-panel-2));
+}
+.erp-app .erp-intake-summary > .erp-next-action .button { justify-self: start; margin-top: 3px; }
+.erp-app .erp-missing-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  margin: 0 0 12px;
+  padding: 11px 14px;
+  color: var(--erp-text-2);
+  border: 1px solid color-mix(in srgb,var(--erp-amber) 48%,var(--erp-border));
+  border-radius: 9px;
+  background: color-mix(in srgb,var(--erp-amber) 8%,var(--erp-panel));
+}
+.erp-app .erp-missing-info strong { flex: 0 0 auto; color: #f1c879; font-size: 13px; }
+.erp-app .erp-missing-info ul { display: flex; flex-wrap: wrap; gap: 5px 24px; margin: 0; padding-left: 18px; font-size: 12.5px; }
+.erp-app .erp-original-wording { border-color: color-mix(in srgb,var(--erp-purple) 42%,var(--erp-border)) !important; }
+.erp-app .erp-intake-proposal { border-color: color-mix(in srgb,var(--erp-blue) 34%,var(--erp-border)) !important; }
+.erp-app .erp-intake-form .request-create-section-head,
+.erp-app .erp-intake-form .panel-heading { margin-bottom: 12px; }
+.erp-app .erp-intake-form .request-create-section { padding: 16px !important; }
+.erp-app .erp-intake-form .request-create-step { width: 30px; height: 30px; }
+:root[data-theme="dark"] .erp-app .smart-core-review-card {
+  color: var(--erp-text-2) !important;
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important;
+}
+:root[data-theme="dark"] .erp-app .smart-core-review-card :is(h3,strong) { color: var(--erp-text) !important; }
+:root[data-theme="dark"] .erp-app .smart-core-review-card p { color: var(--erp-text-2) !important; }
+:root[data-theme="dark"] .erp-app :is(.smart-existing-match,.smart-review-alert) {
+  color: var(--erp-text-2) !important;
+  border-color: var(--erp-border-strong) !important;
+  background: var(--erp-panel-3) !important;
+}
+:root[data-theme="dark"] .erp-app :is(.smart-existing-match,.smart-review-alert) :is(strong,h3) { color: var(--erp-text) !important; }
+
+/* Inbox rows use the full workspace: identity and need lead, review context
+   remains stable, and the authoritative next action lands at the right edge. */
+.erp-app .inbox-card-main {
+  grid-template-columns: minmax(0,1fr) minmax(140px,.22fr) minmax(190px,.28fr) !important;
+  gap: 14px !important;
+  align-items: stretch !important;
+}
+.erp-app .erp-intake-row { padding: 0 !important; }
+.erp-app .erp-intake-row .request-card-content { display: grid; grid-template-columns: minmax(170px,.6fr) minmax(260px,1.3fr); gap: 7px 18px; padding: 13px 15px; }
+.erp-app .erp-intake-row .request-card-topline { grid-column: 1 / -1; }
+.erp-app .erp-intake-identity,
+.erp-app .erp-intake-need { min-width: 0; }
+.erp-app .erp-intake-identity > span,
+.erp-app .erp-intake-need > span,
+.erp-app .erp-intake-review small,
+.erp-app .erp-intake-row .erp-next-action small {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--erp-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+}
+.erp-app .erp-intake-row .request-customer { margin: 0; font-size: 15px !important; }
+.erp-app .erp-intake-row .request-summary { margin: 0; color: var(--erp-text); font-size: 14px; font-weight: 600; line-height: 1.35; }
+.erp-app .erp-intake-row .request-card-meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 5px 20px; }
+.erp-app .erp-intake-row .request-card-meta strong { color: var(--erp-text-2); font-weight: 650; }
+.erp-app .erp-intake-review,
+.erp-app .erp-intake-row .erp-next-action { display: grid; align-content: center; min-width: 0; padding: 12px 14px; border-left: 1px solid var(--erp-border); }
+.erp-app .erp-intake-review strong { color: var(--erp-text-2); font-size: 13px; line-height: 1.35; }
+.erp-app .erp-intake-row .request-card-open { justify-self: stretch !important; margin: 0 !important; border-left: 3px solid var(--erp-blue); background: color-mix(in srgb,var(--erp-blue) 8%,var(--erp-panel-2)); }
+.erp-app .erp-intake-row .request-card-open span { color: #8bc2ff; font-size: 14px; font-weight: 700; line-height: 1.3; }
+.erp-app .erp-intake-row .request-card-open strong { color: #8bc2ff; font-size: 18px; }
+.erp-app .inbox-secondary-actions { margin: 0 15px 9px; }
+
+/* Jobs remain a directory: predictable identity, workflow, and action columns
+   without adopting the Work Queue's action-first visual treatment. */
+.erp-app .erp-job-row { grid-template-columns: minmax(330px,1.3fr) minmax(230px,.75fr) minmax(220px,.72fr) 28px !important; }
+.erp-app .erp-job-row .smart-job-row-action { border-left: 1px solid var(--erp-border); background: var(--erp-panel-2); }
+.erp-app .erp-job-row .smart-job-row-action strong { color: #8bc2ff !important; font-size: 14px; line-height: 1.35; }
+.erp-app .erp-job-row .smart-job-row-number { color: var(--erp-text-2) !important; font-size: 12px; }
+.erp-app .erp-job-row .smart-job-row-description { color: var(--erp-text) !important; font-size: 14px !important; }
+.erp-app .erp-job-row .smart-job-row-machine { overflow-wrap: anywhere; }
+
+/* Work Queue is intentionally more action-forward than the Jobs directory. */
+.erp-app .erp-queue-row { grid-template-columns: minmax(125px,.44fr) minmax(220px,.75fr) minmax(320px,1.35fr) minmax(230px,.72fr) !important; position: relative; overflow: hidden; }
+.erp-app .erp-queue-row::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--erp-border-strong); }
+.erp-app .erp-queue-row.erp-actionable-state::before { background: var(--erp-blue); }
+.erp-app .erp-queue-row.erp-waiting-state { background: color-mix(in srgb,var(--erp-panel-2) 72%,var(--erp-panel)) !important; }
+.erp-app .erp-queue-row.erp-waiting-state::before { background: var(--erp-amber); opacity: .7; }
+.erp-app .erp-queue-row .work-queue-action { display: grid; align-content: center; padding-left: 16px; border-left: 1px solid var(--erp-border); background: color-mix(in srgb,var(--erp-blue) 6%,var(--erp-panel-2)); }
+.erp-app .erp-queue-row .workspace-primary-link { font-size: 14px; line-height: 1.35; }
+.erp-app .erp-queue-row .work-queue-need-label { font-size: 14px; }
+.erp-app .erp-queue-row .work-queue-action-detail { font-size: 13px; }
+
+@media (max-width: 1180px) {
+  .erp-app .erp-intake-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .erp-app .erp-intake-summary > .erp-next-action { grid-column: 1 / -1; border-left: 0; border-top: 3px solid var(--erp-blue); }
+  .erp-app .inbox-card-main { grid-template-columns: minmax(0,1fr) minmax(170px,.3fr) !important; }
+  .erp-app .erp-intake-review { display: none; }
+  .erp-app .erp-job-row { grid-template-columns: minmax(280px,1.25fr) minmax(200px,.75fr) minmax(200px,.72fr) 24px !important; }
+  .erp-app .erp-queue-row { grid-template-columns: minmax(110px,.4fr) minmax(190px,.7fr) minmax(260px,1.25fr) minmax(210px,.75fr) !important; }
+}
+@media (max-width: 820px) {
+  .erp-app .inbox-card-main { grid-template-columns: 1fr !important; }
+  .erp-app .erp-intake-row .request-card-content { grid-template-columns: 1fr; }
+  .erp-app .erp-intake-row .request-card-topline,
+  .erp-app .erp-intake-row .request-card-meta { grid-column: auto; }
+  .erp-app .erp-intake-row .request-card-open { border-top: 1px solid var(--erp-border); border-left: 0; }
+  .erp-app .erp-job-row,
+  .erp-app .erp-queue-row { grid-template-columns: 1fr !important; }
+  .erp-app .erp-job-row .smart-job-row-rail,
+  .erp-app .erp-job-row .smart-job-row-open { display: none; }
+  .erp-app .erp-job-row .smart-job-row-workflow,
+  .erp-app .erp-job-row .smart-job-row-action,
+  .erp-app .erp-queue-row .work-queue-action { border-top: 1px solid var(--erp-border); border-left: 0; }
+  .erp-app .erp-queue-row .work-queue-action { padding: 12px 14px; }
+}
+@media (max-width: 540px) {
+  .erp-app .erp-intake-summary { grid-template-columns: 1fr; }
+  .erp-app .erp-intake-summary > .erp-next-action { grid-column: auto; }
+  .erp-app .erp-missing-info { display: block; }
+  .erp-app .erp-missing-info ul { display: block; margin-top: 7px; }
+}

@@ -29,7 +29,7 @@
   {% if summary.core_review_count == 0 and not ready_to_create %}<div class="smart-review-alert"><strong>Additional review is still required</strong>{% if analysis.blockers %}<ul>{% for blocker in analysis.blockers %}<li>{{ blocker }}</li>{% endfor %}</ul>{% endif %}</div>{% endif %}
 </section>
 
-<details class="panel smart-raw-request">
+<details class="panel smart-raw-request erp-original-wording" open>
   <summary><strong>Original customer request</strong> · preserved exactly</summary>
   <pre>{{ proposal.raw_input }}</pre>
 </details>
@@ -241,7 +241,7 @@
   <button class="button ghost" type="submit">＋ Add Need</button>
 </form>
 
-<section class="panel smart-review-summary">
+<section class="panel smart-review-summary erp-intake-proposal">
   <div><p class="eyebrow">CONFIRMATION SUMMARY</p><h2>What PPS will create or reuse</h2></div>
   <ul class="smart-review-list">
     <li><strong>Customer: {{ summary.customer.action }}</strong> {{ summary.customer.label }}</li>
@@ -253,7 +253,7 @@
   <p><strong>Confirm will:</strong> {{ summary.confirmation_action }}</p>
 </section>
 
-<section class="smart-proposal-confirm panel">
+<section class="smart-proposal-confirm panel erp-current-work erp-next-action">
   <div><p class="eyebrow">AUTHORITY BOUNDARY</p><h2>Ready to create the Job?</h2><p>Confirmation creates the Request, Job, Requested Needs, and any optional asset context in one transaction. It does not select research candidates or create prices.</p></div>
   {% if ready_to_create %}<form method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/confirm">
     <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">

@@ -59,7 +59,7 @@
 <section class="smart-job-row-list" id="smart-job-grid">
   {% for job in jobs %}
   <a
-    class="smart-job-row stage-{{ job.stage_key|lower }}"
+    class="smart-job-row erp-job-row stage-{{ job.stage_key|lower }}"
     href="/jobs/{{ job.id }}/basket"
     data-search="
       {{ job.job_number }}
@@ -156,7 +156,7 @@
       {% endif %}
     </div>
 
-    <div class="smart-job-row-action">
+    <div class="smart-job-row-action erp-next-action">
       <span>Next Action</span>
       <strong>{{ job.intelligence.next_action }}</strong>
 

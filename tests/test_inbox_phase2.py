@@ -12,7 +12,7 @@ from starlette.requests import Request
 
 import legacy_app
 from fastapi import HTTPException
-from plg_core.requests.routes import list_requests, remove_request_from_inbox
+from plg_core.requests.routes import list_requests, remove_request_from_inbox, request_detail
 from plg_core.requests.routes import router as requests_router
 from plg_core.intake.routes import remove_proposal_from_inbox, router as intake_router
 
@@ -134,6 +134,36 @@ class InboxPhase2Tests(unittest.TestCase):
         self.assertIn('href="/requests/new"', template)
         for path in ("request_detail.html", "request_form.html", "smart_intake.html", "smart_intake_proposal.html"):
             self.assertIn("Back to Inbox", (ROOT / "templates" / path).read_text())
+
+    def test_inbox_preview_is_truthfully_labeled_and_original_wording_is_open(self):
+        body = self.render(q=self.token, view="active").body.decode()
+        self.assertIn("Request Preview", body)
+        self.assertNotIn('<div class="erp-intake-need"><span>Requested Need</span>', body)
+        smart_review = (ROOT / "templates" / "smart_intake_proposal.html").read_text()
+        self.assertIn('<details class="panel smart-raw-request erp-original-wording" open>', smart_review)
+
+    def test_request_summary_prefers_linked_registry_machine_and_identifier(self):
+        with closing(legacy_app.get_connection()) as c:
+            linked = c.execute(
+                """SELECT id,customer_id,year,manufacturer,model,name,vin_pin_serial
+                   FROM machines WHERE active=1 AND vin_pin_serial!='' LIMIT 1"""
+            ).fetchone()
+            self.assertIsNotNone(linked)
+            c.execute(
+                """UPDATE customer_requests
+                   SET customer_id=?,machine_id=?,manufacturer='STALE MAKE',model='STALE MODEL',
+                       year='1900',identifier='STALE-ID' WHERE id=?""",
+                (linked["customer_id"], linked["id"], self.manual_id),
+            )
+            c.commit()
+        response = request_detail(self.request(), self.manual_id)
+        body = response.body.decode()
+        summary = body[body.index('aria-label="Request operator summary"'):body.index('<div class="request-detail-grid">')]
+        self.assertIn(str(linked["manufacturer"] or ""), summary)
+        self.assertIn(str(linked["model"] or linked["name"] or ""), summary)
+        self.assertIn(str(linked["vin_pin_serial"]), summary)
+        self.assertNotIn("STALE MAKE", summary)
+        self.assertNotIn("STALE-ID", summary)
 
     def test_draft_proposal_removal_is_posted_cancelled_and_history_preserved(self):
         before = self.render(q=self.token, view="active").context["inbox_items"]

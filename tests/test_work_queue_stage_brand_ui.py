@@ -21,6 +21,25 @@ class WorkQueueStageBrandUiTests(unittest.TestCase):
         self.assertIn("item.action_detail", template)
         self.assertIn("item.url", template)
 
+    def test_erp_queue_visual_state_classification_is_explicit_and_neutral_by_default(self):
+        template = (ROOT / "templates/dashboard.html").read_text()
+        actionable = (
+            "NEEDS_RESEARCH", "READY_TO_QUOTE", "READY_TO_INVOICE",
+            "READY_TO_ORDER", "READY_FOR_DELIVERY",
+        )
+        waiting = (
+            "WAITING_SUPPLIER_PRICING", "CUSTOMER_DECISION_FOLLOW_UP",
+            "WAITING_FOR_PAYMENT", "WAITING_FOR_PARTS",
+        )
+        for category in actionable + waiting:
+            self.assertIn(category, template)
+        row = template[template.index('<article class="work-queue-row'):template.index('<div class="work-queue-category')]
+        self.assertIn("erp-actionable-state", row)
+        self.assertIn("erp-waiting-state", row)
+        self.assertIn("{% elif item.category in", row)
+        self.assertNotIn("{% else %}erp-waiting-state", row)
+        self.assertNotIn("'COMPLETE'", row)
+
     def test_known_aliases_resolve_without_changing_stored_text(self):
         cat = manufacturer_identity("CAT")
         caterpillar = manufacturer_identity("Caterpillar")

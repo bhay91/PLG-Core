@@ -22,10 +22,22 @@
   </div>
 </section>
 
+<section class="panel erp-intake-summary" aria-label="Request operator summary">
+  <div class="erp-identity-block"><span>Request</span><strong>{{ record.request_number }}</strong><small>{{ record.company_name or record.individual_name or record.phone or 'Customer identity requires review' }}</small></div>
+  <div><span>Requested Need</span><strong>{{ record.requested_parts or 'Requested Need not yet structured' }}</strong></div>
+  <div><span>Asset / Machine</span><strong>{% if machine %}{{ machine.year or '' }} {{ machine.manufacturer or '' }} {{ machine.model or machine.name or '' }}{% elif record.manufacturer or record.model %}{{ record.year or '' }} {{ record.manufacturer or '' }} {{ record.model or '' }}{% else %}No asset context recorded{% endif %}</strong><small>{{ (machine.vin_pin_serial if machine and machine.vin_pin_serial else record.identifier) or 'No identifier recorded' }}</small></div>
+  <div class="erp-review-state"><span>Review State</span><strong>{{ record.status }}</strong><small>{% if customer and machine %}Customer and Registry linked{% elif customer %}Customer linked · asset context pending or not required{% else %}Customer match requires operator review{% endif %}</small></div>
+  <div class="erp-next-action"><span>Next Action</span><strong>{% if job %}Open Job{% elif customer %}Review Registry and create Job{% else %}Review and link customer{% endif %}</strong><a class="button" href="{% if job %}/jobs/{{ job.id }}/basket{% else %}#next-steps{% endif %}">{% if job %}Open Job{% else %}Continue Review{% endif %}</a></div>
+</section>
+
+{% if not record.individual_name and not record.company_name or (machine or record.manufacturer or record.model) and not ((machine.vin_pin_serial if machine else '') or record.identifier) %}
+<section class="erp-missing-info" aria-label="Missing information"><strong>Information requiring review</strong><ul>{% if not record.individual_name and not record.company_name %}<li>Customer identity is not recorded.</li>{% endif %}{% if (machine or record.manufacturer or record.model) and not ((machine.vin_pin_serial if machine else '') or record.identifier) %}<li>Asset context exists, but no VIN / PIN / serial identifier is recorded.</li>{% endif %}</ul></section>
+{% endif %}
+
 <div class="request-detail-grid">
   <section class="panel request-main-panel">
     <div class="panel-heading request-panel-heading">
-      <div><p class="eyebrow">REQUEST</p><h2>Customer Request</h2></div>
+      <div><p class="eyebrow">ORIGINAL REQUEST</p><h2>Original customer wording</h2><p class="muted-copy">Preserved exactly as received for comparison with the structured proposal.</p></div>
       <span class="request-status status-{{ record.status|lower }}">{{ record.status }}</span>
     </div>
     <div class="request-message">{{ record.request_text or 'No message entered.' }}</div>
