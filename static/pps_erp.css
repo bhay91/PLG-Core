@@ -703,15 +703,6 @@
 }
 .erp-app :is(.context-card,.recent-customer-card,.customer-profile-grid > div) strong { color: var(--erp-text) !important; }
 .erp-app :is(.context-card,.recent-customer-card,.customer-profile-grid > div) :is(span,small) { color: var(--erp-muted) !important; }
-.erp-app .docs-row-actions .button,
-.erp-app .docs-history-actions .button,
-.erp-app .customer-row-actions .button,
-.erp-app .workspace-action-panel .workspace-btn-secondary {
-  color: var(--erp-text-2) !important;
-  border-color: var(--erp-border-strong) !important;
-  background: var(--erp-panel-2) !important;
-}
-
 /* ERP global working-type scale: preserve accepted geometry while improving readability. */
 .erp-app { font-size: 14px; }
 
@@ -1714,6 +1705,12 @@
   border-color: var(--erp-border) !important;
   background: var(--erp-panel-2) !important;
 }
+
+/* The shared next-action utility is intentionally single-line in queue rows;
+   Smart Intake applies it to a full authority panel, which must wrap. */
+.erp-app .smart-proposal-confirm.erp-next-action { min-width: 0; white-space: normal; }
+.erp-app .smart-proposal-confirm.erp-next-action :is(div,p) { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.erp-app .smart-raw-request pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 @media (min-width: 1181px) {
   .erp-app .erp-commercial-row { grid-template-columns: 72px minmax(320px,1.35fr) minmax(210px,.65fr) minmax(245px,.75fr) !important; }
