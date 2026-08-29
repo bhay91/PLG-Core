@@ -78,7 +78,7 @@ def build_receiving_pdf(receipt: dict, output_path: Path) -> Path:
         title=f"Receiving Summary {receipt.get('receipt_number')}",
     )
     header = Table([[
-        Paragraph("<b>PINPOINT SOURCING CO.</b>", value),
+        Paragraph("<b>PINPOINT SOURCING LLC</b>", value),
         [Paragraph("RECEIVING SUMMARY", title), Paragraph(
             f"<b>{_text(receipt.get('receipt_number'))}</b><br/>{_text(receipt.get('status_after'))}", value
         )],

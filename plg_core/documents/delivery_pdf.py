@@ -58,7 +58,7 @@ def build_delivery_pdf(delivery: dict, output_path: Path) -> Path:
         title=f"Delivery Note {delivery.get('delivery_number')}",
     )
     header = Table([[
-        Paragraph("<b>PINPOINT SOURCING CO.</b>", value),
+        Paragraph("<b>PINPOINT SOURCING LLC</b>", value),
         [Paragraph("DELIVERY NOTE", title), Paragraph(f"<b>{_text(delivery.get('delivery_number'))}</b>", value)],
     ]], colWidths=[3.1 * inch, 4.4 * inch])
     header.setStyle(TableStyle([

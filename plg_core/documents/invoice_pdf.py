@@ -39,7 +39,6 @@ DOCUMENT_ROOT = (
 )
 LOGO_CANDIDATES = [
     PROJECT_ROOT / "static" / "pps-logo.png",
-    PROJECT_ROOT / "static" / "plg-logo.webp",
     PROJECT_ROOT / "static" / "plg-logo.png",
     PROJECT_ROOT / "static" / "plg-logo.jpg",
 ]
@@ -128,7 +127,7 @@ def _logo() -> Path | None:
 
 def _logo_image(path: Path) -> Image:
     width, height = ImageReader(str(path)).getSize()
-    scale = min((2.50 * inch) / width, (0.68 * inch) / height)
+    scale = min((2.75 * inch) / width, (1.00 * inch) / height)
     return Image(str(path), width=width * scale, height=height * scale)
 
 
@@ -216,7 +215,7 @@ def _page_footer(canvas, doc, title, number, invoice):
     canvas.drawString(
         PDF_LEFT_MARGIN,
         fit_value(0.21, 0.18, 0.16, 0.14) * inch,
-        "Pinpoint Sourcing Co. | Worldwide Sourcing & Logistics",
+        "Pinpoint Sourcing LLC | Worldwide Sourcing & Logistics",
     )
     canvas.drawRightString(
         width - PDF_RIGHT_MARGIN,
@@ -243,7 +242,7 @@ def _document(path: Path, invoice, title: str):
         topMargin=fit_value(0.27, 0.22, 0.18, 0.16) * inch,
         bottomMargin=fit_value(1.22, 1.10, 1.02, 0.96) * inch,
         title=f"{title} {_value(invoice, 'invoice_number')}",
-        author="Pinpoint Sourcing Co.",
+        author="Pinpoint Sourcing LLC",
     )
 
     frame = Frame(
@@ -863,7 +862,7 @@ def _footer_blocks(invoice):
     ]
     center = [
         Paragraph("THANK YOU FOR CHOOSING", s["footer_heading"]),
-        Paragraph("PINPOINT SOURCING CO.", s["center_brand"]),
+        Paragraph("PINPOINT SOURCING LLC", s["center_brand"]),
         Paragraph("Worldwide Sourcing &amp; Logistics", s["center_tag"]),
     ]
     right = [

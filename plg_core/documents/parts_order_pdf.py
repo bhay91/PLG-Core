@@ -12,6 +12,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
@@ -63,7 +64,6 @@ def _money(value) -> str:
 def _logo_path() -> Path | None:
     candidates = (
         Path("static/pps-logo.png"),
-        Path("static/plg-logo.webp"),
         Path("static/plg-logo.png"),
         Path("static/logo.png"),
     )
@@ -181,7 +181,7 @@ def _page_footer(canvas, doc, invoice_number: str):
     canvas.drawString(
         LEFT_MARGIN,
         0.21 * inch,
-        "Pinpoint Sourcing Co. · Internal Purchasing Document",
+        "Pinpoint Sourcing LLC · Internal Purchasing Document",
     )
 
     canvas.drawRightString(
@@ -204,7 +204,7 @@ def _document(path: Path, invoice):
         topMargin=TOP_MARGIN,
         bottomMargin=BOTTOM_MARGIN,
         title=f"Parts Order Sheet {invoice_number}",
-        author="Pinpoint Sourcing Co.",
+        author="Pinpoint Sourcing LLC",
     )
 
     frame = Frame(
@@ -240,10 +240,15 @@ def _header(invoice):
 
     if logo:
         try:
+            logo_width, logo_height = ImageReader(str(logo)).getSize()
+            logo_scale = min(
+                (2.75 * inch) / logo_width,
+                (1.00 * inch) / logo_height,
+            )
             logo_flow = Image(
                 str(logo),
-                width=2.50 * inch,
-                height=0.68 * inch,
+                width=logo_width * logo_scale,
+                height=logo_height * logo_scale,
             )
         except Exception:
             logo_flow = Paragraph("PPS", styles["brand"])

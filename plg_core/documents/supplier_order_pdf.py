@@ -12,6 +12,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 
@@ -119,10 +120,18 @@ def build_supplier_order_pdf(order: dict, output_path: Path, *, draft: bool) -> 
     )
     logo = next((path for path in (
         PROJECT_ROOT / "static" / "pps-logo.png",
-        PROJECT_ROOT / "static" / "plg-logo.webp",
         PROJECT_ROOT / "static" / "plg-logo.png",
     ) if path.is_file()), None)
-    brand = Image(str(logo), width=2.3 * inch, height=.62 * inch) if logo else Paragraph("<b>PINPOINT SOURCING CO.</b>", value)
+    if logo:
+        logo_width, logo_height = ImageReader(str(logo)).getSize()
+        logo_scale = min((2.75 * inch) / logo_width, (1.00 * inch) / logo_height)
+        brand = Image(
+            str(logo),
+            width=logo_width * logo_scale,
+            height=logo_height * logo_scale,
+        )
+    else:
+        brand = Paragraph("<b>PINPOINT SOURCING LLC</b>", value)
     status = "DRAFT — NOT ISSUED" if draft else str(order["status"] or "").upper()
     header = Table([[brand, [Paragraph("PURCHASE ORDER", title), Paragraph(f"<b>{_text(order['po_number'])}</b><br/>{_text(status)}", value)]]], colWidths=[4.4 * inch, 3.0 * inch])
     header.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("ALIGN", (1, 0), (1, 0), "RIGHT"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))

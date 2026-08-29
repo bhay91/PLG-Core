@@ -38,7 +38,6 @@ DOCUMENT_ROOT = (
 )
 LOGO_CANDIDATES = [
     PROJECT_ROOT / "static" / "pps-logo.png",
-    PROJECT_ROOT / "static" / "plg-logo.webp",
     PROJECT_ROOT / "static" / "plg-logo.png",
     PROJECT_ROOT / "static" / "plg-logo.jpg",
 ]
@@ -94,7 +93,7 @@ def _logo() -> Path | None:
 
 def _logo_image(path: Path) -> Image:
     width, height = ImageReader(str(path)).getSize()
-    scale = min((2.50 * inch) / width, (0.68 * inch) / height)
+    scale = min((2.75 * inch) / width, (1.00 * inch) / height)
     return Image(str(path), width=width * scale, height=height * scale)
 
 
@@ -176,7 +175,7 @@ def _page_footer(canvas, doc, title, number, quote):
     canvas.setFont("Helvetica", 6.5)
     canvas.setFillColor(MUTED)
     baseline = fit_value(0.21, 0.18, 0.16, 0.14) * inch
-    canvas.drawString(0.28 * inch, baseline, "Pinpoint Sourcing Co. | Worldwide Sourcing & Logistics")
+    canvas.drawString(0.28 * inch, baseline, "Pinpoint Sourcing LLC | Worldwide Sourcing & Logistics")
     canvas.drawRightString(width - 0.28 * inch, baseline, f"{title} {number} | Page {doc.page}")
     footer_blocks = _footer_blocks(quote)
     footer_blocks.wrapOn(canvas, 7.94 * inch, 0.70 * inch)
@@ -191,7 +190,7 @@ def _document(path: Path, quote, title: str):
         topMargin=fit_value(0.27, 0.22, 0.18, 0.16) * inch,
         bottomMargin=fit_value(1.22, 1.10, 1.02, 0.96) * inch,
         title=f"{title} {_value(quote, 'quote_number')}",
-        author="Pinpoint Sourcing Co.",
+        author="Pinpoint Sourcing LLC",
     )
     frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="main")
     doc.addPageTemplates([
@@ -794,7 +793,7 @@ def _footer_blocks(quote):
     ]
     center = [
         Paragraph("THANK YOU FOR CHOOSING", s["footer_heading"]),
-        Paragraph("PINPOINT SOURCING CO.", s["center_brand"]),
+        Paragraph("PINPOINT SOURCING LLC", s["center_brand"]),
         Paragraph("Worldwide Sourcing &amp; Logistics", s["center_tag"]),
     ]
     right = [

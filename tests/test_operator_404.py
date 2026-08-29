@@ -40,11 +40,11 @@ def test_operator_and_machine_404_behavior() -> None:
     assert 'href="/requests">Inbox</a>' in operator.text
     assert 'href="/search">Search</a>' in operator.text
     assert (
-        'rel="icon" type="image/webp" '
-        'href="http://127.0.0.1:8000/static/pinpoint-logo-stacked.webp"'
+        'rel="icon" type="image/png" '
+        'href="http://127.0.0.1:8000/static/pinpoint-logo-stacked.png"'
     ) in operator.text
 
-    assert (Path(__file__).parents[1] / "static" / "pinpoint-logo-stacked.webp").is_file()
+    assert (Path(__file__).parents[1] / "static" / "pinpoint-logo-stacked.png").is_file()
 
     for response in (api, machine):
         assert response.status_code == 404
