@@ -1,48 +1,107 @@
 {% extends "base.html" %}
-{% from "_manufacturer_logo.html" import manufacturer_logo %}
 {% block title %}Dashboard · Pinpoint Sourcing Co.{% endblock %}
+{% block page_context %}Operations Dashboard{% endblock %}
 {% block content %}
-<div class="operator-dashboard">
-  <section class="workspace-heading dashboard-heading">
-    <div><p class="eyebrow">DAILY CONTROL CENTER</p><h1>PPS Dashboard</h1><p>What needs attention next?</p></div>
-    <a class="button ghost" href="/work-queue">Open Full Work Queue</a>
-  </section>
+{% set active_rows = jobs + payments + ordering + receiving + delivery %}
+<main class="erp-dashboard" aria-labelledby="erp-dashboard-title">
+  <header class="erp-dashboard-heading">
+    <div>
+      <p class="erp-overline">OPERATIONS CONTROL</p>
+      <h1 id="erp-dashboard-title">Dashboard</h1>
+      <p>Current PPS work requiring operator attention · {{ report_date }}</p>
+    </div>
+    <div class="erp-heading-actions">
+      <a class="erp-button erp-button-secondary" href="/work-queue">Full Work Queue</a>
+      <a class="erp-button" href="/requests/new">New Request</a>
+    </div>
+  </header>
 
-  <section class="dashboard-section dashboard-section-priority" aria-labelledby="dashboard-inbox-title">
-    <header class="dashboard-section-head"><div><p class="eyebrow">HIGHEST PRIORITY</p><h2 id="dashboard-inbox-title">Inbox &amp; Intake</h2></div><a href="/requests">View Inbox</a></header>
-    <div class="dashboard-count"><strong>{{ inbox_total }}</strong><span>proposal{% if inbox_total != 1 %}s{% endif %} waiting for review</span></div>
-    {% if inbox %}<div class="dashboard-list">
-      {% for item in inbox %}<article class="dashboard-row dashboard-intake-row">
-        <div class="dashboard-identity"><small>{{ item.source }} · {{ item.age_label }}</small><strong>{{ item.identity }}</strong><span>{{ item.request }}</span>{% if item.context %}<span class="dashboard-context">{{ item.context }}</span>{% endif %}</div>
-        <div class="dashboard-state"><span>{{ item.status }}</span></div>
-        <a class="dashboard-primary-action" href="{{ item.url }}">Review Intake →</a>
-      </article>{% endfor %}
-    </div>{% else %}<p class="dashboard-empty">No DRAFT intake proposals are waiting for review.</p>{% endif %}
-  </section>
-
-  <section class="dashboard-section" aria-labelledby="dashboard-jobs-title">
-    <header class="dashboard-section-head"><div><p class="eyebrow">ACTIVE WORK</p><h2 id="dashboard-jobs-title">Jobs Needing Action</h2></div><a href="/jobs">View All Jobs</a></header>
-    {% if jobs %}<div class="dashboard-list">{% for item in jobs %}{% include "_operator_dashboard_job_row.html" %}{% endfor %}</div>{% else %}<p class="dashboard-empty">No sourcing, quoting, or customer-decision work needs attention.</p>{% endif %}
-  </section>
-
-  <div class="dashboard-workflow-grid">
-    {% set workflow_sections = [
-      ('payments','Payments / Balances',payments,'/invoices','View Invoices','Nothing is waiting for payment.'),
-      ('ordering','Ordering',ordering,'/purchasing','View Orders','Nothing is waiting to be ordered.'),
-      ('receiving','Receiving',receiving,'/purchasing','View Orders','Nothing is waiting to be received.'),
-      ('delivery','Delivery',delivery,'/work-queue?queue=READY_FOR_DELIVERY','View Delivery Queue','Nothing is waiting for delivery.')
+  <section class="erp-metric-grid" aria-label="Current operational metrics">
+    {% set metrics = [
+      ('inbox','erp-i-inbox','Inbox',inbox_total,'awaiting review','/requests'),
+      ('jobs','erp-i-jobs','Jobs in Queue',active_rows|length,'current priorities','/jobs'),
+      ('payment','erp-i-invoice','Payment',payments|length,'need attention','/invoices'),
+      ('orders','erp-i-order','Ordering',ordering|length,'ready to place','/purchasing'),
+      ('receiving','erp-i-receive','Receiving',receiving|length,'awaiting goods','/purchasing'),
+      ('delivery','erp-i-truck','Delivery',delivery|length,'ready to move','/work-queue?queue=READY_FOR_DELIVERY')
     ] %}
-    {% for key, title, rows, all_url, all_label, empty_label in workflow_sections %}
-    <section class="dashboard-section dashboard-workflow-section" aria-labelledby="dashboard-{{ key }}-title">
-      <header class="dashboard-section-head"><h2 id="dashboard-{{ key }}-title">{{ title }}</h2><a href="{{ all_url }}">{{ all_label }}</a></header>
-      {% if rows %}<div class="dashboard-list">{% for item in rows %}{% include "_operator_dashboard_job_row.html" %}{% endfor %}</div>{% else %}<p class="dashboard-empty">{{ empty_label }}</p>{% endif %}
-    </section>
+    {% for key, icon, label, count, support, url in metrics %}
+    <a class="erp-metric erp-metric-{{ key }}" href="{{ url }}">
+      <span class="erp-metric-icon"><svg><use href="#{{ icon }}"/></svg></span>
+      <span class="erp-metric-copy"><small>{{ label }}</small><strong>{{ count }}</strong><em>{{ support }}</em></span>
+    </a>
     {% endfor %}
-  </div>
-
-  <section class="dashboard-section" aria-labelledby="dashboard-accounting-title">
-    <header class="dashboard-section-head"><div><p class="eyebrow">EXCEPTIONS ONLY</p><h2 id="dashboard-accounting-title">Accounting Exceptions</h2></div><a href="/accounting#invoice-reconciliation">Open Accounting</a></header>
-    {% if accounting_exceptions %}<div class="dashboard-list">{% for item in accounting_exceptions %}<article class="dashboard-row dashboard-accounting-row"><div class="dashboard-identity"><small>{{ item.invoice_number }}{% if item.job_number %} · {{ item.job_number }}{% endif %}</small><strong>{{ item.customer }}</strong></div><div class="dashboard-state dashboard-state-warning"><span>{{ item.state }}</span></div><a class="dashboard-primary-action" href="{{ item.url }}">Review Invoice →</a></article>{% endfor %}</div>{% else %}<p class="dashboard-empty">No cost or reconciliation exceptions need attention.</p>{% endif %}
   </section>
-</div>
+
+  <section class="erp-dashboard-grid" aria-label="Operational work panels">
+    <section class="erp-panel erp-action-panel">
+      <header class="erp-panel-heading"><div><p class="erp-overline">PRIORITY FLOW</p><h2>Action Queue</h2></div><a href="/work-queue">View all</a></header>
+      <div class="erp-panel-list">
+        {% set action_groups = [('Payment',payments,'payment'),('Ordering',ordering,'ordering'),('Receiving',receiving,'receiving'),('Delivery',delivery,'delivery')] %}
+        {% for label, rows, tone in action_groups %}{% for item in rows[:2] %}
+        <a class="erp-action-row" href="{{ item.url }}">
+          <span class="erp-status-dot erp-tone-{{ tone }}"></span>
+          <span><small>{{ label }} · {{ item.job_number }}</small><strong>{{ item.customer }}</strong><em>{{ item.need_action }}</em></span>
+          <b>→</b>
+        </a>
+        {% endfor %}{% endfor %}
+        {% if not payments and not ordering and not receiving and not delivery %}<p class="erp-empty">No payment or fulfillment work currently needs attention.</p>{% endif %}
+      </div>
+    </section>
+
+    <section class="erp-panel erp-needs-panel">
+      <header class="erp-panel-heading"><div><p class="erp-overline">SOURCING WORK</p><h2>Requested Needs</h2></div><a href="/jobs">Open Jobs</a></header>
+      <div class="erp-panel-list">
+        {% for item in jobs %}
+        <a class="erp-need-row" href="{{ item.dashboard_url or item.url }}">
+          <span><small>{{ item.job_number }} · {{ item.customer }}</small><strong>{{ item.need_label }}</strong><em>{% if item.context_detail %}{{ item.context_detail }} · {% endif %}{% if item.age_days is not none %}{{ item.age_days }}d in queue{% else %}Current work{% endif %}</em></span>
+          <span class="erp-status erp-status-purple">{{ item.category|replace('_',' ')|title }}</span>
+        </a>
+        {% else %}<p class="erp-empty">No sourcing or customer-decision work needs attention.</p>{% endfor %}
+      </div>
+    </section>
+
+    <aside class="erp-panel erp-flow-panel">
+      <header class="erp-panel-heading"><div><p class="erp-overline">FULFILLMENT</p><h2>Order Movement</h2></div><a href="/purchasing">Purchasing</a></header>
+      <div class="erp-flow-stats">
+        <a href="/purchasing"><span class="erp-tone-ordering"></span><small>Ready to order</small><strong>{{ ordering|length }}</strong></a>
+        <a href="/purchasing"><span class="erp-tone-receiving"></span><small>Awaiting receipt</small><strong>{{ receiving|length }}</strong></a>
+        <a href="/work-queue?queue=READY_FOR_DELIVERY"><span class="erp-tone-delivery"></span><small>Ready to deliver</small><strong>{{ delivery|length }}</strong></a>
+        <a href="/accounting#invoice-reconciliation"><span class="erp-tone-danger"></span><small>Cost exceptions</small><strong>{{ accounting_exceptions|length }}</strong></a>
+      </div>
+      <div class="erp-quick-actions">
+        <h3>Quick Actions</h3>
+        <a href="/requests/new"><svg><use href="#erp-i-inbox"/></svg><span>New Customer Request</span><b>→</b></a>
+        <a href="/jobs/new"><svg><use href="#erp-i-jobs"/></svg><span>New Job</span><b>→</b></a>
+        <a href="/quotes"><svg><use href="#erp-i-quote"/></svg><span>Quotes</span><b>→</b></a>
+      </div>
+    </aside>
+  </section>
+
+  <section class="erp-panel erp-inbox-strip">
+    <header class="erp-panel-heading"><div><p class="erp-overline">INTAKE</p><h2>Inbox Awaiting Review</h2></div><a href="/requests">{{ inbox_total }} total</a></header>
+    <div class="erp-inbox-grid">
+      {% for item in inbox[:4] %}<a href="{{ item.url }}"><small>{{ item.source }} · {{ item.age_label }}</small><strong>{{ item.identity }}</strong><span>{{ item.request }}</span><em>{{ item.status }}</em></a>
+      {% else %}<p class="erp-empty">No intake proposals are awaiting review.</p>{% endfor %}
+    </div>
+  </section>
+
+  <section class="erp-panel erp-jobs-snapshot">
+    <header class="erp-panel-heading"><div><p class="erp-overline">LIVE WORK</p><h2>Active Jobs Snapshot</h2></div><a href="/jobs">All Jobs</a></header>
+    <div class="erp-table-wrap">
+      <table class="erp-table">
+        <thead><tr><th>Job</th><th>Customer</th><th>Requested Need</th><th>Stage</th><th>Payment</th><th>Next Action</th><th>Age</th></tr></thead>
+        <tbody>{% for item in active_rows[:8] %}<tr>
+          <td data-label="Job"><a href="{{ item.dashboard_url or item.url }}">{{ item.job_number }}</a></td>
+          <td data-label="Customer"><strong>{{ item.customer }}</strong></td>
+          <td data-label="Requested Need"><span class="erp-table-need">{{ item.need_label }}</span></td>
+          <td data-label="Stage"><span class="erp-status {% if item.category == 'WAITING_FOR_PAYMENT' %}erp-status-red{% elif item.category in ['WAITING_FOR_PARTS','READY_TO_ORDER'] %}erp-status-amber{% elif item.category == 'READY_FOR_DELIVERY' %}erp-status-green{% else %}erp-status-purple{% endif %}">{{ item.category|replace('_',' ')|title }}</span></td>
+          <td data-label="Payment">{% if item.category == 'WAITING_FOR_PAYMENT' %}<span class="erp-status erp-status-red">Required</span>{% else %}<span class="erp-muted">—</span>{% endif %}</td>
+          <td data-label="Next Action"><a class="erp-next-action" href="{{ item.url }}">{{ item.next_action }} →</a></td>
+          <td data-label="Age">{% if item.age_days is not none %}{{ item.age_days }}d{% else %}—{% endif %}</td>
+        </tr>{% else %}<tr><td colspan="7">No active jobs require attention.</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </section>
+</main>
 {% endblock %}

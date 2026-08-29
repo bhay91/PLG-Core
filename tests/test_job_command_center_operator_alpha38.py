@@ -17,7 +17,7 @@ class JobCommandCenterOperatorAlpha38Tests(unittest.TestCase):
             "Current Stage", "Payment", "Next Action", "Items Ready for Quote",
         ):
             self.assertIn(label, self.source)
-        self.assertIn('class="cc-card job-bar"', self.source)
+        self.assertIn('class="cc-card job-bar job-command-header"', self.source)
         self.assertNotIn('class="job-glance-grid" aria-label="Job summary"', self.source)
         self.assertNotIn('class="cc-command-progress"', self.source)
 

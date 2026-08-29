@@ -19,7 +19,8 @@ def test_manual_intake_actions_follow_numbered_sections():
 def test_job_summary_keeps_primary_action_and_demotes_need_research():
     template = source("templates/job_command_center.html")
 
-    assert "Continue Sourcing" in template
+    assert "{{ operational_snapshot.workflow.next_action }}" in template
+    assert 'href="{{ operational_snapshot.workflow.next_url }}"' in template
     assert 'class="requested-need-research"' in template
     assert "Focus research on this need" in template
     assert "Research this Need" not in template

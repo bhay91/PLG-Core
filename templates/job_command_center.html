@@ -69,13 +69,15 @@
 {% set work_editable = not delivered_job and active_revision and active_revision.state == "EDITABLE" %}
 {% set governed_revision = work_editable and not active_revision.is_synthetic and active_revision.based_on_quote_id %}
 {% set operator_stage = operational_snapshot.workflow.stage %}
-{% set fulfillment = operational_snapshot.fulfillment %}{% set fc = fulfillment.counts %}
+{% set fulfillment = operational_snapshot.fulfillment %}{% set fc = fulfillment.counts %}{% set m = operational_snapshot.movement %}
+{% set selected_need = open_requested_needs|selectattr('id','equalto',selected_need_id)|first %}
+{% set active_need_label = selected_need.wording if selected_need else (open_requested_needs[0].wording if open_requested_needs else 'Requested Need not recorded') %}
 <div class="cc-shell"
      data-revision-id="{{ active_revision.id if work_editable else '' }}"
      data-revision-version="{{ active_revision.lock_version if work_editable else '' }}">
   <section class="job-ops" aria-label="Job Operational Summary">
     <section class="cc-card job-primary-summary">
-      <div class="job-primary-identity"><div><h1>{{ job.customer or "Customer not linked" }} — {{ job.job_number }}</h1>{% if selected_asset or job.machine or job.manufacturer %}<p>{% if selected_asset %}{{ selected_asset.year or '' }} {{ selected_asset.manufacturer }} {{ selected_asset.model or selected_asset.name }}{% else %}{{ job.manufacturer }} {{ job.machine }}{% endif %}{% set serial = selected_asset.vin_pin_serial if selected_asset else job.pin_serial %}{% if serial %} · {{ serial }}{% endif %}</p>{% endif %}</div><span class="job-ops-status">{{ fulfillment.stage }}</span></div>
+      <div class="job-primary-identity"><div><p class="cc-label">{{ job.job_number }} · OPERATOR CONTEXT</p><h1>{{ job.customer or "Customer not linked" }}</h1><p class="job-primary-need">{{ active_need_label }}</p>{% if selected_asset or job.machine or job.manufacturer %}<p>{% if selected_asset %}{{ selected_asset.year or '' }} {{ selected_asset.manufacturer }} {{ selected_asset.model or selected_asset.name }}{% else %}{{ job.manufacturer }} {{ job.machine }}{% endif %}{% set serial = selected_asset.vin_pin_serial if selected_asset else job.pin_serial %}{% if serial %} · {{ serial }}{% endif %}</p>{% endif %}</div><span class="job-ops-status">{{ operator_stage }}</span></div>
       <div class="job-primary-status"><strong>{{ operational_snapshot.invoice.payment_state if operational_snapshot.invoice else 'NOT INVOICED' }}</strong><strong>{{ 'ORDERED' if fc.ordered else 'NOT ORDERED' }}</strong><strong>Received {{ fc.received }}/{{ fc.total }}</strong><strong>Delivered {{ fc.delivered }}/{{ fc.total }}</strong></div>
       <div class="job-primary-next"><div><span>NEXT ACTION</span><strong>{% if operational_snapshot.workflow.next_action == 'Manage sourcing and documents' %}Continue Parts Sourcing{% else %}{{ operational_snapshot.workflow.next_action }}{% endif %}</strong></div><a class="button" href="{{ operational_snapshot.workflow.next_url }}">Continue</a></div>
     </section>
@@ -101,7 +103,6 @@
 
       <section class="cc-card job-ops-panel fulfillment-panel" id="fulfillment-checklist">
         <header class="job-ops-panel-head"><div><h2>Fulfillment</h2><p>Paid invoice items tracked independently for receiving and delivery.</p></div><span class="job-ops-status">{{ fulfillment.stage }}</span></header>
-        {% set m = operational_snapshot.movement %}
         <div class="job-ops-movement" aria-label="Supplier-order movement totals">
           <div class="job-ops-metric"><span>Ordered</span><strong>{{ m.ordered_units }}</strong></div>
           <div class="job-ops-metric"><span>Received</span><strong>{{ m.received_units }}</strong></div>
@@ -251,23 +252,43 @@
   </section>
   {% endif %}
 
-  {% set selected_need = open_requested_needs|selectattr('id','equalto',selected_need_id)|first %}
-  {% set active_need_label = selected_need.wording if selected_need else (open_requested_needs[0].wording if open_requested_needs else 'Requested Need not recorded') %}
-  <details class="cc-card job-bar" id="job-overview" open><summary>Job, Customer &amp; Requested Need</summary><div class="job-disclosure-body" aria-label="Current Job context">
-    <div class="job-bar-main">
-      <div class="job-bar-title">
-        <p class="cc-kicker">{{ job.job_number }}</p>
-        <h1>{{ job.customer or "Customer not linked" }}</h1>
-        <p class="cc-muted">{{ job.company or "Individual customer" }}{% if job.address %} · {{ job.address }}{% endif %}</p>
-        <p class="job-bar-need">{{ active_need_label }}{% if open_requested_needs|length > 1 %} <span class="cc-badge">+{{ open_requested_needs|length - 1 }} more</span>{% endif %}</p>
+  <section class="cc-card job-bar job-command-header" id="job-overview" aria-labelledby="job-command-title">
+    <div class="job-command-identity">
+      <div>
+        <p class="cc-kicker">{{ job.job_number }} · JOB COMMAND CENTER</p>
+        <h1 id="job-command-title">{{ job.customer or "Customer not linked" }}</h1>
+        <p>{{ job.company or "Individual customer" }}{% if job.address %} · {{ job.address }}{% endif %}</p>
+        {% if selected_asset or job.machine or job.manufacturer %}<p class="job-command-asset"><span>Asset / Machine</span><strong>{% if selected_asset %}{{ selected_asset.year or '' }} {{ selected_asset.manufacturer }} {{ selected_asset.model or selected_asset.name }}{% else %}{{ job.manufacturer }} {{ job.machine }}{% endif %}{% set command_serial = selected_asset.vin_pin_serial if selected_asset else job.pin_serial %}{% if command_serial %} · {{ command_serial }}{% endif %}</strong></p>{% endif %}
       </div>
-      <div class="job-bar-state">
-        <div><span>Current Stage</span><strong>{{ operator_stage }}</strong></div>
-        <div><span>Payment</span><strong class="{% if invoice and invoice.status == 'PAID' %}job-payment-paid{% endif %}">{% if invoice %}{{ invoice.status|replace('_',' ')|title }}{% else %}Not invoiced{% endif %}</strong></div>
-        <div><span>Next Action</span><strong>{{ operational_snapshot.workflow.next_action }}</strong></div>
-        <div><span>Items Ready for Quote</span><strong>{{ basket.totals.selected_items }}</strong></div>
+      <div class="job-command-stage"><span>Current Stage</span><strong>{{ operator_stage }}</strong></div>
+    </div>
+
+    <div class="job-command-core">
+      <div class="job-command-need">
+        <span>Requested Need</span>
+        <strong>{{ active_need_label }}</strong>
+        {% if open_requested_needs|length > 1 %}<small>+{{ open_requested_needs|length - 1 }} additional requested need{% if open_requested_needs|length != 2 %}s{% endif %}</small>{% endif %}
       </div>
-      <a class="button job-bar-action" href="{{ operational_snapshot.workflow.next_url }}">{{ operational_snapshot.workflow.next_action }}</a>
+      <div class="job-command-next">
+        <span>Next Action</span>
+        <strong>{{ operational_snapshot.workflow.next_action }}</strong>
+        <a class="button job-bar-action" href="{{ operational_snapshot.workflow.next_url }}">{{ operational_snapshot.workflow.next_action }}</a>
+      </div>
+    </div>
+
+    <div class="job-command-metrics" aria-label="Current Job operational state">
+      <div><span>Payment</span><strong class="{% if invoice and invoice.status == 'PAID' %}job-payment-paid{% endif %}">{% if invoice %}{{ invoice.status|replace('_',' ')|title }}{% else %}Not invoiced{% endif %}</strong></div>
+      <div><span>Ordered</span><strong>{{ m.ordered_units }}</strong></div>
+      <div><span>Received</span><strong>{{ m.received_units }} / {{ m.ordered_units }}</strong></div>
+      <div><span>Delivered</span><strong>{{ m.delivered_units }} / {{ m.ordered_units }}</strong></div>
+      <div class="job-command-available"><span>Available to Deliver</span><strong>{{ m.available_to_deliver_units }}</strong></div>
+    </div>
+
+    <div class="job-workflow-strip" aria-label="Payment, ordering, receiving, and delivery workflow">
+      <div class="{% if invoice and invoice.status == 'PAID' %}is-complete{% elif 'Payment' in operator_stage %}is-current{% endif %}"><span>01</span><strong>Payment</strong></div>
+      <div class="{% if m.ordered_units > 0 %}is-complete{% elif operator_stage == 'Ordering' %}is-current{% endif %}"><span>02</span><strong>Ordering</strong></div>
+      <div class="{% if m.ordered_units > 0 and m.remaining_units == 0 %}is-complete{% elif 'Receiving' in operator_stage or 'Backorder' in operator_stage %}is-current{% endif %}"><span>03</span><strong>Receiving</strong></div>
+      <div class="{% if m.ordered_units > 0 and m.delivered_units >= m.ordered_units %}is-complete{% elif 'Deliver' in operator_stage %}is-current{% endif %}"><span>04</span><strong>Delivery</strong></div>
     </div>
 
     {% if customer_request %}
@@ -281,7 +302,7 @@
     </details>
     {% endif %}
 
-  </div></details>
+  </section>
 
   {% if delivered_job %}
   <section class="cc-card cc-section delivered-job-summary" aria-label="Delivered Job summary">
@@ -344,7 +365,7 @@
       </form>{% else %}<div class="cc-actions"><p class="cc-muted">Add a candidate from supplier research or attach optional asset context to use configured catalogs.</p><button class="button ghost" type="button" data-dialog-open="research-source-dialog">＋ Add Source</button></div>{% endif %}
       <div class="cc-section-head" style="margin-top:22px"><div><p class="cc-label">RESEARCH CANDIDATES</p><h2>Identified options</h2></div><div class="cc-actions"><button class="button" type="button" data-dialog-open="manual-part-dialog">＋ Add Candidate</button></div></div>
       {% if research_results %}<div class="research-result-list">{% set part_cards = namespace(opened=false) %}{% for item in research_results %}{% set shipping = shipping_by_item.get(item.id) %}{% set active_or_problematic = (selected_need_id and item.primary_requested_need_id == selected_need_id) or item.supplier_unit_cost is none or not item.selected %}{% set open_part = active_or_problematic and not part_cards.opened %}<details class="research-result-card"{% if open_part %} open{% set part_cards.opened = true %}{% endif %}>
-        <summary><div class="part-summary-identity"><small>{{ item.requested_need_wording or 'Requested Need' }}</small><h3>{{ item.requested_description }}{% if item.manufacturer_part_number or item.supplier_part_number %} · {{ item.manufacturer_part_number or item.supplier_part_number }}{% endif %}</h3></div><div class="part-summary-metric"><span>Candidate State</span><strong>{{ (item.verification_status or item.research_state or 'Needs review')|replace('_',' ')|title }}</strong></div><div class="part-summary-metric"><span>Supplier / Cost</span><strong>{% if item.supplier_unit_cost is not none %}{{ item.supplier_name or 'Supplier' }} · ${{ '%.2f'|format(item.supplier_unit_cost) }}{% else %}Awaiting supplier cost{% endif %}</strong></div><div class="part-summary-metric"><span>Next Action</span><strong class="part-summary-action">{{ item.next_action }}</strong></div></summary>
+        <summary><div class="part-summary-identity"><small>{{ item.requested_need_wording or 'Requested Need' }}</small><h3 aria-label="{{ item.requested_description }}{% if item.manufacturer_part_number or item.supplier_part_number %} · {{ item.manufacturer_part_number or item.supplier_part_number }}{% endif %}">{{ item.requested_description }}</h3>{% if item.selected %}<span class="erp-candidate-selected">Selected for quote</span>{% endif %}</div><div class="part-summary-metric"><span>OEM / Part Number</span><strong>{{ item.manufacturer_part_number or 'Not recorded' }}</strong>{% if item.brand %}<small>{{ item.brand }}</small>{% endif %}</div><div class="part-summary-metric"><span>Supplier Part Number</span><strong>{{ item.supplier_part_number or 'Not recorded' }}</strong></div><div class="part-summary-metric"><span>Supplier / Price</span><strong>{% if item.supplier_unit_cost is not none %}{{ item.supplier_name or 'Supplier' }} · ${{ '%.2f'|format(item.supplier_unit_cost) }}{% else %}Awaiting supplier cost{% endif %}</strong></div><div class="part-summary-metric"><span>Verification</span><strong>{{ (item.verification_status or item.research_state or 'Needs review')|replace('_',' ')|title }}</strong>{% if item.confidence is not none %}<small>{{ '%.0f'|format(item.confidence * 100) }}% confidence</small>{% endif %}</div><div class="part-summary-metric"><span>Next Action</span><strong class="part-summary-action">{{ item.next_action }}</strong></div></summary>
         <div class="research-result-body"><header class="research-result-head"><div>{% if item.source_display_name or item.capture_origin %}<p class="cc-muted"><strong>Source:</strong> {{ item.source_display_name or 'Recorded source' }}{% if item.capture_origin %} · {{ item.capture_origin }}{% endif %}</p>{% endif %}</div></header>
         <div class="research-result-grid result-primary-metrics"><div><small>Quantity</small><strong>{{ item.quantity }}</strong></div><div><small>Supplier price</small><strong>{% if item.supplier_unit_cost is not none %}${{ '%.2f'|format(item.supplier_unit_cost) }} · {{ item.supplier_name or 'Supplier' }}{% else %}Awaiting price{% endif %}</strong></div><div><small>Status</small><strong>{% if item.supplier_unit_cost is not none %}Supplier quote added{% else %}Price needed{% endif %}</strong></div></div>
         <form id="confirm-quote-{{ item.id }}" method="post" action="/jobs/{{ job.id }}/research-results/{{ item.id }}/candidate"><input type="hidden" name="job_asset_id" value="{{ selected_asset.id if selected_asset else '' }}"><input type="hidden" name="candidate" value="1"><input type="hidden" name="expected_revision_id" value="{{ basket.work_revision.id }}"><input type="hidden" name="expected_version" value="{{ basket.work_revision.lock_version }}"></form>

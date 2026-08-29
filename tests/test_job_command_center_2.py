@@ -190,7 +190,8 @@ class JobCommandCenter2Tests(unittest.TestCase):
 
     def test_top_summary_uses_only_authoritative_operational_workflow(self):
         source = (ROOT / 'templates' / 'job_command_center.html').read_text()
-        job_bar = source[source.index('<details class="cc-card job-bar"'):source.index('</details>', source.index('<details class="cc-card job-bar"'))]
+        start = source.index('<section class="cc-card job-bar job-command-header"')
+        job_bar = source[start:source.index('</section>', start)]
         self.assertIn('{{ operator_stage }}', job_bar)
         self.assertIn('{{ operational_snapshot.workflow.next_action }}', job_bar)
         self.assertIn('href="{{ operational_snapshot.workflow.next_url }}"', job_bar)

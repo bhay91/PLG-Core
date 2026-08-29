@@ -15,6 +15,13 @@
     <div><span>Job Status</span><strong>{{ job.status }}</strong></div>
   </section>
 
+  <section class="panel delivery-command erp-command-summary" aria-label="Delivery operational summary">
+    <div class="delivery-command-identity"><span>Job / Customer</span><strong>{{ job.job_number }} · {{ job.customer }}</strong><small>{{ job.machine_context if job.machine_context and job.machine_context != 'Not assigned' else 'No asset context required' }}</small></div>
+    <div class="delivery-command-quantity"><span>Available now</span><strong>{{ available_total }}</strong><small>Accepted, unreserved inventory</small></div>
+    <div class="delivery-command-state"><span>Delivery state</span><strong>{% if ready_delivery %}Ready for handoff{% elif has_available %}Ready to prepare{% else %}Awaiting available inventory{% endif %}</strong></div>
+    <div class="delivery-command-action"><span>Next Action</span><strong>{% if ready_delivery %}Complete or cancel prepared delivery{% elif has_available %}Select quantities for delivery{% else %}Return when accepted inventory is available{% endif %}</strong></div>
+  </section>
+
   {% if action_delivery %}
   <section class="panel delivery-result" aria-live="polite">
     <strong>{{ action_delivery.delivery_number }}</strong>
