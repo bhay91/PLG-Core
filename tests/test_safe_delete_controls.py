@@ -229,6 +229,33 @@ class SafeDeleteControlsTests(unittest.TestCase):
                 self.assertIn('name="csrf_token"', source)
                 self.assertNotIn(f'href="{endpoint}"', source)
 
+    def test_record_headers_link_to_governed_delete_review_only(self):
+        surfaces = (
+            ("job_detail.html", '/jobs/{{ job.id }}/delete-review'),
+            ("job_command_center.html", '/jobs/{{ job.id }}/delete-review'),
+            ("request_detail.html", '/requests/{{ record.id }}/delete-review'),
+        )
+        for template_name, review_route in surfaces:
+            with self.subTest(template=template_name):
+                source = (ROOT / "templates" / template_name).read_text()
+                self.assertIn(
+                    f'class="button danger-outline erp-header-delete" href="{review_route}">Delete</a>',
+                    source,
+                )
+
+        job_header = (ROOT / "templates" / "job_detail.html").read_text().split("</section>", 1)[0]
+        request_header = (ROOT / "templates" / "request_detail.html").read_text().split("</section>", 1)[0]
+        command_source = (ROOT / "templates" / "job_command_center.html").read_text()
+        command_header = command_source.split('id="job-overview"', 1)[1].split("</section>", 1)[0]
+        for header in (job_header, request_header, command_header):
+            self.assertNotIn('action="/jobs/{{ job.id }}/delete"', header)
+            self.assertNotIn('action="/requests/{{ record.id }}/delete"', header)
+
+        requests_directory = (ROOT / "templates" / "requests.html").read_text()
+        jobs_directory = (ROOT / "templates" / "jobs.html").read_text()
+        self.assertNotIn("erp-header-delete", requests_directory)
+        self.assertNotIn("erp-header-delete", jobs_directory)
+
 
 if __name__ == "__main__":
     unittest.main()

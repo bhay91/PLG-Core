@@ -352,6 +352,8 @@
 .erp-app .erp-delete-blockers { display: grid; gap: 7px; margin: 0; padding: 14px 14px 14px 34px; border-radius: 9px; background: color-mix(in srgb,var(--erp-amber) 9%,var(--erp-panel-2)); }
 .erp-app .erp-delete-alternatives { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
 .erp-app .erp-delete-cancel { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.erp-app .erp-header-delete { min-height: 36px; padding: 7px 12px; box-shadow: none !important; }
+.erp-app .job-command-header-actions { display: flex; align-items: center; gap: 9px; }
 @media (max-width: 640px) {
   .erp-app .danger-zone { justify-items: stretch; }
   .erp-app .danger-zone .lifecycle-reason-form { display: grid; grid-template-columns: 1fr; width: 100%; }
@@ -361,6 +363,8 @@
   .erp-app .erp-delete-confirmation { grid-template-columns: 1fr; }
   .erp-app .erp-delete-alternatives,.erp-app .erp-delete-cancel { display: grid; width: 100%; }
   .erp-app .erp-delete-alternatives .button,.erp-app .erp-delete-cancel .button { width: 100%; }
+  .erp-app .job-command-header-actions { align-items: stretch; flex-direction: column; }
+  .erp-app .job-command-header-actions .erp-header-delete { width: 100%; }
 }
 .erp-app .smart-intake-message textarea { color: var(--erp-text) !important; background: var(--erp-bg) !important; }
 .erp-app .smart-intake-image-tools,
@@ -1787,3 +1791,14 @@
   color: #ffb4ba !important; border-color: #7a3d46 !important;
   background: #3d252b !important; box-shadow: none !important;
 }
+body.erp-app a.button.danger-outline.erp-header-delete {
+  color: #a51f2d !important; border: 1px solid #d58c94 !important;
+  background: #fff1f2 !important; box-shadow: none !important;
+}
+body.erp-app a.button.danger-outline.erp-header-delete:hover {
+  color: #8d1724 !important; border-color: #c56f79 !important; background: #ffe4e7 !important;
+}
+:root[data-theme="dark"] body.erp-app a.button.danger-outline.erp-header-delete {
+  color: #ffb4ba !important; border-color: #7a3d46 !important; background: #3d252b !important;
+}
+:root[data-theme="dark"] body.erp-app a.button.danger-outline.erp-header-delete:hover { background: #4a2931 !important; }

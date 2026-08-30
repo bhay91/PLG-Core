@@ -8,7 +8,7 @@
     <p>{{ job.manufacturer }} {{ job.machine }}{% if job.pin_serial %} · {{ job.pin_serial }}{% endif %}</p>
   </div>
 
-  <div class="header-actions job-top-actions-clean"><a class="button" href="/jobs/{{ job.id }}/basket#lifecycle-controls">Open Lifecycle Controls</a><a class="button ghost" href="/jobs/{{ job.id }}/delete-review">Job Actions</a></div>
+  <div class="header-actions job-top-actions-clean"><a class="button" href="/jobs/{{ job.id }}/basket#lifecycle-controls">Open Lifecycle Controls</a><a class="button danger-outline erp-header-delete" href="/jobs/{{ job.id }}/delete-review">Delete</a></div>
 </section>
 
 <section class="job-workspace-nav">

@@ -260,7 +260,10 @@
         <p>{{ job.company or "Individual customer" }}{% if job.address %} · {{ job.address }}{% endif %}</p>
         {% if selected_asset or job.machine or job.manufacturer %}<p class="job-command-asset"><span>Asset / Machine</span><strong>{% if selected_asset %}{{ selected_asset.year or '' }} {{ selected_asset.manufacturer }} {{ selected_asset.model or selected_asset.name }}{% else %}{{ job.manufacturer }} {{ job.machine }}{% endif %}{% set command_serial = selected_asset.vin_pin_serial if selected_asset else job.pin_serial %}{% if command_serial %} · {{ command_serial }}{% endif %}</strong></p>{% endif %}
       </div>
-      <div class="job-command-stage"><span>Current Stage</span><strong>{{ operator_stage }}</strong></div>
+      <div class="job-command-header-actions">
+        <div class="job-command-stage"><span>Current Stage</span><strong>{{ operator_stage }}</strong></div>
+        <a class="button danger-outline erp-header-delete" href="/jobs/{{ job.id }}/delete-review">Delete</a>
+      </div>
     </div>
 
     <div class="job-command-core">
