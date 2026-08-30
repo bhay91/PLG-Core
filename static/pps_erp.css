@@ -343,12 +343,24 @@
   color: #ffadb3 !important; border-color: #6b3840 !important; background: #3d252b !important;
 }
 .erp-app .lifecycle-delete-details { max-width: 620px; color: var(--erp-muted); }
+.erp-app .erp-delete-review { display: grid; gap: 14px; max-width: 920px; }
+.erp-app .erp-delete-review.is-protected { border-left: 4px solid var(--erp-amber); }
+.erp-app .erp-delete-confirmation { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+.erp-app .erp-delete-review .button.danger { color: #ffb4ba !important; border: 1px solid #7a3d46 !important; background: #3d252b !important; box-shadow: none !important; }
+.erp-app .erp-delete-review .button.danger:hover { background: #4a2931 !important; }
+:root[data-theme="dark"] .erp-app .erp-delete-review .button.danger { color: #ffb4ba !important; border-color: #7a3d46 !important; background: #3d252b !important; }
+.erp-app .erp-delete-blockers { display: grid; gap: 7px; margin: 0; padding: 14px 14px 14px 34px; border-radius: 9px; background: color-mix(in srgb,var(--erp-amber) 9%,var(--erp-panel-2)); }
+.erp-app .erp-delete-alternatives { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.erp-app .erp-delete-cancel { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
 @media (max-width: 640px) {
   .erp-app .danger-zone { justify-items: stretch; }
   .erp-app .danger-zone .lifecycle-reason-form { display: grid; grid-template-columns: 1fr; width: 100%; }
   .erp-app .danger-zone .button,
   .erp-app .danger-zone button { width: 100%; }
   .erp-app .lifecycle-delete-details { max-width: none; }
+  .erp-app .erp-delete-confirmation { grid-template-columns: 1fr; }
+  .erp-app .erp-delete-alternatives,.erp-app .erp-delete-cancel { display: grid; width: 100%; }
+  .erp-app .erp-delete-alternatives .button,.erp-app .erp-delete-cancel .button { width: 100%; }
 }
 .erp-app .smart-intake-message textarea { color: var(--erp-text) !important; background: var(--erp-bg) !important; }
 .erp-app .smart-intake-image-tools,
@@ -1768,4 +1780,10 @@
   .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) tr { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; padding: 12px; border-top: 1px solid var(--erp-border); }
   .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td { padding: 0 !important; border: 0 !important; text-align: left !important; }
   .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td:nth-child(n+3) { grid-column: 1 / -1; }
+}
+
+/* Permanent deletion is a governed exception, never a primary workflow action. */
+:root[data-theme="dark"] body.erp-app .erp-delete-review form.erp-delete-confirmation button.button.danger {
+  color: #ffb4ba !important; border-color: #7a3d46 !important;
+  background: #3d252b !important; box-shadow: none !important;
 }

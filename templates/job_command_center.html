@@ -304,6 +304,11 @@
 
   </section>
 
+  <details class="cc-card lifecycle-controls" id="lifecycle-controls">
+    <summary>Job Actions</summary>
+    <div class="job-disclosure-body"><p class="cc-muted">Archive, cancel, or review permanent deletion eligibility without interrupting the current workflow.</p><a class="button ghost" href="/jobs/{{ job.id }}/delete-review">Delete / Lifecycle Options</a></div>
+  </details>
+
   {% if delivered_job %}
   <section class="cc-card cc-section delivered-job-summary" aria-label="Delivered Job summary">
     <div class="cc-section-head">

@@ -1719,6 +1719,8 @@ def job_detail(request: Request, job_id: int):
             job_id,
             connection=connection,
         )
+        from plg_core.lifecycle import get_job_delete_eligibility
+        delete_eligibility = get_job_delete_eligibility(job_id, connection=connection)
         workflow = operational_snapshot["workflow"]
         quote_is_next_action = (
             workflow["action_method"] == "POST"
@@ -1779,6 +1781,7 @@ def job_detail(request: Request, job_id: int):
             "ready_for_quote": ready_for_quote,
             "quote_is_next_action": quote_is_next_action,
             "operational_snapshot": operational_snapshot,
+            "delete_eligibility": delete_eligibility,
             "csrf_token": csrf_token,
             "active_part_id": active["part_id"] if active else None,
             "connectors": connectors,
@@ -1820,12 +1823,19 @@ def edit_job_form(request: Request, job_id: int):
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found.")
 
-    return templates.TemplateResponse(
+    from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
+    csrf_token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(
         request=request,
         name="edit_job.html",
         context={"job": job, "customers": customers, "machines": machines,
-                 "has_history": has_history, "active_page": "jobs"},
+                 "has_history": has_history, "active_page": "jobs", "csrf_token": csrf_token},
     )
+    response.set_cookie(
+        CSRF_COOKIE_NAME, csrf_token, httponly=True, samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
 
 
 @app.post("/jobs/{job_id}/edit")
@@ -4930,13 +4940,41 @@ def reopen_job_web(job_id: int, reason: Annotated[str, Form()]):
 
 @app.post("/jobs/{job_id}/delete")
 def delete_job_web(
+    request: Request,
     job_id: int,
     reason: Annotated[str, Form()],
     confirmation: Annotated[str, Form()],
+    csrf_token: Annotated[str, Form()] = "",
 ):
     from plg_core.lifecycle import delete_job_safely
-    delete_job_safely(job_id, reason, confirmation)
-    return RedirectResponse(url="/jobs", status_code=303)
+    from plg_core.web_security import require_valid_csrf, request_actor, request_id
+    require_valid_csrf(request, csrf_token)
+    delete_job_safely(
+        job_id, reason, confirmation, actor=request_actor(request),
+        request_id=request_id(request),
+    )
+    return RedirectResponse(url="/jobs?deleted=1", status_code=303)
+
+
+@app.get("/jobs/{job_id}/delete-review", response_class=HTMLResponse)
+def job_delete_review(request: Request, job_id: int):
+    from plg_core.lifecycle import get_job_delete_eligibility
+    from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
+    eligibility = get_job_delete_eligibility(job_id)
+    csrf_token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(
+        request=request,
+        name="job_delete_review.html",
+        context={
+            "active_page": "jobs", "eligibility": eligibility,
+            "job": eligibility["job"], "csrf_token": csrf_token,
+        },
+    )
+    response.set_cookie(
+        CSRF_COOKIE_NAME, csrf_token, httponly=True, samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
 
 
 @app.post("/parts/{part_id}/verify")

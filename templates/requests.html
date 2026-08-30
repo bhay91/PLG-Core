@@ -29,13 +29,15 @@
       </div>
       <div class="erp-intake-review"><small>Review State</small><strong>{{ item.review_label }}</strong></div>
       <div class="request-card-open erp-next-action"><small>Next Action</small><span>{{ item.next_action }}</span><strong aria-hidden="true">→</strong></div></a>
-      {% if item.removable or item.disposable_eligible %}<details class="inbox-secondary-actions">
+      {% if item.removable or item.disposable_eligible or item.delete_control_url %}<details class="inbox-secondary-actions">
         <summary>More Actions</summary>
         <div class="inbox-secondary-actions-body">
           {% if item.removable %}<form class="inbox-remove-form" method="post" action="{{ item.remove_url }}" data-archive-delete>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             {% if item.source == 'PROPOSAL' %}<input type="hidden" name="lock_version" value="{{ item.remove_version }}">{% else %}<input type="hidden" name="expected_updated_at" value="{{ item.remove_version }}">{% endif %}
-            <button class="button ghost inbox-destructive-action" type="submit">Delete</button>
+            <button class="button ghost inbox-destructive-action" type="submit">Remove from Inbox</button>
           </form>{% endif %}
+          {% if item.delete_control_url %}<a class="button ghost inbox-destructive-action" href="{{ item.delete_control_url }}">Delete / Remove Request</a>{% endif %}
           {% if item.disposable_eligible %}<div class="inbox-delete-disposable"><a class="button ghost inbox-destructive-action" href="{{ item.delete_disposable_url }}">Permanently Delete</a></div>{% endif %}
         </div>
       </details>{% endif %}

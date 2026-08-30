@@ -105,6 +105,7 @@ def _inbox_request_item(row, today: date) -> dict:
         "removable": removable,
         "remove_url": f"/requests/{item['id']}/remove-from-inbox" if removable else "",
         "remove_version": item.get("updated_at") or "",
+        "delete_control_url": f"/requests/{item['id']}/delete-review",
     }
 
 
@@ -238,7 +239,9 @@ def list_requests(request: Request, q: str = "", status: str = "ALL", view: str 
             except HTTPException:
                 item["disposable_eligible"] = False
                 item["delete_disposable_url"] = ""
-    return templates.TemplateResponse(
+    from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
+    csrf_token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(
         request=request,
         name="requests.html",
         context={
@@ -249,8 +252,14 @@ def list_requests(request: Request, q: str = "", status: str = "ALL", view: str 
             "view": view,
             "active_page": "requests",
             "today": report_date.isoformat(),
+            "csrf_token": csrf_token,
         },
     )
+    response.set_cookie(
+        CSRF_COOKIE_NAME, csrf_token, httponly=True, samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -1150,7 +1159,11 @@ def request_detail(request: Request, request_id: int):
             int(record["is_archived"] or 0),
             int(record["is_cancelled"] or 0),
         ))
-    return templates.TemplateResponse(
+        from plg_core.requests.service import get_request_delete_eligibility
+        delete_eligibility = get_request_delete_eligibility(request_id, connection=connection)
+    from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
+    csrf_token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(
         request=request,
         name="request_detail.html",
         context={
@@ -1165,8 +1178,15 @@ def request_detail(request: Request, request_id: int):
             "active_page": "requests",
             "today": date.today().isoformat(),
             "attachment_removable": attachment_removable,
+            "delete_eligibility": delete_eligibility,
+            "csrf_token": csrf_token,
         },
     )
+    response.set_cookie(
+        CSRF_COOKIE_NAME, csrf_token, httponly=True, samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
 
 
 @router.get("/{request_id}/edit", response_class=HTMLResponse)
@@ -1570,59 +1590,49 @@ def update_status(request_id: int, status: str = Form(...)):
     return RedirectResponse(url=f"/requests/{request_id}", status_code=303)
 
 
+@router.get("/{request_id}/delete-review", response_class=HTMLResponse)
+def request_delete_review(request: Request, request_id: int):
+    from plg_core.requests.service import get_request_delete_eligibility
+    from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
+    eligibility = get_request_delete_eligibility(request_id)
+    csrf_token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(
+        request=request,
+        name="request_delete_review.html",
+        context={
+            "active_page": "requests", "eligibility": eligibility,
+            "record": eligibility["request"], "csrf_token": csrf_token,
+        },
+    )
+    response.set_cookie(
+        CSRF_COOKIE_NAME, csrf_token, httponly=True, samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
+
+
 @router.post("/{request_id}/delete")
-def delete_request(
+def delete_request_web(
+    request: Request,
     request_id: int,
     reason: str = Form(...),
     confirmation: str = Form(...),
+    csrf_token: str = Form(""),
 ):
-    with closing(get_connection()) as connection:
-        record = _get_request_or_404(connection, request_id)
-        reason = reason.strip()
-        if not reason:
-            raise HTTPException(status_code=400, detail="Deletion reason is required.")
-        if confirmation.strip() != str(record["request_number"] or ""):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Type {record['request_number']} to confirm permanent deletion.",
-            )
-        has_attachments = connection.execute(
-            "SELECT 1 FROM customer_request_attachments WHERE request_id=? LIMIT 1",
-            (request_id,),
-        ).fetchone()
-        meaningful = bool(
-            record["job_id"] or has_attachments
-            or str(record["request_text"] or "").strip()
-            or str(record["requested_parts"] or "").strip()
-            or str(record["reminder_date"] or "").strip()
-        )
-        if meaningful:
-            raise HTTPException(
-                status_code=409,
-                detail="This request contains meaningful history or evidence and cannot be deleted. Cancel or archive it instead.",
-            )
-        metadata = {
-            "former_id": request_id,
-            "individual_name": record["individual_name"],
-            "company_name": record["company_name"],
-            "created_at": record["created_at"],
-        }
-        connection.execute(
-            "INSERT INTO deletion_tombstones "
-            "(entity_type,entity_number,former_entity_id,reason,metadata_json) "
-            "VALUES ('REQUEST',?,?,?,?)",
-            (record["request_number"], request_id, reason, json.dumps(metadata, sort_keys=True)),
-        )
-        from plg_core.audit import write_audit
-        write_audit(
-            connection, action="REQUEST_DELETED", entity_type="REQUEST_TOMBSTONE",
-            entity_id=record["request_number"],
-            summary=f"Accidental request {record['request_number']} permanently deleted. Reason: {reason}",
-            metadata=metadata,
-        )
-        connection.execute("DELETE FROM customer_requests WHERE id = ?", (request_id,))
-        connection.commit()
-    return RedirectResponse(url="/requests", status_code=303)
+    from plg_core.requests.service import delete_request_safely
+    from plg_core.web_security import require_valid_csrf, request_actor, request_id as audit_request_id
+    require_valid_csrf(request, csrf_token)
+    delete_request_safely(
+        request_id, reason, confirmation, actor=request_actor(request),
+        audit_request_id=audit_request_id(request),
+    )
+    return RedirectResponse(url="/requests?deleted=1", status_code=303)
+
+
+def delete_request(request_id: int, reason: str, confirmation: str):
+    """Service-compatible entry point retained for lifecycle callers and tests."""
+    from plg_core.requests.service import delete_request_safely
+    return delete_request_safely(request_id, reason, confirmation)
 
 
 @router.post("/{request_id}/cancel")

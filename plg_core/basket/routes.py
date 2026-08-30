@@ -543,6 +543,8 @@ def basket_page(
         invoice=invoice,
     ).to_dict()
     operational_snapshot = get_job_operational_snapshot(job_id)
+    from plg_core.lifecycle import get_job_delete_eligibility
+    delete_eligibility = get_job_delete_eligibility(job_id)
 
     from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
     csrf_token = csrf_token_for_request(request)
@@ -580,6 +582,7 @@ def basket_page(
             "invoice": invoice,
             "intelligence": intelligence,
             "operational_snapshot": operational_snapshot,
+            "delete_eligibility": delete_eligibility,
             "csrf_token": csrf_token,
             "active_page": "jobs",
         },

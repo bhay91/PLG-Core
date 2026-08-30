@@ -41,6 +41,102 @@ def job_has_durable_history(connection: sqlite3.Connection, job_id: int) -> bool
     return False
 
 
+def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
+    return connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone() is not None
+
+
+def _job_delete_count(
+    connection: sqlite3.Connection, table: str, where: str, params: tuple
+) -> int:
+    if not _table_exists(connection, table):
+        return 0
+    return int(connection.execute(f"SELECT COUNT(*) FROM {table} WHERE {where}", params).fetchone()[0])
+
+
+def get_job_delete_eligibility(
+    job_id: int, *, connection: sqlite3.Connection | None = None
+) -> dict:
+    """Describe whether an accidental empty Job can be permanently deleted.
+
+    This is intentionally conservative. Any durable operator, commercial, sourcing,
+    or fulfillment evidence makes archive/cancel the safe lifecycle choice.
+    """
+    owned = connection is None
+    database = connection or get_connection()
+    try:
+        job = _job(database, job_id)
+        blockers: list[str] = []
+
+        checks = (
+            ("Linked customer request", "customer_requests", "job_id=?"),
+            ("Requested Need", "requested_needs", "job_id=?"),
+            ("Asset / machine context", "job_assets", "job_id=?"),
+            ("Job Part", "job_parts", "job_id=?"),
+            ("Verification session", "verification_sessions", "job_id=?"),
+            ("Research proposal", "research_capture_proposals", "job_id=?"),
+            ("Supplier import", "source_cart_imports", "job_id=?"),
+            ("Timeline event", "job_timeline", "job_id=?"),
+            ("Follow-up", "job_follow_ups", "job_id=?"),
+            ("Quote", "quotes", "job_id=?"),
+            ("Invoice", "invoices", "job_id=?"),
+            ("Payment / customer transaction", "customer_transactions", "job_id=?"),
+            ("Supplier Order", "supplier_orders", "job_id=?"),
+            ("Shipment", "consolidated_shipments", "job_id=?"),
+            ("Delivery", "deliveries", "job_id=?"),
+            ("External opportunity reference", "opportunities", "converted_job_id=?"),
+            ("Quote track", "quote_tracks", "job_id=?"),
+        )
+        for label, table, where in checks:
+            count = _job_delete_count(database, table, where, (job_id,))
+            if count:
+                blockers.append(f"{label} ({count})")
+
+        if _table_exists(database, "work_revisions"):
+            meaningful_revisions = int(database.execute(
+                """SELECT COUNT(*) FROM work_revisions wr
+                     WHERE wr.job_id=? AND (
+                       UPPER(COALESCE(wr.state,''))!='EDITABLE'
+                       OR wr.based_on_quote_id IS NOT NULL
+                       OR EXISTS (SELECT 1 FROM work_revision_items i WHERE i.work_revision_id=wr.id)
+                       OR EXISTS (SELECT 1 FROM work_revision_sources s WHERE s.work_revision_id=wr.id)
+                       OR EXISTS (SELECT 1 FROM work_revision_attachments a WHERE a.work_revision_id=wr.id)
+                     )""",
+                (job_id,),
+            ).fetchone()[0])
+            if meaningful_revisions:
+                blockers.append(f"Work revision evidence ({meaningful_revisions})")
+
+        basket = database.execute("SELECT id FROM baskets WHERE job_id=?", (job_id,)).fetchone()
+        if basket:
+            basket_id = int(basket["id"])
+            evidence = sum((
+                _job_delete_count(database, "basket_items", "basket_id=? AND (TRIM(COALESCE(requested_description,''))!='' OR supplier_unit_cost IS NOT NULL OR COALESCE(verification_status,'UNVERIFIED')!='UNVERIFIED')", (basket_id,)),
+                _job_delete_count(database, "basket_sources", "basket_id=?", (basket_id,)),
+                _job_delete_count(database, "basket_attachments", "basket_id=?", (basket_id,)),
+            ))
+            if evidence:
+                blockers.append(f"Basket / research evidence ({evidence})")
+
+        machine_history = _job_delete_count(
+            database, "machine_parts_history", "original_job_number=?",
+            (str(job["job_number"] or ""),),
+        )
+        if machine_history:
+            blockers.append(f"Machine parts history ({machine_history})")
+
+        return {
+            "can_permanently_delete": not blockers,
+            "blockers": blockers,
+            "safe_alternative": "Archive or cancel this Job to preserve its history.",
+            "job": dict(job),
+        }
+    finally:
+        if owned:
+            database.close()
+
+
 def ensure_job_allows_new_business(
     connection: sqlite3.Connection, job_id: int, action: str
 ) -> None:
@@ -269,39 +365,18 @@ def reopen_job(job_id: int, reason: str):
         return dict(connection.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone())
 
 
-def delete_job_safely(job_id: int, reason: str, confirmation: str):
+def delete_job_safely(
+    job_id: int, reason: str, confirmation: str, *, actor: str = "system", request_id: str = ""
+):
     reason = _require_reason(reason, "Deletion")
     with closing(get_connection()) as connection:
         job = _job(connection, job_id)
         expected = str(job["job_number"] or "").strip()
         if str(confirmation or "").strip() != expected:
             raise HTTPException(status_code=400, detail=f"Type {expected} to confirm permanent deletion.")
-        blockers = []
-        if job_has_durable_history(connection, job_id): blockers.append("downstream business history")
-        if connection.execute("SELECT 1 FROM customer_requests WHERE job_id=? LIMIT 1", (job_id,)).fetchone():
-            blockers.append("linked customer request")
+        eligibility = get_job_delete_eligibility(job_id, connection=connection)
+        blockers = eligibility["blockers"]
         basket = connection.execute("SELECT id FROM baskets WHERE job_id=?", (job_id,)).fetchone()
-        if basket:
-            if connection.execute(
-                "SELECT 1 FROM basket_items WHERE basket_id=? AND (TRIM(requested_description)!='' "
-                "OR supplier_unit_cost IS NOT NULL OR verification_status!='UNVERIFIED') LIMIT 1",
-                (basket["id"],),
-            ).fetchone() or connection.execute(
-                "SELECT 1 FROM basket_sources WHERE basket_id=? LIMIT 1", (basket["id"],)
-            ).fetchone() or connection.execute(
-                "SELECT 1 FROM basket_attachments WHERE basket_id=? LIMIT 1", (basket["id"],)
-            ).fetchone():
-                blockers.append("meaningful basket research/evidence")
-        if connection.execute("SELECT 1 FROM job_parts WHERE job_id=? LIMIT 1", (job_id,)).fetchone():
-            blockers.append("Job Parts history")
-        if connection.execute("SELECT 1 FROM job_timeline WHERE job_id=? LIMIT 1", (job_id,)).fetchone():
-            blockers.append("Job timeline history")
-        if connection.execute("SELECT 1 FROM source_cart_imports WHERE job_id=? LIMIT 1", (job_id,)).fetchone():
-            blockers.append("supplier import history")
-        if connection.execute(
-            "SELECT 1 FROM machine_parts_history WHERE original_job_number=? LIMIT 1", (expected,)
-        ).fetchone():
-            blockers.append("machine parts history")
         if blockers:
             raise HTTPException(
                 status_code=409,
@@ -316,9 +391,15 @@ def delete_job_safely(job_id: int, reason: str, confirmation: str):
         )
         write_audit(connection, action="JOB_DELETED", entity_type="JOB_TOMBSTONE",
                     entity_id=expected, summary=f"Accidental Job {expected} permanently deleted. Reason: {reason}",
-                    metadata=metadata)
+                    metadata=metadata, actor=actor, request_id=request_id)
         if basket:
             connection.execute("DELETE FROM baskets WHERE id=?", (basket["id"],))
+        # Empty EDITABLE revisions are technical workspace shells created when a
+        # Job is first opened; eligibility above rejects every meaningful revision.
+        connection.execute(
+            "UPDATE jobs SET active_work_revision_id=NULL WHERE id=?", (job_id,)
+        )
+        connection.execute("DELETE FROM work_revisions WHERE job_id=?", (job_id,))
         connection.execute("DELETE FROM jobs WHERE id=?", (job_id,))
         connection.commit()
         return {"deleted": True, "job_number": expected}
