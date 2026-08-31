@@ -24,7 +24,7 @@
     <div class="purchase-order-identity"><small>Supplier · PO</small><strong>{{ i.supplier }}</strong><span>{{ i.po_number }}</span></div>
     <div class="purchase-order-context"><small>Job · Customer</small><strong><a href="{{ order.links.job }}">{{ i.job_number }}</a></strong><span>{{ i.customer }}</span></div>
     <span class="workspace-status-badge workspace-status-{{ order.status.current|lower }}">{{ order.status.current }}</span>
-    <div class="purchase-order-next"><span>Next Action</span><strong>{{ order.status.next_action }}</strong></div>
+    <div class="purchase-order-next"><span>Fulfillment Next</span><strong>{{ order.status.next_action }}</strong>{% if order.status.current in ['ORDERED','PARTIAL','RECEIVED'] and c.actual_cost_state != 'CONFIRMED' %}<span class="purchase-order-cost-state">Supplier Cost · Needs Confirmation</span><a href="{{ order.links.open }}#actual-cost">Confirm Actual Supplier Cost</a>{% endif %}</div>
     <a class="button purchase-order-open" href="{{ order.links.open }}">Open</a>
   </div>
   <div class="purchase-order-secondary" aria-label="Order cost and movement summary">

@@ -1802,3 +1802,45 @@ body.erp-app a.button.danger-outline.erp-header-delete:hover {
   color: #ffb4ba !important; border-color: #7a3d46 !important; background: #3d252b !important;
 }
 :root[data-theme="dark"] body.erp-app a.button.danger-outline.erp-header-delete:hover { background: #4a2931 !important; }
+
+/* Supplier fulfillment and actual-cost work are parallel operator concerns. */
+.erp-app .purchase-ops-next h2 span {
+  display: block; margin-bottom: 3px; color: #c6d8f1;
+  font-size: 9px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase;
+}
+.erp-app .supplier-cost-next,
+.erp-app .job-supplier-cost-alert {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 13px 16px; border: 1px solid var(--erp-border); border-radius: 10px;
+  background: var(--erp-panel);
+}
+.erp-app .supplier-cost-next > div,
+.erp-app .job-supplier-cost-alert > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.erp-app .supplier-cost-next span,
+.erp-app .job-supplier-cost-alert span {
+  color: var(--erp-muted); font-size: 9px; font-weight: 900; letter-spacing: .1em;
+}
+.erp-app .supplier-cost-next small,
+.erp-app .job-supplier-cost-alert small { color: var(--erp-muted); }
+.erp-app .supplier-cost-next.needs-confirmation,
+.erp-app .job-supplier-cost-alert {
+  border-color: color-mix(in srgb,var(--erp-amber) 55%,var(--erp-border));
+  background: color-mix(in srgb,var(--erp-amber) 8%,var(--erp-panel));
+}
+.erp-app .supplier-cost-next.needs-confirmation > div > strong,
+.erp-app .purchase-order-cost-state,
+.erp-app .job-supplier-cost-alert strong { color: var(--erp-amber); }
+.erp-app .supplier-cost-next.is-confirmed > div > strong,
+.erp-app .job-cost-confirmed { color: var(--erp-green); }
+.erp-app .supplier-cost-next-amount { font-size: 18px; }
+.erp-app .purchase-order-cost-state { margin-top: 5px; font-size: 10px !important; letter-spacing: .02em; }
+.erp-app .purchase-order-next > a { width: max-content; font-size: 12px; font-weight: 850; }
+.erp-app .job-supplier-cost-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.erp-app .job-cost-confirmed { align-self: center; font-size: 11px; font-weight: 850; }
+@media (max-width: 680px) {
+  .erp-app .supplier-cost-next,
+  .erp-app .job-supplier-cost-alert { align-items: stretch; flex-direction: column; }
+  .erp-app .supplier-cost-next .button,
+  .erp-app .job-supplier-cost-links,
+  .erp-app .job-supplier-cost-links .button { width: 100%; }
+}

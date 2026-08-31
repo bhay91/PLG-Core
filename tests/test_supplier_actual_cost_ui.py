@@ -12,6 +12,9 @@ class SupplierActualCostPresentationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.template = (ROOT / "templates" / "supplier_order_detail.html").read_text()
+        cls.directory_template = (ROOT / "templates" / "supplier_orders.html").read_text()
+        cls.jcc_template = (ROOT / "templates" / "job_command_center.html").read_text()
+        cls.erp_css = (ROOT / "static" / "pps_erp.css").read_text()
         cls.css = (ROOT / "static" / "app.css").read_text()
         cls.invoice_template = (ROOT / "templates" / "invoice_documents.html").read_text()
 
@@ -59,6 +62,38 @@ class SupplierActualCostPresentationTests(unittest.TestCase):
     def test_templates_parse(self):
         Environment().parse(self.template)
         Environment().parse(self.invoice_template)
+        Environment().parse(self.directory_template)
+        Environment().parse(self.jcc_template)
+
+    def test_unconfirmed_cost_is_prominent_and_existing_form_is_open(self):
+        self.assertIn("Needs Confirmation", self.template)
+        self.assertIn("Confirm Actual Supplier Cost", self.template)
+        self.assertIn('href="#actual-cost"', self.template)
+        self.assertIn('panel.dataset.densityOpen = "true"', self.template)
+        self.assertIn("Record what was actually paid to the supplier", self.template)
+        self.assertIn("This does not block fulfillment", self.template)
+
+    def test_confirmed_cost_has_distinct_completed_presentation(self):
+        self.assertIn("Cost Confirmed", self.template)
+        self.assertIn("supplier-cost-next-amount", self.template)
+        self.assertIn("Recorded actual amount paid to the supplier", self.template)
+
+    def test_directory_separates_fulfillment_from_cost_action(self):
+        self.assertIn("Fulfillment Next", self.directory_template)
+        self.assertIn("Supplier Cost · Needs Confirmation", self.directory_template)
+        self.assertIn("Confirm Actual Supplier Cost", self.directory_template)
+        self.assertIn("c.actual_cost_state != 'CONFIRMED'", self.directory_template)
+
+    def test_jcc_links_outstanding_cost_to_supplier_order(self):
+        self.assertIn("Outstanding supplier cost confirmations", self.jcc_template)
+        self.assertIn("order.order_url }}#actual-cost", self.jcc_template)
+        self.assertIn("Fulfillment can continue independently", self.jcc_template)
+        self.assertIn("order.actual_cost_state != 'CONFIRMED'", self.jcc_template)
+
+    def test_mobile_cost_actions_stack_without_overflow(self):
+        self.assertIn(".erp-app .supplier-cost-next", self.erp_css)
+        self.assertIn(".erp-app .job-supplier-cost-alert", self.erp_css)
+        self.assertIn("flex-direction: column", self.erp_css)
 
 
 if __name__ == "__main__":

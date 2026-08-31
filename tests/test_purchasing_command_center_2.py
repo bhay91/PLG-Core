@@ -192,6 +192,19 @@ class PurchasingCommandCenter2Tests(unittest.TestCase):
     def test_10_actual_confirmation_state(self):
         self.assertEqual(self.snapshot()["costs"]["actual_cost_state"], "CONFIRMED")
 
+    def test_10a_unconfirmed_cost_does_not_replace_fulfillment_next_action(self):
+        with closing(self.connection()) as connection:
+            connection.execute("UPDATE supplier_orders SET status='RECEIVED',actual_shipping_total=NULL WHERE id=9001")
+            connection.execute("UPDATE supplier_order_items SET quantity_received=quantity_ordered,actual_unit_cost=NULL WHERE order_id=9001")
+            connection.commit()
+        result = self.snapshot()
+        self.assertEqual(result["costs"]["actual_cost_state"], "NOT CONFIRMED")
+        self.assertEqual(result["status"]["next_action"], "Prepare delivery")
+        self.assertEqual(result["status"]["next_action_url"], "/jobs/9001/delivery")
+        self.assertEqual(result["movement"]["received"], result["movement"]["ordered"])
+        self.assertEqual(result["costs"]["booked_cost"], 250.0)
+        self.assertEqual(result["costs"]["placed_total"], 250.0)
+
     def test_11_variance(self):
         self.assertEqual(self.snapshot()["costs"]["variance_vs_booked"], 30.0)
 
