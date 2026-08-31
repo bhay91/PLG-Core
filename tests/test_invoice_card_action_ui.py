@@ -16,7 +16,8 @@ class InvoiceCardActionPresentationTests(unittest.TestCase):
 
     def test_paid_actions_keep_labels_and_routes(self):
         for label in (
-            "Open Invoice", "Internal Parts Order Worksheet",
+            "Create Supplier Order", "Open Supplier Order",
+            "Internal Parts Order Worksheet",
             "Customer PDF — Paid", "Edit Custom Invoice",
             "Internal PDF — Current", "Custom Invoice",
         ):

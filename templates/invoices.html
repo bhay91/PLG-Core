@@ -127,12 +127,21 @@
         <span>NEXT ACTION</span>
 
         {% if invoice.status == "PAID" %}
-          <strong>Create Internal Parts Order Worksheet</strong>
+          {% if invoice.supplier_order_count %}
+          <strong>Open Supplier Order{% if invoice.supplier_order_count != 1 %}s{% endif %}</strong>
+
+          <a class="workspace-btn workspace-btn-primary"
+           href="/purchasing?invoice_id={{ invoice.id }}">
+            Open Supplier Order{% if invoice.supplier_order_count != 1 %}s{% endif %}
+          </a>
+          {% else %}
+          <strong>Create Supplier Order</strong>
 
           <a class="workspace-btn workspace-btn-primary"
            href="/invoices/{{ invoice.id }}/documents">
-            Open Invoice
+            Open &amp; Create Supplier Order
           </a>
+          {% endif %}
 
           <details class="workspace-secondary-actions invoice-secondary-actions">
             <summary>More Actions</summary>
@@ -186,13 +195,13 @@
             View Invoice
           </a>
         {% else %}
-          <strong>Receive Payment</strong>
+          <strong>Record Payment</strong>
 
           <a
             class="workspace-btn workspace-btn-primary"
             href="/invoices/{{ invoice.id }}/documents"
           >
-            Open &amp; Receive Payment
+            Open &amp; Record Payment
           </a>
         {% endif %}
 

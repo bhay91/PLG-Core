@@ -3747,7 +3747,13 @@ def list_invoices(request: Request, view: str = "all"):
                     SELECT 1
                     FROM custom_invoices
                     WHERE custom_invoices.invoice_id = invoices.id
-                ) AS custom_invoice_exists
+                ) AS custom_invoice_exists,
+
+                (
+                    SELECT COUNT(*)
+                    FROM supplier_orders
+                    WHERE supplier_orders.invoice_id = invoices.id
+                ) AS supplier_order_count
 
             FROM invoices
             JOIN jobs
@@ -4042,12 +4048,36 @@ def invoice_documents(request: Request, invoice_id: int):
     )
 
     from plg_core.documents.integrity import verified_invoice_document
+    integrity_error = None
+    affected_document = None
     with closing(get_connection()) as connection:
-        verified_invoice_document(
-            connection, invoice_id, "CUSTOMER_INVOICE", "CUSTOMER"
-        )
-        verified_invoice_document(
-            connection, invoice_id, "INTERNAL_INVOICE", "INTERNAL"
+        for document_kind, audience, label in (
+            ("CUSTOMER_INVOICE", "CUSTOMER", "Customer Invoice"),
+            ("INTERNAL_INVOICE", "INTERNAL", "Internal Invoice"),
+        ):
+            try:
+                verified_invoice_document(
+                    connection, invoice_id, document_kind, audience
+                )
+            except HTTPException as exc:
+                if exc.status_code != 409:
+                    raise
+                integrity_error = str(exc.detail)
+                affected_document = label
+                break
+
+    if integrity_error:
+        return templates.TemplateResponse(
+            request=request,
+            name="invoice_integrity_error.html",
+            context={
+                "invoice": invoice,
+                "supplier_orders": supplier_orders,
+                "affected_document": affected_document,
+                "integrity_error": integrity_error,
+                "active_page": "invoices",
+            },
+            status_code=409,
         )
 
     return templates.TemplateResponse(

@@ -32,7 +32,7 @@ def _job_operator_state(job, invoice, orders, movement, financial, fallback):
     if not orders:
         return (
             "Ready to Order",
-            "Mark Order Placed",
+            "Create Supplier Order",
             f"/jobs/{int(job['id'])}/fulfillment/order",
             "POST",
         )

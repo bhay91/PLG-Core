@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Invoice Access Blocked · {{ invoice.invoice_number }}{% endblock %}
+{% block content %}
+<div class="invoice-integrity-block erp-commercial-detail">
+  <section class="erp-record-summary invoice-integrity-summary">
+    <div>
+      <p class="eyebrow">INVOICE ACCESS BLOCKED</p>
+      <h1>{{ invoice.invoice_number }}</h1>
+      <p>{{ invoice.customer }}{% if invoice.company %} · {{ invoice.company }}{% endif %}</p>
+      <small>Job {{ invoice.job_number }}</small>
+    </div>
+    <div class="invoice-integrity-state">
+      <div><span>Payment</span><strong>{{ invoice.status|replace('_',' ')|title }}</strong></div>
+      <div><span>Amount Due</span><strong>${{ '%.2f'|format(invoice.balance_due or 0) }}</strong></div>
+    </div>
+  </section>
+
+  <section class="panel invoice-integrity-message" role="alert">
+    <div>
+      <p class="eyebrow">DOCUMENT INTEGRITY</p>
+      <h2>{{ affected_document }} is unavailable</h2>
+      <p>PPS could not safely verify the issued document. The document remains blocked and was not regenerated or treated as valid.</p>
+      <p>Invoice and payment changes are unavailable from this screen until the document record is reviewed.</p>
+    </div>
+    <div class="invoice-integrity-actions">
+      <a class="button" href="/jobs/{{ invoice.job_id }}/basket">Open Job</a>
+      <a class="button ghost" href="/documents?q={{ invoice.invoice_number }}">Open Document Center</a>
+      <a class="button ghost" href="/invoices">Return to Invoices</a>
+    </div>
+    <details>
+      <summary>Verification detail</summary>
+      <p>{{ integrity_error }}</p>
+    </details>
+  </section>
+</div>
+{% endblock %}

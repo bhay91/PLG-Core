@@ -122,7 +122,7 @@
           <strong>Ordered {{ fc.ordered }}/{{ fc.total }}</strong><strong>Received {{ fc.received }}/{{ fc.total }}</strong><strong>Delivered {{ fc.delivered }}/{{ fc.total }}</strong>
         </div>
         {% if not fulfillment["items"] or fulfillment.has_draft_orders %}
-        <form method="post" action="/jobs/{{ job.id }}/fulfillment/order"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button" type="submit">Mark Order Placed</button></form>
+        <form method="post" action="/jobs/{{ job.id }}/fulfillment/order"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button" type="submit">Create Supplier Order</button></form>
         {% endif %}
         <div class="fulfillment-list">
           {% for item in fulfillment["items"] %}<article class="fulfillment-item {% if item.delivered %}is-complete{% endif %}">
@@ -131,7 +131,7 @@
               {% if not item.received and item.ordered %}<form method="post" action="/jobs/{{ job.id }}/fulfillment/items/{{ item.id }}/received"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input aria-label="Quantity received for {{ item.description }}" type="number" name="quantity" value="1" min="1" max="{{ item.quantity_to_receive }}"><button class="fulfillment-checkbox" type="submit">☐ Receive</button></form>{% else %}<span class="fulfillment-state">{{ '☑ Received' if item.received else 'Awaiting order' }}</span>{% endif %}
               {% if not item.delivered and item.quantity_available_to_deliver > 0 %}<form method="post" action="/jobs/{{ job.id }}/fulfillment/items/{{ item.id }}/delivered"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input aria-label="Quantity delivered for {{ item.description }}" type="number" name="quantity" value="1" min="1" max="{{ item.quantity_available_to_deliver }}"><button class="fulfillment-checkbox" type="submit">☐ Deliver</button></form>{% else %}<span class="fulfillment-state">{{ '☑ Delivered' if item.delivered else 'Awaiting receipt' }}</span>{% endif %}
             </div>
-          </article>{% else %}<div class="job-ops-empty">Mark the paid invoice order placed to begin fulfillment.</div>{% endfor %}
+          </article>{% else %}<div class="job-ops-empty">Create supplier purchasing records from the paid invoice to begin fulfillment.</div>{% endfor %}
         </div>
         {% else %}<div class="job-ops-empty">Fulfillment becomes available when the invoice is paid in full.</div>{% endif %}
       </section>

@@ -222,7 +222,7 @@ class JobCommandCenter2Tests(unittest.TestCase):
         workflow = self.snapshot()['workflow']
         self.assertEqual(workflow, {
             'stage': 'Ready to Order',
-            'next_action': 'Mark Order Placed',
+            'next_action': 'Create Supplier Order',
             'next_url': f'/jobs/{self.job_id}/fulfillment/order',
             'action_method': 'POST',
         })

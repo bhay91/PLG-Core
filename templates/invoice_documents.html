@@ -15,10 +15,11 @@
       <div class="{% if invoice.status in ['UNPAID','PARTIAL'] %}balance-attention{% endif %}"><span>Balance Due</span><strong>${{ "%.2f"|format(invoice.balance_due or 0) }}</strong></div>
     </div>
     <div class="invoice-desk-header-actions erp-record-action">
-      {% if invoice.status in ["UNPAID", "PARTIAL"] %}<a class="button" href="#record-payment">Record Payment</a>
+      <span>NEXT ACTION</span>
+      {% if invoice.status in ["UNPAID", "PARTIAL"] %}<strong>Record Payment</strong><a class="button" href="#record-payment">Record Payment</a>
       {% elif invoice.status == "PAID" %}
-        {% if supplier_orders %}<a class="button" href="/purchasing?invoice_id={{ invoice.id }}">Open Supplier Orders</a>
-        {% else %}<form method="post" action="/invoices/{{ invoice.id }}/supplier-orders" onsubmit="return confirm('Create supplier purchase records from this paid invoice?');"><button class="button" type="submit">Create Supplier Orders</button></form>{% endif %}
+        {% if supplier_orders %}<strong>Open Supplier Order{% if supplier_orders|length != 1 %}s{% endif %}</strong><a class="button" href="/purchasing?invoice_id={{ invoice.id }}">Open Supplier Order{% if supplier_orders|length != 1 %}s{% endif %}</a>
+        {% else %}<strong>Create Supplier Order</strong><form method="post" action="/invoices/{{ invoice.id }}/supplier-orders" onsubmit="return confirm('Create supplier purchase records from this paid invoice?');"><button class="button" type="submit">Create Supplier Order</button></form>{% endif %}
       {% elif invoice.status == "VOID" %}<span class="invoice-void-label">Historical · No commercial action</span>{% endif %}
       <a class="button ghost" href="/invoices">Back to Invoices</a>
     </div>
@@ -40,6 +41,20 @@
     <div class="invoice-desk-balance {% if invoice.status in ['UNPAID','PARTIAL'] %}balance-attention{% endif %}"><span>Balance Due</span><strong>${{ "%.2f"|format(invoice.balance_due or 0) }}</strong>{% if invoice.credit_applied %}<small>${{ "%.2f"|format(invoice.credit_applied or 0) }} credit applied</small>{% endif %}{% if payment_total %}<small>${{ "%.2f"|format(payment_total or 0) }} received</small>{% endif %}</div>
   </section>
 
+  {% if invoice.status in ["UNPAID", "PARTIAL"] %}
+  <section class="panel invoice-desk-payment" id="record-payment">
+    <div><p class="eyebrow">PAYMENT</p><h2>Record Payment</h2><p>Enter the payment received from the customer.</p></div>
+    <form method="post" action="/invoices/{{ invoice.id }}/payments" class="invoice-payment-form invoice-payment-inline">
+      <label><span>Amount</span><input type="number" name="amount" value="{{ '%.2f'|format(invoice.balance_due or 0) }}" min="0.01" max="{{ '%.2f'|format(invoice.balance_due or 0) }}" step="0.01" required></label>
+      <label><span>Method</span><select name="payment_method" required><option value="">Select method...</option><option value="CASH">Cash</option><option value="BANK TRANSFER">Bank Transfer</option><option value="ZELLE">Zelle</option><option value="CARD">Card</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option></select></label>
+      <label><span>Reference</span><input name="reference" placeholder="Optional receipt or transfer reference"></label>
+      <label><span>Payment Date</span><input type="date" name="payment_date" value="{{ today }}" required></label>
+      <button class="button" type="submit">Record Payment</button>
+    </form>
+  </section>
+  {% elif invoice.status == "PAID" %}<section class="panel invoice-paid-state invoice-desk-paid"><span class="invoice-paid-check">✓</span><div><strong>Payment Complete</strong><p>This invoice is fully paid and ready for supplier ordering.</p></div></section>
+  {% elif invoice.status == "VOID" %}<section class="panel invoice-void-state"><strong>Invoice Void</strong><p>This historical invoice cannot receive payment or begin purchasing.</p></section>{% endif %}
+
   <section class="panel invoice-jmd-display erp-commercial-supporting">
     <div>
       <p class="eyebrow">JMD CUSTOMER TOTAL</p>
@@ -55,20 +70,6 @@
     </form>
   </section>
 
-  {% if invoice.status in ["UNPAID", "PARTIAL"] %}
-  <section class="panel invoice-desk-payment" id="record-payment">
-    <div><p class="eyebrow">PAYMENT</p><h2>Record Payment</h2><p>Enter the payment received from the customer.</p></div>
-    <form method="post" action="/invoices/{{ invoice.id }}/payments" class="invoice-payment-form invoice-payment-inline">
-      <label><span>Amount</span><input type="number" name="amount" value="{{ '%.2f'|format(invoice.balance_due or 0) }}" min="0.01" max="{{ '%.2f'|format(invoice.balance_due or 0) }}" step="0.01" required></label>
-      <label><span>Method</span><select name="payment_method" required><option value="">Select method...</option><option value="CASH">Cash</option><option value="BANK TRANSFER">Bank Transfer</option><option value="ZELLE">Zelle</option><option value="CARD">Card</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option></select></label>
-      <label><span>Reference</span><input name="reference" placeholder="Optional receipt or transfer reference"></label>
-      <label><span>Payment Date</span><input type="date" name="payment_date" value="{{ today }}" required></label>
-      <button class="button" type="submit">Record Payment</button>
-    </form>
-  </section>
-  {% elif invoice.status == "PAID" %}<section class="panel invoice-paid-state invoice-desk-paid"><span class="invoice-paid-check">✓</span><div><strong>Payment Complete</strong><p>This invoice is fully paid and ready for supplier ordering.</p></div></section>
-  {% elif invoice.status == "VOID" %}<section class="panel invoice-void-state"><strong>Invoice Void</strong><p>This historical invoice cannot receive payment or begin purchasing.</p></section>{% endif %}
-
   <section class="panel invoice-document-panel invoice-desk-documents erp-commercial-supporting">
     <div class="invoice-center-section-heading"><div><p class="eyebrow">DOCUMENTS</p><h2>Invoice documents</h2></div></div>
     <div class="invoice-document-row invoice-document-primary"><div><strong>Customer Invoice{% if invoice.status == "PAID" %} — Paid{% endif %}</strong><p>The customer-facing invoice.</p></div><div class="invoice-document-buttons"><a class="button ghost" target="_blank" href="/invoices/{{ invoice.id }}/{% if invoice.status == 'PAID' %}customer/paid-pdf{% else %}customer/pdf{% endif %}?v={{ customer_document_version }}">Open PDF</a><a class="button" href="/invoices/{{ invoice.id }}/{% if invoice.status == 'PAID' %}customer/paid-pdf{% else %}customer/pdf{% endif %}?download=1&amp;v={{ customer_document_version }}">Download</a></div></div>
@@ -78,7 +79,7 @@
   {% if invoice.status == "PAID" %}
   <section class="panel invoice-desk-orders">
     <div><p class="eyebrow">SUPPLIER ORDERS</p>{% if supplier_orders %}<h2>Supplier orders created</h2><p>{{ supplier_orders|length }} order{% if supplier_orders|length != 1 %}s{% endif %}, grouped by supplier.</p>{% else %}<h2>Create Supplier Orders</h2><p>Orders are created from this paid invoice and grouped by supplier.</p>{% endif %}</div>
-    {% if supplier_orders %}<a class="button" href="/purchasing?invoice_id={{ invoice.id }}">Open Supplier Orders</a>{% else %}<form method="post" action="/invoices/{{ invoice.id }}/supplier-orders" onsubmit="return confirm('Create supplier purchase records from this paid invoice?');"><button class="button" type="submit">Create Supplier Orders</button></form>{% endif %}
+    {% if supplier_orders %}<a class="button" href="/purchasing?invoice_id={{ invoice.id }}">Open Supplier Order{% if supplier_orders|length != 1 %}s{% endif %}</a>{% else %}<form method="post" action="/invoices/{{ invoice.id }}/supplier-orders" onsubmit="return confirm('Create supplier purchase records from this paid invoice?');"><button class="button" type="submit">Create Supplier Order</button></form>{% endif %}
   </section>
   {% endif %}
 

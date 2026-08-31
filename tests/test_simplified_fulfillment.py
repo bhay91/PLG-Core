@@ -214,7 +214,7 @@ class SimplifiedFulfillmentTests(unittest.TestCase):
 
     def test_command_center_uses_simple_item_checklist(self):
         source = (ROOT / "templates" / "job_command_center.html").read_text()
-        for text in ("Fulfillment", "Mark Order Placed", "Received", "Delivered", "fulfillment-progress"):
+        for text in ("Fulfillment", "Create Supplier Order", "Received", "Delivered", "fulfillment-progress"):
             self.assertIn(text, source)
 
     def test_paid_job_with_fulfillment_rows_renders(self):
@@ -227,7 +227,7 @@ class SimplifiedFulfillmentTests(unittest.TestCase):
     def test_paid_job_with_zero_supplier_orders_renders(self):
         response = self._render_job()
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Mark Order Placed", response.body)
+        self.assertIn(b"Create Supplier Order", response.body)
         self.assertIn(b"Ordered 0/0", response.body)
 
     def test_command_center_prioritizes_summary_and_collapses_secondary_sections(self):

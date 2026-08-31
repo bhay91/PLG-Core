@@ -1844,3 +1844,26 @@ body.erp-app a.button.danger-outline.erp-header-delete:hover {
   .erp-app .job-supplier-cost-links,
   .erp-app .job-supplier-cost-links .button { width: 100%; }
 }
+
+/* Invoice workflow context remains available when an issued document fails closed. */
+.erp-app .invoice-desk-header-actions > span {
+  color: var(--erp-muted); font-size: 9px; font-weight: 900; letter-spacing: .1em;
+}
+.erp-app .invoice-desk-header-actions > strong { color: var(--erp-text); }
+.erp-app .invoice-integrity-block { display: grid; gap: 14px; }
+.erp-app .invoice-integrity-summary { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 18px; }
+.erp-app .invoice-integrity-summary h1 { margin: 3px 0; }
+.erp-app .invoice-integrity-state { display: grid; grid-template-columns: repeat(2,minmax(120px,1fr)); gap: 8px; }
+.erp-app .invoice-integrity-state > div { padding: 10px 12px; border: 1px solid var(--erp-border); border-radius: 8px; background: var(--erp-panel-2); }
+.erp-app .invoice-integrity-state span { display: block; color: var(--erp-muted); font-size: 9px; font-weight: 900; text-transform: uppercase; }
+.erp-app .invoice-integrity-state strong { display: block; margin-top: 4px; color: var(--erp-text); }
+.erp-app .invoice-integrity-message { display: grid; gap: 16px; border-color: color-mix(in srgb,var(--erp-red) 55%,var(--erp-border)) !important; }
+.erp-app .invoice-integrity-message h2 { color: var(--erp-red); }
+.erp-app .invoice-integrity-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.erp-app .invoice-integrity-message details { padding-top: 10px; border-top: 1px solid var(--erp-border); }
+@media (max-width: 680px) {
+  .erp-app .invoice-integrity-summary { grid-template-columns: 1fr; }
+  .erp-app .invoice-integrity-state { grid-template-columns: 1fr 1fr; }
+  .erp-app .invoice-integrity-actions { display: grid; grid-template-columns: 1fr; }
+  .erp-app .invoice-integrity-actions .button { width: 100%; }
+}

@@ -67,15 +67,21 @@ class InvoiceReviewPhase34Tests(unittest.TestCase):
             self.assertIn("Record Payment", html)
             self.assertIn('action="/invoices/31/payments"', html)
             self.assertIn(f'value="{balance:.2f}"', html)
-            self.assertNotIn("Create Supplier Orders", html)
+            self.assertNotIn("Create Supplier Order", html)
 
     def test_paid_invoice_offers_supplier_orders_and_existing_orders_open(self):
         fresh = self.render("PAID", balance=0)
-        self.assertIn("Create Supplier Orders", fresh)
+        self.assertIn("Create Supplier Order", fresh)
         self.assertIn('action="/invoices/31/supplier-orders"', fresh)
         existing = self.render("PAID", balance=0, orders=({"id": 9},))
-        self.assertIn("Open Supplier Orders", existing)
+        self.assertIn("Open Supplier Order", existing)
         self.assertIn('href="/purchasing?invoice_id=31"', existing)
+
+    def test_payment_precedes_optional_jmd_controls(self):
+        html = self.render("UNPAID", balance=125)
+        self.assertLess(html.index('id="record-payment"'), html.index("invoice-jmd-display"))
+        self.assertIn("show_jmd_total", html)
+        self.assertIn("jmd_exchange_rate", html)
 
     def test_void_has_no_payment_or_purchasing_action(self):
         html = self.render("VOID", balance=125)
