@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import base64
+import hashlib
 from pathlib import Path
 import unittest
 import zipfile
@@ -33,6 +35,20 @@ def payload(**overrides):
 
 def envelope(value):
     return f"[PPS_INTAKE_PACKAGE_V1]\n{json.dumps(value)}\n[/PPS_INTAKE_PACKAGE_V1]"
+
+
+def research_package_envelope(package_id="research-bridge-001", pdf_bytes=b"synthetic-pdf-bytes"):
+    package = {
+        "schema_version": "1", "package_id": package_id,
+        "source_pdf": {"filename": "research.pdf", "sha256": hashlib.sha256(pdf_bytes).hexdigest()},
+        "target": {"mode": "NEW_JOB"},
+        "customer": {"name": "Synthetic Customer", "company": "Synthetic Co"},
+        "machine": {"reference": "truck", "manufacturer": "International", "model": "5600i", "year": "2003", "asset_type": "vehicle", "identifiers": []},
+        "requested_needs": [{"reference": "need-1", "original_wording": "Synthetic part", "quantity": 2, "machine_reference": "truck"}],
+        "research_options": [],
+    }
+    value = {"schema_version": "1", "package": package, "pdf_base64": base64.b64encode(pdf_bytes).decode()}
+    return f"[PPS_RESEARCH_IMPORT_PACKAGE_V1]\n{json.dumps(value)}\n[/PPS_RESEARCH_IMPORT_PACKAGE_V1]"
 
 
 class FirefoxChatGPTBridgeTests(unittest.TestCase):
@@ -194,6 +210,55 @@ class FirefoxChatGPTBridgeTests(unittest.TestCase):
 
     def invoke(self, page, value, url="https://chatgpt.com/c/test"):
         return page.evaluate("async ({payload,url}) => await __listeners.message[0]({type:'PPS_CHATGPT_INTAKE_PACKAGE_V1',payload},{id:'pps-extension-id',tab:{url}})", {"payload": value, "url": url})
+
+    def invoke_research(self, page, envelope_text, url="https://chatgpt.com/c/test"):
+        page.goto(url)
+        page.set_content(f'<div data-message-author-role="assistant">{envelope_text}</div>')
+        page.evaluate("window.__messages=[]; window.browser.runtime.sendMessage = m => { __messages.push(m); return Promise.resolve(); }")
+        page.add_script_tag(path=str(EXT / "chatgpt_bridge.js"))
+        page.wait_for_timeout(100)
+        return page.evaluate("__messages[0]")
+
+    def test_05b_research_import_envelope_transports_pdf_and_sidecar_as_multipart(self):
+        page = self.background_page(response_body={"status": "DRAFT", "proposal_id": 77, "package_id": "research-bridge-001", "review_url": "/requests/smart-intake/proposals/77", "duplicate": False})
+        message = self.invoke_research(page, research_package_envelope())
+        self.assertEqual(message["type"], "PPS_CHATGPT_RESEARCH_IMPORT_PACKAGE_V1")
+        page.evaluate("async m => await __listeners.message[0](m,{id:'pps-extension-id',tab:{url:'https://chatgpt.com/c/test'}})", message)
+        page.wait_for_timeout(100)
+        item = page.evaluate("__store.ppsFirefoxInboxQueue[0]")
+        self.assertEqual(item["status"], "SENT")
+        self.assertEqual(item["proposal_id"], 77)
+        fetch = page.evaluate("__fetches[0]")
+        self.assertTrue(fetch["options"]["body"])
+        self.assertEqual(fetch["options"]["method"], "POST")
+        self.assertNotIn("Content-Type", fetch["options"]["headers"])
+        self.assertIn("/api/extension/v1/research-import/packages", fetch["url"])
+        fields = page.evaluate("async () => ({pdf: __fetches[0].options.body.get('research_pdf').name, pdfType: __fetches[0].options.body.get('research_pdf').type, sidecar: __fetches[0].options.body.get('sidecar').name, sidecarType: __fetches[0].options.body.get('sidecar').type, sidecarText: await __fetches[0].options.body.get('sidecar').text()})")
+        self.assertEqual(fields["pdf"], "research.pdf")
+        self.assertEqual(fields["pdfType"], "application/pdf")
+        self.assertEqual(fields["sidecar"], "research-import.json")
+        self.assertEqual(fields["sidecarType"], "application/json")
+        self.assertIn('"package_id":"research-bridge-001"', fields["sidecarText"])
+        self.assertIn("no Job was created", page.evaluate("__notifications.at(-1).message"))
+        page.close()
+
+    def test_05c_research_import_duplicate_and_malformed_or_oversized_packages_are_safe(self):
+        page = self.background_page(response_body={"status": "DRAFT", "proposal_id": 78, "package_id": "research-bridge-002", "review_url": "/requests/smart-intake/proposals/78", "duplicate": True})
+        message = self.invoke_research(page, research_package_envelope("research-bridge-002"))
+        page.evaluate("async m => await __listeners.message[0](m,{id:'pps-extension-id',tab:{url:'https://chatgpt.com/c/test'}})", message)
+        page.wait_for_timeout(100)
+        self.assertEqual(page.evaluate("__store.ppsFirefoxInboxQueue[0].status"), "SENT_DUPLICATE")
+        before = page.evaluate("__fetches.length")
+        page.evaluate("async m => await __listeners.message[0](m,{id:'pps-extension-id',tab:{url:'https://chatgpt.com/c/test'}})", message)
+        page.wait_for_timeout(50)
+        self.assertEqual(page.evaluate("__fetches.length"), before)
+        page.close()
+
+        malformed = self.background_page()
+        self.assertEqual(self.invoke_research(malformed, "[PPS_RESEARCH_IMPORT_PACKAGE_V1]{bad}[/PPS_RESEARCH_IMPORT_PACKAGE_V1]")["type"], "PPS_CHATGPT_RESEARCH_IMPORT_PACKAGE_V1")
+        malformed.wait_for_timeout(50)
+        self.assertEqual(malformed.evaluate("(__store.ppsFirefoxInboxQueue||[]).length"), 0)
+        malformed.close()
 
     def test_05_background_sender_validation_queue_success_and_token_boundary(self):
         page = self.background_page()

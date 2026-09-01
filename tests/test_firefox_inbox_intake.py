@@ -115,6 +115,7 @@ class FirefoxInboxIntakeTests(unittest.TestCase):
     def test_01_endpoint_registered_and_authorization_boundary(self):
         self.assertEqual([route.path for route in firefox_inbox_router.routes], [
             "/api/extension/v1/inbox/intake-proposals",
+            "/api/extension/v1/research-import/packages",
             "/api/extension/v1/jobs/payment-received",
             "/api/extension/v1/jobs/order-placed",
             "/api/extension/v1/jobs/item-received",

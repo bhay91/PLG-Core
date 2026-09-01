@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import sqlite3
 from pathlib import Path
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 
 from legacy_app import next_customer_number, next_job_number, next_machine_number, next_request_number
 from plg_core.audit import write_audit
 from plg_core.intake.identifiers import classify_identifier, normalize_identifier
 from plg_core.intake.parser import parse_intake
-from plg_core.intake.attachments import copy_proposal_images_to_request
+from plg_core.intake.attachments import ValidatedImage, copy_proposal_images_to_request, store_proposal_images, validate_attachments
+from plg_core.intake.research_import import ResearchImportPackage
 from plg_core.intake.documents import (
     classify_document, supplier_invoice_fields, supplier_quote_fields,
 )
@@ -424,6 +426,7 @@ def _prepare_proposal(
                 "wording": wording,
                 "original_wording": wording,
                 "quantity": need.get("quantity"),
+                "position": str(need.get("reference") or ""),
                 "review_state": "REVIEW",
             }
             target = asset_references.get(str(need.get("machine_reference") or "").strip())
@@ -532,16 +535,16 @@ def _insert_proposal_records(
         for need_sequence, need in enumerate(asset["needs"], 1):
             connection.execute(
                 """INSERT INTO intake_proposal_needs
-                (proposal_id,proposal_asset_id,sequence,wording,original_wording,quantity,review_state)
-                VALUES (?,?,?,?,?,?,?)""",
-                (proposal_id, asset_id, need_sequence, need["wording"], need["original_wording"], need.get("quantity"), need["review_state"]),
+                (proposal_id,proposal_asset_id,sequence,wording,original_wording,quantity,position,review_state)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                (proposal_id, asset_id, need_sequence, need["wording"], need["original_wording"], need.get("quantity"), need.get("position", ""), need["review_state"]),
             )
     for need_sequence, need in enumerate(parsed["unassigned_needs"], 1):
         connection.execute(
             """INSERT INTO intake_proposal_needs
-            (proposal_id,proposal_asset_id,sequence,wording,original_wording,quantity,review_state)
-            VALUES (?,NULL,?,?,?,?,?)""",
-            (proposal_id, need_sequence, need["wording"], need["original_wording"], need.get("quantity"), need["review_state"]),
+            (proposal_id,proposal_asset_id,sequence,wording,original_wording,quantity,position,review_state)
+            VALUES (?,NULL,?,?,?,?,?,?)""",
+            (proposal_id, need_sequence, need["wording"], need["original_wording"], need.get("quantity"), need.get("position", ""), need["review_state"]),
         )
     if ai_payload is not None:
         connection.execute(
@@ -653,6 +656,144 @@ def submit_structured_intake(
         raise
 
 
+def submit_research_import(
+    connection: sqlite3.Connection,
+    package: ResearchImportPackage,
+    *,
+    pdf: ValidatedImage,
+    actor: str = "research-import",
+) -> tuple[int, bool]:
+    """Stage one validated PDF+sidecar package as an untrusted DRAFT proposal.
+
+    This function deliberately does not resolve or mutate the target Job.
+    """
+    if package.source_pdf.filename != pdf.original_filename:
+        raise HTTPException(status_code=400, detail="Research package PDF filename does not match the sidecar.")
+    package_json = package.model_dump(mode="json")
+    package_digest = hashlib.sha256(
+        json.dumps(package_json, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        for row in connection.execute(
+            "SELECT proposal_id,payload_json FROM intake_proposal_contributions "
+            "WHERE contributor_type='AI' ORDER BY id"
+        ):
+            try:
+                payload = json.loads(row["payload_json"] or "{}")
+            except (TypeError, ValueError):
+                continue
+            if payload.get("origin") != "RESEARCH_IMPORT_PACKAGE" or payload.get("package_id") != package.package_id:
+                continue
+            if payload.get("package_digest") != package_digest or payload.get("pdf_sha256") != package.source_pdf.sha256.lower():
+                raise HTTPException(status_code=409, detail="Research package ID already exists with different content.")
+            status = connection.execute(
+                "SELECT status FROM intake_proposals WHERE id=?", (row["proposal_id"],)
+            ).fetchone()
+            if status is None or status["status"] != "DRAFT":
+                raise HTTPException(status_code=409, detail="The correlated research proposal is no longer DRAFT.")
+            connection.rollback()
+            return int(row["proposal_id"]), True
+
+        candidates = {
+            "customer": package_json["customer"],
+            "machines": [package_json["machine"]],
+            "requested_needs": package_json["requested_needs"],
+        }
+        machine = candidates["machines"][0]
+        machine["identifiers"] = machine.get("identifiers") or []
+        for need in candidates["requested_needs"]:
+            need["original_wording"] = need["original_wording"]
+        parsed, parse_source, classification = _prepare_proposal(
+            f"Research Import Package {package.package_id}", [], candidates,
+        )
+        classification = {
+            "document_type": "CUSTOMER_REQUEST",
+            "document_number": "",
+            "review_required": False,
+            "rationale": "Validated Research Import Package staged for operator review.",
+        }
+        proposal_id = _insert_proposal_records(
+            connection,
+            raw_input=f"Research Import Package {package.package_id}",
+            parsed=parsed,
+            parse_source=parse_source,
+            classification=classification,
+            extracted_documents=[{
+                "filename": pdf.original_filename,
+                "media_type": pdf.media_type,
+                "text": pdf.extracted_text,
+                "extraction_status": pdf.extraction_status,
+                "extraction_evidence": pdf.extraction_evidence,
+                "page_count": pdf.page_count,
+            }],
+        )
+        stored_paths = store_proposal_images(connection, proposal_id, [pdf])
+        try:
+            connection.execute(
+                    "INSERT INTO intake_proposal_contributions "
+                    "(proposal_id,contributor_type,payload_json,evidence) VALUES (?,?,?,?)",
+                (proposal_id, "AI", json.dumps({
+                    "origin": "RESEARCH_IMPORT_PACKAGE",
+                    "package_id": package.package_id,
+                    "package_digest": package_digest,
+                    "pdf_filename": pdf.original_filename,
+                    "pdf_sha256": package.source_pdf.sha256.lower(),
+                    "package": package_json,
+                }, sort_keys=True), "Validated PDF+JSON Research Import Package; candidate data only."),
+            )
+            write_audit(
+                connection,
+                action="RESEARCH_IMPORT_PROPOSED",
+                entity_type="INTAKE_PROPOSAL",
+                entity_id=proposal_id,
+                summary=f"Research Import Package {package.package_id} staged for operator review",
+                metadata={"package_id": package.package_id, "pdf_sha256": package.source_pdf.sha256.lower()},
+                actor=actor,
+                request_id=package.package_id,
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            for path in stored_paths:
+                path.unlink(missing_ok=True)
+            raise
+        return proposal_id, False
+    except Exception:
+        if connection.in_transaction:
+            connection.rollback()
+        raise
+
+
+async def validate_research_import_uploads(
+    research_pdf: UploadFile | None,
+    sidecar: UploadFile | None,
+) -> tuple[ResearchImportPackage, ValidatedImage]:
+    """Validate the canonical PDF+JSON transport used by browser and connectors."""
+    if research_pdf is None or not research_pdf.filename or sidecar is None or not sidecar.filename:
+        raise HTTPException(status_code=400, detail="Research Import requires both a PDF and JSON sidecar.")
+    if Path(sidecar.filename).suffix.lower() != ".json":
+        raise HTTPException(status_code=400, detail="Research Import sidecar must be a JSON file.")
+    sidecar_bytes = await sidecar.read(2 * 1024 * 1024 + 1)
+    await sidecar.close()
+    if len(sidecar_bytes) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Research Import sidecar is too large.")
+    try:
+        package = ResearchImportPackage.model_validate(json.loads(sidecar_bytes.decode("utf-8")))
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=400, detail="Research Import sidecar is invalid.") from None
+    files = await validate_attachments([research_pdf])
+    if len(files) != 1:
+        raise HTTPException(status_code=400, detail="Research Import requires exactly one PDF.")
+    pdf = files[0]
+    actual_sha256 = hashlib.sha256(pdf.data).hexdigest()
+    if Path(pdf.original_filename).name != package.source_pdf.filename:
+        raise HTTPException(status_code=400, detail="Research package PDF filename does not match the sidecar.")
+    if actual_sha256 != package.source_pdf.sha256.lower():
+        raise HTTPException(status_code=400, detail="Research package PDF SHA-256 does not match the sidecar.")
+    return package, pdf
+
+
 def create_chatgpt_intake_proposal(
     connection: sqlite3.Connection,
     *,
@@ -702,6 +843,7 @@ def load_proposal(connection: sqlite3.Connection, proposal_id: int) -> dict:
     result["document_analysis"] = {}
     result["mcp_submission"] = None
     result["firefox_submission"] = None
+    result["research_import"] = None
     for contribution in connection.execute(
         "SELECT contributor_type,payload_json FROM intake_proposal_contributions WHERE proposal_id=? ORDER BY id DESC", (proposal_id,)
     ):
@@ -720,6 +862,35 @@ def load_proposal(connection: sqlite3.Connection, proposal_id: int) -> dict:
                 "origin": "CHATGPT_FIREFOX",
                 "client_reference": payload.get("client_reference") or "",
                 "structured_candidates": payload.get("structured_candidates") or {},
+            }
+        if contribution["contributor_type"] == "AI" and payload.get("origin") == "RESEARCH_IMPORT_PACKAGE" and result["research_import"] is None:
+            package = payload.get("package") or {}
+            target = package.get("target") or {}
+            target_job = connection.execute(
+                """SELECT j.id,j.job_number,j.customer,j.company,j.machine,j.pin_serial,
+                          j.customer_id,j.machine_id,m.manufacturer AS machine_manufacturer,
+                          m.model AS machine_model,m.vin_pin_serial AS machine_identifier,
+                          m.name AS machine_name,m.registry_type
+                   FROM jobs j LEFT JOIN machines m ON m.id=j.machine_id
+                  WHERE UPPER(j.job_number)=UPPER(?)""",
+                (target.get("job_number") or "",),
+            ).fetchone() if target.get("mode") == "EXISTING_JOB" else None
+            target_identity = dict(target_job) if target_job else None
+            if target_identity:
+                target_identity["identifiers"] = [dict(identifier) for identifier in connection.execute(
+                    "SELECT identifier_type,identifier_value,component_label,is_primary FROM machine_identifiers WHERE machine_id=? ORDER BY is_primary DESC,id",
+                    (target_identity.get("machine_id"),),
+                )]
+            result["research_import"] = {
+                "package": package,
+                "package_id": payload.get("package_id") or package.get("package_id") or "",
+                "package_digest": payload.get("package_digest") or "",
+                "pdf_filename": payload.get("pdf_filename") or package.get("source_pdf", {}).get("filename") or "",
+                "pdf_sha256": payload.get("pdf_sha256") or package.get("source_pdf", {}).get("sha256") or "",
+                "target_mode": target.get("mode") or "",
+                "target_job_number": target.get("job_number") or "",
+                "target_job": target_identity,
+                "target_found": target_identity is not None,
             }
         if payload.get("smart_intake_2") and not result["document_analysis"]:
             result["document_analysis"] = payload["smart_intake_2"]
@@ -795,14 +966,51 @@ def _carry_research_evidence_to_job(
         (proposal_id,),
     ).fetchall()
     evidence = None
+    research_package = None
     for row in rows:
         try:
-            candidates = json.loads(row["payload_json"] or "{}").get("structured_candidates") or {}
+            payload = json.loads(row["payload_json"] or "{}")
         except (TypeError, ValueError):
             continue
+        if payload.get("origin") == "RESEARCH_IMPORT_PACKAGE":
+            research_package = payload.get("package") or {}
+            break
+        candidates = payload.get("structured_candidates") or {}
         if candidates.get("research_evidence"):
             evidence = candidates["research_evidence"]
             break
+    if research_package is not None:
+        needs_by_ref = {str(item.get("reference") or ""): item for item in research_package.get("requested_needs") or []}
+        evidence = {
+            "options": [], "claims": [], "quoted_evidence": [], "source_urls": [],
+            "package_id": research_package.get("package_id") or "",
+            "pdf_filename": (research_package.get("source_pdf") or {}).get("filename") or "",
+            "pdf_sha256": (research_package.get("source_pdf") or {}).get("sha256") or "",
+            "estimated_inbound_freight": research_package.get("estimated_inbound_freight"),
+        }
+        for raw_option in research_package.get("research_options") or []:
+            option = dict(raw_option)
+            need = needs_by_ref.get(str(option.get("requested_need_reference") or ""), {})
+            source_urls = list((option.get("source_evidence") or {}).get("source_urls") or [])
+            if option.get("supplier_url"):
+                source_urls.append(option["supplier_url"])
+            option["source_urls"] = list(dict.fromkeys(source_urls))
+            option["requested_need_original_wording"] = need.get("original_wording") or ""
+            option["requested_need_quantity"] = need.get("quantity")
+            evidence["options"].append({
+                "source_url": option.get("supplier_url") or (source_urls[0] if source_urls else ""),
+                "source_name": option.get("supplier") or "Research Import supplier",
+                "product_description": option.get("description") or "Research Import option",
+                "part_number": option.get("oem_part_number") or "",
+                "supplier_part_number": (option.get("cross_reference_part_numbers") or [""])[0],
+                "price": option.get("tax_inclusive_unit_cost"),
+                "quantity": option.get("quantity") or need.get("quantity") or 1,
+                "currency": option.get("currency") or "USD",
+                "research_notes": option.get("notes") or "",
+                "confidence": option.get("confidence") or "UNKNOWN",
+                "verification_status": option.get("verification_status") or "UNVERIFIED",
+                "preserved": option,
+            })
     if not evidence:
         return 0
 
@@ -810,6 +1018,17 @@ def _carry_research_evidence_to_job(
     ensure_initial_revision(connection, job_id)
     first_asset_id = next(iter(asset_map.values()), None)
     first_need_id = next(iter(need_map.values()), None)
+    need_ids_by_reference = {}
+    if research_package is not None:
+        proposal_needs = connection.execute(
+            "SELECT id,position FROM intake_proposal_needs WHERE proposal_id=? AND included=1 ORDER BY sequence,id",
+            (proposal_id,),
+        ).fetchall()
+        need_ids_by_reference = {
+            str(row["position"]): need_map[int(row["id"])]
+            for row in proposal_needs
+            if row["position"] and int(row["id"]) in need_map
+        }
     options = list(evidence.get("options") or [])
     if not options:
         options = [{
@@ -834,33 +1053,45 @@ def _carry_research_evidence_to_job(
             (basket["id"], f"smart-intake-{proposal_id}-{sequence}", source_name,
              source_url, "NEEDS_REVIEW", currency),
         ).lastrowid)
-        preserved = dict(option)
+        preserved = dict(option.get("preserved") or option)
         preserved["claims"] = list(evidence.get("claims") or [])
         preserved["quoted_evidence"] = list(evidence.get("quoted_evidence") or [])
         preserved["source_urls"] = list(evidence.get("source_urls") or [])
         verification = str(option.get("verification_status") or "UNVERIFIED").upper()
         confidence = str(option.get("confidence") or "UNKNOWN").upper()
+        option_need_id = need_ids_by_reference.get(str((option.get("preserved") or {}).get("requested_need_reference") or ""), first_need_id)
         connection.execute(
             """INSERT INTO basket_items (
                  basket_id,source_id,job_asset_id,primary_requested_need_id,research_state,
                  requested_description,manufacturer_part_number,supplier_part_number,supplier_name,
                  source_type,quantity,supplier_unit_cost,selected,confidence,source_url,
                  verification_status,verification_note,research_evidence,research_notes
-               ) VALUES (?,?,?,?,?,?,?,?,?,'AFTERMARKET',1,?,0,?,?,?,?,?,?)""",
-            (basket["id"], source_id, first_asset_id, first_need_id, "RESEARCH_RESULT",
+               ) VALUES (?,?,?,?,?,?,?,?,?,'AFTERMARKET',?, ?,0,?,?,?,?,?,?)""",
+            (basket["id"], source_id, first_asset_id, option_need_id, "RESEARCH_RESULT",
              str(option.get("product_description") or "Smart Intake research evidence").strip(),
-             str(option.get("part_number") or "").strip(), str(option.get("part_number") or "").strip(),
-             source_name, option.get("price"), confidence_values.get(confidence), source_url,
+             str(option.get("part_number") or "").strip(), str(option.get("supplier_part_number") or option.get("part_number") or "").strip(),
+             source_name, option.get("quantity") or 1, option.get("price"), confidence_values.get(confidence), source_url,
              verification, "Untrusted Smart Intake research; operator review required.",
              json.dumps(preserved, sort_keys=True), str(option.get("research_notes") or "").strip()),
         )
         item_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
-        if first_need_id is not None:
+        if option_need_id is not None:
             connection.execute(
                 "INSERT OR IGNORE INTO basket_item_need_links "
                 "(basket_item_id,requested_need_id,relationship) VALUES (?,?,'SATISFIES')",
-                (item_id, first_need_id),
+                (item_id, option_need_id),
             )
+    if research_package is not None and evidence.get("estimated_inbound_freight"):
+        connection.execute(
+            "INSERT INTO basket_activity (basket_id,activity_type,details) VALUES (?,?,?)",
+            (basket["id"], "RESEARCH_IMPORT_ESTIMATED_FREIGHT", json.dumps({
+                "package_id": evidence.get("package_id"),
+                "pdf_filename": evidence.get("pdf_filename"),
+                "pdf_sha256": evidence.get("pdf_sha256"),
+                "estimated_inbound_freight": evidence["estimated_inbound_freight"],
+                "status": "ESTIMATED",
+            }, sort_keys=True)),
+        )
     write_audit(
         connection, action="SMART_INTAKE_RESEARCH_CARRIED_FORWARD",
         entity_type="JOB", entity_id=job_id,
@@ -882,6 +1113,16 @@ def confirm_proposal(connection: sqlite3.Connection, proposal_id: int, lock_vers
     if proposal["status"] != "DRAFT":
         connection.rollback()
         raise HTTPException(status_code=409, detail="This proposal is no longer editable.")
+    research_import = connection.execute(
+        "SELECT payload_json FROM intake_proposal_contributions WHERE proposal_id=? AND contributor_type='AI' "
+        "AND payload_json LIKE '%\"origin\": \"RESEARCH_IMPORT_PACKAGE\"%' LIMIT 1",
+        (proposal_id,),
+    ).fetchone()
+    if research_import:
+        payload = json.loads(research_import[0] or "{}") if research_import[0] else {}
+        if (payload.get("package") or {}).get("target", {}).get("mode") == "EXISTING_JOB":
+            connection.rollback()
+            raise HTTPException(status_code=409, detail="EXISTING_JOB Research Imports require a separate target-review update flow.")
     if int(proposal["lock_version"]) != int(lock_version):
         connection.rollback()
         raise HTTPException(status_code=409, detail="This proposal changed in another tab. Reload and review it again.")

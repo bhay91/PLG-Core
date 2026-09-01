@@ -5,14 +5,13 @@ from datetime import date
 from pathlib import Path
 import re
 import uuid
-import json
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from legacy_app import BASE_DIR, UPLOADS_DIR, get_connection, next_customer_number, next_job_number, next_machine_number, next_request_number, templates
 from plg_core.machines.identifiers import find_machine_by_identifier
-from plg_core.intake.service import create_proposal
+from plg_core.intake.service import create_proposal, submit_research_import, validate_research_import_uploads
 from plg_core.intake.attachments import store_proposal_images, validate_attachments
 
 router = APIRouter(prefix="/requests", tags=["customer-requests"])
@@ -799,6 +798,25 @@ async def analyze_smart_intake(
                 path.unlink(missing_ok=True)
             raise
     return RedirectResponse(url=f"/requests/smart-intake/proposals/{proposal_id}", status_code=303)
+
+
+@router.post("/smart-intake/research-import")
+async def ingest_research_import(
+    request: Request,
+    research_pdf: UploadFile | None = File(default=None),
+    sidecar: UploadFile | None = File(default=None),
+):
+    """Stage a validated PDF+JSON package as a Smart Intake DRAFT only."""
+    if research_pdf is None or not research_pdf.filename or sidecar is None or not sidecar.filename:
+        raise HTTPException(status_code=400, detail="Research Import requires both a PDF and JSON sidecar.")
+    package, pdf = await validate_research_import_uploads(research_pdf, sidecar)
+    with closing(get_connection()) as connection:
+        proposal_id, duplicate = submit_research_import(connection, package, pdf=pdf)
+    return RedirectResponse(
+        url=f"/requests/smart-intake/proposals/{proposal_id}",
+        status_code=303,
+        headers={"X-PPS-Research-Import-Duplicate": "1" if duplicate else "0"},
+    )
 
 
 @router.post("/smart-intake/create")

@@ -9,7 +9,11 @@
   const OPEN = "[PPS_INTAKE_PACKAGE_V1]";
   const CLOSE = "[/PPS_INTAKE_PACKAGE_V1]";
   const MESSAGE_TYPE = "PPS_CHATGPT_INTAKE_PACKAGE_V1";
+  const RESEARCH_OPEN = "[PPS_RESEARCH_IMPORT_PACKAGE_V1]";
+  const RESEARCH_CLOSE = "[/PPS_RESEARCH_IMPORT_PACKAGE_V1]";
+  const RESEARCH_MESSAGE_TYPE = "PPS_CHATGPT_RESEARCH_IMPORT_PACKAGE_V1";
   const MAX_ENVELOPE_CHARS = 48 * 1024;
+  const MAX_RESEARCH_ENVELOPE_CHARS = 14 * 1024 * 1024;
   // ChatGPT may render a marker through nested Markdown spans or insert a
   // format-only character at a span boundary. These are the only characters
   // ignored while locating markers; payload JSON is never normalized.
@@ -37,6 +41,17 @@
       (value.research_evidence === null || typeof value.research_evidence === "object");
   }
 
+  function shallowValidResearch(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const keys = Object.keys(value);
+    if (keys.length !== 3 || !["schema_version", "package", "pdf_base64"].every(key => keys.includes(key))) return false;
+    if (value.schema_version !== "1" || !value.package || typeof value.package !== "object" || Array.isArray(value.package)) return false;
+    const source = value.package.source_pdf;
+    if (!source || typeof source.filename !== "string" || !/\.pdf$/i.test(source.filename)) return false;
+    if (typeof value.pdf_base64 !== "string" || value.pdf_base64.length < 1 || value.pdf_base64.length > MAX_RESEARCH_ENVELOPE_CHARS || !/^[A-Za-z0-9+/]*={0,2}$/.test(value.pdf_base64)) return false;
+    return true;
+  }
+
   function rejectOnce(container, reason) {
     const state = messageStates.get(container);
     if (!state || state.processed || state.rejected) return;
@@ -59,16 +74,16 @@
     return { rendered, sourceOffsets };
   }
 
-  function extractEnvelope(container) {
+  function extractEnvelope(container, open = OPEN, close = CLOSE, maxChars = MAX_ENVELOPE_CHARS) {
     // textContent concatenates nested Markdown/code spans without introducing
     // layout whitespace. innerText is retained only as a defensive fallback.
     const text = String(container.textContent || container.innerText || "");
     const projection = markerProjection(text);
-    const start = projection.rendered.indexOf(OPEN);
+    const start = projection.rendered.indexOf(open);
     if (start < 0) return { state: "PENDING" };
-    const contentStart = start + OPEN.length;
-    const end = projection.rendered.indexOf(CLOSE, contentStart);
-    if (projection.rendered.indexOf(OPEN, contentStart) >= 0) {
+    const contentStart = start + open.length;
+    const end = projection.rendered.indexOf(close, contentStart);
+    if (projection.rendered.indexOf(open, contentStart) >= 0) {
       return { state: "REJECTED", reason: "Malformed PPS intake envelope." };
     }
     if (end < 0) return { state: "PENDING" };
@@ -77,7 +92,7 @@
     const sourceEnd = projection.sourceOffsets[end];
     const boundaryRenderingChars = /^[\s\u200B\u200C\u200D\u2060\uFEFF]+|[\s\u200B\u200C\u200D\u2060\uFEFF]+$/g;
     const encoded = text.slice(sourceStart, sourceEnd).replace(boundaryRenderingChars, "");
-    if (!encoded || encoded.length > MAX_ENVELOPE_CHARS) {
+    if (!encoded || encoded.length > maxChars) {
       return { state: "REJECTED", reason: "Malformed PPS intake envelope." };
     }
     return { state: "COMPLETE", encoded };
@@ -86,14 +101,24 @@
   function inspectAssistantMessage(container) {
     const state = messageStates.get(container);
     if (!state || state.processed || state.rejected) return;
-    const extracted = extractEnvelope(container);
-    if (extracted.state === "PENDING") return;
-    if (extracted.state === "REJECTED") {
-      rejectOnce(container, extracted.reason);
+    const extracted = extractEnvelope(container, RESEARCH_OPEN, RESEARCH_CLOSE, MAX_RESEARCH_ENVELOPE_CHARS);
+    const research = extracted.state !== "PENDING" ? extracted : extractEnvelope(container);
+    if (research.state === "PENDING") return;
+    if (research.state === "REJECTED") {
+      rejectOnce(container, research.reason);
       return;
     }
     try {
-      const payload = JSON.parse(extracted.encoded);
+      const payload = JSON.parse(research.encoded);
+      if (research === extracted && shallowValidResearch(payload)) {
+        state.processed = true;
+        browser.runtime.sendMessage({ type: RESEARCH_MESSAGE_TYPE, payload }).catch(() => {});
+        return;
+      }
+      if (research === extracted && !shallowValidResearch(payload)) {
+        rejectOnce(container, "PPS Research Import package failed envelope validation.");
+        return;
+      }
       if (!shallowValid(payload)) {
         rejectOnce(container, "PPS intake envelope failed schema validation.");
         return;

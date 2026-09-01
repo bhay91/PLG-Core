@@ -8,6 +8,7 @@ from fastapi import HTTPException, Request
 
 FIREFOX_INBOX_CREATE_SCOPE = "pps:firefox:inbox:create"
 FIREFOX_JOB_UPDATE_SCOPE = "pps:firefox:jobs:update"
+FIREFOX_RESEARCH_IMPORT_CREATE_SCOPE = "pps:firefox:research-import:create"
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
 
 
@@ -53,3 +54,7 @@ def require_firefox_inbox_authorization(request: Request) -> str:
 
 def require_firefox_job_update_authorization(request: Request) -> str:
     return _require_firefox_authorization(request, FIREFOX_JOB_UPDATE_SCOPE)
+
+
+def require_firefox_research_import_authorization(request: Request) -> str:
+    return _require_firefox_authorization(request, FIREFOX_RESEARCH_IMPORT_CREATE_SCOPE, allow_remote=True)

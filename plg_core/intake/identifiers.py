@@ -8,6 +8,10 @@ IDENTIFIER_TYPES = (
     "MACHINE_SERIAL", "ENGINE_SERIAL", "COMPONENT_SERIAL", "OTHER_IDENTIFIER",
     "UNKNOWN",
 )
+ASSET_TYPES = (
+    "vehicle", "machine", "engine", "marine", "generator", "trailer",
+    "component", "other",
+)
 MARKETS = ("UNKNOWN", "JDM", "USDM", "EDM", "UK", "GLOBAL")
 
 EQUIPMENT_MAKES = {

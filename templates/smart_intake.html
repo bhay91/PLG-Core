@@ -55,6 +55,33 @@
     </div>
   </form>
 </section>
+
+<section class="panel smart-research-import-panel erp-intake-form">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">RESEARCH IMPORT</p>
+      <h2>Import Research Package</h2>
+      <p>Upload one Research PDF and its matching JSON sidecar for DRAFT review. Nothing is added to a Job until you confirm it.</p>
+    </div>
+  </div>
+  <form method="post" action="/requests/smart-intake/research-import" enctype="multipart/form-data" class="smart-research-import-form">
+    <div class="two-column">
+      <label>
+        Research PDF
+        <input name="research_pdf" type="file" accept=".pdf,application/pdf" required>
+        <small>One PDF containing the human-readable research evidence.</small>
+      </label>
+      <label>
+        JSON sidecar
+        <input name="sidecar" type="file" accept=".json,application/json" required>
+        <small>One matching Research Import Package JSON file.</small>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="button" type="submit">Import Research Package</button>
+    </div>
+  </form>
+</section>
 <div class="smart-image-modal" data-image-modal hidden role="dialog" aria-modal="true" aria-labelledby="smart-image-modal-title">
   <div class="smart-image-modal-dialog">
     <div class="smart-image-modal-head"><strong id="smart-image-modal-title" data-image-modal-name>Image preview</strong><button type="button" class="smart-image-modal-close" data-image-modal-close aria-label="Close image preview">×</button></div>

@@ -1,4 +1,5 @@
 const MESSAGE_TYPE = "PPS_CHATGPT_INTAKE_PACKAGE_V1";
+const RESEARCH_MESSAGE_TYPE = "PPS_CHATGPT_RESEARCH_IMPORT_PACKAGE_V1";
 const QUEUE_KEY = "ppsFirefoxInboxQueue";
 const API_BASE_KEY = "ppsApiBase";
 const WEB_BASE_KEY = "ppsWebBase";
@@ -9,6 +10,9 @@ const DEFAULT_API_BASE = "https://api.pinpointsourcing.com";
 const DEFAULT_WEB_BASE = "https://pinpointsourcing.com";
 const MAX_ATTEMPTS = 3;
 const ENDPOINT = "/api/extension/v1/inbox/intake-proposals";
+const RESEARCH_ENDPOINT = "/api/extension/v1/research-import/packages";
+const MAX_RESEARCH_PDF_BYTES = 8 * 1024 * 1024;
+const MAX_RESEARCH_SIDECAR_BYTES = 2 * 1024 * 1024;
 const ALLOWED_STATES = new Set(["PENDING", "SENDING", "SENT", "SENT_DUPLICATE", "RETRY", "AUTH_FAILED", "REJECTED"]);
 const TOP_KEYS = ["schema_version", "source", "client_reference", "original_input", "customer", "machines", "requested_needs", "additional_notes", "research_evidence"];
 const CHATGPT_MATCH = "https://chatgpt.com/*";
@@ -204,6 +208,33 @@ async function postPackage(payload, settings) {
   return { response, data };
 }
 
+function decodeResearchPdf(value) {
+  if (typeof value !== "string" || !value || value.length > Math.ceil(MAX_RESEARCH_PDF_BYTES * 4 / 3) + 8 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) throw new Error("Research Import PDF is invalid or too large.");
+  const binary = atob(value);
+  if (!binary.length || binary.length > MAX_RESEARCH_PDF_BYTES) throw new Error("Research Import PDF is invalid or too large.");
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+async function postResearchPackage(payload, settings) {
+  const bytes = decodeResearchPdf(payload.pdf_base64);
+  const sidecar = JSON.stringify(payload.package);
+  if (new TextEncoder().encode(sidecar).length > MAX_RESEARCH_SIDECAR_BYTES) throw new Error("Research Import sidecar is too large.");
+  const form = new FormData();
+  form.append("research_pdf", new Blob([bytes], { type: "application/pdf" }), payload.package.source_pdf.filename);
+  form.append("sidecar", new Blob([sidecar], { type: "application/json" }), "research-import.json");
+  const headers = { "Authorization": `Bearer ${settings.token}` };
+  if (settings.cloudflareClientId && settings.cloudflareClientSecret) {
+    headers["CF-Access-Client-Id"] = settings.cloudflareClientId;
+    headers["CF-Access-Client-Secret"] = settings.cloudflareClientSecret;
+  }
+  const response = await fetch(settings.apiBase + RESEARCH_ENDPOINT, { method: "POST", headers, body: form });
+  let data = {};
+  try { data = await response.json(); } catch (_) {}
+  return { response, data };
+}
+
 function wait(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
@@ -251,6 +282,87 @@ async function sendQueuedItem(clientReference) {
     }
   }
   await notify("PPS Inbox submission pending", "PPS is unavailable. The DRAFT package remains queued for operator attention.");
+}
+
+function validateResearchPackageEnvelope(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("PPS Research Import package is invalid.");
+  const keys = Object.keys(value);
+  if (keys.length !== 3 || !["schema_version", "package", "pdf_base64"].every(key => keys.includes(key))) throw new Error("PPS Research Import package is invalid.");
+  if (value.schema_version !== "1" || !value.package || typeof value.package !== "object" || Array.isArray(value.package)) throw new Error("PPS Research Import package is invalid.");
+  const source = value.package.source_pdf;
+  if (!source || typeof source.filename !== "string" || source.filename.includes("/") || source.filename.includes("\\") || !/\.pdf$/i.test(source.filename)) throw new Error("PPS Research Import PDF filename is invalid.");
+  if (!value.package.package_id || typeof value.package.package_id !== "string") throw new Error("PPS Research Import package ID is required.");
+  decodeResearchPdf(value.pdf_base64);
+  return { schema_version: "1", package: value.package, pdf_base64: value.pdf_base64 };
+}
+
+async function sendQueuedResearchItem(clientReference) {
+  let queue = await readQueue();
+  let item = queue.find(entry => entry.client_reference === clientReference);
+  if (!item || ["SENT", "SENT_DUPLICATE", "AUTH_FAILED", "REJECTED"].includes(item.status)) return;
+  const settings = await readConnectionSettings();
+  const secrets = [settings.token, settings.cloudflareClientId, settings.cloudflareClientSecret];
+  if (!settings.token) {
+    await updateItem(clientReference, { status: "AUTH_FAILED", last_error: "PPS Research Import authorization is not configured." });
+    await notify("PPS Research Import authorization required", "Configure the dedicated Research Import connector token.");
+    return;
+  }
+  if (Boolean(settings.cloudflareClientId) !== Boolean(settings.cloudflareClientSecret)) {
+    await updateItem(clientReference, { status: "AUTH_FAILED", last_error: "Cloudflare Access credentials must be configured as a complete pair." });
+    await notify("PPS Research Import authorization required", "Configure both Cloudflare Access credential fields.");
+    return;
+  }
+  while (item.attempt_count < MAX_ATTEMPTS) {
+    item = await updateItem(clientReference, { status: "SENDING", attempt_count: item.attempt_count + 1, last_error: "" });
+    try {
+      const { response, data } = await postResearchPackage(item.payload, settings);
+      if (response.ok && data.status === "DRAFT" && Number.isFinite(Number(data.proposal_id))) {
+        const status = data.duplicate ? "SENT_DUPLICATE" : "SENT";
+        await updateItem(clientReference, { status, review_url: data.review_url || "", proposal_id: Number(data.proposal_id), package_id: data.package_id || item.payload.package.package_id, duplicate: Boolean(data.duplicate), last_error: "", pps_web_base: settings.webBase });
+        await notify(data.duplicate ? "Research Import DRAFT already exists" : "Research Import DRAFT created", `Proposal ${data.proposal_id} · ${data.package_id || item.payload.package.package_id} · ${data.duplicate ? "duplicate" : "new"}. Open PPS to review; no Job was created.`);
+        return;
+      }
+      if (response.status === 401 || response.status === 403) {
+        await updateItem(clientReference, { status: "AUTH_FAILED", last_error: safeError(data.detail || "PPS authorization failed.", secrets) });
+        await notify("PPS Research Import authorization failed", "Verify the dedicated Research Import connector credentials.");
+        return;
+      }
+      if ([400, 409, 413, 422].includes(response.status)) {
+        await updateItem(clientReference, { status: "REJECTED", last_error: safeError(data.detail || `PPS rejected the Research Import package (${response.status}).`, secrets) });
+        await notify("PPS Research Import rejected", safeError(data.detail || "Review the package and PPS validation message.", secrets));
+        return;
+      }
+      throw new Error(data.detail || `PPS server error (${response.status}).`);
+    } catch (error) {
+      item = await updateItem(clientReference, { status: "RETRY", last_error: safeError(error?.message || error, secrets) });
+      if (item.attempt_count < MAX_ATTEMPTS) await wait(500 * item.attempt_count);
+    }
+  }
+  await notify("PPS Research Import submission pending", "PPS is unavailable. The package remains queued for operator attention.");
+}
+
+async function queueAndSendResearchPackage(rawPayload) {
+  let payload;
+  try { payload = validateResearchPackageEnvelope(rawPayload); }
+  catch (error) { await notify("PPS Research Import rejected", safeError(error.message)); return { ok: false, state: "REJECTED" }; }
+  const packageId = payload.package.package_id;
+  const normalizedDigest = await digest({ package: payload.package, pdf_base64: payload.pdf_base64 });
+  const queue = await readQueue();
+  const existing = queue.find(item => item.kind === "RESEARCH_IMPORT" && item.client_reference === packageId);
+  if (existing) {
+    if (existing.normalized_digest !== normalizedDigest) {
+      existing.status = "REJECTED"; existing.last_error = "Research Import package ID was reused with different content."; existing.updated_at = new Date().toISOString();
+      await writeQueue(queue); await notify("PPS Research Import rejected", existing.last_error); return { ok: false, state: "REJECTED" };
+    }
+    if (["SENT", "SENT_DUPLICATE"].includes(existing.status)) return { ok: true, state: existing.status };
+    await sendQueuedResearchItem(existing.client_reference);
+    const refreshed = (await readQueue()).find(item => item.client_reference === packageId);
+    return { ok: true, state: refreshed?.status || existing.status };
+  }
+  const now = new Date().toISOString();
+  queue.push({ kind: "RESEARCH_IMPORT", schema_version: "1", source: "CHATGPT_FIREFOX", client_reference: packageId, normalized_digest: normalizedDigest, payload, status: "PENDING", created_at: now, updated_at: now, attempt_count: 0, last_error: "" });
+  await writeQueue(queue); await sendQueuedResearchItem(packageId);
+  return { ok: true, state: "PENDING" };
 }
 
 async function queueAndSend(rawPayload) {
@@ -314,7 +426,7 @@ async function recoverQueue() {
   }
   await writeQueue(queue);
   for (const item of queue.filter(entry => ["PENDING", "RETRY"].includes(entry.status))) {
-    await sendQueuedItem(item.client_reference);
+    await (item.kind === "RESEARCH_IMPORT" ? sendQueuedResearchItem(item.client_reference) : sendQueuedItem(item.client_reference));
   }
 }
 
@@ -329,7 +441,7 @@ async function resumeAuthorizedQueue() {
     item.updated_at = new Date().toISOString();
   }
   await writeQueue(queue);
-  for (const item of resumable) await sendQueuedItem(item.client_reference);
+  for (const item of resumable) await (item.kind === "RESEARCH_IMPORT" ? sendQueuedResearchItem(item.client_reference) : sendQueuedItem(item.client_reference));
 }
 
 let recoveryPromise = null;
@@ -341,16 +453,16 @@ function scheduleRecovery() {
 }
 
 browser.runtime.onMessage.addListener((message, sender) => {
-  if (message?.type !== MESSAGE_TYPE) return undefined;
+  if (![MESSAGE_TYPE, RESEARCH_MESSAGE_TYPE].includes(message?.type)) return undefined;
   if (sender.id !== browser.runtime.id) return Promise.resolve({ ok: false, state: "REJECTED" });
   try {
     const origin = new URL(sender.tab?.url || "").origin;
     if (origin !== "https://chatgpt.com") return Promise.resolve({ ok: false, state: "REJECTED" });
   } catch (_) { return Promise.resolve({ ok: false, state: "REJECTED" }); }
-  if (message.rejection === "Malformed PPS intake envelope." || message.rejection === "PPS intake envelope failed schema validation.") {
+  if (message.rejection) {
     return queueRejectedEnvelope(message.rejection);
   }
-  return queueAndSend(message.payload);
+  return message.type === RESEARCH_MESSAGE_TYPE ? queueAndSendResearchPackage(message.payload) : queueAndSend(message.payload);
 });
 
 browser.runtime.onStartup.addListener(() => { scheduleRecovery().catch(() => {}); });
