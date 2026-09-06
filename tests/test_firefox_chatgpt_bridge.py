@@ -212,12 +212,30 @@ class FirefoxChatGPTBridgeTests(unittest.TestCase):
         return page.evaluate("async ({payload,url}) => await __listeners.message[0]({type:'PPS_CHATGPT_INTAKE_PACKAGE_V1',payload},{id:'pps-extension-id',tab:{url}})", {"payload": value, "url": url})
 
     def invoke_research(self, page, envelope_text, url="https://chatgpt.com/c/test"):
-        page.goto(url)
-        page.set_content(f'<div data-message-author-role="assistant">{envelope_text}</div>')
-        page.evaluate("window.__messages=[]; window.browser.runtime.sendMessage = m => { __messages.push(m); return Promise.resolve(); }")
-        page.add_script_tag(path=str(EXT / "chatgpt_bridge.js"))
-        page.wait_for_timeout(100)
-        return page.evaluate("__messages[0]")
+        content_page = self.page()
+        content_page.goto(url)
+        content_page.set_content(f'<div data-message-author-role="assistant">{envelope_text}</div>')
+        content_page.evaluate("""() => {
+            window.__messages = [];
+            window.browser = {runtime: {
+                sendMessage: message => {
+                    window.__messages.push(message);
+                    return Promise.resolve();
+                }
+            }};
+        }""")
+        content_page.add_script_tag(path=str(EXT / "chatgpt_bridge.js"))
+        content_page.wait_for_function(
+            "expected => window.__messages.some(message => message?.type === expected) || window.__messages.length > 0",
+            arg="PPS_CHATGPT_RESEARCH_IMPORT_PACKAGE_V1",
+            timeout=1000,
+        )
+        message = content_page.evaluate(
+            "expected => window.__messages.find(message => message?.type === expected) || window.__messages[0]",
+            arg="PPS_CHATGPT_RESEARCH_IMPORT_PACKAGE_V1",
+        )
+        content_page.close()
+        return message
 
     def test_05b_research_import_envelope_transports_pdf_and_sidecar_as_multipart(self):
         page = self.background_page(response_body={"status": "DRAFT", "proposal_id": 77, "package_id": "research-bridge-001", "review_url": "/requests/smart-intake/proposals/77", "duplicate": False})
@@ -228,10 +246,10 @@ class FirefoxChatGPTBridgeTests(unittest.TestCase):
         item = page.evaluate("__store.ppsFirefoxInboxQueue[0]")
         self.assertEqual(item["status"], "SENT")
         self.assertEqual(item["proposal_id"], 77)
-        fetch = page.evaluate("__fetches[0]")
-        self.assertTrue(fetch["options"]["body"])
-        self.assertEqual(fetch["options"]["method"], "POST")
-        self.assertNotIn("Content-Type", fetch["options"]["headers"])
+        fetch = page.evaluate("({url: __fetches[0].url, method: __fetches[0].options.method, headers: __fetches[0].options.headers, isFormData: __fetches[0].options.body instanceof FormData})")
+        self.assertTrue(fetch["isFormData"])
+        self.assertEqual(fetch["method"], "POST")
+        self.assertNotIn("Content-Type", fetch["headers"])
         self.assertIn("/api/extension/v1/research-import/packages", fetch["url"])
         fields = page.evaluate("async () => ({pdf: __fetches[0].options.body.get('research_pdf').name, pdfType: __fetches[0].options.body.get('research_pdf').type, sidecar: __fetches[0].options.body.get('sidecar').name, sidecarType: __fetches[0].options.body.get('sidecar').type, sidecarText: await __fetches[0].options.body.get('sidecar').text()})")
         self.assertEqual(fields["pdf"], "research.pdf")
@@ -255,7 +273,9 @@ class FirefoxChatGPTBridgeTests(unittest.TestCase):
         page.close()
 
         malformed = self.background_page()
-        self.assertEqual(self.invoke_research(malformed, "[PPS_RESEARCH_IMPORT_PACKAGE_V1]{bad}[/PPS_RESEARCH_IMPORT_PACKAGE_V1]")["type"], "PPS_CHATGPT_RESEARCH_IMPORT_PACKAGE_V1")
+        malformed_message = self.invoke_research(malformed, "[PPS_RESEARCH_IMPORT_PACKAGE_V1]{bad}[/PPS_RESEARCH_IMPORT_PACKAGE_V1]")
+        self.assertEqual(malformed_message["type"], "PPS_CHATGPT_INTAKE_PACKAGE_V1")
+        self.assertIn("rejection", malformed_message)
         malformed.wait_for_timeout(50)
         self.assertEqual(malformed.evaluate("(__store.ppsFirefoxInboxQueue||[]).length"), 0)
         malformed.close()

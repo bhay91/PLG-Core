@@ -3,7 +3,6 @@ from __future__ import annotations
 from contextlib import closing
 import hashlib
 from pathlib import Path
-import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -11,6 +10,7 @@ from unittest.mock import patch
 from starlette.requests import Request
 
 import legacy_app
+from plg_core.database.migrations import run_migrations
 from fastapi import HTTPException
 from plg_core.requests.routes import list_requests, remove_request_from_inbox, request_detail
 from plg_core.requests.routes import router as requests_router
@@ -24,9 +24,14 @@ class InboxPhase2Tests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="pps-inbox-")
         self.db_path = Path(self.temp.name) / "inbox.db"
-        shutil.copy2(ROOT / "data" / "plg_core.db", self.db_path)
         self.patch = patch.object(legacy_app, "DB_PATH", self.db_path)
         self.patch.start()
+        legacy_app.initialize_database()
+        run_migrations()
+        with closing(legacy_app.get_connection()) as c:
+            customer_id = c.execute("INSERT INTO customers(customer_number,name,company,active) VALUES ('SYN-C-0001','Synthetic Inbox Customer','Synthetic Co',1)").lastrowid
+            c.execute("INSERT INTO machines(customer_id,machine_number,name,manufacturer,model,year,vin_pin_serial,active) VALUES (?,?,?,?,?,?,?,1)", (customer_id, 'SYN-M-0001', 'Synthetic Machine', 'Synthetic Make', 'SYN-420', '2026', 'SYN-PIN-0001'))
+            c.commit()
         self.token = "PHASE2-INBOX-UNIQUE"
         with closing(legacy_app.get_connection()) as c:
             job_id = c.execute(

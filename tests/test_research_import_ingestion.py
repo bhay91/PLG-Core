@@ -5,14 +5,17 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import tempfile
 import unittest
+from contextlib import closing
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import HTTPException
 from starlette.datastructures import UploadFile
+
+from reportlab.pdfgen import canvas
 
 import legacy_app
 from plg_core.database.migrations import run_migrations
@@ -24,7 +27,15 @@ from plg_core.research.branding import manufacturer_identity
 from jinja2 import Environment, FileSystemLoader
 
 ROOT = Path(__file__).resolve().parents[1]
-PDF_SOURCE = next((ROOT / "documents").rglob("*.pdf"))
+
+
+def pdf_bytes() -> bytes:
+    stream = BytesIO()
+    document = canvas.Canvas(stream)
+    document.drawString(36, 760, "Synthetic research import fixture")
+    document.save()
+    return stream.getvalue()
+
 
 
 class ResearchImportIngestionTests(unittest.TestCase):
@@ -34,8 +45,7 @@ class ResearchImportIngestionTests(unittest.TestCase):
         self.db_path = root / "test.db"
         self.upload_root = root / "uploads"
         self.upload_root.mkdir()
-        shutil.copy2(ROOT / "data" / "plg_core.db", self.db_path)
-        self.pdf_bytes = PDF_SOURCE.read_bytes()
+        self.pdf_bytes = pdf_bytes()
         self.pdf_name = "research-package.pdf"
         # The test PDF is copied to the expected name so filename matching is exercised.
         self.pdf_source_named = root / self.pdf_name
@@ -49,7 +59,17 @@ class ResearchImportIngestionTests(unittest.TestCase):
         ]
         for item in self.patches:
             item.start()
+        legacy_app.initialize_database()
         run_migrations()
+        with closing(legacy_app.get_connection()) as connection:
+            connection.execute(
+                """INSERT INTO jobs (
+                       job_number, created_date, customer, company, machine, pin_serial
+                   ) VALUES (?, ?, ?, ?, ?, ?)""",
+                ("PPS-J-0001", "2026-01-01", "Synthetic Customer",
+                 "Synthetic Co", "Synthetic Machine", "TEST-PIN-001"),
+            )
+            connection.commit()
 
     def tearDown(self):
         for item in reversed(self.patches):
@@ -61,7 +81,7 @@ class ResearchImportIngestionTests(unittest.TestCase):
             "package_id": "RESEARCH-IMPORT-001",
             "source_pdf": {"filename": self.pdf_name, "sha256": hashlib.sha256(self.pdf_bytes).hexdigest()},
             "target": {"mode": "EXISTING_JOB", "job_number": "PPS-J-0001"},
-            "customer": {"name": "Bobby", "company": "Seals Construction"},
+            "customer": {"name": "Synthetic Customer", "company": "Synthetic Co"},
             "machine": {"reference": "truck", "manufacturer": "International", "model": "5600i", "asset_type": "vehicle", "identifiers": []},
             "requested_needs": [{"reference": "need-1", "original_wording": "Brake part", "quantity": 2, "machine_reference": "truck"}],
             "research_options": [],

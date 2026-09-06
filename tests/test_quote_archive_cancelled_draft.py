@@ -1,4 +1,3 @@
-import shutil
 import tempfile
 import unittest
 from contextlib import closing
@@ -9,18 +8,29 @@ from fastapi import HTTPException
 
 import legacy_app
 from plg_core.dashboard.service import get_work_queue_data
-
-
-ROOT = Path(__file__).resolve().parents[1]
+from plg_core.database.migrations import run_migrations
 
 
 class CancelledDraftQuoteArchiveTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="pps-quote-archive-")
         self.db = Path(self.temp.name) / "test.db"
-        shutil.copy2(ROOT / "data" / "plg_core.db", self.db)
         self.patch = patch.object(legacy_app, "DB_PATH", self.db)
         self.patch.start()
+        legacy_app.initialize_database()
+        run_migrations()
+        with closing(legacy_app.get_connection()) as c:
+            customer_id = c.execute("INSERT INTO customers(customer_number,name,company,active) VALUES ('SYN-Q-C','Synthetic Quote Customer','Synthetic Quote Co',1)").lastrowid
+            machine_id = c.execute("INSERT INTO machines(customer_id,machine_number,name,manufacturer,model,vin_pin_serial,active) VALUES (?,?,?,?,?,?,1)", (customer_id, 'SYN-Q-M', 'Synthetic Quote Machine', 'Synthetic Make', 'SYN-1', 'SYN-SERIAL-1')).lastrowid
+            c.execute("INSERT INTO jobs(id,job_number,created_date,customer,company,customer_id,machine_id,status,is_archived,cancelled_at) VALUES (10,'SYN-Q-J','2026-01-01','Synthetic Quote Customer','Synthetic Quote Co',?,?, 'REQUESTED',1,DATE('now'))", (customer_id, machine_id))
+            for revision_id in (12, 13):
+                c.execute("INSERT INTO work_revisions(id,job_id,revision_number,state,reason) VALUES (?,?,?,?,?)", (revision_id, 10, revision_id - 11, 'COMMITTED', 'Synthetic lineage'))
+            c.execute("INSERT INTO quotes(id,quote_number,job_id,quote_date,status,work_revision_id,is_current) VALUES (10,'PPS-Q-0010',10,DATE('now'),'DRAFT',12,1)")
+            c.execute("INSERT INTO quotes(id,quote_number,job_id,quote_date,status,is_current) VALUES (11,'SYN-Q-DRAFT',10,DATE('now'),'DRAFT',1)")
+            c.execute("INSERT INTO jobs(id,job_number,created_date,customer,company,customer_id,machine_id,status) VALUES (11,'SYN-Q-J2','2026-01-01','Synthetic Quote Customer','Synthetic Quote Co',?,?, 'REQUESTED')", (customer_id, machine_id))
+            c.execute("UPDATE quotes SET job_id=11 WHERE id=11")
+            c.execute("INSERT INTO invoices(id,invoice_number,quote_id,job_id,invoice_date,status,customer_total,balance_due) VALUES (10,'SYN-INV-0010',11,10,DATE('now'),'UNPAID',100,100)")
+            c.commit()
 
     def tearDown(self):
         self.patch.stop()

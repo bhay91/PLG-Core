@@ -4,7 +4,6 @@ import asyncio
 from contextlib import closing
 from io import BytesIO
 from pathlib import Path
-import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -14,14 +13,11 @@ from reportlab.pdfgen import canvas
 from starlette.datastructures import Headers
 
 import legacy_app
-from plg_core.database.migrations import run_migrations
 from plg_core.intake import attachments as attachment_service
+from plg_core.database.migrations import run_migrations
 from plg_core.intake.attachments import store_proposal_images, validate_attachments
 from plg_core.intake.documents import MAX_EXTRACTED_CHARACTERS, MAX_PDF_PAGES, classify_document
 from plg_core.intake.service import confirm_proposal, create_proposal, load_proposal
-
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def pdf_bytes(lines: list[str], *, pages: int = 1, password: str = "") -> bytes:
@@ -52,7 +48,6 @@ class SmartIntake2PDFMatchingTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="pps-intake-2-")
         root = Path(self.temp.name)
         self.db_path = root / "test.db"
-        shutil.copy2(ROOT / "data" / "plg_core.db", self.db_path)
         self.proposal_root = root / "proposal"
         self.request_root = root / "request"
         self.patches = [
@@ -62,12 +57,12 @@ class SmartIntake2PDFMatchingTests(unittest.TestCase):
         ]
         for item in self.patches:
             item.start()
+        legacy_app.initialize_database()
         run_migrations()
         with closing(self.connection()) as connection:
-            connection.execute(
-                "INSERT INTO customers(customer_number,name,company,active) "
-                "VALUES ('PDF-MATCH-C','Jordan Example','Example Equipment Development',1)"
-            )
+            customer_id = connection.execute("INSERT INTO customers(customer_number,name,company,address,active) VALUES ('SYN-PDF-C','Jordan Example','Example Equipment Development','312 Fenimore Ave\\nUniondale, FL 11553',1)").lastrowid
+            job_id = connection.execute("INSERT INTO jobs(job_number,created_date,customer,company,customer_id,status) VALUES ('SYN-PDF-J','2026-01-01','Jordan Example','Example Equipment Development',?,'REQUESTED')", (customer_id,)).lastrowid
+            connection.execute("INSERT INTO quotes(quote_number,job_id,quote_date,status,customer_total,supplier_total,profit_total,is_current) VALUES ('PPS-Q-9000',?,DATE('now'),'DRAFT',0,0,0,1)", (job_id,))
             connection.commit()
 
     def tearDown(self):

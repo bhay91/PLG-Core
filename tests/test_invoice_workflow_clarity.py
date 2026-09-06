@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -26,7 +25,6 @@ class InvoiceWorkflowClarityTests(unittest.TestCase):
         self.db_path = root / "test.db"
         self.document_root = root / "documents"
         self.document_root.mkdir()
-        shutil.copy2(ROOT / "data" / "plg_core.db", self.db_path)
         self.patches = [
             patch.object(legacy_app, "DB_PATH", self.db_path),
             patch.object(legacy_app, "DOCUMENTS_DIR", self.document_root),
@@ -34,7 +32,22 @@ class InvoiceWorkflowClarityTests(unittest.TestCase):
         ]
         for item in self.patches:
             item.start()
+        legacy_app.initialize_database()
         run_migrations()
+        self._seed_fixture()
+
+    def _seed_fixture(self):
+        with legacy_app.get_connection() as connection:
+            for job_id, number in ((7, "PPS-J-0007"), (12, "PPS-J-0012")):
+                connection.execute("INSERT INTO jobs(id,job_number,created_date,customer,company,status) VALUES (?,?,?,?,?,'INVOICED')", (job_id, number, "2026-01-01", "Synthetic Invoice Customer", "Synthetic Invoice Co"))
+            for quote_id, number, job_id in ((7, "SYN-Q-0007", 7), (12, "SYN-Q-0012", 12)):
+                connection.execute("INSERT INTO quotes(id,quote_number,job_id,quote_date,status) VALUES (?,?,?,DATE('now'),'ISSUED')", (quote_id, number, job_id))
+            for invoice_id, number, job_id, status in ((8, "PPS-INV-0009", 7, "PAID"), (9, "PPS-INV-0012", 12, "PAID")):
+                connection.execute("INSERT INTO invoices(id,invoice_number,quote_id,job_id,invoice_date,status,customer_total,balance_due,bill_to_name_snapshot,bill_to_company_snapshot) VALUES (?,?,?,?,DATE('now'),?,?,?, ?,?)", (invoice_id, number, job_id, job_id, status, 100.0, 0.0, "Synthetic Invoice Customer", "Synthetic Invoice Co"))
+            connection.execute("INSERT INTO invoice_documents_manifest(invoice_id,document_kind,audience,invoice_status,file_path,sha256) VALUES (8,'CUSTOMER_INVOICE','CUSTOMER','PAID','missing-synthetic-invoice.pdf','bad')")
+            for po_id in (1, 2):
+                connection.execute("INSERT INTO supplier_orders(id,po_number,job_id,invoice_id,supplier_name,status,parts_total,order_total) VALUES (?,?,?,?,?,?,?,?)", (po_id, f"SYN-PO-{po_id}", 7, 8, "Synthetic Supplier", "PLACED", 50.0, 50.0))
+            connection.commit()
 
     def tearDown(self):
         for item in reversed(self.patches):

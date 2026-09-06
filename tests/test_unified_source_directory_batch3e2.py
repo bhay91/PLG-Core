@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from contextlib import closing
 from pathlib import Path
-import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -13,17 +12,26 @@ from plg_core.sources.routes import add_job_source
 from plg_core.sources.service import create_source, list_sources_for_context
 
 
-ROOT = Path(__file__).resolve().parents[1]
-
-
 class UnifiedSourceDirectoryBatch3E2Tests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="pps-3e2-")
         self.db_path = Path(self.temp.name) / "test.db"
-        shutil.copy2(ROOT / "data" / "plg_core.db", self.db_path)
         self.db_patch = patch.object(legacy_app, "DB_PATH", self.db_path)
         self.db_patch.start()
+        legacy_app.initialize_database()
         run_migrations()
+        with closing(self.connection()) as connection:
+            rows = [
+                ('Amazon','GLOBAL','automotive',50), ('eBay','GLOBAL','automotive',40),
+                ('Miami Star','GLOBAL','machine',60), ('OEM Parts Online','GLOBAL','automotive',50),
+                ('FCP Euro','UK','automotive',70), ('John Deere Parts Catalog','JDM','machine',90),
+                ('CAT SIS','UNKNOWN','Heavy Equipment',90), ('Worldpac','GLOBAL','automotive',80),
+                ('7zap','GLOBAL','automotive',70), ('General Research','GLOBAL','',0),
+            ]
+            for display_name, market, category, priority in rows:
+                if not connection.execute("SELECT 1 FROM connector_profiles WHERE display_name=?", (display_name,)).fetchone():
+                    connection.execute("INSERT INTO connector_profiles(connector_key,display_name,category,trust_level,launch_url,connector_type,is_enabled,sort_order,manufacturer_applicability,asset_category_applicability,market_applicability,source_priority,is_default,source_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (display_name.lower().replace(' ', '-'), display_name, 'Synthetic', 'NEEDS_REVIEW', 'https://example.test/'+display_name.lower().replace(' ', '-'), 'CATALOG', 1, 0, 'John Deere' if display_name == 'John Deere Parts Catalog' else ('CAT' if display_name == 'CAT SIS' else ''), category, market, priority, 1, 'SUPPLIER'))
+            connection.commit()
 
     def tearDown(self):
         self.db_patch.stop()

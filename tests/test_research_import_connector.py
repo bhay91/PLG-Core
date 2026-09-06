@@ -3,8 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 from contextlib import closing
+from io import BytesIO
 from pathlib import Path
 import tempfile
 import unittest
@@ -12,6 +12,8 @@ from unittest.mock import patch
 
 import anyio
 import httpx2
+
+from reportlab.pdfgen import canvas
 
 import legacy_app
 from plg_core.application import app
@@ -21,8 +23,17 @@ from plg_core.requests.extension_auth import FIREFOX_RESEARCH_IMPORT_CREATE_SCOP
 
 
 TOKEN = "research-import-connector-test-token"
-PDF_SOURCE = next((Path(__file__).resolve().parents[1] / "documents").rglob("*.pdf"))
-PDF_BYTES = PDF_SOURCE.read_bytes()
+
+
+def pdf_bytes() -> bytes:
+    stream = BytesIO()
+    document = canvas.Canvas(stream)
+    document.drawString(36, 760, "Synthetic research import fixture")
+    document.save()
+    return stream.getvalue()
+
+
+PDF_BYTES = pdf_bytes()
 
 
 class ResearchImportConnectorTests(unittest.TestCase):
@@ -34,8 +45,6 @@ class ResearchImportConnectorTests(unittest.TestCase):
         self.document_root = root / "documents"
         self.upload_root.mkdir()
         self.document_root.mkdir()
-        # Disposable copy only; never open the repository DB for writes.
-        shutil.copy2(Path(__file__).resolve().parents[1] / "data" / "plg_core.db", self.db_path)
         self.patches = [
             patch.object(legacy_app, "DB_PATH", self.db_path),
             patch.object(legacy_app, "UPLOADS_DIR", self.upload_root),
@@ -50,7 +59,17 @@ class ResearchImportConnectorTests(unittest.TestCase):
         import plg_core.intake.attachments as attachments
         self.attachment_patch = patch.object(attachments, "UPLOAD_ROOT", self.upload_root / "intake-proposals")
         self.attachment_patch.start()
+        legacy_app.initialize_database()
         run_migrations()
+        with closing(legacy_app.get_connection()) as connection:
+            connection.execute(
+                """INSERT INTO jobs (
+                       job_number, created_date, customer, company, machine, pin_serial
+                   ) VALUES (?, ?, ?, ?, ?, ?)""",
+                ("PPS-J-0001", "2026-01-01", "Synthetic Customer",
+                 "Synthetic Co", "Synthetic Machine", "TEST-PIN-001"),
+            )
+            connection.commit()
 
     def tearDown(self):
         self.attachment_patch.stop()
