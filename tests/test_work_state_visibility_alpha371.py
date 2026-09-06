@@ -61,7 +61,7 @@ class WorkStateVisibilityAlpha371Tests(unittest.TestCase):
 
     def test_operator_templates_show_summary_and_next_action(self):
         intake = (ROOT / "templates/smart_intake_proposal.html").read_text()
-        command = (ROOT / "templates/job_command_center.html").read_text()
+        command = (ROOT / "templates/job_command_center_advanced.html").read_text()
         self.assertIn("What PPS will create or reuse", intake)
         self.assertIn("Missing important information", intake)
         self.assertIn("item.next_action", command)

@@ -26,7 +26,7 @@ class GlobalDeleteArchivePolicyTests(unittest.TestCase):
             "templates/requests.html": ("remove_url", "data-archive-delete"),
             "templates/request_detail.html": ("/archive", "data-archive-delete"),
             "templates/edit_job.html": ("/archive", "data-archive-delete"),
-            "templates/job_command_center.html": ('value="ARCHIVED"', "data-archive-delete"),
+            "templates/job_command_center_advanced.html": ('value="ARCHIVED"', "data-archive-delete"),
             "templates/quote_documents.html": ("/archive", "data-archive-delete"),
             "templates/connectors.html": ("/archive", "data-archive-delete"),
             "templates/customers.html": ("/deactivate", "data-archive-delete"),
@@ -55,7 +55,7 @@ class GlobalDeleteArchivePolicyTests(unittest.TestCase):
         self.assertIn("Mark Delivered", self.read("templates/job_delivery.html"))
 
     def test_specialized_research_result_removal_remains_specialized(self):
-        source = self.read("templates/job_command_center.html")
+        source = self.read("templates/job_command_center_advanced.html")
         self.assertIn("Remove Result", source)
         self.assertIn("Remove this identified result?", source)
         self.assertIn("item.research_state == 'RESEARCH_RESULT'", source)

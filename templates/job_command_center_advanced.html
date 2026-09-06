@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Advanced · {{ job.job_number }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/job_workspace.css?v=7">
+<main class="jcc" data-job-workspace>
+<header class="jcc-panel jcc-header"><a class="jcc-back" href="/jobs/{{ job.id }}/basket">← Back to Job</a><p class="jcc-eyebrow">ADVANCED</p><h1>{{ job.job_number }}</h1><p>{{ job.customer }}{% if job.machine %} · {{ job.machine }}{% endif %}</p></header>
+<section class="jcc-panel"><h2>Technical</h2><div class="jcc-card-grid"><a class="jcc-link-card" href="#identifiers">Identifiers</a><a class="jcc-link-card" href="#research">Source / research details</a></div><details id="identifiers"><summary>Identifiers</summary><div class="jcc-detail-body"><p>Job ID: {{ job.id }}</p><p>VIN / PIN / serial: {{ job.pin_serial or 'Not recorded' }}</p></div></details><details id="research"><summary>Source and research details</summary><div class="jcc-detail-body"><a class="button ghost" href="/jobs/{{ job.id }}/basket?view=legacy">Open legacy research tools</a></div></details></section>
+<section class="jcc-panel"><h2>Commercial history</h2><div class="jcc-card-grid"><a class="jcc-link-card" href="#quote-history">Quote revisions</a><a class="jcc-link-card" href="/jobs/{{ job.id }}/basket#quote">Current pricing</a></div><details id="quote-history"><summary>Quote revisions and history</summary><div class="jcc-detail-body">{% for quote in quote_history %}<p><strong>{{ quote.quote_number }}</strong> · {{ quote.status|replace('_',' ')|title }}</p>{% else %}<p>No quote history.</p>{% endfor %}</div></details></section>
+<section class="jcc-panel"><h2>Fulfillment history</h2><div class="jcc-card-grid"><a class="jcc-link-card" href="/jobs/{{ job.id }}/basket#orders">Orders and receipts</a><a class="jcc-link-card" href="/jobs/{{ job.id }}/delivery">Deliveries</a></div></section>
+<section class="jcc-panel"><h2>Audit</h2><details><summary>Activity and raw history</summary><div class="jcc-detail-body"><a class="button ghost" href="/jobs/{{ job.id }}/basket#activity">Readable activity</a><a class="button ghost" href="/jobs/{{ job.id }}/basket?view=legacy#operational-activity">Raw history</a></div></details></section>
+<section class="jcc-panel"><h2>Legacy</h2><p class="jcc-muted">Older corrective tools remain available when a historical record requires them.</p><a class="button ghost" href="/jobs/{{ job.id }}/basket?view=legacy">Open legacy tools</a></section>
+</main>
+{% endblock %}

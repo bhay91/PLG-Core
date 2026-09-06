@@ -232,7 +232,7 @@ class SafeDeleteControlsTests(unittest.TestCase):
     def test_record_headers_link_to_governed_delete_review_only(self):
         surfaces = (
             ("job_detail.html", '/jobs/{{ job.id }}/delete-review'),
-            ("job_command_center.html", '/jobs/{{ job.id }}/delete-review'),
+            ("job_command_center_advanced.html", '/jobs/{{ job.id }}/delete-review'),
             ("request_detail.html", '/requests/{{ record.id }}/delete-review'),
         )
         for template_name, review_route in surfaces:
@@ -245,7 +245,7 @@ class SafeDeleteControlsTests(unittest.TestCase):
 
         job_header = (ROOT / "templates" / "job_detail.html").read_text().split("</section>", 1)[0]
         request_header = (ROOT / "templates" / "request_detail.html").read_text().split("</section>", 1)[0]
-        command_source = (ROOT / "templates" / "job_command_center.html").read_text()
+        command_source = (ROOT / "templates" / "job_command_center_advanced.html").read_text()
         command_header = command_source.split('id="job-overview"', 1)[1].split("</section>", 1)[0]
         for header in (job_header, request_header, command_header):
             self.assertNotIn('action="/jobs/{{ job.id }}/delete"', header)

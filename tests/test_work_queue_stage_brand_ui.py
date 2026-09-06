@@ -161,7 +161,7 @@ class WorkQueueStageBrandUiTests(unittest.TestCase):
         self.assertNotIn(b"Jimmy", deere.read_bytes())
 
     def test_templates_compile_and_use_shared_component(self):
-        for name in ("dashboard.html", "machines.html", "machine_detail.html", "job_command_center.html",
+        for name in ("dashboard.html", "machines.html", "machine_detail.html", "job_command_center_advanced.html",
                      "smart_intake_proposal.html", "quotes.html", "quote_documents.html", "invoices.html",
                      "invoice_documents.html", "job_delivery.html"):
             legacy_app.templates.env.get_template(name)

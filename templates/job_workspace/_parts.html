@@ -1,0 +1,37 @@
+<section class="jcc-panel" id="parts" aria-labelledby="parts-title">
+<div class="jcc-section-heading"><div><p class="jcc-eyebrow">What the customer needs</p><h2 id="parts-title">Parts</h2></div><span>{{ parts|length }} requested</span></div>
+{% if work_editable %}<details class="jcc-quick-add" open><summary>Quick Add · paste part information</summary><p class="jcc-muted">Paste notes, supplier messages, or email. Review the preview before adding anything.</p><textarea id="quick-add-input" rows="5" placeholder="Hydraulic pump\nFriday Parts\nPN 705-51-20440\ncost 420\nsell 550\nin stock"></textarea><button type="button" class="button" id="quick-add-preview-button">Preview</button><div id="quick-add-preview" class="jcc-quick-preview" hidden></div></details>{% endif %}
+{% if not work_editable %}<p class="jcc-muted">Saved work is protected. Options remain available to view. Use Quote to review changes.</p>{% endif %}
+<div class="jcc-needs-list" data-requested-needs>
+{% for part in parts %}
+<article class="jcc-part jcc-need-workspace" id="part-{{ part.id }}" data-requested-part="{{ part.id }}" data-need-workspace data-requested-need-id="{{ part.id }}">
+<header class="jcc-need-header"><div><p class="jcc-eyebrow">Requested part</p><h3>{{ part.wording }}</h3>{% if part.asset %}<p class="jcc-muted">{{ part.asset.manufacturer }} {{ part.asset.model or part.asset.name }}</p>{% endif %}</div><strong class="jcc-badge">{{ part.status_label }}</strong></header>
+<p class="jcc-muted">Quantity not recorded</p>
+{% if part.notes %}<details><summary>Requested details</summary><p class="jcc-notes">{{ part.notes }}</p></details>{% endif %}
+{% if part.selected_options %}
+<div class="jcc-selected" aria-label="Selected options for {{ part.wording }}">
+{% for option in part.selected_options %}<div><strong>{{ option.supplier_name or 'Supplier not recorded' }}</strong><p>{{ option.requested_description }}</p><p>{% if option.supplier_unit_cost is not none %}{{ option.currency }} {{ '%.2f'|format(option.supplier_unit_cost) }} each{% else %}Cost not recorded{% endif %} · {{ option.availability or 'Stock unknown' }}</p><small>Option quantity {{ option.quantity }}{% if option.shared %} · Shared across requested parts{% endif %}</small></div>{% endfor %}</div>
+<div class="jcc-actions"><a class="button ghost" href="#options-{{ part.id }}" data-open-details>View Options</a><a class="button ghost" href="#option-{{ part.id }}-{{ part.selected_options[0].id }}" data-open-details>View Details</a></div>
+{% if work_editable %}<p class="jcc-muted">To change a selection, <a href="/jobs/{{ job.id }}/basket?view=advanced{% if part.job_asset_id %}&amp;asset_id={{ part.job_asset_id }}{% endif %}#parts-ready">review selected items</a>. Existing selections will not be replaced automatically.</p>{% endif %}
+{% elif part.suggested %}
+<p>Suggested: {{ part.suggested.currency }} {{ '%.2f'|format(part.suggested.supplier_unit_cost) }} each · In stock</p><p class="jcc-muted">Lowest listed in-stock price with verified compatibility; shipping excluded.</p>{{ use_option(part.suggested, part) }}
+{% endif %}
+{% if part.ambiguous %}<p class="jcc-warning">This part has shared items or multiple selections. Review quantities before quoting; all existing links are preserved.</p>{% endif %}
+<div class="jcc-actions">
+{% if work_editable %}<a class="button{% if part.options %} ghost{% endif %}" href="/jobs/{{ job.id }}/basket?need_id={{ part.id }}#find-part">Find Part</a><a class="button ghost" href="#add-option-{{ part.id }}" data-open-details>Add Option</a>{% endif %}
+{% if part.options and not part.selected_options %}<a class="button ghost" href="#options-{{ part.id }}" data-open-details>View Options</a>{% endif %}
+</div>
+{% if part.options %}<details id="options-{{ part.id }}" class="jcc-options"><summary>Options · {{ part.options|length }}</summary><div class="jcc-option-list">{% for option in part.options %}{% include "job_workspace/_option.html" %}{% endfor %}</div></details>{% endif %}
+{% if work_editable %}{% include "job_workspace/_add_option.html" %}{% endif %}
+{% if focused_part and focused_part.id == part.id and work_editable %}{% include "job_workspace/_find.html" %}{% endif %}
+</article>
+{% else %}<p>Add what the customer needs to begin.</p>{% endfor %}
+</div>
+{% if work_editable %}<details id="add-part"><summary>Add Requested Part</summary>
+<form method="post" action="/jobs/{{ job.id }}/needs" data-jcc-form data-return="parts" class="jcc-form">{{ tokens() }}
+<label>What is needed?<input name="wording" required></label><label>Notes<textarea name="notes"></textarea></label>
+<label>Machine / vehicle<select name="job_asset_id"><option value="">No equipment context</option>{% for asset in operational_snapshot.assets %}<option value="{{ asset.id }}">{{ asset.manufacturer }} {{ asset.model or asset.name }}</option>{% endfor %}</select></label>
+<button class="button" type="submit">Add Part</button></form></details>{% endif %}
+{% if other_options %}<div class="jcc-part" id="other-items"><h3>Other job items</h3><p class="jcc-muted">These items have no link to a visible requested part. Existing details and selections are preserved.</p>{% set part = none %}{% for option in other_options %}{% include "job_workspace/_option.html" %}{% endfor %}</div>{% endif %}
+{% if legacy_parts %}<details><summary>Earlier saved items · {{ legacy_parts|length }}</summary><div class="jcc-detail-body">{% for item in legacy_parts %}<p>{{ item.requested_description }} · Saved quantity {{ item.quantity }}</p>{% endfor %}<a href="/jobs/{{ job.id }}">View earlier job records</a></div></details>{% endif %}
+</section>

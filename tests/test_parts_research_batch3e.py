@@ -40,6 +40,11 @@ from plg_core.verification.routes import start_asset_research_route
 from plg_core.sources.routes import open_research_source
 
 
+# Retain the prior research/fulfillment UI contract on Advanced tools.
+# The default requested-part workspace has its own rendered and browser tests.
+from functools import partial
+basket_page = partial(basket_page, view="advanced")
+
 ROOT = Path(__file__).resolve().parents[1]
 
 

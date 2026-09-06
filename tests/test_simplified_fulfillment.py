@@ -23,6 +23,11 @@ from plg_core.jobs.fulfillment import (
 )
 
 
+# Retain the prior research/fulfillment UI contract on Advanced tools.
+# The default requested-part workspace has its own rendered and browser tests.
+from functools import partial
+basket_page = partial(basket_page, view="advanced")
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -213,7 +218,7 @@ class SimplifiedFulfillmentTests(unittest.TestCase):
         self.assertEqual(self._source_state(), self.source_before)
 
     def test_command_center_uses_simple_item_checklist(self):
-        source = (ROOT / "templates" / "job_command_center.html").read_text()
+        source = (ROOT / "templates" / "job_command_center_advanced.html").read_text()
         for text in ("Fulfillment", "Create Supplier Order", "Received", "Delivered", "fulfillment-progress"):
             self.assertIn(text, source)
 
@@ -231,7 +236,7 @@ class SimplifiedFulfillmentTests(unittest.TestCase):
         self.assertIn(b"Ordered 0/0", response.body)
 
     def test_command_center_prioritizes_summary_and_collapses_secondary_sections(self):
-        source = (ROOT / "templates" / "job_command_center.html").read_text()
+        source = (ROOT / "templates" / "job_command_center_advanced.html").read_text()
         self.assertLess(source.index("job-primary-summary"), source.index('id="fulfillment-checklist"'))
         self.assertLess(source.index('id="fulfillment-checklist"'), source.index("Supplier Orders ("))
         for summary in (

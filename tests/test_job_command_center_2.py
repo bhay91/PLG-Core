@@ -180,7 +180,7 @@ class JobCommandCenter2Tests(unittest.TestCase):
         self.assertEqual(len(result['receiving_exceptions']), 1)
 
     def test_template_has_operational_panels_draft_warning_and_responsive_contract(self):
-        source=(ROOT/'templates/job_command_center.html').read_text()
+        source=(ROOT/'templates/job_command_center_advanced.html').read_text()
         for value in ('Job Operational Summary','NEXT ACTION','Financial State','Supplier Orders','Supplier-order movement totals','Documents','Recent Activity','UNQUOTED / DRAFT WORK','These are current editable basket values and are not the authoritative issued-invoice/accounting totals.'):
             self.assertIn(value,source)
         self.assertIn('{% set operator_stage = operational_snapshot.workflow.stage %}',source)
@@ -189,7 +189,7 @@ class JobCommandCenter2Tests(unittest.TestCase):
         self.assertIn('.job-ops-grid{grid-template-columns:1fr}',source)
 
     def test_top_summary_uses_only_authoritative_operational_workflow(self):
-        source = (ROOT / 'templates' / 'job_command_center.html').read_text()
+        source = (ROOT / 'templates' / 'job_command_center_advanced.html').read_text()
         start = source.index('<section class="cc-card job-bar job-command-header"')
         job_bar = source[start:source.index('</section>', start)]
         self.assertIn('{{ operator_stage }}', job_bar)
@@ -264,7 +264,7 @@ class JobCommandCenter2Tests(unittest.TestCase):
         self.assertEqual(quote_action['action_method'], 'POST')
 
     def test_jcc_renders_get_links_and_post_forms_without_getting_post_routes(self):
-        source = (ROOT / 'templates' / 'job_command_center.html').read_text()
+        source = (ROOT / 'templates' / 'job_command_center_advanced.html').read_text()
         self.assertIn("operational_snapshot.workflow.action_method == 'POST'", source)
         self.assertIn('method="post" action="{{ operational_snapshot.workflow.next_url }}"', source)
         self.assertIn('name="csrf_token" value="{{ csrf_token }}"', source)

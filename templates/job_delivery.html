@@ -2,7 +2,8 @@
 {% block title %}Delivery · {{ job.job_number }}{% endblock %}
 
 {% block content %}
-<div class="delivery-desk">
+<link rel="stylesheet" href="/static/job_workspace.css?v=7">
+<div class="delivery-desk jcc">
   <section class="workspace-heading delivery-heading">
     <div><p class="eyebrow">CUSTOMER DELIVERY</p><h1>{{ job.job_number }}</h1><p>{{ job.customer }}{% if job.company %} · {{ job.company }}{% endif %}</p></div>
     <a class="button ghost" href="/jobs/{{ job.id }}/basket">Back to Job</a>

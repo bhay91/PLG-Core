@@ -1,0 +1,12 @@
+<section class="jcc-part" id="find-part" tabindex="-1"><a href="#part-{{ focused_part.id }}">← {{ focused_part.wording }}</a>
+<h3>Find Part</h3><p>{{ focused_part.wording }}{% if focused_part.asset %} · {{ focused_part.asset.manufacturer }} {{ focused_part.asset.model }}{% endif %}</p>
+<a class="button ghost" href="{{ search_url }}" target="_blank" rel="noopener noreferrer">Search Web</a>
+<p>Open a catalog or supplier website, then add the offer you find. This part stays selected when you return.</p>
+{% if destinations %}<div class="jcc-option-list">{% for destination in destinations %}<form method="post" action="/jobs/{{ job.id }}/assets/{{ focused_part.job_asset_id }}/research" target="_blank" class="jcc-form" data-launch-form>
+{{ tokens() }}<input type="hidden" name="requested_need_id" value="{{ focused_part.id }}"><input type="hidden" name="connector_profile_id" value="{{ destination.id }}"><button class="button ghost" type="submit">Open {{ destination.display_name }}</button></form>{% endfor %}</div>{% endif %}
+{% if focused_part.asset %}<form method="post" action="/jobs/{{ job.id }}/assets/{{ focused_part.job_asset_id }}/research/quick-open" target="_blank" class="jcc-form" data-launch-form>
+{{ tokens() }}<input type="hidden" name="requested_need_id" value="{{ focused_part.id }}"><label>Supplier or catalog website<input name="url" type="url" required placeholder="https://" inputmode="url"></label><button class="button ghost" type="submit">Open Website</button></form>
+{% else %}<p class="jcc-muted">Equipment context is optional. Open your preferred supplier website and record the offer below.</p>{% endif %}
+<a class="button" href="#add-option-{{ focused_part.id }}" data-open-details>Add Option</a>
+<details data-advanced><summary>Research Details</summary><p>Website launches with equipment context preserve the existing capture context internally.</p><a href="/jobs/{{ job.id }}/basket?view=advanced{% if focused_part.job_asset_id %}&amp;asset_id={{ focused_part.job_asset_id }}{% endif %}&amp;need_id={{ focused_part.id }}#machine-workspace">Advanced research tools</a></details>
+</section>

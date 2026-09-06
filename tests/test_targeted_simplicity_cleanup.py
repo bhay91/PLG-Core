@@ -17,7 +17,7 @@ def test_manual_intake_actions_follow_numbered_sections():
 
 
 def test_job_summary_keeps_primary_action_and_demotes_need_research():
-    template = source("templates/job_command_center.html")
+    template = source("templates/job_command_center_advanced.html")
 
     assert "{{ operational_snapshot.workflow.next_action }}" in template
     assert 'href="{{ operational_snapshot.workflow.next_url }}"' in template

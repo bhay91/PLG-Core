@@ -13,7 +13,7 @@ class SupplierActualCostPresentationTests(unittest.TestCase):
     def setUpClass(cls):
         cls.template = (ROOT / "templates" / "supplier_order_detail.html").read_text()
         cls.directory_template = (ROOT / "templates" / "supplier_orders.html").read_text()
-        cls.jcc_template = (ROOT / "templates" / "job_command_center.html").read_text()
+        cls.jcc_template = (ROOT / "templates" / "job_command_center_advanced.html").read_text()
         cls.erp_css = (ROOT / "static" / "pps_erp.css").read_text()
         cls.css = (ROOT / "static" / "app.css").read_text()
         cls.invoice_template = (ROOT / "templates" / "invoice_documents.html").read_text()

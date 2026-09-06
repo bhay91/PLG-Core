@@ -3133,6 +3133,7 @@ def purchasing_order_detail(
     request: Request,
     order_id: int,
     receipt_id: int | None = None,
+    view: str = "",
 ):
     from plg_core.supply.service import get_order, get_receipt, get_purchasing_operational_snapshot
 
@@ -3157,7 +3158,7 @@ def purchasing_order_detail(
 
     response = templates.TemplateResponse(
         request=request,
-        name="supplier_order_detail.html",
+        name="supplier_order_detail.html" if view == "legacy" else "supplier_order_simple.html",
         context={
             "order": order,
             "operational_snapshot": operational_snapshot,
@@ -4082,7 +4083,7 @@ def invoice_documents(request: Request, invoice_id: int):
 
     return templates.TemplateResponse(
         request=request,
-        name="invoice_documents.html",
+        name="invoice_documents.html" if request.query_params.get("view") == "legacy" else "invoice_documents_simple.html",
         context={
             "invoice": invoice,
             "items": items,

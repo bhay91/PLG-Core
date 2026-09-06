@@ -20,6 +20,10 @@ from plg_core.requests.routes import create_job_from_request
 from plg_core.research.service import create_manual_research_result, create_requested_need
 
 
+# Previous machine-workspace contracts remain on Advanced tools.
+from functools import partial
+basket_page = partial(basket_page, view="advanced")
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -159,7 +163,7 @@ class JobWorkflowSimplificationBatch3C1Tests(unittest.TestCase):
         self.assertEqual(zero.context["job_summary"]["machine_count"], 0)
 
     def test_template_keeps_original_request_secondary_and_guides_sourcing(self):
-        source = (ROOT / "templates" / "job_command_center.html").read_text()
+        source = (ROOT / "templates" / "job_command_center_advanced.html").read_text()
         self.assertIn("View Original Customer Request", source)
         self.assertIn("machine-need-list", source)
         self.assertIn("RESEARCH SOURCE", source)

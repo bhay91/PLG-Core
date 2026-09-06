@@ -4,7 +4,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TEMPLATE = ROOT / "templates" / "job_command_center.html"
+TEMPLATE = ROOT / "templates" / "job_command_center_advanced.html"
 
 
 class JobCommandCenterOperatorAlpha38Tests(unittest.TestCase):

@@ -134,7 +134,11 @@ def basket_page(
     job_id: int,
     asset_id: int | None = None,
     need_id: int | None = None,
+    view: str = "",
 ):
+    if view not in {"advanced", "legacy"}:
+        from plg_core.jobs.workspace import render_workspace
+        return render_workspace(request, job_id, need_id=need_id)
     basket = get_basket(job_id)
 
     with closing(get_connection()) as connection:
@@ -550,7 +554,7 @@ def basket_page(
     csrf_token = csrf_token_for_request(request)
     response = templates.TemplateResponse(
         request=request,
-        name="job_command_center.html",
+        name="job_command_center_legacy.html" if view == "legacy" else "job_command_center_advanced.html",
         context={
             "timeline": timeline,
             "job": job,
@@ -1535,6 +1539,33 @@ def update_revenue_adjustments(
         status_code=303,
     )
 
+@router.get("/jobs/{job_id}/shipping", response_class=HTMLResponse)
+def job_shipping_page(request: Request, job_id: int):
+    from plg_core.jobs.workspace import build_workspace
+    with closing(get_connection()) as connection:
+        model = build_workspace(connection, job_id)
+        sources = [dict(row) for row in connection.execute("SELECT id,source_name,shipping_total,currency FROM basket_sources WHERE basket_id=? ORDER BY id", (model["basket"]["id"] or 0,))]
+    from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
+    token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(request=request, name="job_shipping.html", context={"job": model["job"], "basket": model["basket"], "sources": sources, "csrf_token": token, "revision": model["revision"]})
+    response.set_cookie(CSRF_COOKIE_NAME, token, httponly=True, samesite="strict", secure=request.url.scheme == "https")
+    return response
+
+@router.post("/jobs/{job_id}/shipping")
+async def save_job_shipping(request: Request, job_id: int):
+    form = await request.form()
+    from plg_core.web_security import require_valid_csrf
+    require_valid_csrf(request, str(form.get("csrf_token", "") or ""))
+    try: amount = round(float(str(form.get("customer_shipping", "0") or "0").strip()), 2)
+    except ValueError: raise HTTPException(400, "Shipping must be a valid amount.")
+    if amount < 0: raise HTTPException(400, "Shipping cannot be negative.")
+    with closing(get_connection()) as connection:
+        basket = get_or_create_basket(connection, job_id)
+        ensure_basket_mutable(basket, connection, expected_revision_id=form.get("expected_revision_id"), expected_version=form.get("expected_version"))
+        connection.execute("UPDATE basket_sources SET shipping_total=? WHERE basket_id=?", (amount, basket["id"]))
+        connection.commit()
+    return RedirectResponse(f"/jobs/{job_id}/basket#quote", status_code=303)
+
 
 @router.post("/jobs/{job_id}/basket/checkout")
 def checkout_basket(
@@ -1583,6 +1614,9 @@ def update_basket_item_form(
     verification_status: str | None = Form(None),
     verification_note: str | None = Form(None),
     confidence: float | None = Form(None),
+    requested_description: str | None = Form(None),
+    supplier_name: str | None = Form(None),
+    availability: str | None = Form(None),
     expected_revision_id: int | None = Form(None),
     expected_version: int | None = Form(None),
 ):
@@ -1687,6 +1721,12 @@ def update_basket_item_form(
         "part_status": new_status,
         "confidence": confidence,
     }
+    if requested_description is not None:
+        update_values["requested_description"] = requested_description.strip()
+    if supplier_name is not None:
+        update_values["supplier_name"] = supplier_name.strip()
+    if availability is not None:
+        update_values["availability"] = availability.strip()
     if verification_status is not None:
         update_values["verification_status"] = requested_verification_status
     if verification_note is not None:

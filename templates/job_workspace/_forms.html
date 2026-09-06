@@ -1,0 +1,13 @@
+{% macro tokens() -%}
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+{% if revision %}<input type="hidden" name="expected_revision_id" value="{{ revision.id }}"><input type="hidden" name="expected_version" value="{{ revision.lock_version }}">{% endif %}
+{%- endmacro %}
+{% macro use_option(option, part) -%}
+{% if work_editable and not part.selected_options and not part.ambiguous and not option.selected %}
+<form method="post" action="/jobs/{{ job.id }}/research-results/{{ option.id }}/candidate" data-jcc-form data-return="part-{{ part.id }}">
+{{ tokens() }}<input type="hidden" name="candidate" value="1"><input type="hidden" name="job_asset_id" value="{{ option.job_asset_id or '' }}">
+{% for id in option.need_ids %}<input type="hidden" name="requested_need_ids" value="{{ id }}">{% endfor %}
+<button class="button" type="submit">Use This Option</button>
+</form>
+{% endif %}
+{%- endmacro %}

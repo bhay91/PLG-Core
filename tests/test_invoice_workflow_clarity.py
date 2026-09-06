@@ -115,7 +115,7 @@ class InvoiceWorkflowClarityTests(unittest.TestCase):
 
     def test_jcc_uses_same_paid_no_order_task_without_get_emulation(self):
         service = (ROOT / "plg_core" / "jobs" / "service.py").read_text()
-        template = (ROOT / "templates" / "job_command_center.html").read_text()
+        template = (ROOT / "templates" / "job_command_center_legacy.html").read_text()
         self.assertIn('"Create Supplier Order"', service)
         self.assertIn('f"/jobs/{int(job[\'id\'])}/fulfillment/order"', service)
         self.assertIn('"POST"', service)

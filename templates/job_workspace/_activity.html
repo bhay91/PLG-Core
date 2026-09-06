@@ -1,0 +1,4 @@
+<section class="jcc-panel" id="activity" aria-labelledby="activity-title"><h2 id="activity-title">Activity</h2><p class="jcc-section-intro">A readable history of the work on this job.</p>
+{% for event in operational_snapshot.activity %}<article class="jcc-event"><p>{{ event.display_message }}</p><small>{{ event.created_at }}</small></article>{% else %}<p>No activity recorded yet.</p>{% endfor %}
+<details><summary>Advanced history and documents</summary><div class="jcc-detail-body"><a class="button ghost" href="{{ operational_snapshot.documents_url }}">View Documents</a><a class="button ghost" href="/jobs/{{ job.id }}/basket?view=advanced#operational-activity">Advanced history</a></div></details>
+</section>

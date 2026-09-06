@@ -105,7 +105,7 @@ class OperatorWorkflowAlpha33Tests(unittest.TestCase):
         self.assertEqual(blocked.exception.status_code, 409)
 
     def test_operator_template_hides_internal_authority_language(self):
-        template = (ROOT / "templates" / "job_command_center.html").read_text()
+        template = (ROOT / "templates" / "job_command_center_advanced.html").read_text()
         self.assertIn("Open Website", template)
         self.assertIn("ONE-TIME WEBSITE", template)
         self.assertIn("Confirm for Quote", template)
