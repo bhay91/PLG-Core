@@ -14,7 +14,7 @@
 <div class="jcc-status-card"><span>Customer quote</span><strong>{% if operational_snapshot.quote %}{{ operational_snapshot.quote.status|replace('_',' ')|title }}{% else %}Not created{% endif %}</strong></div>
 <div class="jcc-status-card"><span>Payment</span><strong>{{ operational_snapshot.invoice.payment_state|title if operational_snapshot.invoice else 'Not invoiced' }}</strong></div>
 <div class="jcc-status-card"><span>Supplier orders</span><strong>{{ operational_snapshot.supplier_orders|length }}</strong></div>
-<div class="jcc-status-card"><span>Receiving</span><strong>{% if operational_snapshot.fulfillment.items %}{{ operational_snapshot.fulfillment.counts.received }}/{{ operational_snapshot.fulfillment.counts.total }} items{% else %}Not started{% endif %}</strong></div>
+<div class="jcc-status-card"><span>Receiving</span><strong>{% if operational_snapshot.fulfillment["items"] %}{{ operational_snapshot.fulfillment.counts.received }}/{{ operational_snapshot.fulfillment.counts.total }} items{% else %}Not started{% endif %}</strong></div>
 <div class="jcc-status-card"><span>Delivery</span><strong>{% if operational_snapshot.movement.delivered_units %}{{ operational_snapshot.movement.delivered_units }} delivered{% elif operational_snapshot.movement.available_to_deliver_units %}Ready{% else %}Waiting{% endif %}</strong></div>
 <div class="jcc-status-card"><span>Job state</span><strong>{{ primary_action.stage }}</strong></div>
 </div>

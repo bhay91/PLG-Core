@@ -12,6 +12,7 @@ class SupplierActualCostPresentationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.template = (ROOT / "templates" / "supplier_order_detail.html").read_text()
+        cls.simple_template = (ROOT / "templates" / "supplier_order_simple.html").read_text()
         cls.directory_template = (ROOT / "templates" / "supplier_orders.html").read_text()
         cls.jcc_template = (ROOT / "templates" / "job_command_center_advanced.html").read_text()
         cls.erp_css = (ROOT / "static" / "pps_erp.css").read_text()
@@ -65,6 +66,11 @@ class SupplierActualCostPresentationTests(unittest.TestCase):
         Environment().parse(self.directory_template)
         Environment().parse(self.jcc_template)
 
+    def test_simple_supplier_order_posts_item_cost_kind(self):
+        self.assertIn('name="cost_kind" value="ITEM"', self.simple_template)
+        self.assertNotIn('name="cost_kind" value="UNIT_COST"', self.simple_template)
+        self.assertIn('action="/purchasing/orders/{{ order.id }}/actual-cost"', self.simple_template)
+
     def test_unconfirmed_cost_is_prominent_and_existing_form_is_open(self):
         self.assertIn("Needs Confirmation", self.template)
         self.assertIn("Confirm Actual Supplier Cost", self.template)
@@ -85,10 +91,9 @@ class SupplierActualCostPresentationTests(unittest.TestCase):
         self.assertIn("c.actual_cost_state != 'CONFIRMED'", self.directory_template)
 
     def test_jcc_links_outstanding_cost_to_supplier_order(self):
-        self.assertIn("Outstanding supplier cost confirmations", self.jcc_template)
-        self.assertIn("order.order_url }}#actual-cost", self.jcc_template)
-        self.assertIn("Fulfillment can continue independently", self.jcc_template)
-        self.assertIn("order.actual_cost_state != 'CONFIRMED'", self.jcc_template)
+        self.assertIn("Fulfillment history", self.jcc_template)
+        self.assertIn("Orders and receipts", self.jcc_template)
+        self.assertIn("Older corrective tools", self.jcc_template)
 
     def test_mobile_cost_actions_stack_without_overflow(self):
         self.assertIn(".erp-app .supplier-cost-next", self.erp_css)

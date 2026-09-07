@@ -80,6 +80,19 @@ class ActualCostProfit2Tests(unittest.TestCase):
         values.update(overrides)
         return record_actual_cost_adjustment(order["id"], **values)
 
+    def test_invalid_cost_kind_remains_rejected(self):
+        with self.assertRaises(HTTPException) as raised:
+            record_actual_cost_adjustment(
+                999999,
+                cost_kind="UNIT_COST",
+                new_amount=10,
+                reason="Invalid kind check",
+                actor="Synthetic Tester",
+                request_id="invalid-kind",
+            )
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("ITEM or SHIPPING", str(raised.exception.detail))
+
     def test_01_migration_is_additive_repeatable_and_clean(self):
         run_migrations()
         with closing(legacy_app.get_connection()) as c:
