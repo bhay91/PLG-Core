@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import closing
 from datetime import date
 from pathlib import Path
+import json
 import re
 import uuid
 
@@ -11,7 +12,8 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from legacy_app import BASE_DIR, UPLOADS_DIR, get_connection, next_customer_number, next_job_number, next_machine_number, next_request_number, templates
 from plg_core.machines.identifiers import find_machine_by_identifier
-from plg_core.intake.service import create_proposal, submit_research_import, validate_research_import_uploads
+from plg_core.intake.service import create_proposal, load_proposal, submit_research_import, validate_research_import_uploads
+from plg_core.intake.research_review import review_from_text
 from plg_core.intake.attachments import store_proposal_images, validate_attachments
 
 router = APIRouter(prefix="/requests", tags=["customer-requests"])
@@ -28,6 +30,47 @@ REGISTRY_TYPES = {
     "component": "Component / Assembly",
     "other": "Other",
 }
+
+
+@router.get("/assistant/research", response_class=HTMLResponse)
+def assistant_research_upload(request: Request):
+    return templates.TemplateResponse(request=request, name="research_upload.html", context={"active_page": "requests"})
+
+
+@router.post("/assistant/research/upload", response_class=HTMLResponse)
+async def assistant_research_upload_submit(
+    request: Request,
+    research_pdf: UploadFile | None = File(default=None),
+):
+    """Create only a DRAFT review proposal; no authoritative records are touched."""
+    if research_pdf is None or not research_pdf.filename:
+        raise HTTPException(status_code=400, detail="Choose a research PDF.")
+    files = await validate_attachments([research_pdf])
+    pdf = files[0]
+    raw = pdf.extracted_text or ""
+    with closing(get_connection()) as connection:
+        proposal_id = create_proposal(connection, raw or f"Research document: {pdf.original_filename}", extracted_documents=[{
+            "filename": pdf.original_filename, "media_type": pdf.media_type, "text": pdf.extracted_text,
+            "extraction_status": pdf.extraction_status, "extraction_evidence": pdf.extraction_evidence,
+            "page_count": pdf.page_count,
+        }])
+        paths = store_proposal_images(connection, proposal_id, [pdf])
+        review = review_from_text(raw, filename=pdf.original_filename)
+        connection.execute("INSERT INTO intake_proposal_contributions (proposal_id,contributor_type,payload_json,evidence) VALUES (?,?,?,?)",
+                           (proposal_id, "DETERMINISTIC", json.dumps({"origin": "PPS_ASSISTANT_RESEARCH", "review": review}, sort_keys=True), "Phase 1 provisional research extraction; no authoritative records created."))
+        connection.commit()
+    return RedirectResponse(url=f"/requests/assistant/research/review/{proposal_id}", status_code=303)
+
+
+@router.get("/assistant/research/review/{proposal_id}", response_class=HTMLResponse)
+def assistant_research_review(request: Request, proposal_id: int):
+    with closing(get_connection()) as connection:
+        proposal = load_proposal(connection, proposal_id)
+        row = connection.execute("SELECT payload_json FROM intake_proposal_contributions WHERE proposal_id=? AND payload_json LIKE '%PPS_ASSISTANT_RESEARCH%' ORDER BY id DESC LIMIT 1", (proposal_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Research review not found.")
+    payload = json.loads(row["payload_json"] or "{}")
+    return templates.TemplateResponse(request=request, name="research_review.html", context={"active_page": "requests", "proposal": proposal, "review": payload.get("review", {})})
 
 
 def _safe_filename(name: str) -> str:
