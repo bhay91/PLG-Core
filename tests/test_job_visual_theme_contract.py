@@ -16,6 +16,11 @@ def test_dark_theme_covers_supplier_receiving_history():
     assert "background: var(--jcc-surface) !important" in CSS
 
 
+def test_dark_theme_covers_nested_options_and_delivery_summary_cells():
+    for selector in (".jcc-options", ".jcc-option", ".jcc-quick-card", ".delivery-command-identity", ".delivery-command-state", ".delivery-command-action", ".delivery-command-quantity"):
+        assert selector in CSS
+
+
 def test_job_workspace_mobile_contract_remains_present():
     assert "@media (max-width: 520px)" in CSS
     assert "min-height: 44px" in CSS
