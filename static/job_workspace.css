@@ -184,3 +184,24 @@
 :root[data-theme="dark"] .erp-app .jcc #find-part a:not(.button) { color: #7fc0ff !important; }
 :root[data-theme="dark"] .erp-app .jcc #find-part .jcc-form { background: transparent !important; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme]) .jcc { color-scheme: dark; } }
+
+/* Delivery and receiving-history pages use legacy component class names but are
+   still part of the job workspace. Keep their surfaces on the shared theme. */
+:root[data-theme="dark"] .erp-app .jcc .delivery-context,
+:root[data-theme="dark"] .erp-app .jcc .delivery-command,
+:root[data-theme="dark"] .erp-app .jcc .delivery-availability,
+:root[data-theme="dark"] .erp-app .jcc .delivery-ready,
+:root[data-theme="dark"] .erp-app .jcc .delivery-history,
+:root[data-theme="dark"] .erp-app .jcc .delivery-result { background: var(--jcc-surface) !important; color: var(--jcc-text) !important; border-color: var(--jcc-border) !important; }
+:root[data-theme="dark"] .erp-app .jcc .delivery-context span,
+:root[data-theme="dark"] .erp-app .jcc .delivery-command span,
+:root[data-theme="dark"] .erp-app .jcc .delivery-command small,
+:root[data-theme="dark"] .erp-app .jcc .delivery-availability p,
+:root[data-theme="dark"] .erp-app .jcc .delivery-line small,
+:root[data-theme="dark"] .erp-app .jcc .delivery-mobile-label { color: var(--jcc-muted) !important; }
+:root[data-theme="dark"] .erp-app .jcc .delivery-context strong,
+:root[data-theme="dark"] .erp-app .jcc .delivery-command strong,
+:root[data-theme="dark"] .erp-app .jcc .delivery-line,
+:root[data-theme="dark"] .erp-app .jcc .delivery-ready-lines,
+:root[data-theme="dark"] .erp-app .jcc .delivery-history-lines { color: var(--jcc-text) !important; }
+:root[data-theme="dark"] .erp-app .jcc .receiving-history-card { background: var(--jcc-surface) !important; color: var(--jcc-text) !important; border-color: var(--jcc-border) !important; }
