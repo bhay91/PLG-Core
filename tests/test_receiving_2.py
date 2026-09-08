@@ -235,7 +235,17 @@ class Receiving2Tests(unittest.TestCase):
         self.assertEqual(get_order(self.order_a["id"])["items"][0]["quantity_received"], 0)
 
     def test_phase2_template_distinguishes_accepted_exceptions_and_backorders(self):
-        html = self._render_order_detail()
+        # Exception/backorder corrective controls remain explicitly Legacy-only;
+        # the default supplier-order view is the simple receiving workflow.
+        request = Request({
+            "type": "http", "method": "GET", "path": f"/purchasing/orders/{self.order_a['id']}",
+            "raw_path": b"", "query_string": b"view=legacy", "headers": [], "scheme": "http",
+            "server": ("testserver", 80), "client": ("testclient", 50000), "root_path": "",
+            "app": legacy_app.app,
+        })
+        response = legacy_app.purchasing_order_detail(request, self.order_a["id"], view="legacy")
+        self.assertEqual(response.status_code, 200)
+        html = response.body.decode()
         for label in ("Accepted now", "Usable and deliverable", "Not deliverable", "Not physically received", "Outstanding supplier commitments"):
             self.assertIn(label, html)
         self.assertNotIn("Backordered</legend>", html)

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Receive Parts · {{ order.po_number }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/job_workspace.css?v=7">
+<main class="jcc" data-job-workspace>
+  <header class="jcc-panel jcc-header">
+    <a class="jcc-back" href="/purchasing/orders/{{ order.id }}">← Back to Supplier Order</a>
+    <p class="jcc-eyebrow">RECEIVING · {{ order.po_number }}</p>
+    <h1>Receive Parts</h1>
+    <p>{{ order.supplier_name }} · {{ order.job_number }} · {{ order.customer }}</p>
+  </header>
+  {% set remaining_total = items|sum(attribute="quantity_ordered") - items|sum(attribute="quantity_received") %}
+  {% if remaining_total > 0 %}
+  <section class="jcc-panel" aria-labelledby="receive-title">
+    <h2 id="receive-title">What arrived?</h2>
+    <p class="jcc-section-intro">Enter the quantities physically received today. Items already received are shown for context.</p>
+    <form method="post" action="/purchasing/orders/{{ order.id }}/receive" class="jcc-form" data-jcc-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+      {% for item in items %}
+      {% set remaining = (item.quantity_ordered or 0) - (item.quantity_received or 0) %}
+      <article class="jcc-order-card">
+        <h3>{{ item.description }}</h3>
+        {% if item.supplier_part_number %}<p class="jcc-muted">Part {{ item.supplier_part_number }}</p>{% endif %}
+        <p>Ordered {{ item.quantity_ordered }} · Received {{ item.quantity_received }} · Remaining {{ remaining }}</p>
+        {% if remaining > 0 %}
+        <label>Receive now<input name="qty_{{ item.id }}" type="number" inputmode="numeric" min="0" max="{{ remaining }}" step="1" value="0"></label>
+        {% else %}<p class="jcc-success"><strong>Received ✓</strong></p><input type="hidden" name="qty_{{ item.id }}" value="0">{% endif %}
+      </article>
+      {% endfor %}
+      <label>Received by<input name="receiver" value="{{ receiver_default }}" maxlength="200"></label>
+      <label>Notes <span class="jcc-muted">Optional</span><textarea name="notes" rows="3" maxlength="1000" placeholder="Condition, packing notes, or follow-up"></textarea></label>
+      <button class="button" type="submit">Receive Parts</button>
+    </form>
+  </section>
+  {% else %}
+  <section class="jcc-panel jcc-selected" aria-labelledby="received-title">
+    <h2 id="received-title">Received</h2>
+    <p>All quantities on {{ order.po_number }} have already been received.</p>
+    <a class="button ghost" href="/purchasing/orders/{{ order.id }}">View Receiving</a>
+  </section>
+  {% endif %}
+</main>
+{% endblock %}

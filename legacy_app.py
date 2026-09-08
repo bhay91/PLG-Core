@@ -3183,6 +3183,36 @@ def purchasing_order_detail(
     return response
 
 
+@app.get("/purchasing/orders/{order_id}/receive", response_class=HTMLResponse)
+def purchasing_order_receive_simple(request: Request, order_id: int):
+    """Render the job-scoped receiving form while reusing the authoritative POST."""
+    from plg_core.supply.service import get_order
+    from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request, new_idempotency_key, request_actor
+
+    order = get_order(order_id)
+    csrf_token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(
+        request=request,
+        name="supplier_order_receive_simple.html",
+        context={
+            "order": order,
+            "items": order["items"],
+            "csrf_token": csrf_token,
+            "idempotency_key": new_idempotency_key(),
+            "receiver_default": "" if request_actor(request) == "system" else request_actor(request),
+            "active_page": "purchasing",
+        },
+    )
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        csrf_token,
+        httponly=True,
+        samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
+
+
 @app.get("/purchasing/orders/{order_id}/purchase-order/pdf")
 def supplier_purchase_order_pdf(
     order_id: int,

@@ -193,7 +193,7 @@ def get_job_operational_snapshot(
                 "remaining_units": max(ordered - received, 0), "delivered_units": delivered,
                 "available_to_deliver_units": available,
                 "order_url": f"/purchasing/orders/{order_id}",
-                "receive_url": f"/purchasing/orders/{order_id}#receive-parts",
+                "receive_url": f"/purchasing/orders/{order_id}/receive",
                 "delivery_url": f"/jobs/{job_id}/delivery",
             })
 
