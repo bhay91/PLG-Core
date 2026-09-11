@@ -1222,6 +1222,18 @@
 .erp-app .job-command-header .job-command-next > strong { color: var(--erp-text) !important; }
 .erp-app .job-command-header .job-command-next .button { color: #fff !important; }
 .erp-app .job-command-header .original-request-disclosure :is(summary,strong) { color: var(--erp-text) !important; }
+
+/* Advanced Command Center uses light cards inside the ERP shell. Keep their
+   foreground readable while leaving genuinely dark action surfaces intact. */
+:root[data-theme="dark"] .erp-app .cc-shell { --ink: #10213d; --ink-strong: #071a36; --muted: #68768d; }
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-header { color: var(--ink) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-header :is(h1,h2,h3,h4,h5,h6,strong) { color: var(--ink-strong) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-header :is(.job-command-stage span,.job-command-need > span,.job-command-next > span,.job-command-metrics span) { color: var(--muted) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell :is(.requested-need-primary,.requested-need-card,.job-workflow-strip,.job-ops-panel,.job-disclosure,.secondary-disclosure,.job-command-group,.job-command-group-body) { color: var(--ink) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell :is(.requested-need-primary,.requested-need-card,.job-workflow-strip,.job-ops-panel,.job-disclosure,.secondary-disclosure,.job-command-group) :is(h1,h2,h3,h4,h5,h6,strong,summary) { color: var(--ink-strong) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell :is(.cc-next,.job-command-next,.job-ops-next) { color: #fff !important; }
+:root[data-theme="dark"] .erp-app .cc-shell :is(.cc-next,.job-command-next,.job-ops-next) :is(h1,h2,h3,h4,h5,h6,strong,span,p,small) { color: #fff !important; }
+:root[data-theme="dark"] .erp-app .cc-shell :is(.cc-next,.job-command-next,.job-ops-next) .button { color: var(--ink-strong) !important; }
 .erp-app .job-command-identity { padding-block: 15px !important; }
 .erp-app .job-command-identity h1 { font-size: 27px !important; }
 .erp-app .job-command-asset { display: flex; flex-wrap: wrap; gap: 5px 8px; align-items: baseline; margin-top: 7px !important; }
