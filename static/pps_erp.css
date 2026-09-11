@@ -1907,7 +1907,7 @@ body.erp-app a.button.danger-outline.erp-header-delete:hover {
 
 /* Advanced Command Center: use the ERP navy palette consistently in dark mode. */
 :root[data-theme="dark"] .erp-app .cc-shell {
-  color: var(--erp-text);
+  color: var(--text-primary);
 }
 :root[data-theme="dark"] .erp-app .cc-shell .job-command-header,
 :root[data-theme="dark"] .erp-app .cc-shell .requested-need-primary,
@@ -1915,40 +1915,40 @@ body.erp-app a.button.danger-outline.erp-header-delete:hover {
 :root[data-theme="dark"] .erp-app .cc-shell .job-command-group,
 :root[data-theme="dark"] .erp-app .cc-shell .job-disclosure,
 :root[data-theme="dark"] .erp-app .cc-shell .secondary-disclosure {
-  background: var(--erp-panel) !important;
-  border-color: var(--erp-border) !important;
-  color: var(--erp-text) !important;
+  background: var(--surface-1) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
 }
 :root[data-theme="dark"] .erp-app .cc-shell .job-command-core,
 :root[data-theme="dark"] .erp-app .cc-shell .job-command-group-body,
 :root[data-theme="dark"] .erp-app .cc-shell .job-disclosure-body,
 :root[data-theme="dark"] .erp-app .cc-shell .secondary-disclosure-body {
-  background: var(--erp-panel-2) !important;
-  color: var(--erp-text) !important;
+  background: var(--surface-2) !important;
+  color: var(--text-primary) !important;
 }
 :root[data-theme="dark"] .erp-app .cc-shell .job-command-next,
 :root[data-theme="dark"] .erp-app .cc-shell .job-workflow-strip,
 :root[data-theme="dark"] .erp-app .cc-shell .job-ops-movement {
-  background: var(--erp-panel-3) !important;
-  color: var(--erp-text) !important;
+  background: var(--surface-3) !important;
+  color: var(--text-primary) !important;
 }
 :root[data-theme="dark"] .erp-app .cc-shell .job-command-metrics > div,
 :root[data-theme="dark"] .erp-app .cc-shell .job-ops-metric,
 :root[data-theme="dark"] .erp-app .cc-shell .job-ops-empty,
 :root[data-theme="dark"] .erp-app .cc-shell .requested-need-card {
-  background: var(--erp-panel-2) !important;
-  border-color: var(--erp-border) !important;
-  color: var(--erp-text) !important;
+  background: var(--surface-2) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
 }
 :root[data-theme="dark"] .erp-app .cc-shell .requested-need-card.is-active {
-  background: var(--erp-panel-3) !important;
-  color: var(--erp-text) !important;
+  background: var(--surface-3) !important;
+  color: var(--text-primary) !important;
 }
 :root[data-theme="dark"] .erp-app .cc-shell .job-command-header :is(h1,h2,h3,h4,h5,h6,strong),
 :root[data-theme="dark"] .erp-app .cc-shell :is(.requested-need-primary,.requested-need-card,.job-ops-panel,.job-command-group,.job-disclosure,.secondary-disclosure) :is(h1,h2,h3,h4,h5,h6,strong),
 :root[data-theme="dark"] .erp-app .cc-shell .job-command-group > summary,
 :root[data-theme="dark"] .erp-app .cc-shell .job-disclosure > summary {
-  color: var(--erp-text) !important;
+  color: var(--text-primary) !important;
 }
 :root[data-theme="dark"] .erp-app .cc-shell .job-command-identity p:not(.cc-kicker),
 :root[data-theme="dark"] .erp-app .cc-shell .job-command-asset span,
@@ -1960,8 +1960,8 @@ body.erp-app a.button.danger-outline.erp-header-delete:hover {
 :root[data-theme="dark"] .erp-app .cc-shell .job-ops-metric span,
 :root[data-theme="dark"] .erp-app .cc-shell .job-ops-empty,
 :root[data-theme="dark"] .erp-app .cc-shell .job-command-group > summary small {
-  color: var(--erp-text-2) !important;
+  color: var(--text-secondary) !important;
 }
 :root[data-theme="dark"] .erp-app .cc-shell :is(.job-command-next,.job-workflow-strip,.job-ops-movement) :is(h1,h2,h3,h4,h5,h6,strong,span,p,small) {
-  color: var(--erp-text) !important;
+  color: var(--text-primary) !important;
 }
