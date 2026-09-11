@@ -1234,6 +1234,14 @@
 :root[data-theme="dark"] .erp-app .cc-shell :is(.cc-next,.job-command-next,.job-ops-next) { color: #fff !important; }
 :root[data-theme="dark"] .erp-app .cc-shell :is(.cc-next,.job-command-next,.job-ops-next) :is(h1,h2,h3,h4,h5,h6,strong,span,p,small) { color: #fff !important; }
 :root[data-theme="dark"] .erp-app .cc-shell :is(.cc-next,.job-command-next,.job-ops-next) .button { color: var(--ink-strong) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-identity p:not(.cc-kicker),
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-asset span { color: var(--ink) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-identity .cc-kicker { color: var(--accent-blue) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell .requested-need-card .requested-need-meta span { color: var(--ink) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell .job-ops-panel-head p,
+:root[data-theme="dark"] .erp-app .cc-shell .job-ops-panel .job-ops-metric span,
+:root[data-theme="dark"] .erp-app .cc-shell .job-ops-panel .job-ops-empty,
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-group > summary small { color: var(--muted) !important; }
 .erp-app .job-command-identity { padding-block: 15px !important; }
 .erp-app .job-command-identity h1 { font-size: 27px !important; }
 .erp-app .job-command-asset { display: flex; flex-wrap: wrap; gap: 5px 8px; align-items: baseline; margin-top: 7px !important; }
