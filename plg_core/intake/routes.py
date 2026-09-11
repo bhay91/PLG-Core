@@ -295,4 +295,4 @@ def confirm(proposal_id: int, lock_version: int = Form(...)):
         except Exception:
             connection.rollback()
             raise
-    return RedirectResponse(f"/jobs/{job_id}/basket", 303)
+    return RedirectResponse(f"/jobs/{job_id}/basket?view=advanced", 303)

@@ -137,8 +137,15 @@ def basket_page(
     view: str = "",
 ):
     if view not in {"advanced", "legacy"}:
-        from plg_core.jobs.workspace import render_workspace
-        return render_workspace(request, job_id, need_id=need_id)
+        query = ["view=advanced"]
+        if asset_id is not None:
+            query.append(f"asset_id={int(asset_id)}")
+        if need_id is not None:
+            query.append(f"need_id={int(need_id)}")
+        return RedirectResponse(
+            url=f"/jobs/{job_id}/basket?{'&'.join(query)}",
+            status_code=303,
+        )
     basket = get_basket(job_id)
 
     with closing(get_connection()) as connection:
@@ -617,7 +624,7 @@ def mark_job_fulfillment_ordered(
     from plg_core.web_security import require_valid_csrf
     require_valid_csrf(request, csrf_token)
     mark_job_ordered(job_id, **_fulfillment_audit(request))
-    return RedirectResponse(url=f"/jobs/{job_id}/basket#fulfillment-checklist", status_code=303)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced#fulfillment-checklist", status_code=303)
 
 
 @router.post("/jobs/{job_id}/fulfillment/items/{item_id}/received")
@@ -632,7 +639,7 @@ def mark_job_fulfillment_received(
     from plg_core.web_security import require_valid_csrf
     require_valid_csrf(request, csrf_token)
     mark_fulfillment_item_received(job_id, item_id, quantity=quantity, **_fulfillment_audit(request))
-    return RedirectResponse(url=f"/jobs/{job_id}/basket#fulfillment-checklist", status_code=303)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced#fulfillment-checklist", status_code=303)
 
 
 @router.post("/jobs/{job_id}/fulfillment/items/{item_id}/delivered")
@@ -647,7 +654,7 @@ def mark_job_fulfillment_delivered(
     from plg_core.web_security import require_valid_csrf
     require_valid_csrf(request, csrf_token)
     mark_fulfillment_item_delivered(job_id, item_id, quantity=quantity, **_fulfillment_audit(request))
-    return RedirectResponse(url=f"/jobs/{job_id}/basket#fulfillment-checklist", status_code=303)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced#fulfillment-checklist", status_code=303)
 
 
 @router.post("/jobs/{job_id}/vendor-carts/clone")
@@ -900,7 +907,7 @@ def clone_supplier_quote(
         connection.commit()
 
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket#parts-research",
+        url=f"/jobs/{job_id}/basket?view=advanced#parts-research",
         status_code=303,
     )
 
@@ -982,7 +989,7 @@ def update_supplier_quote_item(
         connection.commit()
 
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket#parts-research",
+        url=f"/jobs/{job_id}/basket?view=advanced#parts-research",
         status_code=303,
     )
 
@@ -1226,7 +1233,7 @@ def add_manual_vendor_line(
         connection.commit()
 
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket",
+        url=f"/jobs/{job_id}/basket?view=advanced",
         status_code=303,
     )
 
@@ -1265,7 +1272,7 @@ def add_manual_item(
         expected_version=expected_version,
     )
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket" + (f"?asset_id={job_asset_id}" if job_asset_id else ""),
+        url=f"/jobs/{job_id}/basket?view=advanced" + (f"&asset_id={job_asset_id}" if job_asset_id else ""),
         status_code=303,
     )
 
@@ -1286,7 +1293,7 @@ def toggle_item(
         expected_version=expected_version,
     )
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket",
+        url=f"/jobs/{job_id}/basket?view=advanced",
         status_code=303,
     )
 
@@ -1308,7 +1315,7 @@ def update_item_quantity(
         expected_version=expected_version,
     )
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket",
+        url=f"/jobs/{job_id}/basket?view=advanced",
         status_code=303,
     )
 
@@ -1323,7 +1330,7 @@ def advance_all_parts_workflow_form(
     )
 
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket#parts-ready",
+        url=f"/jobs/{job_id}/basket?view=advanced#parts-ready",
         status_code=303,
     )
 
@@ -1343,7 +1350,7 @@ def advance_part_workflow_form(
     )
 
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket#parts-ready",
+        url=f"/jobs/{job_id}/basket?view=advanced#parts-ready",
         status_code=303,
     )
 
@@ -1361,7 +1368,7 @@ def delete_item_form(
         require_unpromoted_research_result=True,
     )
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket",
+        url=f"/jobs/{job_id}/basket?view=advanced",
         status_code=303,
     )
 
@@ -1378,7 +1385,7 @@ def clear_form(
         expected_version=expected_version,
     )
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket",
+        url=f"/jobs/{job_id}/basket?view=advanced",
         status_code=303,
     )
 
@@ -1535,7 +1542,7 @@ def update_revenue_adjustments(
         connection.commit()
 
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket?saved=1#revenue-adjustments",
+        url=f"/jobs/{job_id}/basket?view=advanced&saved=1#revenue-adjustments",
         status_code=303,
     )
 
@@ -1564,7 +1571,7 @@ async def save_job_shipping(request: Request, job_id: int):
         ensure_basket_mutable(basket, connection, expected_revision_id=form.get("expected_revision_id"), expected_version=form.get("expected_version"))
         connection.execute("UPDATE basket_sources SET shipping_total=? WHERE basket_id=?", (amount, basket["id"]))
         connection.commit()
-    return RedirectResponse(f"/jobs/{job_id}/basket#quote", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/basket?view=advanced#quote", status_code=303)
 
 
 @router.post("/jobs/{job_id}/basket/checkout")
@@ -1578,7 +1585,7 @@ def checkout_basket(
         expected_version=expected_version,
     )
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket",
+        url=f"/jobs/{job_id}/basket?view=advanced",
         status_code=303,
     )
 
@@ -1594,7 +1601,7 @@ def commit_form(
         expected_version=expected_version,
     )
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket",
+        url=f"/jobs/{job_id}/basket?view=advanced",
         status_code=303,
     )
 
@@ -1620,6 +1627,13 @@ def update_basket_item_form(
     expected_revision_id: int | None = Form(None),
     expected_version: int | None = Form(None),
 ):
+    # Direct service/test calls may retain FastAPI's Form sentinel defaults;
+    # treat those as omitted optional fields just as the HTTP parser does.
+    requested_description = requested_description if isinstance(requested_description, str) else None
+    supplier_name = supplier_name if isinstance(supplier_name, str) else None
+    availability = availability if isinstance(availability, str) else None
+    verification_status = verification_status if isinstance(verification_status, str) else None
+    verification_note = verification_note if isinstance(verification_note, str) else None
     valid_statuses = {
         "RESEARCH",
         "QUOTED",
@@ -1816,6 +1830,6 @@ def update_basket_item_form(
             connection.commit()
 
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket#parts-ready",
+        url=f"/jobs/{job_id}/basket?view=advanced#parts-ready",
         status_code=303,
     )

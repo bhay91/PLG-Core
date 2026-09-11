@@ -147,7 +147,7 @@
   {% if jobs %}
   <div class="customer-record-list">
     {% for job in jobs %}
-    <a class="customer-record-row" href="/jobs/{{ job.id }}/basket">
+    <a class="customer-record-row" href="/jobs/{{ job.id }}/basket?view=advanced">
       <div><strong>{{ job.job_number }}</strong><span>{{ job.manufacturer }} {{ job.machine }}</span></div>
       <div><strong>{{ job.status }}</strong><span>{{ job.created_date }}</span></div>
     </a>

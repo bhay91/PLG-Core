@@ -34,7 +34,7 @@ REGISTRY_TYPES = {
 
 @router.get("/assistant/research", response_class=HTMLResponse)
 def assistant_research_upload(request: Request):
-    return templates.TemplateResponse(request=request, name="research_upload.html", context={"active_page": "requests"})
+    return RedirectResponse(url="/requests/smart-intake", status_code=303)
 
 
 @router.post("/assistant/research/upload", response_class=HTMLResponse)
@@ -1629,7 +1629,7 @@ def create_job_from_request(request_id: int):
             (job_id, request_id),
         )
         connection.commit()
-    return RedirectResponse(url=f"/jobs/{job_id}/basket", status_code=303)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced", status_code=303)
 
 
 @router.post("/{request_id}/status")

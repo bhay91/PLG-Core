@@ -197,7 +197,13 @@ QUOTE_TRANSITIONS = {
 }
 
 
-def transition_quote(quote_id: int, target_status: str, notes: str = ""):
+def transition_quote(
+    quote_id: int,
+    target_status: str,
+    notes: str = "",
+    *,
+    override_reason: str = "",
+):
     target = str(target_status or "").strip().upper()
     with closing(get_connection()) as connection:
         quote = connection.execute(
@@ -215,7 +221,7 @@ def transition_quote(quote_id: int, target_status: str, notes: str = ""):
                 status_code=409,
                 detail="Quote decisions are locked because an invoice already exists.",
             )
-        if connection.execute(
+        revision_lock = connection.execute(
             """
             SELECT 1 FROM work_revisions wr
             WHERE wr.based_on_quote_id=?
@@ -232,7 +238,8 @@ def transition_quote(quote_id: int, target_status: str, notes: str = ""):
             LIMIT 1
             """,
             (quote_id,),
-        ).fetchone():
+        ).fetchone()
+        if revision_lock and not str(override_reason or "").strip():
             raise HTTPException(
                 status_code=409,
                 detail=(
@@ -240,6 +247,7 @@ def transition_quote(quote_id: int, target_status: str, notes: str = ""):
                     "Finish or cancel the revision first."
                 ),
             )
+        override = _require_reason(override_reason, "Quote decision override") if revision_lock else ""
         ensure_job_allows_new_business(connection, int(quote["job_id"]), "change quote status")
         if target not in QUOTE_TRANSITIONS.get(old, set()):
             extra = (
@@ -273,6 +281,15 @@ def transition_quote(quote_id: int, target_status: str, notes: str = ""):
             summary=message, metadata={"from_status": old, "to_status": target,
                                       "job_id": int(quote["job_id"])}
         )
+        if override:
+            write_audit(
+                connection,
+                action="QUOTE_DECISION_WORKFLOW_OVERRIDE",
+                entity_type="QUOTE",
+                entity_id=quote_id,
+                summary="Operator overridden the pending work-revision quote lock",
+                metadata={"job_id": int(quote["job_id"]), "reason": override},
+            )
         log_job_event(connection, job_id=int(quote["job_id"]), event_type=event_type,
                       icon=icon, message=message)
         connection.commit()

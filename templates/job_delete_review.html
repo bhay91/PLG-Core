@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Delete {{ job.job_number }} · Pinpoint Sourcing LLC{% endblock %}
 {% block content %}
-<section class="workspace-heading"><div><p class="eyebrow">JOB LIFECYCLE CONTROL</p><h1>Delete Job</h1><p>{{ job.job_number }} · {{ job.customer or "Customer not recorded" }}{% if job.manufacturer or job.machine %} · {{ job.manufacturer }} {{ job.machine }}{% endif %} · {{ job.status|replace('_',' ')|title }}</p></div><a class="button ghost" href="/jobs/{{ job.id }}/basket">Back to Job Command Center</a></section>
+<section class="workspace-heading"><div><p class="eyebrow">JOB LIFECYCLE CONTROL</p><h1>Delete Job</h1><p>{{ job.job_number }} · {{ job.customer or "Customer not recorded" }}{% if job.manufacturer or job.machine %} · {{ job.manufacturer }} {{ job.machine }}{% endif %} · {{ job.status|replace('_',' ')|title }}</p></div><a class="button ghost" href="/jobs/{{ job.id }}/basket?view=advanced">Back to Job Command Center</a></section>
 
 <section class="panel erp-delete-review {% if not eligibility.can_permanently_delete %}is-protected{% endif %}">
   {% if eligibility.can_permanently_delete %}

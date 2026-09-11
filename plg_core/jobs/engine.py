@@ -263,7 +263,7 @@ class JobEngine:
                 (
                     f"/invoices/{invoice_id}/documents"
                     if invoice_id
-                    else f"/jobs/{job_id}/basket"
+                    else f"/jobs/{job_id}/basket?view=advanced"
                 ),
                 "GET",
             )
@@ -392,7 +392,7 @@ class JobEngine:
             action = (
                 "Revise Quote",
                 "REVISE_QUOTE",
-                f"/jobs/{job_id}/basket",
+                f"/jobs/{job_id}/basket?view=advanced",
                 "GET",
             )
             blocked_reason = (
@@ -404,7 +404,7 @@ class JobEngine:
             action = (
                 "Review Rejected Quote",
                 "REVIEW_REJECTED_QUOTE",
-                f"/jobs/{job_id}/basket",
+                f"/jobs/{job_id}/basket?view=advanced",
                 "GET",
             )
             blocked_reason = (

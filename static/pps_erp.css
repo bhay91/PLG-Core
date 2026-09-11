@@ -1214,6 +1214,14 @@
   .erp-app .cc-shell > .job-ops { position: sticky; top: 74px; max-height: calc(100vh - 88px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 }
 .erp-app .job-command-header { overflow: hidden; }
+.erp-app .job-command-header :is(h1,h2,h3,h4,h5,h6,strong) { color: var(--erp-text) !important; }
+.erp-app .job-command-header .job-command-stage span,
+.erp-app .job-command-header .job-command-need > span,
+.erp-app .job-command-header .job-command-next > span,
+.erp-app .job-command-header .job-command-metrics span { color: var(--erp-muted) !important; }
+.erp-app .job-command-header .job-command-next > strong { color: var(--erp-text) !important; }
+.erp-app .job-command-header .job-command-next .button { color: #fff !important; }
+.erp-app .job-command-header .original-request-disclosure :is(summary,strong) { color: var(--erp-text) !important; }
 .erp-app .job-command-identity { padding-block: 15px !important; }
 .erp-app .job-command-identity h1 { font-size: 27px !important; }
 .erp-app .job-command-asset { display: flex; flex-wrap: wrap; gap: 5px 8px; align-items: baseline; margin-top: 7px !important; }
@@ -1334,6 +1342,10 @@
   .erp-app .job-command-core,
   .erp-app .erp-command-summary { grid-template-columns: 1fr; }
   .erp-app .job-command-next { border-left: 0 !important; border-top: 1px solid var(--erp-border); }
+  .erp-app .job-command-header,
+  .erp-app .job-command-header * { min-width: 0; }
+  .erp-app .job-command-stage { justify-self: stretch; min-width: 0; }
+  .erp-app .job-command-next form { width: 100%; min-width: 0; }
   .erp-app .research-result-card > summary { grid-template-columns: 1fr 1fr !important; min-height: 0; }
   .erp-app .part-summary-identity { grid-column: 1 / -1; }
   .erp-app .part-summary-metric:last-of-type { grid-column: 1 / -1; }
@@ -1347,6 +1359,11 @@
   .erp-app .research-result-card > summary,
   .erp-app .supplier-order-context { grid-template-columns: 1fr !important; }
   .erp-app .part-summary-metric:last-of-type { grid-column: auto; }
+  .erp-app .job-command-header { padding-inline: 12px !important; }
+  .erp-app .job-command-identity,
+  .erp-app .job-command-core { padding-inline: 12px !important; }
+  .erp-app .job-command-metrics > div { min-width: 0; }
+  .erp-app .job-command-metrics strong { overflow-wrap: anywhere; }
 }
 
 /* 13. ERP-4 intake, job directory, and work-queue flow ----------------- */

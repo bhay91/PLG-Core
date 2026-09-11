@@ -11,7 +11,7 @@
 <div class="supplier-order-desk">
   <section class="supplier-order-heading">
     <div><p class="eyebrow">SUPPLIER ORDER</p><div class="invoice-center-title"><h1>{{ order.po_number }}</h1><span class="workspace-status-badge workspace-status-{{ order.status|lower }}">{{ order.status }}</span></div><strong class="supplier-order-name">{{ order.supplier_name }}</strong></div>
-    <div class="supplier-order-heading-actions"><a class="button ghost" href="/jobs/{{ order.job_id }}/basket#orders">← Back to Job</a>{% if order.status in ["ORDERED", "PARTIAL"] %}<a class="button" href="#receive-parts">Receive Items</a>{% endif %}<a class="button ghost" href="/purchasing/orders/{{ order.id }}/purchase-order/pdf">{% if order.status == "DRAFT" %}Open DRAFT PO Preview{% else %}Open Purchase Order{% endif %}</a><a class="button ghost" href="/purchasing/orders/{{ order.id }}/purchase-order/pdf?download=1">Download Purchase Order</a><a class="button ghost" href="/purchasing">Back to Supplier Orders</a></div>
+    <div class="supplier-order-heading-actions"><a class="button ghost" href="/jobs/{{ order.job_id }}/basket?view=advanced#orders">← Back to Job</a>{% if order.status in ["ORDERED", "PARTIAL"] %}<a class="button" href="#receive-parts">Receive Items</a>{% endif %}<a class="button ghost" href="/purchasing/orders/{{ order.id }}/purchase-order/pdf">{% if order.status == "DRAFT" %}Open DRAFT PO Preview{% else %}Open Purchase Order{% endif %}</a><a class="button ghost" href="/purchasing/orders/{{ order.id }}/purchase-order/pdf?download=1">Download Purchase Order</a><a class="button ghost" href="/purchasing">Back to Supplier Orders</a></div>
   </section>
 
   {% set s=operational_snapshot %}{% set c=s.costs %}{% set m=s.movement %}

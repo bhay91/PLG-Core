@@ -17,8 +17,8 @@ router = APIRouter(tags=["machine-research"])
 
 
 def _workspace(job_id: int, asset_id: int | None, anchor: str = "machine-workspace"):
-    query = f"?asset_id={asset_id}" if asset_id is not None else ""
-    return f"/jobs/{job_id}/basket{query}#{anchor}"
+    query = f"&asset_id={asset_id}" if asset_id is not None else ""
+    return f"/jobs/{job_id}/basket?view=advanced{query}#{anchor}"
 
 
 @router.post("/jobs/{job_id}/needs")

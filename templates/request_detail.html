@@ -28,7 +28,7 @@
   <div><span>Requested Need</span><strong>{{ record.requested_parts or 'Requested Need not yet structured' }}</strong></div>
   <div><span>Asset / Machine</span><strong>{% if machine %}{{ machine.year or '' }} {{ machine.manufacturer or '' }} {{ machine.model or machine.name or '' }}{% elif record.manufacturer or record.model %}{{ record.year or '' }} {{ record.manufacturer or '' }} {{ record.model or '' }}{% else %}No asset context recorded{% endif %}</strong><small>{{ (machine.vin_pin_serial if machine and machine.vin_pin_serial else record.identifier) or 'No identifier recorded' }}</small></div>
   <div class="erp-review-state"><span>Review State</span><strong>{{ record.status }}</strong><small>{% if customer and machine %}Customer and Registry linked{% elif customer %}Customer linked · asset context pending or not required{% else %}Customer match requires operator review{% endif %}</small></div>
-  <div class="erp-next-action"><span>Next Action</span><strong>{% if job %}Open Job{% elif customer %}Review Registry and create Job{% else %}Review and link customer{% endif %}</strong><a class="button" href="{% if job %}/jobs/{{ job.id }}/basket{% else %}#next-steps{% endif %}">{% if job %}Open Job{% else %}Continue Review{% endif %}</a></div>
+  <div class="erp-next-action"><span>Next Action</span><strong>{% if job %}Open Job{% elif customer %}Review Registry and create Job{% else %}Review and link customer{% endif %}</strong><a class="button" href="{% if job %}/jobs/{{ job.id }}/basket?view=advanced{% else %}#next-steps{% endif %}">{% if job %}Open Job{% else %}Continue Review{% endif %}</a></div>
 </section>
 
 {% if not record.individual_name and not record.company_name or (machine or record.manufacturer or record.model) and not ((machine.vin_pin_serial if machine else '') or record.identifier) %}
@@ -155,7 +155,7 @@
         <h3>Job</h3>
         {% if job %}
           <p class="step-success">✓ Created: {{ job.job_number }}</p>
-          <a class="button" href="/jobs/{{ job.id }}/basket">Open Job</a>
+          <a class="button" href="/jobs/{{ job.id }}/basket?view=advanced">Open Job</a>
         {% elif not customer %}
           <p class="step-muted">Create or link the customer first.</p>
         {% else %}

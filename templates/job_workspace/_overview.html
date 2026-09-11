@@ -7,7 +7,7 @@
 {% else %}<p class="jcc-muted">Machine / vehicle not recorded</p>{% endif %}
 </div><div class="jcc-state"><span>Current stage</span><strong>{{ primary_action.stage }}</strong><small>Payment: {{ operational_snapshot.invoice.payment_state|replace('_',' ')|title if operational_snapshot.invoice else 'Not invoiced' }}</small></div></div>
 <div class="jcc-next"><div><span>Outstanding</span><p>{{ outstanding }}</p></div>
-{% if primary_action.action_method == 'POST' %}<form method="post" action="{{ primary_action.next_url }}" data-jcc-form data-return="orders">{{ tokens() }}<button class="button" type="submit">{{ primary_action.next_action }}</button></form>
+{% if primary_action.action_method == 'POST' %}<form method="post" action="{{ primary_action.next_url }}" data-jcc-form data-return="orders">{{ tokens() }}{% if operational_snapshot.pending_revision %}<input type="hidden" name="expected_version" value="{{ operational_snapshot.pending_revision.lock_version }}">{% endif %}<button class="button" type="submit">{{ primary_action.next_action }}</button></form>
 {% else %}<a class="button" href="{{ primary_action.next_url }}">{{ primary_action.next_action }}</a>{% endif %}
 </div>
 <div class="jcc-status-grid" aria-label="Job progress">

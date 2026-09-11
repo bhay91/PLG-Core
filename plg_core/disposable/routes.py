@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -14,6 +16,18 @@ from .service import (
 from .test_chain import PURGE_PHRASE, build_test_chain_purge_plan, purge_test_chain
 
 router = APIRouter(tags=["disposable-records"])
+
+
+def _disposable_test_mode_enabled() -> bool:
+    return os.getenv("PPS_ENABLE_DISPOSABLE_TEST_CHAIN", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def _require_disposable_test_mode() -> None:
+    if not _disposable_test_mode_enabled():
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Disposable test utilities are unavailable.")
 
 
 def _review(request: Request, plan: dict, post_url: str):
@@ -55,6 +69,7 @@ def confirm_proposal_delete(proposal_id: int, reason: str = Form(...), confirmat
 
 @router.get("/jobs/{job_id}/purge-test-chain", response_class=HTMLResponse)
 def review_test_chain_purge(request: Request, job_id: int, invoice_number: str):
+    _require_disposable_test_mode()
     from legacy_app import get_connection
     from contextlib import closing
     from fastapi import HTTPException
@@ -76,6 +91,7 @@ def confirm_test_chain_purge(job_id: int, job_number: str = Form(...), invoice_n
                              reason: str = Form(...), confirmation_job: str = Form(...),
                              confirmation_invoice: str = Form(...), confirmation_phrase: str = Form(...),
                              expected_token: str = Form(...)):
+    _require_disposable_test_mode()
     from legacy_app import get_connection
     from contextlib import closing
     from fastapi import HTTPException

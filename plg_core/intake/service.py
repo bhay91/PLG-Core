@@ -230,7 +230,7 @@ def _analysis(
         supplier = None
     if supplier and supplier.get("job_number"):
         job = connection.execute("SELECT id FROM jobs WHERE job_number=?", (supplier["job_number"],)).fetchone()
-        supplier["job_url"] = f"/jobs/{job['id']}/basket" if job else ""
+        supplier["job_url"] = f"/jobs/{job['id']}/basket?view=advanced" if job else ""
         if job:
             needs = connection.execute("SELECT id,wording FROM requested_needs WHERE job_id=? ORDER BY id", (job["id"],)).fetchall()
             for line in supplier.get("lines") or []:

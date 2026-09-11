@@ -70,11 +70,31 @@
         <form method="post" action="/quotes/{{ quote.id }}/decision"><input type="hidden" name="decision" value="REVISION_REQUIRED"><button class="button ghost" type="submit">Customer Requested Changes</button></form>
         <form method="post" action="/quotes/{{ quote.id }}/decision"><input type="hidden" name="decision" value="REJECTED"><button class="button danger" type="submit">Reject Quote</button></form>
         {% endif %}
-        <a class="button ghost" href="/jobs/{{ quote.job_id }}/basket">Back to Job</a>
+        <a class="button ghost" href="/jobs/{{ quote.job_id }}/basket?view=advanced">Back to Job</a>
       </div>
     </div>
 
-    {% if not invoice and quote.is_current and quote.status in ["DRAFT","SENT","REJECTED","REVISION_REQUIRED","APPROVED"] %}
+    {% if pending_revision and not invoice %}
+    <div class="quote-workflow-notice" role="status">
+      <strong>Changes are committed and ready for a revised quote.</strong>
+      <span>Generate the revised draft before recording a decision on this quote.</span>
+      <form method="post" action="/work-revisions/{{ pending_revision.id }}/generate-quote">
+        <input type="hidden" name="expected_version" value="{{ pending_revision.lock_version }}">
+        <button class="button" type="submit">Generate Revised Quote</button>
+      </form>
+      <details class="quote-workflow-override">
+        <summary>Override workflow lock</summary>
+        <p>Use only when the committed revision cannot be projected. This records an audit event and does not bypass invoice or accounting protections.</p>
+        <form method="post" action="/quotes/{{ quote.id }}/decision">
+          <label>Decision<select name="decision"><option value="APPROVED">Record Approval</option><option value="REVISION_REQUIRED">Request Changes</option><option value="REJECTED">Reject Quote</option></select></label>
+          <label>Reason<input name="override_reason" required placeholder="Why must this decision proceed now?"></label>
+          <button class="button ghost" type="submit">Record Override Decision</button>
+        </form>
+      </details>
+    </div>
+    {% endif %}
+
+    {% if not invoice and not pending_revision and quote.is_current and quote.status in ["DRAFT","SENT","REJECTED","REVISION_REQUIRED","APPROVED"] %}
     <details class="quote-correction-details">
       <summary>{% if quote.status == "DRAFT" %}Correct / Edit Draft{% else %}Revise Quote{% endif %}</summary>
       <form method="post" action="/quotes/{{ quote.id }}/revise" onsubmit="return confirm('{% if quote.status == "DRAFT" %}Edit this unissued draft?{% else %}Create editable changes while preserving this quote?{% endif %}');">

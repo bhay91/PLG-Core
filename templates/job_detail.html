@@ -8,12 +8,12 @@
     <p>{{ job.manufacturer }} {{ job.machine }}{% if job.pin_serial %} · {{ job.pin_serial }}{% endif %}</p>
   </div>
 
-  <div class="header-actions job-top-actions-clean"><a class="button" href="/jobs/{{ job.id }}/basket#lifecycle-controls">Open Lifecycle Controls</a><a class="button danger-outline erp-header-delete" href="/jobs/{{ job.id }}/delete-review">Delete</a></div>
+  <div class="header-actions job-top-actions-clean"><a class="button" href="/jobs/{{ job.id }}/basket?view=advanced#lifecycle-controls">Open Lifecycle Controls</a><a class="button danger-outline erp-header-delete" href="/jobs/{{ job.id }}/delete-review">Delete</a></div>
 </section>
 
 <section class="job-workspace-nav">
   <a class="active" href="/jobs/{{ job.id }}">Overview</a>
-  <a href="/jobs/{{ job.id }}/basket">Parts</a>
+  <a href="/jobs/{{ job.id }}/basket?view=advanced">Parts</a>
   <span>Timeline</span>
   <span>Documents</span>
   <span>Notes</span>
@@ -41,7 +41,7 @@
     {% else %}
     <a class="button" href="{{ operational_snapshot.workflow.next_url }}">{{ operational_snapshot.workflow.next_action }}</a>
     {% endif %}
-    <a class="button ghost" href="/jobs/{{ job.id }}/basket">Open Parts Workspace</a>
+    <a class="button ghost" href="/jobs/{{ job.id }}/basket?view=advanced">Open Parts Workspace</a>
   </div>
 </section>
 
@@ -52,7 +52,7 @@
     <p>Research suppliers, compare options, and prepare parts for the customer quote.</p>
   </div>
   <div class="header-actions">
-    <a class="button" href="/jobs/{{ job.id }}/basket">Open Parts Workspace</a>
+    <a class="button" href="/jobs/{{ job.id }}/basket?view=advanced">Open Parts Workspace</a>
     <a class="button ghost" href="/jobs/{{ job.id }}/edit">Edit Job Information</a>
   </div>
 </section>

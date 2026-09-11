@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}PPS Assistant · Research Review{% endblock %}
 {% block content %}
-<section class="workspace-heading"><div><p class="eyebrow">PPS ASSISTANT</p><h1>Review Research</h1><p>Everything below is provisional and has not been saved as a PPS customer, machine, supplier, part, quote, or invoice.</p></div><a class="button ghost" href="/assistant/research">Upload Research</a></section>
+<section class="workspace-heading"><div><p class="eyebrow">PPS ASSISTANT</p><h1>Review Research</h1><p>Everything below is provisional and has not been saved as a PPS customer, machine, supplier, part, quote, or invoice.</p></div><a class="button ghost" href="/requests/smart-intake">Open Smart Intake</a></section>
 <section class="panel research-review-panel"><div class="panel-heading"><div><h2>Provisional review</h2><p>Inspect extracted values and their evidence before any future confirmation step.</p></div><span class="status-pill review">PROVISIONAL</span></div>
 {% for title, key in [("Customer","customer"),("Machine","machine"),("Requested Parts","requested_needs"),("Part Evidence","part_evidence"),("Suppliers","supplier_evidence"),("Pricing","pricing_evidence"),("Fitment","fitment_evidence"),("Evidence","research_evidence")] %}<article class="research-review-card"><h3>{{ title }}</h3><p class="muted">Provisional — not yet saved to PPS records</p><pre>{{ review[key]|tojson(indent=2) }}</pre></article>{% endfor %}
 <article class="research-review-card"><h3>Original Document</h3><p class="muted">Preserved attachment and provenance</p>{% for a in proposal.attachments %}<p><strong>{{ a.original_filename }}</strong> · {{ a.media_type }} · {{ a.extraction_status }}</p>{% endfor %}</article>

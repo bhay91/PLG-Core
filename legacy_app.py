@@ -766,7 +766,6 @@ def work_queue(request: Request, queue: str = "ALL"):
 
 
 @app.get("/", response_class=HTMLResponse, name="dashboard")
-@app.get("/dashboard", response_class=HTMLResponse, name="dashboard_alias")
 def operator_dashboard(request: Request):
     from plg_core.admin.service import accounting_snapshot
 
@@ -781,6 +780,11 @@ def operator_dashboard(request: Request):
         name="operator_dashboard.html",
         context={**dashboard_data, "active_page": "dashboard"},
     )
+
+
+@app.get("/dashboard", name="dashboard_alias")
+def dashboard_alias(request: Request):
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.get("/jobs/new", response_class=HTMLResponse)
@@ -903,7 +907,7 @@ def create_job(
                     (job_id, job_asset_id, wording),
                 )
         connection.commit()
-    return RedirectResponse(url=f"/jobs/{job_id}/basket",status_code=303)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced",status_code=303)
 
 
 
@@ -1663,6 +1667,13 @@ def list_jobs(request: Request, view: str = "active"):
 
 @app.get("/jobs/{job_id}", response_class=HTMLResponse)
 def job_detail(request: Request, job_id: int):
+    return RedirectResponse(
+        url=f"/jobs/{job_id}/basket?view=advanced",
+        status_code=303,
+    )
+
+
+def _legacy_job_detail(request: Request, job_id: int):
     from plg_core.jobs.service import get_job_operational_snapshot
     from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
 
@@ -1868,7 +1879,7 @@ def update_job(
                                                    "historical_identity_retained": True})
             log_job_event(connection, job_id=job_id, event_type="JOB_EDITED", icon="✎", message=message)
             connection.commit()
-            return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+            return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced", status_code=303)
         customer_row = connection.execute(
             "SELECT * FROM customers WHERE id=? AND (active=1 OR id=?)",
             (customer_id, job["customer_id"] if has_history else -1),
@@ -1962,7 +1973,7 @@ def update_job(
         log_job_event(connection, job_id=job_id, event_type="JOB_EDITED", icon="✎", message=message)
         connection.commit()
 
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced", status_code=303)
 
 
 @app.post("/jobs/{job_id}/parts")
@@ -2005,7 +2016,7 @@ def add_job_part(
         )
         connection.commit()
 
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced", status_code=303)
 
 
 
@@ -2094,7 +2105,7 @@ def delete_job_part(part_id: int):
         connection.commit()
 
     return RedirectResponse(
-        url=f"/jobs/{part['job_id']}",
+        url=f"/jobs/{part['job_id']}/basket?view=advanced",
         status_code=303,
     )
 
@@ -4762,7 +4773,7 @@ def revise_quote_web(
     from plg_core.revisions import start_quote_revision
     revision = start_quote_revision(quote_id, reason)
     return RedirectResponse(
-        url=f"/jobs/{revision['job_id']}/basket?revision_started=1",
+        url=f"/jobs/{revision['job_id']}/basket?view=advanced&revision_started=1",
         status_code=303,
     )
 
@@ -4802,7 +4813,7 @@ def cancel_quote_revision_web(
     target = (
         f"/quotes/{revision['based_on_quote_id']}/documents"
         if revision["based_on_quote_id"]
-        else f"/jobs/{revision['job_id']}/basket"
+        else f"/jobs/{revision['job_id']}/basket?view=advanced"
     )
     return RedirectResponse(url=target, status_code=303)
 
@@ -4811,6 +4822,7 @@ def cancel_quote_revision_web(
 def update_quote_decision(
     quote_id: int,
     decision: str = Form(...),
+    override_reason: str = Form(""),
 ):
     valid_decisions = {
         "APPROVED",
@@ -4827,7 +4839,7 @@ def update_quote_decision(
         )
 
     from plg_core.lifecycle import transition_quote
-    transition_quote(quote_id, normalized)
+    transition_quote(quote_id, normalized, override_reason=override_reason)
 
     return RedirectResponse(
         url=f"/quotes/{quote_id}/documents",
@@ -4873,6 +4885,16 @@ def quote_documents(request: Request, quote_id: int):
             """,
             (quote_id,),
         ).fetchall()
+        pending_revision = connection.execute(
+            """
+            SELECT wr.id, wr.lock_version, wr.revision_number
+            FROM work_revisions wr
+            WHERE wr.job_id=? AND wr.based_on_quote_id=? AND wr.state='COMMITTED'
+              AND NOT EXISTS (SELECT 1 FROM quotes generated WHERE generated.work_revision_id=wr.id)
+            ORDER BY wr.id DESC LIMIT 1
+            """,
+            (quote["job_id"], quote_id),
+        ).fetchone()
     if str(quote["status"] or "").upper() in {
         "SENT", "APPROVED", "REJECTED", "REVISION_REQUIRED",
         "SUPERSEDED", "CONVERTED",
@@ -4886,7 +4908,7 @@ def quote_documents(request: Request, quote_id: int):
         if not paths["customer"].exists() or not paths["internal"].exists():
             generate_quote_pdfs(quote, items)
     customer_path = Path("documents")/"Customers"/sanitize_path_name(quote["customer"])/"Quotes"
-    return templates.TemplateResponse(request=request,name="quote_documents.html",context={"quote":quote,"items":items,"invoice":invoice,"quote_events":quote_events,"split_predecessor":split_predecessor,"split_successors":split_successors,"customer_path":str(customer_path),"can_archive":can_archive,"active_page":"quotes"})
+    return templates.TemplateResponse(request=request,name="quote_documents.html",context={"quote":quote,"items":items,"invoice":invoice,"quote_events":quote_events,"split_predecessor":split_predecessor,"split_successors":split_successors,"pending_revision":dict(pending_revision) if pending_revision else None,"customer_path":str(customer_path),"can_archive":can_archive,"active_page":"quotes"})
 
 
 @app.get("/quotes/{quote_id}/customer/pdf")
@@ -4969,7 +4991,7 @@ def update_job_status(
 def cancel_job_web(job_id: int, reason: Annotated[str, Form()]):
     from plg_core.lifecycle import cancel_job
     cancel_job(job_id, reason)
-    return RedirectResponse(url=f"/jobs/{job_id}/basket", status_code=303)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced", status_code=303)
 
 
 @app.post("/jobs/{job_id}/archive")
@@ -4983,7 +5005,7 @@ def archive_job_web(job_id: int):
 def restore_job_web(job_id: int):
     from plg_core.lifecycle import restore_job
     restore_job(job_id)
-    return RedirectResponse(url=f"/jobs/{job_id}/basket", status_code=303)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced", status_code=303)
 
 
 @app.post("/jobs/{job_id}/reopen")
@@ -4996,7 +5018,7 @@ def reopen_job_web(job_id: int, reason: Annotated[str, Form()]):
         reopen_job_for_revision(job_id, reason)
     else:
         reopen_job(job_id, reason)
-    return RedirectResponse(url=f"/jobs/{job_id}/basket", status_code=303)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced", status_code=303)
 
 
 @app.post("/jobs/{job_id}/delete")
@@ -5109,7 +5131,7 @@ def verify_part(
 
         connection.commit()
 
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced", status_code=303)
 
 
 @app.post("/parts/{part_id}/supplier")
@@ -5133,7 +5155,7 @@ def update_supplier(
         )
         connection.commit()
 
-    return RedirectResponse(url=f"/jobs/{part['job_id']}", status_code=303)
+        return RedirectResponse(url=f"/jobs/{part['job_id']}/basket?view=advanced", status_code=303)
 
 
 @app.post("/parts/{part_id}/sources")
@@ -5225,7 +5247,7 @@ def add_part_source(
         )
         connection.commit()
 
-    return RedirectResponse(url=f"/jobs/{part['job_id']}#part-{part_id}", status_code=303)
+        return RedirectResponse(url=f"/jobs/{part['job_id']}/basket?view=advanced#part-{part_id}", status_code=303)
 
 
 @app.post("/parts/{part_id}/sources/{source_id}/select")
@@ -5309,7 +5331,7 @@ def select_part_source(part_id: int, source_id: int):
         )
         connection.commit()
 
-    return RedirectResponse(url=f"/jobs/{part['job_id']}#part-{part_id}", status_code=303)
+        return RedirectResponse(url=f"/jobs/{part['job_id']}/basket?view=advanced#part-{part_id}", status_code=303)
 
 
 @app.post("/parts/{part_id}/sources/{source_id}/verification")
@@ -5464,7 +5486,7 @@ def update_part_source_verification(
         connection.commit()
 
     return RedirectResponse(
-        url=f"/jobs/{source['job_id']}#part-{part_id}",
+        url=f"/jobs/{source['job_id']}/basket?view=advanced#part-{part_id}",
         status_code=303,
     )
 
@@ -5634,7 +5656,7 @@ def update_part_source_compatibility(
         connection.commit()
 
     return RedirectResponse(
-        url=f"/jobs/{source['job_id']}#part-{part_id}",
+        url=f"/jobs/{source['job_id']}/basket?view=advanced#part-{part_id}",
         status_code=303,
     )
 
@@ -5661,7 +5683,7 @@ def delete_part_source(part_id: int, source_id: int):
             )
         connection.commit()
 
-    return RedirectResponse(url=f"/jobs/{part['job_id']}#part-{part_id}", status_code=303)
+        return RedirectResponse(url=f"/jobs/{part['job_id']}/basket?view=advanced#part-{part_id}", status_code=303)
 
 
 @app.post("/parts/{part_id}/quick-capture")
@@ -5741,7 +5763,7 @@ def quick_capture_part(
         connection.commit()
 
     return RedirectResponse(
-        url=f"/jobs/{part['job_id']}#part-{part_id}",
+        url=f"/jobs/{part['job_id']}/basket?view=advanced#part-{part_id}",
         status_code=303,
     )
 
@@ -6262,7 +6284,7 @@ def start_source_import(
         connection.commit()
 
     if profile["connector_type"] == "UPLOAD":
-        return RedirectResponse(url=f"/jobs/{job_id}#quote-upload", status_code=303)
+        return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced#quote-upload", status_code=303)
 
     return RedirectResponse(url=profile["launch_url"], status_code=303)
 

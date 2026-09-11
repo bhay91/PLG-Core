@@ -51,6 +51,33 @@ def _job_operator_state(job, invoice, orders, movement, financial, fallback):
     return "Completed", "Review completed Job", f"/jobs/{int(job['id'])}/delivery", "GET"
 
 
+def _pending_revision_action(connection, job_id: int, quote):
+    """Return a committed revision waiting for its derived quote, if any.
+
+    A committed revision is finished work. It remains the active source only
+    until its idempotent quote projection is generated; it must not be shown as
+    editable or as an unfinished change.
+    """
+    if quote is None:
+        return None
+    return connection.execute(
+        """
+        SELECT wr.id, wr.revision_number, wr.lock_version, wr.based_on_quote_id,
+               wr.state, q.quote_number AS source_quote_number
+        FROM work_revisions wr
+        JOIN quotes q ON q.id = wr.based_on_quote_id
+        WHERE wr.job_id=? AND wr.state='COMMITTED'
+          AND wr.based_on_quote_id=?
+          AND NOT EXISTS (
+              SELECT 1 FROM quotes generated
+              WHERE generated.work_revision_id=wr.id
+          )
+        ORDER BY wr.id DESC LIMIT 1
+        """,
+        (job_id, quote["id"]),
+    ).fetchone()
+
+
 def get_job_operational_snapshot(
     job_id: int,
     *,
@@ -80,6 +107,7 @@ def get_job_operational_snapshot(
             "SELECT * FROM quotes WHERE job_id=? AND COALESCE(is_current,1)=1 ORDER BY id DESC LIMIT 1",
             (job_id,),
         ).fetchone()
+        pending_revision = _pending_revision_action(connection, job_id, quote)
         invoice = connection.execute(
             "SELECT * FROM invoices WHERE job_id=? ORDER BY id DESC LIMIT 1", (job_id,)
         ).fetchone()
@@ -218,15 +246,21 @@ def get_job_operational_snapshot(
             customer_request=connection.execute("SELECT id FROM customer_requests WHERE job_id=? LIMIT 1", (job_id,)).fetchone(),
             quote=quote, invoice=invoice,
         )
-        stage, next_action, next_url, action_method = _job_operator_state(
-            job, invoice, order_rows, movement, financial,
-            (
-                base.workflow_label,
-                base.next_action,
-                base.action_url,
-                base.action_method,
-            ),
-        )
+        if pending_revision is not None and invoice is None and not order_rows:
+            stage, next_action, next_url, action_method = (
+                "Revision Ready", "Generate Revised Quote",
+                f"/work-revisions/{int(pending_revision['id'])}/generate-quote", "POST",
+            )
+        else:
+            stage, next_action, next_url, action_method = _job_operator_state(
+                job, invoice, order_rows, movement, financial,
+                (
+                    base.workflow_label,
+                    base.next_action,
+                    base.action_url,
+                    base.action_method,
+                ),
+            )
         overlay_stages = {
             "Partial Receiving", "Waiting for Supplier", "Ready to Deliver",
             "Costs Pending", "Completed", "Completed · Costs Pending",
@@ -273,6 +307,7 @@ def get_job_operational_snapshot(
                 "next_url": next_url,
                 "action_method": action_method,
             },
+            "pending_revision": dict(pending_revision) if pending_revision else None,
             "quote": ({"id": int(quote["id"]), "quote_number": quote["quote_number"], "status": quote["status"]} if quote else None),
             "invoice": ({"id": int(invoice["id"]), "invoice_number": invoice["invoice_number"], "status": invoice["status"], "customer_total": float(invoice["customer_total"] or 0), "balance_due": float(invoice["balance_due"] or 0), "amount_paid": round(max(float(invoice["customer_total"] or 0) - float(invoice["balance_due"] or 0), 0), 2), "payment_state": payment_state, "url": f"/invoices/{int(invoice['id'])}/documents"} if invoice else None),
             "financial": financial, "supplier_orders": orders, "movement": movement,

@@ -109,7 +109,7 @@ class WorkQueuePhase1Tests(unittest.TestCase):
         )
         self.assertEqual(
             (waiting_price["need_action"], waiting_price["next_action"], waiting_price["url"]),
-            ("Turbo", "Add Supplier Price", "/jobs/2/basket?asset_id=2&need_id=2#research-results"),
+            ("Turbo", "Add Supplier Price", "/jobs/2/basket?view=advanced&asset_id=2&need_id=2#research-results"),
         )
         ready = next(
             row for row in result["items"]
@@ -117,7 +117,7 @@ class WorkQueuePhase1Tests(unittest.TestCase):
         )
         self.assertEqual(
             (ready["need_action"], ready["next_action"], ready["url"]),
-            ("Radiator", "Confirm for Quote", "/jobs/3/basket?asset_id=3&need_id=3#parts-ready"),
+            ("Radiator", "Confirm for Quote", "/jobs/3/basket?view=advanced&asset_id=3&need_id=3#parts-ready"),
         )
         self.assertEqual(result["counts"]["READY_TO_ORDER"], 1)
         self.assertNotIn("J11", {row["job_number"] for row in result["items"]})
@@ -221,10 +221,10 @@ class WorkQueuePhase1Tests(unittest.TestCase):
             "J5": ("CUSTOMER_DECISION_FOLLOW_UP", "Waiting for Customer", "Open Quote", "/quotes/5/documents"),
             "J6": ("READY_TO_INVOICE", "Create Invoice for Payment", "Open Quote", "/quotes/6/documents"),
             "J7": ("WAITING_FOR_PAYMENT", "Waiting for Payment", "Open Invoice", "/invoices/7/documents"),
-            "J8": ("READY_TO_ORDER", "Mark Order Placed", "Continue Job", "/jobs/8/basket#fulfillment-checklist"),
+            "J8": ("READY_TO_ORDER", "Mark Order Placed", "Continue Job", "/jobs/8/basket?view=advanced#fulfillment-checklist"),
             "J9": ("WAITING_FOR_PARTS", "Receive 3 remaining items", "Open Supplier Order", "/purchasing/orders/9"),
             "J10": ("READY_FOR_DELIVERY", "Prepare Delivery", "Prepare Delivery", "/jobs/10/delivery"),
-            "J11": ("COMPLETE", "Completed", "Open Job", "/jobs/11/basket"),
+            "J11": ("COMPLETE", "Completed", "Open Job", "/jobs/11/basket?view=advanced"),
         }
         for number, values in expected.items():
             row = rows[number]
@@ -395,7 +395,7 @@ class WorkQueuePhase1Tests(unittest.TestCase):
         self.assertEqual(row["category"], "READY_TO_ORDER")
         self.assertEqual(row["need_action"], "Mark Order Placed")
         self.assertEqual(
-            row["url"], "/jobs/12/basket#fulfillment-checklist"
+            row["url"], "/jobs/12/basket?view=advanced#fulfillment-checklist"
         )
         self.assertNotEqual(row["category"], "READY_TO_QUOTE")
         c.close()
@@ -424,7 +424,8 @@ class WorkQueuePhase1Tests(unittest.TestCase):
         self.assertEqual(base.count('href="/requests"'), 1)
         self.assertNotIn("Open Inbox", base)
         self.assertIn("active_page == 'requests'", base)
-        self.assertNotIn("<span>Follow-Up Center</span>", base)
+        self.assertIn("<span>Follow-Up</span>", base)
+        self.assertEqual(base.count('href="/follow-up"'), 1)
 
     def test_category_navigation_wraps_without_horizontal_scrolling(self):
         css = (ROOT / "static" / "app.css").read_text()

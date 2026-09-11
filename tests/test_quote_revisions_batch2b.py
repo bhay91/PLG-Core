@@ -9,15 +9,20 @@ import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
+import re
 
 from fastapi import HTTPException
+from starlette.requests import Request
 
 import legacy_app
 from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
 from plg_core.basket.routes import update_revenue_adjustments
+from plg_core.basket.routes import basket_page
+from plg_core.application import app
 from plg_core.basket.service import add_item, commit_basket, get_basket, update_item
 from plg_core.database.migrations import run_migrations
 from plg_core.documents import quote_pdf
+from plg_core.jobs.service import get_job_operational_snapshot
 from plg_core.revisions import (
     cancel_quote_revision,
     commit_work_revision,
@@ -26,6 +31,7 @@ from plg_core.revisions import (
     reopen_job_for_revision,
     start_quote_revision,
 )
+from plg_core.lifecycle import transition_quote
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -202,10 +208,17 @@ class QuoteRevisionBatch2BTests(unittest.TestCase):
             new_items = c.execute(
                 "SELECT * FROM quote_items WHERE quote_id=?", (new_quote["id"],)
             ).fetchall()
+            lineage = c.execute(
+                "SELECT predecessor_quote_item_id,successor_quote_item_id,"
+                "successor_quote_id FROM quote_item_lineage "
+                "WHERE successor_quote_id=?", (new_quote["id"],)
+            ).fetchall()
             self.assertEqual(old_after["status"], "SUPERSEDED")
             self.assertEqual(old_after["is_current"], 0)
             self.assertEqual(new_quote["is_current"], 1)
             self.assertEqual(len(new_items), 2)
+            self.assertEqual(len(lineage), 1)
+            self.assertEqual(lineage[0][2], new_quote["id"])
             # Only lifecycle lineage fields changed on the old quote.
             for key, value in old_quote.items():
                 if key not in {
@@ -257,12 +270,15 @@ class QuoteRevisionBatch2BTests(unittest.TestCase):
         self.assertEqual(quote["machine"], "Original Machine")
         self.assertEqual(quote["pin_serial"], "ORIG-PIN")
 
-    def test_draft_correction_retains_number_and_row(self):
+    def test_draft_correction_preserves_source_and_projects_successor(self):
         job_id, quote_id, _ = self.original_quote(status="DRAFT")
         with closing(self.connection()) as c:
             number = c.execute(
                 "SELECT quote_number FROM quotes WHERE id=?", (quote_id,)
             ).fetchone()[0]
+            old_items = [dict(row) for row in c.execute(
+                "SELECT * FROM quote_items WHERE quote_id=?", (quote_id,)
+            )]
         revision = start_quote_revision(quote_id, "Quantity correction")
         basket = get_basket(job_id)
         update_item(
@@ -274,16 +290,26 @@ class QuoteRevisionBatch2BTests(unittest.TestCase):
         corrected = generate_quote_from_revision(
             revision["id"], expected_version=current["lock_version"]
         )
-        self.assertEqual(corrected["id"], quote_id)
-        self.assertEqual(corrected["quote_number"], number)
-        self.assertEqual(corrected["content_version"], 2)
+        self.assertNotEqual(corrected["id"], quote_id)
+        self.assertNotEqual(corrected["quote_number"], number)
+        self.assertEqual(corrected["supersedes_quote_id"], quote_id)
         with closing(self.connection()) as c:
-            self.assertEqual(c.execute(
-                "SELECT COUNT(*) FROM quotes WHERE job_id=?", (job_id,)
-            ).fetchone()[0], 1)
+            source = c.execute("SELECT * FROM quotes WHERE id=?", (quote_id,)).fetchone()
+            self.assertEqual(source["status"], "SUPERSEDED")
+            self.assertEqual(source["is_current"], 0)
+            self.assertEqual([dict(row) for row in c.execute(
+                "SELECT * FROM quote_items WHERE quote_id=?", (quote_id,)
+            )], old_items)
             self.assertEqual(c.execute(
                 "SELECT quantity FROM quote_items WHERE quote_id=?", (quote_id,)
+            ).fetchone()[0], 1)
+            self.assertEqual(c.execute(
+                "SELECT quantity FROM quote_items WHERE quote_id=?", (corrected["id"],)
             ).fetchone()[0], 3)
+            self.assertEqual(c.execute(
+                "SELECT COUNT(*) FROM quote_item_lineage WHERE successor_quote_id=?",
+                (corrected["id"],),
+            ).fetchone()[0], 1)
 
     def test_revision_remove_replace_supplier_quantity_cost_and_price(self):
         job_id, quote_id, _ = self.original_quote(status="SENT")
@@ -533,6 +559,81 @@ class QuoteRevisionBatch2BTests(unittest.TestCase):
                 "SELECT last_number FROM pps_number_sequences "
                 "WHERE entity_type='QUOTE'"
             ).fetchone()[0], 2)
+
+    def test_committed_revision_has_one_generate_action_until_projection_exists(self):
+        job_id, quote_id, _ = self.original_quote(status="DRAFT")
+        revision = start_quote_revision(quote_id, "Correct draft quantity")
+        committed = commit_work_revision(
+            job_id, expected_revision_id=revision["id"],
+            expected_version=revision["lock_version"],
+        )
+        snapshot = get_job_operational_snapshot(job_id)
+        self.assertEqual(snapshot["workflow"]["next_action"], "Generate Revised Quote")
+        self.assertEqual(snapshot["workflow"]["action_method"], "POST")
+        self.assertEqual(snapshot["pending_revision"]["id"], committed["revision_id"])
+        with self.assertRaises(HTTPException):
+            transition_quote(quote_id, "APPROVED")
+        corrected = generate_quote_from_revision(
+            revision["id"], expected_version=revision["lock_version"]
+        )
+        self.assertNotEqual(corrected["id"], quote_id)
+        self.assertEqual(corrected["supersedes_quote_id"], quote_id)
+        repeated = generate_quote_from_revision(
+            revision["id"], expected_version=revision["lock_version"]
+        )
+        self.assertEqual(repeated["id"], corrected["id"])
+        with closing(self.connection()) as c:
+            self.assertEqual(c.execute(
+                "SELECT active_work_revision_id FROM jobs WHERE id=?", (job_id,)
+            ).fetchone()[0], revision["id"])
+            self.assertEqual(c.execute(
+                "SELECT COUNT(*) FROM quote_items WHERE quote_id=?", (quote_id,)
+            ).fetchone()[0], 1)
+            self.assertEqual(c.execute(
+                "SELECT COUNT(*) FROM quotes WHERE job_id=?", (job_id,)
+            ).fetchone()[0], 2)
+        snapshot = get_job_operational_snapshot(job_id)
+        self.assertIsNone(snapshot["pending_revision"])
+        transition_quote(corrected["id"], "APPROVED")
+
+    def test_command_center_committed_revision_action_has_expected_version(self):
+        job_id, quote_id, _ = self.original_quote(status="DRAFT")
+        revision = start_quote_revision(quote_id, "Correct draft quantity")
+        committed = commit_work_revision(
+            job_id, expected_revision_id=revision["id"],
+            expected_version=revision["lock_version"],
+        )
+        request = Request({
+            "type": "http", "method": "GET", "path": f"/jobs/{job_id}/basket",
+            "query_string": b"", "headers": [], "scheme": "http",
+            "server": ("localhost", 80), "app": app,
+        })
+        html = basket_page(request, job_id, view="advanced").body.decode()
+        action = f"/work-revisions/{committed['revision_id']}/generate-quote"
+        command = re.search(
+            r'<div class="job-command-next">.*?</div>\s*</div>', html, re.DOTALL
+        )
+        self.assertIsNotNone(command)
+        self.assertIn(f'action="{action}"', command.group(0))
+        self.assertIn(
+            f'name="expected_version" value="{revision["lock_version"]}"',
+            command.group(0),
+        )
+        self.assertEqual(html.count('class="job-command-next"'), 1)
+        self.assertNotIn('class="job-primary-next"', html)
+
+    def test_quote_decision_workflow_override_is_reasoned_and_audited(self):
+        job_id, quote_id, _ = self.original_quote(status="DRAFT")
+        revision = start_quote_revision(quote_id, "Operator correction")
+        commit_work_revision(job_id, expected_revision_id=revision["id"], expected_version=revision["lock_version"])
+        with self.assertRaises(HTTPException):
+            transition_quote(quote_id, "APPROVED")
+        transition_quote(quote_id, "APPROVED", override_reason="Customer decision received before projection")
+        with closing(self.connection()) as c:
+            self.assertTrue(c.execute(
+                "SELECT 1 FROM audit_logs WHERE action='QUOTE_DECISION_WORKFLOW_OVERRIDE' AND entity_id=?",
+                (quote_id,),
+            ).fetchone())
 
     def test_reopen_cancelled_job_enters_governed_revision(self):
         job_id, quote_id, _ = self.original_quote(status="SENT")

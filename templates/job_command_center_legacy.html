@@ -3,7 +3,7 @@
 {% block title %}Job Command Center · {{ job.job_number }}{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="/static/job_workspace.css?v=9">
-<p><a class="button ghost" href="/jobs/{{ job.id }}/basket">← Back to Job</a></p>
+<p><a class="button ghost" href="/jobs/{{ job.id }}/basket?view=advanced">← Back to Job</a></p>
 <style>
 .cc-shell{width:100%;max-width:none;margin:0;display:grid;gap:18px}.cc-card{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-sm)}
 .cc-hero{padding:24px;display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:22px;align-items:stretch}.cc-kicker{margin:0 0 8px;color:var(--accent-dark);font-size:12px;font-weight:850;letter-spacing:.09em}.cc-hero h1{margin:0;color:var(--ink-strong);font-size:38px;line-height:1.05}.cc-subtitle{margin:10px 0 0;color:var(--muted);font-size:16px}.cc-meta{margin-top:18px;display:flex;flex-wrap:wrap;gap:9px}.cc-chip{padding:8px 11px;border:1px solid var(--line);border-radius:999px;background:var(--surface-soft);font-size:12px;font-weight:800}.cc-next{padding:20px;border-radius:14px;background:linear-gradient(135deg,#0b3267,#092650);color:#fff;display:flex;flex-direction:column;justify-content:space-between}.cc-next span{font-size:10px;font-weight:850;letter-spacing:.12em;opacity:.72}.cc-next strong{margin:8px 0 18px;font-size:24px}.cc-next .button{background:#fff;color:var(--ink-strong);border-color:#fff}
@@ -69,6 +69,7 @@
 {% set quote_ready = basket.status == "COMMITTED" %}
 {% set delivered_job = job.status == "DELIVERED" %}{% if job.status == "COMPLETED" %}{% set delivered_job = true %}{% endif %}
 {% set work_editable = not delivered_job and active_revision and active_revision.state == "EDITABLE" %}
+{% set pending_revision = operational_snapshot.pending_revision %}
 {% set governed_revision = work_editable and not active_revision.is_synthetic and active_revision.based_on_quote_id %}
 {% set operator_stage = operational_snapshot.workflow.stage %}
 {% set fulfillment = operational_snapshot.fulfillment %}{% set fc = fulfillment.counts %}{% set m = operational_snapshot.movement %}
@@ -179,7 +180,7 @@
   </section>
 
   <section class="job-command-groups" aria-label="Job workspace">
-    <details class="cc-card job-command-group" id="parts-purchasing-group" open>
+    <details class="cc-card job-command-group" id="parts-purchasing-group"{% if basket.totals.selected_items or operational_snapshot.supplier_orders or fulfillment.available %} open{% endif %}>
       <summary><span class="job-command-group-title"><strong>Sourcing &amp; Fulfillment</strong><small>Requested needs, research candidates, quote readiness, supplier orders, and delivery</small></span></summary>
       <div class="job-command-group-body" data-job-group="parts"></div>
     </details>
@@ -216,13 +217,11 @@
       </p>
     </div>
     <div class="cc-actions">
-      <form method="post"
-            action="/work-revisions/{{ active_revision.id }}/generate-quote">
-        <input type="hidden" name="expected_version"
-               value="{{ active_revision.lock_version }}">
-        <button class="button" type="submit">
-          Generate Revised Quote
-        </button>
+      <div class="cc-actions revision-work-actions">
+      <form method="post" action="/jobs/{{ job.id }}/basket/commit">
+        <input type="hidden" name="expected_revision_id" value="{{ active_revision.id }}">
+        <input type="hidden" name="expected_version" value="{{ active_revision.lock_version }}">
+        <button class="button" type="submit">Finish Changes</button>
       </form>
       <form method="post"
             action="/work-revisions/{{ active_revision.id }}/cancel"
@@ -234,9 +233,10 @@
                placeholder="Why are these changes being cancelled?">
         <button class="button ghost" type="submit">Cancel Changes</button>
       </form>
+      </div>
     </div>
   </section>
-  {% elif quote and not invoice %}
+  {% elif quote and not invoice and not pending_revision %}
   <section class="panel revision-action-panel">
     {% if quote.status == "DRAFT" %}
       <strong>Need to correct this unissued draft?</strong>
@@ -276,11 +276,11 @@
         <strong>{{ active_need_label }}</strong>
         {% if open_requested_needs|length > 1 %}<small>+{{ open_requested_needs|length - 1 }} additional requested need{% if open_requested_needs|length != 2 %}s{% endif %}</small>{% endif %}
       </div>
-      <div class="job-command-next">
+      {% if not pending_revision %}<div class="job-command-next">
         <span>Next Action</span>
         <strong>{{ operational_snapshot.workflow.next_action }}</strong>
         {% if operational_snapshot.workflow.action_method == 'POST' %}<form method="post" action="{{ operational_snapshot.workflow.next_url }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button job-bar-action" type="submit">{{ operational_snapshot.workflow.next_action }}</button></form>{% else %}<a class="button job-bar-action" href="{{ operational_snapshot.workflow.next_url }}">{{ operational_snapshot.workflow.next_action }}</a>{% endif %}
-      </div>
+      </div>{% endif %}
     </div>
 
     <div class="job-command-metrics" aria-label="Current Job operational state">
@@ -332,7 +332,7 @@
   {% if not delivered_job %}
   <section class="cc-card requested-need-primary" id="customer-needs" aria-labelledby="requested-needs-title">
     <div class="cc-section-head"><div><p class="cc-label">REQUESTED NEEDS</p><h2 id="requested-needs-title">What the customer needs</h2><p class="cc-muted">Original customer wording and sourcing progress.</p></div></div>
-    {% if requested_needs %}<div class="requested-need-list">{% for need in requested_needs %}<article class="requested-need-card {% if selected_need_id == need.id or (not selected_need_id and loop.first) %}is-active{% endif %}"><h3>{{ need.wording }}</h3><div class="requested-need-meta"><span>{{ need.state|title }}</span>{% if selected_asset %}<span>{{ selected_asset.manufacturer }} {{ selected_asset.model or selected_asset.name }}</span>{% endif %}<span>{{ need.research_candidate_count }} candidate{% if need.research_candidate_count != 1 %}s{% endif %}</span><span>{{ need.quote_candidate_count }} ready for quote</span></div>{% if need.specifications %}<div class="need-specifications">{% for spec in need.specifications %}<div><small>{{ spec.label }}</small><strong>{{ spec.value }}</strong></div>{% endfor %}</div>{% elif need.notes %}<p class="cc-muted">{{ need.notes }}</p>{% endif %}{% if operational_snapshot.movement.ordered_units %}<div class="need-quantity-flow"><span>Ordered {{ operational_snapshot.movement.ordered_units }}</span><span>Received {{ operational_snapshot.movement.received_units }}/{{ operational_snapshot.movement.ordered_units }}</span><span>Delivered {{ operational_snapshot.movement.delivered_units }}/{{ operational_snapshot.movement.ordered_units }}</span></div>{% endif %}{% if need.state == 'OPEN' %}<a class="requested-need-research" href="/jobs/{{ job.id }}/basket{% if selected_asset_id %}?asset_id={{ selected_asset_id }}&amp;{% else %}?{% endif %}need_id={{ need.id }}#research-results">Focus research on this need</a>{% endif %}</article>{% endfor %}</div>{% else %}<div class="cc-empty">No Requested Need has been recorded. Add the customer’s wording before research.</div>{% endif %}
+    {% if requested_needs %}<div class="requested-need-list">{% for need in requested_needs %}<article class="requested-need-card {% if selected_need_id == need.id or (not selected_need_id and loop.first) %}is-active{% endif %}"><h3>{{ need.wording }}</h3><div class="requested-need-meta"><span>{{ need.state|title }}</span>{% if selected_asset %}<span>{{ selected_asset.manufacturer }} {{ selected_asset.model or selected_asset.name }}</span>{% endif %}<span>{{ need.research_candidate_count }} candidate{% if need.research_candidate_count != 1 %}s{% endif %}</span><span>{{ need.quote_candidate_count }} ready for quote</span></div>{% if need.specifications %}<div class="need-specifications">{% for spec in need.specifications %}<div><small>{{ spec.label }}</small><strong>{{ spec.value }}</strong></div>{% endfor %}</div>{% elif need.notes %}<p class="cc-muted">{{ need.notes }}</p>{% endif %}{% if operational_snapshot.movement.ordered_units %}<div class="need-quantity-flow"><span>Ordered {{ operational_snapshot.movement.ordered_units }}</span><span>Received {{ operational_snapshot.movement.received_units }}/{{ operational_snapshot.movement.ordered_units }}</span><span>Delivered {{ operational_snapshot.movement.delivered_units }}/{{ operational_snapshot.movement.ordered_units }}</span></div>{% endif %}{% if need.state == 'OPEN' %}<a class="requested-need-research" href="/jobs/{{ job.id }}/basket?view=advanced{% if selected_asset_id %}&amp;asset_id={{ selected_asset_id }}&amp;{% endif %}need_id={{ need.id }}#research-results">Focus research on this need</a>{% endif %}</article>{% endfor %}</div>{% else %}<div class="cc-empty">No Requested Need has been recorded. Add the customer’s wording before research.</div>{% endif %}
     {% if work_editable %}<details class="needs-manage selected-needs-manage"><summary>Manage Requested Needs</summary><div><form class="research-toolbar" method="post" action="/jobs/{{ job.id }}/needs"><input type="hidden" name="job_asset_id" value="{{ selected_asset.id if selected_asset else '' }}"><input type="hidden" name="expected_revision_id" value="{{ basket.work_revision.id }}"><input type="hidden" name="expected_version" value="{{ basket.work_revision.lock_version }}"><label>Add a Requested Need<input name="wording" required placeholder="Example: King mattress, medium firm, qty 2"></label><label>Specifications / notes<input name="notes" placeholder="Size: King"></label><button class="button" type="submit">Add Need</button></form></div></details>{% endif %}
   </section>
 
@@ -342,13 +342,13 @@
     <div class="job-assets-grid">
       {% for asset in job_assets %}
       <article class="job-asset-card {% if selected_asset_id == asset.id %}is-selected{% endif %}">
-        <a class="asset-selector-link" href="/jobs/{{ job.id }}/basket?asset_id={{ asset.id }}#machine-workspace" aria-label="Work on {{ asset.manufacturer }} {{ asset.model or asset.name }}">
+        <a class="asset-selector-link" href="/jobs/{{ job.id }}/basket?view=advanced&asset_id={{ asset.id }}#machine-workspace" aria-label="Work on {{ asset.manufacturer }} {{ asset.model or asset.name }}">
         <div class="asset-brand-row">{{ manufacturer_logo(asset.manufacturer, false, false) }}<div><small>{{ asset.brand.display_name }}</small><h3>{{ asset.year }} {{ asset.manufacturer }} {{ asset.model or asset.name }}</h3></div></div>
         <p>{{ asset.vin_pin_serial or 'No VIN / PIN / serial recorded' }}</p>
         </a>
-        {% if asset.needs %}<div class="machine-need-list" aria-label="Requested Needs for {{ asset.manufacturer }} {{ asset.model or asset.name }}">{% for need in asset.needs %}{% if need.state == 'OPEN' %}<a class="machine-need-link {% if selected_asset_id == asset.id and selected_need_id == need.id %}is-active{% endif %}" href="/jobs/{{ job.id }}/basket?asset_id={{ asset.id }}&amp;need_id={{ need.id }}#research-results"><strong>{{ need.wording }}</strong><span>{{ need.work_status_label }}</span></a>{% else %}<div class="machine-need-link"><strong>{{ need.wording }}</strong><span>{{ need.work_status_label }}</span></div>{% endif %}{% endfor %}</div>{% else %}<p class="cc-muted">No requested Needs</p>{% endif %}
+        {% if asset.needs %}<div class="machine-need-list" aria-label="Requested Needs for {{ asset.manufacturer }} {{ asset.model or asset.name }}">{% for need in asset.needs %}{% if need.state == 'OPEN' %}<a class="machine-need-link {% if selected_asset_id == asset.id and selected_need_id == need.id %}is-active{% endif %}" href="/jobs/{{ job.id }}/basket?view=advanced&asset_id={{ asset.id }}&amp;need_id={{ need.id }}#research-results"><strong>{{ need.wording }}</strong><span>{{ need.work_status_label }}</span></a>{% else %}<div class="machine-need-link"><strong>{{ need.wording }}</strong><span>{{ need.work_status_label }}</span></div>{% endif %}{% endfor %}</div>{% else %}<p class="cc-muted">No requested Needs</p>{% endif %}
         <div class="asset-work-footer"><span class="asset-work-counts">{{ asset.open_need_count }} open · {{ asset.parts_found_count }} found · {{ asset.quote_candidate_count }} ready</span><span class="asset-work-status {% if asset.work_status == 'READY' %}ready{% endif %}">{{ asset.work_status_label }}</span></div>
-        <a class="button small {% if selected_asset_id == asset.id %}ghost{% endif %}" href="/jobs/{{ job.id }}/basket?asset_id={{ asset.id }}#research-results">{% if selected_asset_id == asset.id %}Selected Context{% else %}Use This Context{% endif %}</a>
+        <a class="button small {% if selected_asset_id == asset.id %}ghost{% endif %}" href="/jobs/{{ job.id }}/basket?view=advanced&asset_id={{ asset.id }}#research-results">{% if selected_asset_id == asset.id %}Selected Context{% else %}Use This Context{% endif %}</a>
         {% if work_editable %}<div class="job-asset-actions">
           {% if not asset.is_primary %}<form method="post" action="/jobs/{{ job.id }}/assets/{{ asset.id }}/primary"><button class="button small ghost" type="submit">Make Primary</button></form>{% endif %}
           <details><summary>Edit / delete</summary><form method="post" action="/jobs/{{ job.id }}/assets/{{ asset.id }}/edit"><input name="manufacturer" value="{{ asset.manufacturer }}" placeholder="Manufacturer"><input name="model" value="{{ asset.model }}" placeholder="Model"><input name="year" value="{{ asset.year }}" placeholder="Year"><input name="vin_pin_serial" value="{{ asset.vin_pin_serial }}" placeholder="VIN / PIN / serial"><input name="asset_type" value="{{ asset.asset_type }}" placeholder="Asset type"><input name="name" value="{{ asset.name }}" placeholder="Name"><textarea name="notes" placeholder="Notes">{{ asset.notes }}</textarea><button class="button small" type="submit">Save Asset</button></form><form method="post" action="/jobs/{{ job.id }}/assets/{{ asset.id }}/archive" data-archive-delete><input name="reason" required placeholder="Archive reason"><button class="button small danger-outline" type="submit">Delete</button></form></details>
@@ -390,7 +390,7 @@
         </div></div>
       </details>{% endfor %}</div>{% else %}<div class="cc-empty">No research candidates yet. Open a source or add a candidate manually.</div>{% endif %}
     </div>
-    <nav class="machine-navigation bottom" aria-label="Continue to another asset">{% if previous_asset %}<a class="button ghost" href="/jobs/{{ job.id }}/basket?asset_id={{ previous_asset.id }}#machine-workspace">← Previous Asset · {{ previous_asset.manufacturer }} {{ previous_asset.model or previous_asset.name }}</a>{% endif %}{% if next_asset %}<a class="button" href="/jobs/{{ job.id }}/basket?asset_id={{ next_asset.id }}#machine-workspace">Next Asset · {{ next_asset.manufacturer }} {{ next_asset.model or next_asset.name }} →</a>{% elif previous_asset %}<a class="button" href="#parts-ready">All Assets Reviewed · Items Ready for Quote ↓</a>{% endif %}</nav>
+    <nav class="machine-navigation bottom" aria-label="Continue to another asset">{% if previous_asset %}<a class="button ghost" href="/jobs/{{ job.id }}/basket?view=advanced&asset_id={{ previous_asset.id }}#machine-workspace">← Previous Asset · {{ previous_asset.manufacturer }} {{ previous_asset.model or previous_asset.name }}</a>{% endif %}{% if next_asset %}<a class="button" href="/jobs/{{ job.id }}/basket?view=advanced&asset_id={{ next_asset.id }}#machine-workspace">Next Asset · {{ next_asset.manufacturer }} {{ next_asset.model or next_asset.name }} →</a>{% elif previous_asset %}<a class="button" href="#parts-ready">All Assets Reviewed · Items Ready for Quote ↓</a>{% endif %}</nav>
     {% else %}<div class="empty-context"><h2>Add a Requested Need to begin research</h2><p>Asset context is optional and can be added later when compatibility matters.</p></div>{% endif %}
   </div></details>
 
@@ -1190,8 +1190,8 @@
   </form>
 </dialog>
 
-<dialog class="cc-dialog" id="quick-open-dialog">
-  <form method="post" action="/jobs/{{ job.id }}/assets/{{ selected_asset.id if selected_asset else 0 }}/research/quick-open" target="_blank">
+{% if selected_asset %}<dialog class="cc-dialog" id="quick-open-dialog">
+  <form method="post" action="/jobs/{{ job.id }}/assets/{{ selected_asset.id }}/research/quick-open" target="_blank">
     <div class="cc-dialog-head"><div><p class="cc-label">ONE-TIME WEBSITE</p><h2>Open Website</h2><p class="cc-muted">Use a supplier or catalog for this search without adding it to the shared Source Directory.</p></div><button type="button" class="cc-remove" data-dialog-close>×</button></div>
     <div class="cc-dialog-grid">
       <input id="quick-open-need" type="hidden" name="requested_need_id" value="{{ selected_need_id or '' }}">
@@ -1201,7 +1201,7 @@
     </div>
     <div class="cc-dialog-actions"><button class="button ghost" type="button" data-dialog-close>Cancel</button><button class="button" type="submit">Open Website</button></div>
   </form>
-</dialog>
+</dialog>{% endif %}
 
 <dialog class="cc-dialog" id="research-source-dialog">
   <form method="post" action="/jobs/{{ job.id }}/research-sources">
@@ -1267,7 +1267,9 @@
         "#operational-activity"
       ],
       details: [
-        "#ask-pps"
+        "#ask-pps",
+        "#technical-context",
+        "#commercial-history"
       ]
     };
 

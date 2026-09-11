@@ -29,7 +29,7 @@ def add_asset_route(
         vin_pin_serial=vin_pin_serial, asset_type=asset_type, name=name,
         notes=notes, machine_id=machine_id, make_primary=bool(make_primary),
     )
-    return RedirectResponse(f"/jobs/{job_id}/basket#job-assets", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/basket?view=advanced#job-assets", status_code=303)
 
 
 @router.post("/jobs/{job_id}/assets/{asset_id}/edit")
@@ -47,13 +47,13 @@ def edit_asset_route(
         job_id, asset_id, manufacturer=manufacturer, model=model, year=year,
         vin_pin_serial=vin_pin_serial, asset_type=asset_type, name=name, notes=notes,
     )
-    return RedirectResponse(f"/jobs/{job_id}/basket#job-assets", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/basket?view=advanced#job-assets", status_code=303)
 
 
 @router.post("/jobs/{job_id}/assets/{asset_id}/primary")
 def primary_asset_route(job_id: int, asset_id: int):
     set_primary_job_asset(job_id, asset_id)
-    return RedirectResponse(f"/jobs/{job_id}/basket#job-assets", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/basket?view=advanced#job-assets", status_code=303)
 
 
 @router.post("/jobs/{job_id}/assets/{asset_id}/archive")
@@ -61,7 +61,7 @@ def archive_asset_route(
     job_id: int, asset_id: int, reason: Annotated[str, Form()],
 ):
     archive_job_asset(job_id, asset_id, reason=reason)
-    return RedirectResponse(f"/jobs/{job_id}/basket#job-assets", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/basket?view=advanced#job-assets", status_code=303)
 
 
 @router.post("/jobs/{job_id}/basket/items/{item_id}/asset")
@@ -75,4 +75,4 @@ def assign_asset_route(
         job_id, item_id, job_asset_id,
         expected_revision_id=expected_revision_id, expected_version=expected_version,
     )
-    return RedirectResponse(f"/jobs/{job_id}/basket#parts-ready", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/basket?view=advanced#parts-ready", status_code=303)

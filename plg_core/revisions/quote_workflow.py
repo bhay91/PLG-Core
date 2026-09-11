@@ -122,6 +122,7 @@ def _revision_quote_rows(connection, revision_id: int):
             COALESCE(jp.customer_unit_price,0) AS customer_unit_price,
             wri.pricing_mode, wri.customer_unit_price_override,
             wri.recommended_markup_percent, wri.revision_source_id,
+            wri.source_revision_item_id,
             wri.id AS origin_work_revision_item_id,
             wri.primary_requested_need_id,
             wri.research_session_id,wri.research_evidence,wri.research_notes,wri.identified_at,
@@ -186,12 +187,13 @@ def _totals(connection, revision, rows):
     }
 
 
-def _insert_quote_items(connection, quote_id: int, rows) -> None:
+def _insert_quote_items(connection, quote_id: int, rows) -> list[int]:
+    inserted_ids = []
     for row in rows:
         quantity = int(row["quantity"] or 1)
         cost = float(row["supplier_unit_cost"] or 0)
         price = float(row["customer_unit_price"] or 0)
-        connection.execute(
+        cursor = connection.execute(
             """
             INSERT INTO quote_items (
                 quote_id, part_id, source_id, job_asset_id,
@@ -223,6 +225,8 @@ def _insert_quote_items(connection, quote_id: int, rows) -> None:
                 row["asset_year_snapshot"], row["asset_serial_snapshot"],
             ),
         )
+        inserted_ids.append(int(cursor.lastrowid))
+    return inserted_ids
 
 
 def _write_documents(quote_id: int) -> None:
@@ -310,101 +314,158 @@ def generate_quote_from_revision(
         totals = _totals(connection, revision, rows)
         purpose = str(revision["purpose"] or "QUOTE_REVISION").upper()
 
-        if purpose == "DRAFT_CORRECTION":
-            if str(source["status"] or "").upper() != "DRAFT":
-                raise HTTPException(
-                    status_code=409,
-                    detail="The source quote is no longer an editable draft.",
-                )
-            connection.execute("DELETE FROM quote_items WHERE quote_id=?", (source_quote_id,))
-            superseded = connection.execute(
-                """
-                UPDATE quotes SET
-                    work_revision_id=?, content_version=content_version+1,
-                    parts_subtotal=?, shipping_total=?, service_charge=?,
-                    sourcing_fee=?, customer_total=?, supplier_total=?,
-                    profit_total=?
-                WHERE id=? AND status='DRAFT'
-                """,
-                (
-                    revision_id, totals["parts_subtotal"], totals["shipping_total"],
-                    totals["service_charge"], totals["sourcing_fee"],
-                    totals["customer_total"], totals["supplier_total"],
-                    totals["profit_total"], source_quote_id,
-                ),
+        if purpose == "DRAFT_CORRECTION" and str(source["status"] or "").upper() != "DRAFT":
+            raise HTTPException(
+                status_code=409,
+                detail="The source quote is no longer an editable draft.",
             )
-            _insert_quote_items(connection, source_quote_id, rows)
-            quote_id = source_quote_id
-            action = "DRAFT_QUOTE_CORRECTED"
-        else:
-            from legacy_app import next_quote_number
-            job = connection.execute(
-                "SELECT * FROM jobs WHERE id=?", (job_id,)
-            ).fetchone()
-            quote_number = next_quote_number(connection)
-            superseded = connection.execute(
-                """
-                UPDATE quotes
-                SET status='SUPERSEDED',is_current=0,
-                    superseded_at=CURRENT_TIMESTAMP,
-                    supersession_reason=?
-                WHERE id=? AND is_current=1
-                """,
-                (revision["reason"], source_quote_id),
+
+        # Quote items are historical records.  A source quote may already have
+        # decisions or lineage rows, so deleting and rebuilding them violates
+        # the foreign-key graph.  Always preserve the source and project a
+        # successor quote from the committed revision snapshot.
+        from legacy_app import next_quote_number
+        job = connection.execute(
+            "SELECT * FROM jobs WHERE id=?", (job_id,)
+        ).fetchone()
+        quote_number = next_quote_number(connection)
+        superseded = connection.execute(
+            """
+            UPDATE quotes
+            SET status='SUPERSEDED',is_current=0,
+                superseded_at=CURRENT_TIMESTAMP,
+                supersession_reason=?
+            WHERE id=? AND is_current=1
+            """,
+            (revision["reason"], source_quote_id),
+        )
+        if superseded.rowcount != 1:
+            raise HTTPException(
+                status_code=409,
+                detail="The source quote is no longer current. Refresh the Job.",
             )
-            if superseded.rowcount != 1:
-                raise HTTPException(
-                    status_code=409,
-                    detail="The source quote is no longer current. Refresh the Job.",
-                )
-            connection.execute(
-                """
-                INSERT INTO quote_events (
-                    quote_id,event_type,from_status,to_status,notes
-                ) VALUES (?,'QUOTE_SUPERSEDED',?,'SUPERSEDED',?)
-                """,
+        connection.execute(
+            """
+            INSERT INTO quote_events (
+                quote_id,event_type,from_status,to_status,notes
+            ) VALUES (?,'QUOTE_SUPERSEDED',?,'SUPERSEDED',?)
+            """,
+            (
+                source_quote_id,
+                str(source["status"] or ""),
                 (
-                    source_quote_id,
-                    str(source["status"] or ""),
+                    "Approved quote superseded before invoicing: "
+                    if str(source["status"] or "").upper() == "APPROVED"
+                    else "Quote superseded: "
+                ) + str(revision["reason"] or "revision generated"),
+            ),
+        )
+        cursor = connection.execute(
+            """
+            INSERT INTO quotes (
+                quote_number,job_id,quote_date,status,parts_subtotal,
+                shipping_total,service_charge,sourcing_fee,customer_total,
+                supplier_total,profit_total,work_revision_id,
+                supersedes_quote_id,is_current,quote_track_id,commercial_kind,
+                bill_to_kind,bill_to_name_snapshot,bill_to_company_snapshot,
+                bill_to_address_snapshot,bill_to_phone_snapshot,bill_to_email_snapshot,
+                customer_name_snapshot,company_snapshot,phone_snapshot,
+                email_snapshot,address_snapshot,manufacturer_snapshot,
+                machine_snapshot,pin_serial_snapshot
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                quote_number, job_id, date.today().isoformat(), "DRAFT",
+                totals["parts_subtotal"], totals["shipping_total"],
+                totals["service_charge"], totals["sourcing_fee"],
+                totals["customer_total"], totals["supplier_total"],
+                totals["profit_total"], revision_id, source_quote_id, 1,
+                source["quote_track_id"], "REVISION",
+                source["bill_to_kind"], source["bill_to_name_snapshot"],
+                source["bill_to_company_snapshot"], source["bill_to_address_snapshot"],
+                source["bill_to_phone_snapshot"], source["bill_to_email_snapshot"],
+                job["customer"], job["company"], job["phone"], job["email"],
+                job["address"], job["manufacturer"], job["machine"],
+                job["pin_serial"],
+            ),
+        )
+        quote_id = int(cursor.lastrowid)
+        successor_item_ids = _insert_quote_items(connection, quote_id, rows)
+        connection.execute(
+            "INSERT OR IGNORE INTO quote_item_decisions(quote_item_id) "
+            "SELECT id FROM quote_items WHERE quote_id=?", (quote_id,)
+        )
+        predecessor_items = connection.execute(
+            "SELECT id,part_id,origin_work_revision_item_id,quantity,description,"
+            "supplier_part_number,supplier_name "
+            "FROM quote_items WHERE quote_id=?",
+            (source_quote_id,),
+        ).fetchall()
+        successor_by_origin = {
+            int(row["origin_work_revision_item_id"]): item_id
+            for row, item_id in zip(rows, successor_item_ids)
+            if row["origin_work_revision_item_id"] is not None
+        }
+        successor_by_part = {
+            int(row["part_id"]): item_id
+            for row, item_id in zip(rows, successor_item_ids)
+            if row["part_id"] is not None
+        }
+        successor_by_source = {
+            int(row["source_revision_item_id"]): item_id
+            for row, item_id in zip(rows, successor_item_ids)
+            if row["source_revision_item_id"] is not None
+        }
+        successor_by_signature = {
+            (
+                str(row["description"] or "").strip().lower(),
+                str(row["supplier_part_number"] or "").strip().lower(),
+                str(row["supplier_name"] or "").strip().lower(),
+            ): item_id
+            for row, item_id in zip(rows, successor_item_ids)
+        }
+        predecessor_source_items = {
+            int(item["id"]): item["source_revision_item_id"]
+            for item in connection.execute(
+                """
+                SELECT qi.id, jp.work_revision_item_id AS source_revision_item_id
+                FROM quote_items qi
+                LEFT JOIN job_parts jp ON jp.id=qi.part_id
+                WHERE qi.quote_id=?
+                """,
+                (source_quote_id,),
+            ).fetchall()
+        }
+        for predecessor in predecessor_items:
+            successor_item_id = successor_by_origin.get(
+                predecessor["origin_work_revision_item_id"]
+            ) or successor_by_source.get(
+                predecessor_source_items.get(predecessor["id"])
+            ) or successor_by_part.get(predecessor["part_id"])
+            if successor_item_id is None:
+                successor_item_id = successor_by_signature.get((
+                    str(predecessor["description"] or "").strip().lower(),
+                    str(predecessor["supplier_part_number"] or "").strip().lower(),
+                    str(predecessor["supplier_name"] or "").strip().lower(),
+                ))
+            if successor_item_id is not None:
+                connection.execute(
+                    """
+                    INSERT INTO quote_item_lineage(
+                        split_id,predecessor_quote_item_id,successor_quote_item_id,
+                        successor_quote_id,disposition,quantity
+                    ) VALUES (NULL,?,?,?,?,?)
+                    """,
                     (
-                        "Approved quote superseded before invoicing: "
-                        if str(source["status"] or "").upper() == "APPROVED"
-                        else "Quote superseded: "
-                    ) + str(revision["reason"] or "revision generated"),
-                ),
-            )
-            cursor = connection.execute(
-                """
-                INSERT INTO quotes (
-                    quote_number,job_id,quote_date,status,parts_subtotal,
-                    shipping_total,service_charge,sourcing_fee,customer_total,
-                    supplier_total,profit_total,work_revision_id,
-                    supersedes_quote_id,is_current,quote_track_id,commercial_kind,
-                    bill_to_kind,bill_to_name_snapshot,bill_to_company_snapshot,
-                    bill_to_address_snapshot,bill_to_phone_snapshot,bill_to_email_snapshot,
-                    customer_name_snapshot,company_snapshot,phone_snapshot,
-                    email_snapshot,address_snapshot,manufacturer_snapshot,
-                    machine_snapshot,pin_serial_snapshot
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """,
-                (
-                    quote_number, job_id, date.today().isoformat(), "DRAFT",
-                    totals["parts_subtotal"], totals["shipping_total"],
-                    totals["service_charge"], totals["sourcing_fee"],
-                    totals["customer_total"], totals["supplier_total"],
-                    totals["profit_total"], revision_id, source_quote_id, 1,
-                    source["quote_track_id"], "REVISION",
-                    source["bill_to_kind"], source["bill_to_name_snapshot"],
-                    source["bill_to_company_snapshot"], source["bill_to_address_snapshot"],
-                    source["bill_to_phone_snapshot"], source["bill_to_email_snapshot"],
-                    job["customer"], job["company"], job["phone"], job["email"],
-                    job["address"], job["manufacturer"], job["machine"],
-                    job["pin_serial"],
-                ),
-            )
-            quote_id = int(cursor.lastrowid)
-            _insert_quote_items(connection, quote_id, rows)
-            action = "REVISED_QUOTE_GENERATED"
+                        predecessor["id"], successor_item_id, quote_id,
+                        "MOVED", predecessor["quantity"],
+                    ),
+                )
+        action = (
+            "DRAFT_QUOTE_CORRECTED"
+            if purpose == "DRAFT_CORRECTION"
+            else "REVISED_QUOTE_GENERATED"
+        )
         connection.execute(
             "UPDATE jobs SET status='QUOTED' WHERE id=?", (job_id,)
         )

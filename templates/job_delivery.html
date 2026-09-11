@@ -6,7 +6,7 @@
 <div class="delivery-desk jcc">
   <section class="workspace-heading delivery-heading">
     <div><p class="eyebrow">CUSTOMER DELIVERY</p><h1>{{ job.job_number }}</h1><p>{{ job.customer }}{% if job.company %} · {{ job.company }}{% endif %}</p></div>
-    <a class="button ghost" href="/jobs/{{ job.id }}/basket">Back to Job</a>
+    <a class="button ghost" href="/jobs/{{ job.id }}/basket?view=advanced">Back to Job</a>
   </section>
 
   <section class="panel delivery-context">

@@ -72,8 +72,8 @@ def add_job_source(
                     entity_id=source_id, summary=f"Research source saved: {display_name.strip()}",
                     metadata={"job_id": job_id, "job_asset_id": job_asset_id})
         connection.commit()
-    suffix = f"?asset_id={job_asset_id}" if job_asset_id else ""
-    return RedirectResponse(f"/jobs/{job_id}/basket{suffix}#research-results", status_code=303)
+    suffix = f"&asset_id={job_asset_id}" if job_asset_id else ""
+    return RedirectResponse(f"/jobs/{job_id}/basket?view=advanced{suffix}#research-results", status_code=303)
 
 
 @router.get("/jobs/{job_id}/research-sessions/{session_id}/open")

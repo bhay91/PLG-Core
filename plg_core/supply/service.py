@@ -491,7 +491,7 @@ def _purchasing_snapshot(connection, order_id: int, *, document_root=None, inclu
         "documents": documents,
         "receipts": receipts, "actual_cost_adjustments": adjustments, "history": history,
         "links": {
-            "open": f"/purchasing/orders/{order_id}", "job": f"/jobs/{int(order['job_id'])}/basket",
+            "open": f"/purchasing/orders/{order_id}", "job": f"/jobs/{int(order['job_id'])}/basket?view=advanced",
             "invoice": f"/invoices/{int(order['invoice_id'])}/documents" if order["invoice_id"] else None,
             "accounting": f"/accounting?invoice={order['invoice_number']}" if order["invoice_number"] else "/accounting",
             "receiving": f"/purchasing/orders/{order_id}#receive-parts" if status in {"ORDERED", "PARTIAL"} else None,

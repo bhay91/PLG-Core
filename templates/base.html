@@ -40,7 +40,7 @@
 
     <nav class="sidebar-nav erp-nav" aria-label="Primary navigation">
       <div class="nav-section-label">Operations</div>
-      <a class="nav-link nav-link--primary {% if active_page == 'dashboard' %}active{% endif %}" href="/dashboard">
+      <a class="nav-link nav-link--primary {% if active_page == 'dashboard' %}active{% endif %}" href="/">
         <svg class="nav-icon"><use href="#erp-i-dashboard"/></svg><span>Dashboard</span>
       </a>
       <a class="nav-link nav-link--primary {% if active_page == 'jobs' %}active{% endif %}" href="/jobs">
@@ -48,6 +48,9 @@
       </a>
       <a class="nav-link nav-link--primary {% if active_page == 'requests' %}active{% endif %}" href="/requests">
         <svg class="nav-icon"><use href="#erp-i-inbox"/></svg><span>Inbox</span>
+      </a>
+      <a class="nav-link nav-link--secondary {% if active_page == 'follow_up' %}active{% endif %}" href="/follow-up">
+        <svg class="nav-icon"><use href="#erp-i-inbox"/></svg><span>Follow-Up</span>
       </a>
 
       <div class="nav-section-label">Sourcing</div>

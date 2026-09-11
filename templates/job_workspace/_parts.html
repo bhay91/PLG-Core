@@ -18,7 +18,7 @@
 {% endif %}
 {% if part.ambiguous %}<p class="jcc-warning">This part has shared items or multiple selections. Review quantities before quoting; all existing links are preserved.</p>{% endif %}
 <div class="jcc-actions">
-{% if work_editable %}<a class="button{% if part.options %} ghost{% endif %}" href="/jobs/{{ job.id }}/basket?need_id={{ part.id }}#find-part">Find Part</a><a class="button ghost" href="#add-option-{{ part.id }}" data-open-details>Add Option</a>{% endif %}
+{% if work_editable %}<a class="button{% if part.options %} ghost{% endif %}" href="/jobs/{{ job.id }}/basket?view=advanced&amp;need_id={{ part.id }}#find-part">Find Part</a><a class="button ghost" href="#add-option-{{ part.id }}" data-open-details>Add Option</a>{% endif %}
 {% if part.options and not part.selected_options %}<a class="button ghost" href="#options-{{ part.id }}" data-open-details>View Options</a>{% endif %}
 </div>
 {% if part.options %}<details id="options-{{ part.id }}" class="jcc-options"><summary>Options · {{ part.options|length }}</summary><div class="jcc-option-list">{% for option in part.options %}{% include "job_workspace/_option.html" %}{% endfor %}</div></details>{% endif %}

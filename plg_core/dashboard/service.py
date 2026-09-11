@@ -186,7 +186,7 @@ def get_work_queue_data(
             "age_days": _age_days(need["created_at"], report_date),
             "next_action": action_label,
             "url": (
-                f"/jobs/{job_id}/basket?asset_id={need['job_asset_id']}"
+                f"/jobs/{job_id}/basket?view=advanced&asset_id={need['job_asset_id']}"
                 f"&need_id={need['need_id']}#{anchor}"
             ),
             "context_detail": (
@@ -235,7 +235,7 @@ def get_work_queue_data(
         ):
             queue_key, action_label, url = (
                 "READY_TO_ORDER", "Continue Job",
-                f"/jobs/{job_id}/basket#fulfillment-checklist",
+                f"/jobs/{job_id}/basket?view=advanced#fulfillment-checklist",
             )
             need_action = "Mark Order Placed"
         elif job["invoice_id"] and not payment_received:
@@ -260,14 +260,14 @@ def get_work_queue_data(
             if job_id in jobs_with_needs:
                 continue
             queue_key, action_label, url = (
-                "NEEDS_RESEARCH", "Open Job", f"/jobs/{job_id}/basket"
+                "NEEDS_RESEARCH", "Open Job", f"/jobs/{job_id}/basket?view=advanced"
             )
             need_action = intelligence.next_action
         elif stage == "READY_TO_QUOTE":
             if any(row["job_id"] == job_id and row["category"] == "READY_TO_QUOTE" for row in rows):
                 continue
             queue_key, action_label, url = (
-                "READY_TO_QUOTE", "Continue to Quote", f"/jobs/{job_id}/basket#parts-ready"
+                "READY_TO_QUOTE", "Continue to Quote", f"/jobs/{job_id}/basket?view=advanced#parts-ready"
             )
             need_action = intelligence.next_action
         elif stage == "WAITING_CUSTOMER":
@@ -321,7 +321,7 @@ def get_work_queue_data(
             need_action = intelligence.next_action
         elif stage == "COMPLETE":
             queue_key, action_label, url = (
-                "COMPLETE", "Open Job", f"/jobs/{job_id}/basket"
+                "COMPLETE", "Open Job", f"/jobs/{job_id}/basket?view=advanced"
             )
             need_action = intelligence.next_action
         else:
@@ -1224,7 +1224,7 @@ def get_follow_up_data(
             "linked_part": item["basket_description"] or item["job_part_description"] or "",
             "waiting_since": item["received_at"] if received else item["requested_at"],
             "due_date": None,
-            "url": f"/jobs/{item['job_id']}/basket",
+            "url": f"/jobs/{item['job_id']}/basket?view=advanced",
             "action_label": "Open Linked Context",
             "amount": 0,
             "age_days": max((report_date - waiting_date).days, 0),
@@ -1237,7 +1237,7 @@ def get_follow_up_data(
             "machine_id": item["machine_id"],
             "links": [
                 link for link in (
-                    {"label": "Job", "url": f"/jobs/{item['job_id']}/basket"},
+                    {"label": "Job", "url": f"/jobs/{item['job_id']}/basket?view=advanced"},
                     {"label": "Machine", "url": f"/machines/{item['machine_id']}"} if item["machine_id"] else None,
                     {"label": item["quote_number"], "url": f"/quotes/{item['quote_id']}/documents"} if item["quote_id"] else None,
                     {"label": item["invoice_number"], "url": f"/invoices/{item['invoice_id']}/documents"} if item["invoice_id"] else None,
@@ -1273,11 +1273,11 @@ def get_follow_up_data(
             "subtitle": " · ".join(filter(None, (item["machine"], item["asset_serial"], item["need_wording"]))),
             "detail": item["resolution"] or item["reason"], "summary_text": item["summary"],
             "waiting_since": item["requested_at"], "due_date": None,
-            "url": f"/jobs/{item['job_id']}/basket", "action_label": "Open Job",
+            "url": f"/jobs/{item['job_id']}/basket?view=advanced", "action_label": "Open Job",
             "amount": 0, "age_days": _age_days(item["requested_at"], report_date) or 0,
             "is_overdue": False, "priority": item["status"], "priority_rank": 9,
             "row_kind": "MANUAL", "stored_status": item["status"], "job_id": item["job_id"],
-            "links": [{"label": "Job", "url": f"/jobs/{item['job_id']}/basket"}],
+            "links": [{"label": "Job", "url": f"/jobs/{item['job_id']}/basket?view=advanced"}],
             "context_detail": "",
         })
 
@@ -1465,7 +1465,7 @@ def get_operator_dashboard_data(
         "delivery": select({"READY_FOR_DELIVERY"}),
     }
     for item in sections["jobs"]:
-        item["dashboard_url"] = f"/jobs/{int(item['job_id'])}/basket"
+        item["dashboard_url"] = f"/jobs/{int(item['job_id'])}/basket?view=advanced"
         item["dashboard_action"] = "Open Job"
 
     exceptions = []

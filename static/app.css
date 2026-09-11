@@ -4224,6 +4224,11 @@ small.secondary {
   margin-top: 3px;
   color: var(--muted);
 }
+.quote-workflow-notice { display:grid; gap:8px; margin-top:14px; padding:14px; border:1px solid #d6a23c; border-radius:10px; background:#fff8e8; color:#5a410d; }
+.quote-workflow-notice strong { color:#5a410d; }
+.quote-workflow-notice span, .quote-workflow-override p { font-size:13px; }
+.quote-workflow-override { margin-top:4px; padding-top:8px; border-top:1px solid #e5c98a; }
+.quote-workflow-override form { display:grid; gap:8px; margin-top:8px; }
 
 .quote-bill-to-editor {
   min-width: min(100%, 620px);

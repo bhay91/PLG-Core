@@ -540,7 +540,7 @@ def accounting_snapshot():
             "reconciliation_state": state,
             "orders": orders_by_invoice.get(int(row["invoice_id"]), []),
             "invoice_url": f"/invoices/{row['invoice_id']}/documents",
-            "job_url": f"/jobs/{row['job_id']}/basket",
+            "job_url": f"/jobs/{row['job_id']}/basket?view=advanced",
         })
         row.update(financial_state)
         invoice_reconciliation.append(row)

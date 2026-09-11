@@ -27,7 +27,7 @@
 
   <section class="panel invoice-desk-bill-to">
     <div><p class="eyebrow">BILL TO</p><strong>{{ invoice.customer or "Not provided" }}</strong>{% if invoice.company %}<span>{{ invoice.company }}</span>{% endif %}<span>{{ invoice.address or "Billing address not provided" }}</span></div>
-    <a class="button ghost small" href="/jobs/{{ invoice.job_id }}/basket">Open Job</a>
+    <a class="button ghost small" href="/jobs/{{ invoice.job_id }}/basket?view=advanced">Open Job</a>
   </section>
 
   <section class="panel invoice-center-items erp-commercial-current">
