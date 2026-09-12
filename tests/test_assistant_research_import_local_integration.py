@@ -15,11 +15,23 @@ from types import SimpleNamespace
 import pytest
 
 HARNESS = Path(__file__).resolve().parents[2] / 'pps-ai-harness'
-sys.path.insert(0, str(HARNESS))
-import httpx
-from fastapi import FastAPI
-from app import assistant_research_import as adapter
-from app.research_import import ResearchImportPublisher, build_research_import_package
+_original_sys_path = list(sys.path)
+_preexisting_app_modules = {
+    name: module for name, module in sys.modules.items()
+    if name == 'app' or name.startswith('app.')
+}
+try:
+    sys.path.insert(0, str(HARNESS))
+    import httpx
+    from fastapi import FastAPI
+    from app import assistant_research_import as adapter
+    from app.research_import import ResearchImportPublisher, build_research_import_package
+finally:
+    sys.path[:] = _original_sys_path
+    for name in list(sys.modules):
+        if (name == 'app' or name.startswith('app.')) and name not in _preexisting_app_modules:
+            del sys.modules[name]
+    sys.modules.update(_preexisting_app_modules)
 import test_research_import_connector as connector
 PDF_BYTES = connector.PDF_BYTES
 import legacy_app
