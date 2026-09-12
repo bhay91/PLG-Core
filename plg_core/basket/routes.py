@@ -24,6 +24,7 @@ from plg_core.basket.service import (
     delete_item,
     ensure_basket_mutable,
     get_basket,
+    get_existing_basket,
     get_or_create_basket,
     import_cart,
     update_item,
@@ -146,7 +147,27 @@ def basket_page(
             url=f"/jobs/{job_id}/basket?{'&'.join(query)}",
             status_code=303,
         )
-    basket = get_basket(job_id)
+    basket = get_existing_basket(job_id)
+    if basket is None:
+        basket = {
+            "id": None,
+            "job_id": job_id,
+            "status": "OPEN",
+            "currency": "USD",
+            "work_revision": None,
+            "items": [],
+            "sources": [],
+            "totals": {
+                "supplier_parts_total": 0,
+                "shipping_total": 0,
+                "supplier_total": 0,
+                "customer_parts_total": 0,
+                "customer_total": 0,
+                "estimated_profit": 0,
+                "selected_items": 0,
+                "all_items": 0,
+            },
+        }
 
     with closing(get_connection()) as connection:
         job = connection.execute(

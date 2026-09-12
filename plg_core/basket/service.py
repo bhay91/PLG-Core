@@ -157,6 +157,20 @@ def get_basket(job_id: int):
         return serialize_basket(connection, basket)
 
 
+def get_existing_basket(job_id: int):
+    """Return an existing basket for display without initializing state."""
+    with closing(get_connection()) as connection:
+        job = connection.execute(
+            "SELECT id FROM jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found.")
+        basket = connection.execute(
+            "SELECT * FROM baskets WHERE job_id = ?", (job_id,)
+        ).fetchone()
+        return serialize_basket(connection, basket) if basket is not None else None
+
+
 def add_item_with_connection(
     connection: sqlite3.Connection,
     job_id: int,

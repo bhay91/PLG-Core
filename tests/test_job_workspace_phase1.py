@@ -48,6 +48,7 @@ class JobWorkspacePhase1Tests(unittest.TestCase):
             return build_workspace(c, self.job)
 
     def html(self, **kwargs):
+        kwargs.setdefault('view', 'advanced')
         request = Request({'type':'http','method':'GET','path':f'/jobs/{self.job}/basket',
             'headers':[], 'query_string':b'', 'scheme':'http','server':('localhost',80),'app':app})
         return basket_page(request, self.job, **kwargs).body.decode()
