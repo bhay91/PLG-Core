@@ -21,10 +21,11 @@ def main() -> int:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--target-proposal-id", type=int)
     args = parser.parse_args()
     try:
         payload = json.loads(args.research.read_text(encoding="utf-8"))
-        result = build_ppsresearch_package(payload, args.source.read_bytes(), output_path=args.output, overwrite=args.overwrite)
+        result = build_ppsresearch_package(payload, args.source.read_bytes(), output_path=args.output, overwrite=args.overwrite, target_proposal_id=args.target_proposal_id)
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         parser.error(str(exc))
     print(f"output: {args.output}")

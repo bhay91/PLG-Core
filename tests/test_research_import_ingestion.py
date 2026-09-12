@@ -22,7 +22,7 @@ import legacy_app
 from plg_core.database.migrations import run_migrations
 from plg_core.intake.attachments import UPLOAD_ROOT
 from plg_core.intake import attachments
-from plg_core.intake.service import confirm_proposal, load_proposal
+from plg_core.intake.service import confirm_proposal, load_proposal, research_update_plan, apply_research_update
 from plg_core.requests.routes import ingest_research_import
 from plg_core.research.branding import manufacturer_identity
 from jinja2 import Environment, FileSystemLoader
@@ -154,6 +154,26 @@ class ResearchImportIngestionTests(unittest.TestCase):
             self.assertEqual(attachment["original_filename"], self.pdf_name)
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0], jobs_before)
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM invoices").fetchone()[0], invoices_before)
+
+    def test_targeted_draft_update_and_add_item_require_explicit_apply(self):
+        first = self._call()
+        target_id = int(re.search(r"/(\d+)$", first.headers["location"]).group(1))
+        update = self._package(package_id="RESEARCH-IMPORT-002", target_proposal_id=target_id,
+                               requested_needs=[{"reference": "need-1", "original_wording": "Updated brake part", "quantity": 3},
+                                                {"reference": "need-2", "original_wording": "New filter", "quantity": 1}])
+        staged = self._call(package=update)
+        staging_id = int(re.search(r"/(\d+)$", staged.headers["location"]).group(1))
+        with legacy_app.get_connection() as connection:
+            plan = research_update_plan(connection, staging_id)
+            self.assertEqual(plan["action"], "ADD_ITEM")
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM intake_proposal_needs WHERE proposal_id=?", (target_id,)).fetchone()[0], 1)
+            target_version = connection.execute("SELECT lock_version FROM intake_proposals WHERE id=?", (target_id,)).fetchone()[0]
+            apply_research_update(connection, staging_id, target_version)
+            rows = connection.execute("SELECT wording FROM intake_proposal_needs WHERE proposal_id=? ORDER BY sequence", (target_id,)).fetchall()
+            self.assertEqual([row[0] for row in rows], ["Updated brake part", "New filter"])
+            self.assertIsNotNone(connection.execute("SELECT 1 FROM intake_proposal_contributions WHERE proposal_id=? AND payload_json LIKE '%RESEARCH_IMPORT_PACKAGE_UPDATE%'", (target_id,)).fetchone())
+            apply_research_update(connection, staging_id, target_version + 1)
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM intake_proposal_needs WHERE proposal_id=?", (target_id,)).fetchone()[0], 2)
 
     def test_invalid_schema_hash_and_missing_parts_are_rejected(self):
         with self.assertRaises(HTTPException):

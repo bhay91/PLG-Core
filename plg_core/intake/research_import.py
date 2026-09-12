@@ -232,6 +232,7 @@ class ResearchImportOption(ResearchImportModel):
 class ResearchImportPackage(ResearchImportModel):
     schema_version: Literal["1"] = "1"
     package_id: str = Field(min_length=1, max_length=128)
+    target_proposal_id: int | None = Field(default=None, gt=0)
     source_pdf: ResearchImportSourcePDF
     target: ResearchImportTarget
     customer: ResearchImportCustomer

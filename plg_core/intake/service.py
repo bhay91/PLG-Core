@@ -909,6 +909,101 @@ def load_proposal(connection: sqlite3.Connection, proposal_id: int) -> dict:
     return result
 
 
+def research_update_plan(connection: sqlite3.Connection, staging_proposal_id: int) -> dict:
+    """Build a review-only plan for an explicitly targeted DRAFT proposal."""
+    staged = load_proposal(connection, staging_proposal_id)
+    package = (staged.get("research_import") or {}).get("package") or {}
+    target_id = package.get("target_proposal_id")
+    plan = {"action": "CREATE_NEW", "target_proposal_id": target_id, "target": None,
+            "updates": [], "adds": [], "warnings": []}
+    if target_id is None:
+        return plan
+    target = connection.execute("SELECT * FROM intake_proposals WHERE id=?", (target_id,)).fetchone()
+    if target is None:
+        plan["action"] = "AMBIGUOUS"; plan["warnings"].append("Target Smart Intake proposal was not found."); return plan
+    plan["target"] = dict(target)
+    if target["status"] != "DRAFT" or target["created_job_id"] or target["created_request_id"]:
+        plan["action"] = "BLOCKED_CONFIRMED"; plan["warnings"].append("Target proposal is already confirmed or converted."); return plan
+    prior = connection.execute(
+        "SELECT payload_json FROM intake_proposal_contributions WHERE proposal_id=? AND contributor_type='AI' ORDER BY id DESC",
+        (target_id,),
+    ).fetchall()
+    prior_package = None
+    for row in prior:
+        try:
+            value = json.loads(row[0] or "{}")
+        except (TypeError, ValueError):
+            continue
+        if value.get("origin") == "RESEARCH_IMPORT_PACKAGE":
+            prior_package = value.get("package") or {}; break
+    if not prior_package:
+        plan["action"] = "AMBIGUOUS"; plan["warnings"].append("Target draft has no research lineage for explicit need matching."); return plan
+    old_needs = {str(n.get("reference")): n for n in prior_package.get("requested_needs") or []}
+    incoming = package.get("requested_needs") or []
+    for need in incoming:
+        ref = str(need.get("reference") or "")
+        if not ref:
+            plan["action"] = "AMBIGUOUS"; plan["warnings"].append("Every targeted need requires an explicit reference."); return plan
+        if ref in old_needs:
+            plan["updates"].append({"reference": ref, "current": old_needs[ref], "proposed": need})
+        else:
+            plan["adds"].append(need)
+    if plan["adds"]: plan["action"] = "ADD_ITEM"
+    elif plan["updates"]: plan["action"] = "UPDATE_DRAFT"
+    else: plan["action"] = "AMBIGUOUS"
+    return plan
+
+
+def apply_research_update(connection: sqlite3.Connection, staging_proposal_id: int, target_lock_version: int) -> dict:
+    """Apply an explicitly reviewed research update to an unconfirmed draft."""
+    plan = research_update_plan(connection, staging_proposal_id)
+    if plan["action"] not in {"UPDATE_DRAFT", "ADD_ITEM"}:
+        raise HTTPException(status_code=409, detail="This research package cannot be applied to the targeted draft.")
+    target_id = int(plan["target_proposal_id"])
+    target = connection.execute("SELECT * FROM intake_proposals WHERE id=?", (target_id,)).fetchone()
+    if not target or target["status"] != "DRAFT" or target["created_job_id"] or target["created_request_id"]:
+        raise HTTPException(status_code=409, detail="The targeted proposal is no longer an editable DRAFT.")
+    if int(target["lock_version"]) != int(target_lock_version):
+        raise HTTPException(status_code=409, detail="The targeted proposal changed. Reload and review again.")
+    for row in connection.execute("SELECT payload_json FROM intake_proposal_contributions WHERE proposal_id=? ORDER BY id DESC", (target_id,)):
+        try:
+            applied = json.loads(row[0] or "{}")
+        except (TypeError, ValueError):
+            continue
+        if applied.get("origin") == "RESEARCH_IMPORT_PACKAGE_UPDATE" and int(applied.get("source_proposal_id") or 0) == int(staging_proposal_id):
+            return plan
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        package = (load_proposal(connection, staging_proposal_id).get("research_import") or {}).get("package") or {}
+        prior = connection.execute("SELECT payload_json FROM intake_proposal_contributions WHERE proposal_id=? AND contributor_type='AI' ORDER BY id DESC", (target_id,)).fetchall()
+        prior_package = {}
+        for row in prior:
+            try:
+                value = json.loads(row[0] or "{}")
+            except (TypeError, ValueError):
+                continue
+            if value.get("origin") == "RESEARCH_IMPORT_PACKAGE":
+                prior_package = value.get("package") or {}
+                break
+        refs = [str(n.get("reference")) for n in prior_package.get("requested_needs") or []]
+        rows = connection.execute("SELECT id FROM intake_proposal_needs WHERE proposal_id=? AND included=1 ORDER BY sequence,id", (target_id,)).fetchall()
+        row_by_ref = {ref: row[0] for ref, row in zip(refs, rows)}
+        for change in plan["updates"]:
+            row_id = row_by_ref.get(change["reference"])
+            if row_id:
+                connection.execute("UPDATE intake_proposal_needs SET wording=?,original_wording=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND proposal_id=?", (change["proposed"]["original_wording"], change["proposed"]["original_wording"], row_id, target_id))
+        sequence = int(connection.execute("SELECT COALESCE(MAX(sequence),0)+1 FROM intake_proposal_needs WHERE proposal_id=?", (target_id,)).fetchone()[0])
+        for need in plan["adds"]:
+            connection.execute("INSERT INTO intake_proposal_needs (proposal_id,sequence,wording,original_wording,review_state) VALUES (?,?,?,?, 'REVIEW')", (target_id, sequence, need["original_wording"], need["original_wording"])); sequence += 1
+        connection.execute("UPDATE intake_proposals SET lock_version=lock_version+1,updated_at=CURRENT_TIMESTAMP WHERE id=?", (target_id,))
+        connection.execute("INSERT INTO intake_proposal_contributions (proposal_id,contributor_type,payload_json,evidence) VALUES (?,?,?,?)", (target_id, "AI", json.dumps({"origin":"RESEARCH_IMPORT_PACKAGE_UPDATE", "source_proposal_id": staging_proposal_id, "package": package, "action": plan["action"]}, sort_keys=True), "Imported research update staged and applied after operator review; candidate data only."))
+        write_audit(connection, action="RESEARCH_IMPORT_DRAFT_UPDATED", entity_type="INTAKE_PROPOSAL", entity_id=target_id, summary=f"Research import draft {target_id} updated after review", metadata={"source_proposal_id": staging_proposal_id, "action": plan["action"]}, actor="research-import")
+        connection.commit()
+    except Exception:
+        connection.rollback(); raise
+    return plan
+
+
 def _review_summary(proposal: dict) -> dict:
     customer_label = proposal.get("contact_name") or proposal.get("company_name") or "Customer details missing"
     customer_action = "REUSE" if proposal.get("matched_customer_id") else "CREATE"
@@ -1130,7 +1225,7 @@ def confirm_proposal(connection: sqlite3.Connection, proposal_id: int, lock_vers
     ).fetchone()
     if research_import:
         payload = json.loads(research_import[0] or "{}") if research_import[0] else {}
-        if (payload.get("package") or {}).get("target", {}).get("mode") == "EXISTING_JOB":
+        if (payload.get("package") or {}).get("target", {}).get("mode") == "EXISTING_JOB" or (payload.get("package") or {}).get("target_proposal_id"):
             connection.rollback()
             raise HTTPException(status_code=409, detail="EXISTING_JOB Research Imports require a separate target-review update flow.")
     if int(proposal["lock_version"]) != int(lock_version):

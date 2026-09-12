@@ -6,7 +6,7 @@
 {% set summary = proposal.review_summary %}
 {% set core = summary.core_reviews %}
 {% set analysis = proposal.document_analysis or {} %}
-{% set ready_to_create = (not analysis or analysis.confirm_allowed) and summary.core_review_count == 0 and (not proposal.research_import or proposal.research_import.target_mode == 'NEW_JOB') %}
+{% set ready_to_create = (not analysis or analysis.confirm_allowed) and summary.core_review_count == 0 and (not proposal.research_import or (proposal.research_import.target_mode == 'NEW_JOB' and not proposal.research_import.package.target_proposal_id)) %}
 <style>
 .smart-review-gate{border:2px solid #d6a328;background:#fffaf0}.smart-review-gate.ready{border-color:var(--success);background:var(--success-soft)}.smart-review-gate h2{margin:3px 0}.smart-core-review-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}.smart-core-review-card{padding:15px;border:1px solid var(--line);border-radius:12px;background:#fff;display:grid;gap:10px}.smart-core-review-card header{display:flex;justify-content:space-between;gap:10px;align-items:center}.smart-core-review-card h3{margin:0}.smart-core-review-card .button{justify-self:start}.smart-section-review{display:flex;align-items:center;gap:10px}.smart-need-row .status-pill{align-self:center}@media(max-width:760px){.smart-core-review-grid{grid-template-columns:1fr}.smart-core-review-card header{align-items:flex-start}.smart-section-review{align-items:flex-start;flex-direction:column}}
 </style>
@@ -19,6 +19,18 @@
   <div class="workspace-heading-actions"><a class="button ghost" href="/requests">Back to Inbox</a><span class="status-pill {{ proposal.review_state|lower }}">{{ proposal.review_state }}</span></div>
 </section>
 
+{% set update = proposal.research_update %}
+{% if update and update.action in ('UPDATE_DRAFT', 'ADD_ITEM', 'AMBIGUOUS', 'BLOCKED_CONFIRMED') %}
+<section class="panel" id="research-draft-update">
+  <p class="eyebrow">DRAFT TARGET REVIEW</p>
+  <h2>{% if update.action == 'UPDATE_DRAFT' %}UPDATE EXISTING DRAFT{% elif update.action == 'ADD_ITEM' %}ADD ITEM TO EXISTING DRAFT{% elif update.action == 'BLOCKED_CONFIRMED' %}EXISTING DRAFT ALREADY CONFIRMED{% else %}AMBIGUOUS — REVIEW REQUIRED{% endif %}</h2>
+  {% if update.target %}<p>Target proposal #{{ update.target.id }}. Existing values remain unchanged until explicitly applied.</p>{% endif %}
+  {% if update.updates %}<h3>Changed</h3><ul>{% for change in update.updates %}<li><strong>{{ change.reference }}</strong>: {{ change.current.original_wording }} → {{ change.proposed.original_wording }}</li>{% endfor %}</ul>{% endif %}
+  {% if update.adds %}<h3>Added</h3><ul>{% for need in update.adds %}<li><strong>{{ need.reference }}</strong>: {{ need.original_wording }} · Qty {{ need.quantity }}</li>{% endfor %}</ul>{% endif %}
+  {% if update.warnings %}<div class="smart-review-alert"><ul>{% for warning in update.warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>{% endif %}
+  {% if update.action in ('UPDATE_DRAFT', 'ADD_ITEM') %}<form method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/research-update/apply"><input type="hidden" name="target_lock_version" value="{{ update.target.lock_version }}"><button class="button" type="submit">{% if update.action == 'ADD_ITEM' %}Add Item to Draft{% else %}Apply Update{% endif %}</button></form>{% endif %}
+</section>
+{% endif %}
 {% if proposal.research_import %}
 {% set ri = proposal.research_import %}
 {% set pkg = ri.package %}

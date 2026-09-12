@@ -18,6 +18,7 @@ def build_ppsresearch_package(
     *,
     overwrite: bool = False,
     output_path: str | Path | None = None,
+    target_proposal_id: int | None = None,
 ) -> bytes:
     """Validate and package one existing-schema research payload and PDF."""
     if not source_pdf_bytes or not source_pdf_bytes.startswith(b"%PDF-"):
@@ -25,6 +26,8 @@ def build_ppsresearch_package(
     if len(source_pdf_bytes) > 8 * 1024 * 1024:
         raise ValueError("source PDF exceeds the 8 MiB member limit")
     payload = dict(research_payload)
+    if target_proposal_id is not None:
+        payload["target_proposal_id"] = target_proposal_id
     source = dict(payload.get("source_pdf") or {})
     source["filename"] = "source.pdf"
     source["sha256"] = hashlib.sha256(source_pdf_bytes).hexdigest()

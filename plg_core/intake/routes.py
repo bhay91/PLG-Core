@@ -10,7 +10,7 @@ from legacy_app import get_connection, templates
 from plg_core.intake.identifiers import IDENTIFIER_TYPES, MARKETS
 from plg_core.intake.service import (
     confirm_proposal, load_proposal, record_customer_resolution, record_machine_resolution,
-    refresh_proposal_analysis,
+    refresh_proposal_analysis, research_update_plan, apply_research_update,
 )
 
 
@@ -30,6 +30,7 @@ def _draft(connection, proposal_id: int):
 def review(request: Request, proposal_id: int):
     with closing(get_connection()) as connection:
         proposal = load_proposal(connection, proposal_id)
+        proposal["research_update"] = research_update_plan(connection, proposal_id)
         customers = connection.execute("SELECT id,name,company,customer_number FROM customers WHERE active=1 ORDER BY name").fetchall()
     return templates.TemplateResponse(
         request=request,
@@ -37,6 +38,13 @@ def review(request: Request, proposal_id: int):
         context={"active_page": "requests", "proposal": proposal, "identifier_types": IDENTIFIER_TYPES,
                  "markets": MARKETS, "customers": customers},
     )
+
+
+@router.post("/{proposal_id}/research-update/apply")
+def apply_research_update_action(proposal_id: int, target_lock_version: int = Form(...)):
+    with closing(get_connection()) as connection:
+        plan = apply_research_update(connection, proposal_id, target_lock_version)
+    return RedirectResponse(f"/requests/smart-intake/proposals/{plan['target_proposal_id']}", 303)
 
 
 @router.get("/{proposal_id}/attachments/{attachment_id}")
