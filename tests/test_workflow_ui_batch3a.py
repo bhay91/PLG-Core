@@ -397,7 +397,8 @@ class WorkflowUIBatch3ATests(unittest.TestCase):
             self.assertEqual(part["internal_part_number"], "PPS-MAN-000001")
             self.assertEqual(part["oem_part_number"], "")
         result = search_records("PPS-MAN-000001", limit=10)
-        self.assertTrue(any(row["record_type"] == "JOB" for row in result["items"]))
+        job_result = next(row for row in result["items"] if row["record_type"] == "JOB")
+        self.assertEqual(job_result["url"], f"/jobs/{job_id}/basket?view=advanced")
 
     def test_manual_add_and_responsive_save_preserve_part_metadata(self):
         job_id, _ = self.job()

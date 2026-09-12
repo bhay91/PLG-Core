@@ -141,7 +141,7 @@ def _inbox_request_item(row, today: date) -> dict:
         "created_at": item.get("created_at"), "updated_at": item.get("updated_at"),
         "age_days": _inbox_age(item.get("created_at"), today),
         "review_label": label, "next_action": action,
-        "url": f"/jobs/{item['job_id']}/basket" if action == "Open Job" else f"/requests/{item['id']}",
+        "url": f"/jobs/{item['job_id']}/basket?view=advanced" if action == "Open Job" else f"/requests/{item['id']}",
         "machine_need_summary": " · ".join(filter(None, [machine, item.get("requested_parts")])),
         "reminder_date": item.get("reminder_date") or "", "source": "REQUEST",
         "removable": removable,
@@ -1556,7 +1556,7 @@ def create_job_from_request(request_id: int):
 
         if record["job_id"]:
             return RedirectResponse(
-                url=f"/jobs/{record['job_id']}/basket",
+                url=f"/jobs/{record['job_id']}/basket?view=advanced",
                 status_code=303,
             )
 

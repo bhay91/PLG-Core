@@ -217,7 +217,7 @@ def search_records(
                         ELSE ''
                     END
                 ) AS subtitle,
-                '/jobs/' || j.id || '/basket' AS url
+                '/jobs/' || j.id || '/basket?view=advanced' AS url
             FROM jobs j
             WHERE
                 j.job_number LIKE ? COLLATE NOCASE

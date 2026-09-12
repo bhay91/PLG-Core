@@ -38,6 +38,7 @@ class InboxPhase2Tests(unittest.TestCase):
                 "INSERT INTO jobs(job_number,created_date,customer,status) VALUES (?,?,?,'REQUESTED')",
                 ("P2-JOB", "2026-08-10", "Completed Sender"),
             ).lastrowid
+            self.completed_job_id = job_id
             self.manual_id = c.execute(
                 """INSERT INTO customer_requests
                 (request_number,request_text,individual_name,manufacturer,model,requested_parts,
@@ -118,7 +119,7 @@ class InboxPhase2Tests(unittest.TestCase):
         self.assertEqual(manual["url"], f"/requests/{self.manual_id}")
         self.assertEqual((completed["review_label"], completed["next_action"]),
                          ("Job Created", "Open Job"))
-        self.assertTrue(completed["url"].endswith("/basket"))
+        self.assertEqual(completed["url"], f"/jobs/{self.completed_job_id}/basket?view=advanced")
         archived = self.render(q=self.token, view="archived").context["inbox_items"]
         self.assertEqual(len(archived), 1)
         self.assertEqual((archived[0]["review_label"], archived[0]["next_action"]),
