@@ -667,6 +667,13 @@
         {% endif %}
         <input form="part-update-{{ item.id }}" type="hidden" name="alternate_part_number" value="{{ item.alternate_part_number or '' }}">
       </label>
+      <label><span>Description</span>
+<input form="part-update-{{ item.id }}"
+       type="text"
+       name="requested_description"
+       value="{{ item.requested_description }}"
+       required>
+      </label>
       <label><span>Quantity</span>
 <input form="part-update-{{ item.id }}"
        type="number"

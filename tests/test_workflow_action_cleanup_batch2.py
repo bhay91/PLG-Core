@@ -5,19 +5,21 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from fastapi import HTTPException
 from starlette.requests import Request
 
 import legacy_app
 from plg_core.application import app
 from plg_core.basket.models import BasketItemCreate
-from plg_core.basket.routes import basket_page
-from plg_core.basket.service import add_item, commit_basket
+from plg_core.basket.routes import basket_page, update_basket_item_form
+from plg_core.basket.service import add_item, commit_basket, get_basket
 from plg_core.database.migrations import run_migrations
 from plg_core.documents import quote_pdf
 from plg_core.revisions import (
     cancel_quote_revision,
     commit_work_revision,
     generate_quote_from_revision,
+    get_revision_context,
     start_quote_revision,
 )
 
@@ -193,6 +195,94 @@ class WorkflowActionCleanupBatch2Tests(unittest.TestCase):
         cancel_quote_revision(
             editable["id"], expected_version=editable["lock_version"], reason="Synthetic cancel"
         )
+
+    def test_editable_revision_description_preserves_commercial_values_and_projects(self):
+        job_id, quote_id, revision, _ = self.quote_with_pending_revision()
+        source_quote = generate_quote_from_revision(
+            revision["id"], expected_version=revision["lock_version"]
+        )
+        editable = start_quote_revision(source_quote["id"], "Correct item description")
+        item = get_basket(job_id)["items"][0]
+        original_markup = item["markup_percent"] or 30
+        html = self.render(job_id)
+        self.assertIn('name="requested_description"', html)
+        self.assertIn('value="Synthetic filter"', html)
+
+        update_basket_item_form(
+            job_id, item["id"], quantity=item["quantity"],
+            supplier_unit_cost=item["supplier_unit_cost"],
+            markup_percent=item["markup_percent"] or 30,
+            customer_unit_price_override=str(item["customer_unit_price_override"] or ""),
+            manufacturer_part_number=item["manufacturer_part_number"] or "",
+            alternate_part_number=item["alternate_part_number"] or "",
+            supplier_part_number=item["supplier_part_number"] or "",
+            part_status=item["part_status"] or "QUOTED",
+            requested_description="Corrected filter",
+            expected_revision_id=editable["id"],
+            expected_version=editable["lock_version"],
+            confidence=None,
+        )
+        changed = get_basket(job_id)["items"][0]
+        self.assertEqual(changed["requested_description"], "Corrected filter")
+        self.assertEqual(changed["quantity"], item["quantity"])
+        self.assertEqual(changed["supplier_unit_cost"], item["supplier_unit_cost"])
+        self.assertEqual(changed["markup_percent"], original_markup)
+        self.assertEqual(
+            changed["customer_unit_price_override"],
+            item["customer_unit_price_override"],
+        )
+        current = get_revision_context(job_id)
+        with self.assertRaises(HTTPException) as stale:
+            update_basket_item_form(
+                job_id, item["id"], quantity=item["quantity"],
+                supplier_unit_cost=item["supplier_unit_cost"],
+                markup_percent=item["markup_percent"] or 30,
+                customer_unit_price_override=str(item["customer_unit_price_override"] or ""),
+                manufacturer_part_number=item["manufacturer_part_number"] or "",
+                alternate_part_number=item["alternate_part_number"] or "",
+                supplier_part_number=item["supplier_part_number"] or "",
+                part_status=item["part_status"] or "QUOTED",
+                requested_description="Stale edit",
+                expected_revision_id=editable["id"],
+                expected_version=editable["lock_version"],
+                confidence=None,
+            )
+        self.assertEqual(stale.exception.status_code, 409)
+
+        committed = commit_work_revision(
+            job_id, expected_revision_id=editable["id"],
+            expected_version=current["lock_version"],
+        )
+        with self.assertRaises(HTTPException) as immutable:
+            update_basket_item_form(
+                job_id, item["id"], quantity=item["quantity"],
+                supplier_unit_cost=item["supplier_unit_cost"],
+                markup_percent=original_markup,
+                customer_unit_price_override=str(item["customer_unit_price_override"] or ""),
+                manufacturer_part_number=item["manufacturer_part_number"] or "",
+                alternate_part_number=item["alternate_part_number"] or "",
+                supplier_part_number=item["supplier_part_number"] or "",
+                part_status=item["part_status"] or "QUOTED",
+                requested_description="Committed edit",
+                expected_revision_id=editable["id"],
+                expected_version=current["lock_version"],
+                confidence=None,
+            )
+        self.assertEqual(immutable.exception.status_code, 409)
+        successor = generate_quote_from_revision(
+            editable["id"], expected_version=committed.get("lock_version", current["lock_version"]),
+        )
+        with closing(self.connection()) as c:
+            predecessor_item = c.execute(
+                "SELECT description FROM quote_items WHERE quote_id=?",
+                (source_quote["id"],),
+            ).fetchone()
+            successor_item = c.execute(
+                "SELECT description FROM quote_items WHERE quote_id=?",
+                (successor["id"],),
+            ).fetchone()
+        self.assertEqual(predecessor_item["description"], "Synthetic filter")
+        self.assertEqual(successor_item["description"], "Corrected filter")
 
     def test_editable_revision_commit_contract_and_stale_version(self):
         job_id, quote_id, revision, _ = self.quote_with_pending_revision()
