@@ -34,6 +34,11 @@ def test_builder_round_trips_through_deployed_parser():
     assert source == PDF
 
 
+def test_builder_preserves_optional_target_proposal_id():
+    package_data, _, _ = unpack_ppsresearch(build_ppsresearch_package(payload(), PDF, target_proposal_id=42))
+    assert ResearchImportPackage.model_validate(package_data).target_proposal_id == 42
+
+
 def test_builder_rejects_bad_schema_and_pdf():
     with pytest.raises(ValueError):
         build_ppsresearch_package({"package_id": "bad"}, PDF)
@@ -47,7 +52,7 @@ def test_builder_output_and_overwrite_policy(tmp_path: Path):
     output = tmp_path / "sample.ppsresearch"
     research.write_text(json.dumps(payload()), encoding="utf-8")
     source.write_bytes(PDF)
-    command = [sys.executable, "scripts/build_ppsresearch.py", "--research", str(research), "--source", str(source), "--output", str(output)]
+    command = [sys.executable, "scripts/build_ppsresearch.py", "--research", str(research), "--source", str(source), "--output", str(output), "--target-proposal-id", "7"]
     result = subprocess.run(command, capture_output=True, text=True, check=True)
     assert "validation: success" in result.stdout
     assert output.exists()
