@@ -75,6 +75,9 @@ def test_assistant_to_real_disposable_pps_stays_draft(monkeypatch, tmp_path):
         monkeypatch.setitem(sys.modules, 'open_webui.config', SimpleNamespace(UPLOAD_DIR=tmp_path, STORAGE_PROVIDER='local'))
         monkeypatch.setitem(sys.modules, 'open_webui.env', SimpleNamespace(DATA_DIR=tmp_path))
         monkeypatch.setitem(sys.modules, 'open_webui.models.files', SimpleNamespace(Files=SimpleNamespace(get_file_by_id=get)))
+        async def read_local_without_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+        monkeypatch.setattr(webui, 'asyncio', SimpleNamespace(to_thread=read_local_without_thread))
         current={'id':'message-1','role':'user','content':'/stage_research_import',
                  'files':[{'id':'pdf','type':'file'},{'id':'json','type':'file'}]}
         form={'model':'pps-ai-harness','messages':[current]}
