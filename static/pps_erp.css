@@ -115,6 +115,9 @@
 .erp-topbar .topbar-search .button,
 .erp-topbar .theme-toggle,
 .erp-topbar .mobile-nav-toggle { font-size: 12px !important; font-weight: 600 !important; letter-spacing: 0 !important; }
+.erp-topbar .mobile-nav-toggle { display:inline-flex; align-items:center; gap:7px; min-height:38px; padding:8px 12px; border:1px solid var(--erp-border-strong) !important; border-radius:7px; background:var(--erp-panel) !important; color:var(--erp-text) !important; box-shadow:none; }
+.erp-topbar .mobile-nav-toggle:hover { background:var(--erp-panel-2) !important; }
+.erp-topbar .mobile-nav-toggle:focus-visible, .erp-topbar .theme-toggle:focus-visible, .erp-topbar .button:focus-visible, .erp-app a:focus-visible, .erp-app button:focus-visible { outline:3px solid color-mix(in srgb,var(--erp-blue) 55%,transparent); outline-offset:2px; }
 .erp-topbar .topbar-search-input { font-size: 13px !important; font-weight: 400 !important; }
 .erp-topbar .theme-toggle, .erp-topbar .button.ghost {
   min-height: 38px !important; background: var(--erp-panel) !important; border-color: var(--erp-border) !important; color: var(--erp-text-2) !important;
@@ -365,6 +368,7 @@
   .erp-app .erp-delete-alternatives .button,.erp-app .erp-delete-cancel .button { width: 100%; }
   .erp-app .job-command-header-actions { align-items: stretch; flex-direction: column; }
   .erp-app .job-command-header-actions .erp-header-delete { width: 100%; }
+  .erp-app .job-command-header-actions .erp-header-delete { margin-top: 10px; background: transparent !important; }
 }
 .erp-app .smart-intake-message textarea { color: var(--erp-text) !important; background: var(--erp-bg) !important; }
 .erp-app .smart-intake-image-tools,
@@ -458,6 +462,7 @@
   font: 500 12px/1.35 var(--erp-font) !important;
 }
 .erp-app textarea { min-height: 84px; }
+.erp-app .smart-intake-message textarea { height:220px; min-height:220px; }
 .erp-app input::placeholder,
 .erp-app textarea::placeholder { color: var(--erp-muted); opacity: 1; }
 .erp-app input:focus,

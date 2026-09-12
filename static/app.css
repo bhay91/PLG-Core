@@ -4165,6 +4165,8 @@ small.secondary {
   .quote-document-actions .button {
     width: 100%;
   }
+  .quote-review-context { display:grid; gap:5px; line-height:1.4; }
+  .quote-review-context > span { display:flex; flex-wrap:wrap; }
 }
 
 /* Quote Review operator desk */
@@ -4173,6 +4175,7 @@ small.secondary {
   color: var(--muted);
   font-weight: 700;
 }
+.quote-review-context > span { display:inline-flex; align-items:center; gap:6px; min-width:0; }
 
 .quote-review-heading-total {
   flex: 0 0 auto;
@@ -6288,3 +6291,7 @@ textarea:focus {
 .operator-dashboard{display:grid;gap:16px;min-width:0}.dashboard-heading{margin-bottom:0}.dashboard-section{min-width:0;overflow:hidden;border:1px solid var(--line);border-radius:15px;background:#fff;box-shadow:var(--shadow-sm)}.dashboard-section-priority{border-color:#b9d4f4}.dashboard-section-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 15px;border-bottom:1px solid var(--line);background:#f8fafc}.dashboard-section-priority .dashboard-section-head{background:#f2f7fd}.dashboard-section-head h2{margin:0;color:var(--ink-strong);font-size:18px}.dashboard-section-head .eyebrow{margin-bottom:2px}.dashboard-section-head>a{flex:0 0 auto;color:var(--accent-dark);font-size:12px;font-weight:850;text-decoration:none}.dashboard-count{display:flex;align-items:baseline;gap:7px;padding:10px 15px;border-bottom:1px solid var(--line);color:var(--muted);font-size:12px}.dashboard-count strong{color:var(--ink-strong);font-size:20px}.dashboard-list{display:grid}.dashboard-row{display:grid;grid-template-columns:minmax(220px,1.35fr) minmax(165px,.75fr) minmax(150px,.55fr);gap:14px;align-items:center;padding:12px 15px;border-top:1px solid var(--line)}.dashboard-row:first-child{border-top:0}.dashboard-identity,.dashboard-state{display:grid;gap:3px;min-width:0}.dashboard-identity small,.dashboard-state small{color:var(--muted);font-size:10px;font-weight:850;text-transform:uppercase}.dashboard-identity strong{color:var(--ink-strong);overflow-wrap:anywhere}.dashboard-identity>span,.dashboard-state>span{color:var(--muted);font-size:12px;line-height:1.4;overflow-wrap:anywhere}.dashboard-context{color:var(--ink)!important}.dashboard-state>span{color:var(--ink-strong);font-weight:750}.dashboard-state-warning>span{width:max-content;max-width:100%;padding:6px 9px;border-radius:999px;background:#fff4df;color:#7a4f0d}.dashboard-primary-action{display:flex;align-items:center;justify-content:center;min-height:40px;padding:9px 12px;border-radius:9px;background:var(--accent);color:#fff;font-size:12px;font-weight:850;text-align:center;text-decoration:none}.dashboard-empty{margin:0;padding:18px 15px;color:var(--muted)}.dashboard-workflow-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.dashboard-workflow-section .dashboard-row{grid-template-columns:minmax(0,1fr)}.dashboard-workflow-section .dashboard-state{padding-top:8px;border-top:1px solid var(--line)}.dashboard-workflow-section .dashboard-primary-action{justify-self:start}.dashboard-intake-row .dashboard-identity>span:not(.dashboard-context){display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 @media(max-width:1000px){.dashboard-row{grid-template-columns:minmax(0,1fr) minmax(150px,.65fr)}.dashboard-primary-action{grid-column:1/-1;justify-self:start;min-width:170px}.dashboard-workflow-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:720px){.dashboard-heading{align-items:stretch;flex-direction:column}.dashboard-heading .button{width:100%}.dashboard-workflow-grid{grid-template-columns:1fr}.dashboard-section-head{align-items:flex-start}.dashboard-row{grid-template-columns:minmax(0,1fr);gap:9px}.dashboard-state{padding-top:8px;border-top:1px solid var(--line)}.dashboard-primary-action{grid-column:1;width:100%;justify-self:stretch}.dashboard-intake-row .dashboard-primary-action{min-height:46px}.dashboard-section-head>a{padding-top:4px}.dashboard-count{padding-block:8px}}
+@media(max-width:720px){.dashboard-intake-row .dashboard-identity>span:not(.dashboard-context){display:block;overflow:visible;white-space:normal;text-overflow:clip;-webkit-line-clamp:unset}}
+
+button:focus-visible, .button:focus-visible, a:focus-visible { outline:3px solid color-mix(in srgb,var(--accent) 55%,transparent); outline-offset:2px; }
+.follow-empty { padding-block:32px; }

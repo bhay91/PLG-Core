@@ -12,9 +12,9 @@
         <span class="quote-status-badge quote-status-{{ quote.status|lower }}">{{ quote.status or "DRAFT" }}</span>
       </div>
       <p class="quote-review-context">
-        Job {{ quote.job_number }}
-        {% if quote.manufacturer or quote.machine %} · {{ manufacturer_logo(quote.manufacturer, true) }} {{ quote.machine }}{% endif %}
-        {% if quote.pin_serial %} · PIN / VIN / Serial {{ quote.pin_serial }}{% endif %}
+        <span>Job {{ quote.job_number }}</span>
+        {% if quote.manufacturer or quote.machine %}<span>{{ manufacturer_logo(quote.manufacturer, true) }} {{ quote.machine }}</span>{% endif %}
+        {% if quote.pin_serial %}<span>PIN / VIN / Serial {{ quote.pin_serial }}</span>{% endif %}
       </p>
       {% if quote.supersedes_quote_number %}<p class="quote-review-subtitle">Revision of {{ quote.supersedes_quote_number }}.</p>{% endif %}
       {% if split_predecessor %}<p class="quote-review-subtitle">Split successor of {{ split_predecessor.quote_number }}.</p>{% endif %}
