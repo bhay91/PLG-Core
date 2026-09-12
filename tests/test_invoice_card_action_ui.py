@@ -64,7 +64,7 @@ class InvoiceCardActionPresentationTests(unittest.TestCase):
 
     def test_main_stylesheet_is_cache_versioned(self):
         base = (ROOT / "templates" / "base.html").read_text()
-        self.assertIn("app.css') }}?v=invoice-action-grid-v2", base)
+        self.assertIn("app.css') }}?v=visual-polish-v3", base)
 
     def test_button_text_wraps_without_clipping_or_ellipsis(self):
         rule = re.search(

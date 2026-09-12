@@ -637,7 +637,7 @@ th.numeric,
 }
 
 .smart-intake-paste textarea {
-  min-height: 350px !important;
+  min-height: 220px;
   font-size: 0.94rem !important;
   line-height: 1.62;
 }
