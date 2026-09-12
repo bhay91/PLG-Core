@@ -1906,6 +1906,27 @@ body.erp-app a.button.danger-outline.erp-header-delete:hover {
 }
 
 /* Advanced Command Center: use the ERP navy palette consistently in dark mode. */
+:root[data-theme="dark"] .erp-app .cc-shell.jcc {
+  --surface-1: #111d30;
+  --surface-2: #15243a;
+  --surface-3: #1a2a42;
+  --surface: var(--surface-1);
+  --surface-soft: var(--surface-2);
+  --surface-muted: var(--surface-3);
+  --text-primary: #f2f6fc;
+  --text-secondary: #b5c0cf;
+  --text-muted: #8290a4;
+  --border: #26364d;
+  --border-strong: #344860;
+  --erp-panel: #111d30;
+  --erp-panel-2: #15243a;
+  --erp-panel-3: #1a2a42;
+  --erp-text: #f2f6fc;
+  --erp-text-2: #b5c0cf;
+  --erp-muted: #8290a4;
+  --jcc-line: #26364d;
+  --jcc-muted: #8290a4;
+}
 :root[data-theme="dark"] .erp-app .cc-shell {
   color: var(--text-primary);
 }
