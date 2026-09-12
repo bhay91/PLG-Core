@@ -91,23 +91,6 @@ def _customer_match(
     return {"state": "NEW", "matched_id": None, "candidates": [], "rationale": "No existing customer match was found."}
 
 
-def _strong_machine_match(connection: sqlite3.Connection, identifier: str):
-    normalized = _norm(identifier)
-    if not normalized:
-        return None
-    row = connection.execute(
-        "SELECT m.* FROM machine_identifiers i JOIN machines m ON m.id=i.machine_id "
-        "WHERE REPLACE(REPLACE(LOWER(i.identifier_value),'-',''),' ','')=? AND m.active=1 LIMIT 1",
-        (normalized,),
-    ).fetchone()
-    if row:
-        return row
-    for candidate in connection.execute("SELECT * FROM machines WHERE active=1 AND TRIM(vin_pin_serial)!=''"):
-        if _norm(candidate["vin_pin_serial"]) == normalized:
-            return candidate
-    return None
-
-
 def _machine_candidates(connection, identifier: str) -> list:
     wanted = _norm(identifier)
     found = {}
