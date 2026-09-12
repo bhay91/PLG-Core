@@ -237,6 +237,7 @@ class WorkQueuePhase1Tests(unittest.TestCase):
         self.assertEqual(rows["J4"]["context_detail"], "PPS-Q-0004 · $1,000.00")
         self.assertEqual((rows["J5"]["need_label"], rows["J5"]["action_detail"]),
                          ("CUSTOMER DECISION", "Waiting for Customer"))
+        self.assertEqual(rows["J5"]["display_stage"], "Waiting for Customer")
         self.assertEqual((rows["J7"]["need_label"], rows["J7"]["action_detail"]),
                          ("INVOICE", "Waiting for Payment"))
         self.assertEqual((rows["J9"]["need_label"], rows["J9"]["action_detail"]),

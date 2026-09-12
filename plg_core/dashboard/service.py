@@ -273,6 +273,7 @@ def get_work_queue_data(
                 f"/quotes/{job['quote_id']}/documents",
             )
             need_action = "Waiting for Customer"
+            display_stage = intelligence.workflow_label
         elif stage in {"REQUEST", "CUSTOMER", "REGISTRY", "RESEARCH"}:
             if job_id in jobs_with_needs:
                 continue
