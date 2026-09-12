@@ -251,6 +251,32 @@ class WorkQueuePhase1Tests(unittest.TestCase):
                          ("COMPLETED", "Completed"))
         c.close()
 
+    def test_committed_pending_revision_uses_revision_ready_dashboard_stage(self):
+        job = job_row("J14", selected=1, quote_status="DRAFT")
+        c = self.connection()
+        c.executescript("""
+            CREATE TABLE quotes(id INTEGER PRIMARY KEY, quote_number TEXT,
+                                work_revision_id INTEGER);
+            CREATE TABLE work_revisions(id INTEGER PRIMARY KEY, revision_number INTEGER,
+                                        lock_version INTEGER, based_on_quote_id INTEGER,
+                                        state TEXT, job_id INTEGER);
+        """)
+        with patch(
+            "plg_core.dashboard.service.get_recent_jobs",
+            return_value=[job],
+        ), patch(
+            "plg_core.jobs.service.get_pending_revision_action",
+            return_value={"id": 42},
+        ):
+            result = get_work_queue_data(c, today=date(2026, 8, 12))
+        row = next(item for item in result["items"] if item["job_number"] == "J14")
+        self.assertEqual(row["category"], "READY_TO_QUOTE")
+        self.assertEqual(row["display_stage"], "Revision Ready")
+        self.assertEqual(row["next_action"], "Generate Revised Quote")
+        self.assertEqual(row["url"], "/work-revisions/42/generate-quote")
+        self.assertIn("item.display_stage", (ROOT / "templates" / "dashboard.html").read_text())
+        c.close()
+
     def test_unpaid_invoice_outranks_missing_current_quote_and_stale_basket(self):
         unpaid = job_row("J12", selected=1, quote_status=None, invoice_status="UNPAID")
         intelligence = JobEngine.evaluate(

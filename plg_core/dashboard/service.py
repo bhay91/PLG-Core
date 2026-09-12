@@ -211,6 +211,15 @@ def get_work_queue_data(
         )
         stage = intelligence.workflow_stage
         quote_status = str(job["quote_status"] or "").strip().upper()
+        display_stage = None
+        pending_revision = None
+        if quote_status == "DRAFT" and not job["invoice_id"] and not int(_row_value(job, "supplier_order_count", 0) or 0):
+            revision_table = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='work_revisions'"
+            ).fetchone()
+            if revision_table:
+                from plg_core.jobs.service import get_pending_revision_action
+                pending_revision = get_pending_revision_action(connection, job_id, quote)
         invoice_status = str(job["invoice_status"] or "").strip().upper()
         job_status = str(job["status"] or "").strip().upper()
         payment_received = invoice_status in {
@@ -244,12 +253,20 @@ def get_work_queue_data(
                 f"/invoices/{job['invoice_id']}/documents",
             )
             need_action = "Waiting for Payment"
+        elif pending_revision is not None:
+            queue_key, action_label, url = (
+                "READY_TO_QUOTE", "Generate Revised Quote",
+                f"/work-revisions/{int(pending_revision['id'])}/generate-quote",
+            )
+            need_action = "Generate Revised Quote"
+            display_stage = "Revision Ready"
         elif quote_status == "DRAFT":
             queue_key, action_label, url = (
                 "READY_TO_QUOTE", "Open Quote",
                 f"/quotes/{job['quote_id']}/documents",
             )
             need_action = "Review Draft Quote"
+            display_stage = None
         elif quote_status == "SENT":
             queue_key, action_label, url = (
                 "CUSTOMER_DECISION_FOLLOW_UP", "Open Quote",
@@ -409,6 +426,7 @@ def get_work_queue_data(
             "waiting_since": waiting_since,
             "age_days": _age_days(waiting_since, report_date),
             "next_action": action_label,
+            "display_stage": display_stage,
             "url": url,
             "is_follow_up": False,
         })

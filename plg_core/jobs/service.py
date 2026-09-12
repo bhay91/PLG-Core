@@ -51,7 +51,7 @@ def _job_operator_state(job, invoice, orders, movement, financial, fallback):
     return "Completed", "Review completed Job", f"/jobs/{int(job['id'])}/delivery", "GET"
 
 
-def _pending_revision_action(connection, job_id: int, quote):
+def get_pending_revision_action(connection, job_id: int, quote):
     """Return a committed revision waiting for its derived quote, if any.
 
     A committed revision is finished work. It remains the active source only
@@ -107,7 +107,7 @@ def get_job_operational_snapshot(
             "SELECT * FROM quotes WHERE job_id=? AND COALESCE(is_current,1)=1 ORDER BY id DESC LIMIT 1",
             (job_id,),
         ).fetchone()
-        pending_revision = _pending_revision_action(connection, job_id, quote)
+        pending_revision = get_pending_revision_action(connection, job_id, quote)
         invoice = connection.execute(
             "SELECT * FROM invoices WHERE job_id=? ORDER BY id DESC LIMIT 1", (job_id,)
         ).fetchone()
