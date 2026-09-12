@@ -171,7 +171,7 @@ class AccountingAuditTests(unittest.TestCase):
         self.assertEqual(rows["PPS-INV-A0002"]["placed_supplier_cost"], 60)
         self.assertEqual(rows["PPS-INV-A0002"]["placed_cost_profit"], 140)
         self.assertTrue(rows["PPS-INV-A0002"]["invoice_url"].endswith("/documents"))
-        self.assertTrue(rows["PPS-INV-A0002"]["job_url"].endswith("/basket"))
+        self.assertTrue(rows["PPS-INV-A0002"]["job_url"].endswith("/basket?view=advanced"))
         self.assertEqual(len(rows["PPS-INV-A0003"]["orders"]), 2)
         self.assertIn("PPS-INV-A0005", rows)  # archived Job financial history remains
         self.assertNotIn("PPS-INV-AVOID", rows)

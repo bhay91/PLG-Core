@@ -226,7 +226,7 @@ class PurchasingCommandCenter2Tests(unittest.TestCase):
 
     def test_17_related_links(self):
         links = self.snapshot()["links"]
-        self.assertEqual(links["job"], "/jobs/9001/basket")
+        self.assertEqual(links["job"], "/jobs/9001/basket?view=advanced")
         self.assertIn("PPS-INV-9001", links["accounting"])
 
     def test_18_multi_supplier_comparison(self):

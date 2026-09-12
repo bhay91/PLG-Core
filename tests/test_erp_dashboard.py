@@ -35,5 +35,5 @@ def test_erp_shell_uses_local_svg_icons_and_existing_routes_only():
     assert "<symbol id=\"erp-i-dashboard\"" in base
     assert "pps_erp.css" in base
     assert "http://" not in base and "https://" not in base
-    for route in ("/dashboard", "/jobs", "/requests", "/quotes", "/purchasing", "/invoices", "/documents"):
+    for route in ("/", "/jobs", "/requests", "/quotes", "/purchasing", "/invoices", "/documents"):
         assert f'href="{route}"' in base

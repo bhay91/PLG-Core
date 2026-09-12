@@ -91,9 +91,9 @@ class SupplierActualCostPresentationTests(unittest.TestCase):
         self.assertIn("c.actual_cost_state != 'CONFIRMED'", self.directory_template)
 
     def test_jcc_links_outstanding_cost_to_supplier_order(self):
-        self.assertIn("Fulfillment history", self.jcc_template)
-        self.assertIn("Orders and receipts", self.jcc_template)
-        self.assertIn("Older corrective tools", self.jcc_template)
+        self.assertIn("Fulfillment", self.jcc_template)
+        self.assertIn("Supplier Orders", self.jcc_template)
+        self.assertIn("Confirm Supplier Cost", self.jcc_template)
 
     def test_mobile_cost_actions_stack_without_overflow(self):
         self.assertIn(".erp-app .supplier-cost-next", self.erp_css)
