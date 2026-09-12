@@ -178,6 +178,16 @@ class ResearchImportIngestionTests(unittest.TestCase):
         self.assertTrue(proposal["research_import"]["target_found"])
         for text in (job["job_number"], "TARGET PPS JOB", "IMPORTED IDENTITY", "Brake rotor", "Qty 2", "OEM-1", "ALT-1", "Supplier", "118.00", "Fits 5600i", "225.00", self.pdf_name, "RESEARCH-IMPORT-001"):
             self.assertIn(text, rendered)
+        self.assertIn("RESEARCH OPTIONS · CANDIDATE / UNCONFIRMED", rendered)
+        self.assertIn("Research price", rendered)
+        self.assertIn("candidate / unconfirmed", rendered)
+        self.assertGreaterEqual(rendered.count('<details class="research-import-details">'), 2)
+        package_details = rendered.split('<summary>Package details</summary>', 1)[1].split('</details>', 1)[0]
+        self.assertIn(proposal["research_import"]["pdf_sha256"], package_details)
+        self.assertIn("Open source PDF", rendered.split('<summary>Package details</summary>', 1)[0])
+        evidence_details = rendered.split('<summary>Evidence &amp; details</summary>', 1)[1].split('</details>', 1)[0]
+        for text in ("Fits 5600i", "Catalog evidence", "Candidate only", "https://supplier.example/item"):
+            self.assertIn(text, evidence_details)
         self.assertIn("No update action is available yet", rendered)
 
     def test_review_marks_missing_target_and_blocks_update(self):
