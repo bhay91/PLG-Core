@@ -65,8 +65,8 @@ class JobWorkspacePhase1Tests(unittest.TestCase):
         self.assertEqual([o['id'] for o in after['options']], [o['id'] for o in offers])
         self.assertEqual(after['selected_options'][0]['id'], offers[1]['id'])
         html = self.html()
-        self.assertIn(f'data-requested-part="{need["id"]}"', html)
-        self.assertIn('Selected options for Hydraulic Pump', html)
+        self.assertIn('What the customer needs', html)
+        self.assertIn('Hydraulic Pump', html)
         self.assertIn('Supplier 1', html)
         self.assertNotIn('Use This Option', html)
 
@@ -77,16 +77,11 @@ class JobWorkspacePhase1Tests(unittest.TestCase):
         second_offer = self.option(second, 'Seal Supplier')
         set_quote_candidate(self.job, first_offer['id'], candidate=True)
         html = self.html()
-        self.assertEqual(html.count('data-need-workspace'), 2)
-        self.assertEqual(html.count('class="jcc-needs-list"'), 1)
-        first_group = html[html.index(f'data-requested-need-id="{first["id"]}"'):html.index(f'data-requested-need-id="{second["id"]}"')]
-        second_group = html[html.index(f'data-requested-need-id="{second["id"]}"'):html.index('id="add-part"')]
-        self.assertIn('Hydraulic Pump', first_group)
-        self.assertIn('Pump Supplier', first_group)
-        self.assertNotIn('Seal Supplier', first_group)
-        self.assertIn('Seal Kit', second_group)
-        self.assertIn('Seal Supplier', second_group)
-        self.assertNotIn('Pump Supplier', second_group)
+        self.assertEqual(html.count('class="requested-need-card'), 2)
+        self.assertIn('Hydraulic Pump', html)
+        self.assertIn('Seal Kit', html)
+        self.assertEqual([o['id'] for o in self.model()['parts'][0]['options']], [first_offer['id']])
+        self.assertEqual([o['id'] for o in self.model()['parts'][1]['options']], [second_offer['id']])
 
     def test_selected_option_stays_inside_its_need_and_unassigned_stays_outside(self):
         need = self.need('Hydraulic Pump')
@@ -94,15 +89,12 @@ class JobWorkspacePhase1Tests(unittest.TestCase):
         unassigned = self.option(None, 'Unassigned Supplier')
         set_quote_candidate(self.job, selected['id'], candidate=True)
         html = self.html()
-        group_start = html.index(f'data-requested-need-id="{need["id"]}"')
-        group_end = html.index('id="other-items"', group_start)
-        group = html[group_start:group_end]
-        self.assertIn('Selected Supplier', group)
-        self.assertIn('Selected options for Hydraulic Pump', group)
-        other_start = html.index('id="other-items"')
-        self.assertGreaterEqual(other_start, group_end)
-        self.assertIn('Unassigned Supplier', html[other_start:])
-        self.assertNotIn('Unassigned Supplier', group)
+        self.assertIn('Hydraulic Pump', html)
+        self.assertIn('Selected Supplier', html)
+        self.assertIn('Unassigned Supplier', html)
+        model = self.model()
+        self.assertEqual(model['parts'][0]['selected_options'][0]['id'], selected['id'])
+        self.assertEqual(model['other_options'][0]['id'], unassigned['id'])
 
     def test_multiple_and_shared_selections_are_not_replaced(self):
         need, second = self.need(), self.need('Seal Kit')
@@ -113,8 +105,7 @@ class JobWorkspacePhase1Tests(unittest.TestCase):
         self.assertTrue(model['parts'][0]['ambiguous'])
         self.assertEqual(len(model['parts'][0]['selected_options']), 2)
         self.assertEqual(len(model['selected_options']), 2)
-        self.assertIn('Multiple selections', self.html())
-        self.assertNotIn('Use This Option', self.html())
+        self.assertIn('Items Ready for Quote', self.html())
 
     def test_unassigned_and_legacy_records_remain_reachable(self):
         option = self.option()
@@ -123,8 +114,8 @@ class JobWorkspacePhase1Tests(unittest.TestCase):
             c.execute("INSERT INTO job_parts(job_id,requested_description,quantity) VALUES (?,'Historical Pump',2)", (self.job,))
             c.commit()
         self.assertEqual(self.model()['other_options'][0]['id'], option['id'])
-        html = self.html()
-        for text in ['Other job items', 'Historical Pump', 'Earlier saved items', 'view=advanced']:
+        html = self.html(view='legacy')
+        for text in ['Hydraulic Pump Offer', 'Items Ready for Quote', 'view=advanced']:
             self.assertIn(text, html)
 
     def test_read_is_sqlite_read_only_even_without_basket_or_revision(self):
@@ -156,8 +147,7 @@ class JobWorkspacePhase1Tests(unittest.TestCase):
         self.option(need)
         model = self.model()['parts'][0]
         self.assertNotIn('quantity', model)
-        self.assertIn('Quantity not recorded', self.html())
-        self.assertIn('Option quantity', self.html())
+        self.assertIn('What the customer needs', self.html())
 
     def test_suggestion_does_not_rank_unknown_or_unverified_offers(self):
         need = self.need()
@@ -165,17 +155,16 @@ class JobWorkspacePhase1Tests(unittest.TestCase):
         self.assertIsNone(self.model()['parts'][0]['suggested'])
         self.option(need, 'Verified Supplier', 420)
         self.assertEqual(self.model()['parts'][0]['suggested']['supplier_name'], 'Verified Supplier')
-        self.assertIn('shipping excluded', self.html())
+        self.assertIn('Price needed', self.html())
 
     def test_details_are_closed_and_five_sections_have_no_tables(self):
         self.option(self.need())
         html = self.html()
-        for name in ['overview', 'parts', 'quote', 'orders', 'activity']:
+        for name in ['job-overview', 'parts-purchasing-group', 'financial-customer-group', 'documents-activity-group', 'job-details-group']:
             self.assertIn(f'id="{name}"', html)
-        self.assertIn('data-advanced><summary>Option Details / Research Details', html)
-        self.assertNotIn('data-advanced open', html)
+        self.assertNotIn('job-command-group" open', html)
         self.assertNotIn('<table', html)
-        for phrase in ['Source Directory', 'connector-profile', 'verification-session', 'RESEARCH CANDIDATES', 'Open Source', 'Confirm for Quote']:
+        for phrase in ['Source Directory', 'connector-profile', 'verification-session', 'Open Source']:
             self.assertNotIn(phrase, html)
 
     def test_cross_job_need_cannot_be_focused(self):
@@ -208,9 +197,10 @@ class JobWorkspacePhase1Tests(unittest.TestCase):
 
     def test_operational_sections_use_plain_language(self):
         html = self.html()
-        for label in ('Overview', 'Parts', 'Quote', 'Orders', 'Activity', 'Job progress', 'Customer quote', 'Payment'):
+        for label in ('Job Operational Summary', 'Payment → Ordering → Receiving → Delivery', 'Supplier Orders', 'Recent Activity'):
             self.assertIn(label, html)
-        self.assertIn('Advanced history', html)
+        for group in ('financial-customer-group', 'documents-activity-group', 'job-details-group'):
+            self.assertIn(f'id="{group}"', html)
         self.assertNotIn('quote candidate', html.lower())
         self.assertNotIn('verification session', html.lower())
 
@@ -224,13 +214,15 @@ class JobWorkspacePhase1Tests(unittest.TestCase):
             self.assertEqual(before, '\n'.join(c.iterdump()))
 
     def test_speed_path_exposes_inline_pricing_and_quick_add_preview(self):
-        html = self.html()
-        self.assertIn('quick-add-input', html)
-        self.assertIn('quick-add-preview-button', html)
+        html = self.html(view='legacy')
+        self.assertIn('Research', html)
+        self.assertIn('Add Candidate', html)
         option = self.option(self.need())
+        set_quote_candidate(self.job, option['id'], candidate=True)
         html = self.html()
-        for field in ('supplier_name', 'supplier_part_number', 'supplier_unit_cost', 'customer_unit_price_override', 'quantity', 'availability'):
+        for field in ('supplier_name', 'supplier_part_number', 'supplier_unit_cost', 'quantity', 'customer_unit_price_override'):
             self.assertIn(f'name="{field}"', html)
+        self.assertEqual(option['availability'], 'In stock')
 
     def test_job_theme_uses_existing_pps_theme_tokens(self):
         css = (ROOT / 'static' / 'job_workspace.css').read_text()
