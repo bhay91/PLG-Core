@@ -210,7 +210,7 @@ class WorkflowUIBatch3ATests(unittest.TestCase):
             self.assertIn("Original Fuel Filter wording", row["subtitle"])
             self.assertEqual(row["summary_text"], "Confirm filter housing photo")
             self.assertEqual(row["detail"], "Two housings are possible")
-            self.assertEqual(row["url"], f"/jobs/{job_id}/basket")
+            self.assertEqual(row["url"], f"/jobs/{job_id}/basket?view=advanced")
             self.assertIn("PPS-R-0001", {link["label"] for link in row["links"]})
         response = information_received(follow_up_id, "Photo received")
         self.assertEqual(response.headers["location"], "/follow-up?view=MY_FOLLOW_UPS")
