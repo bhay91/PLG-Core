@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import tempfile
 import re
 import sqlite3
 from pathlib import Path
@@ -13,7 +14,7 @@ from plg_core.audit import write_audit
 from plg_core.intake.identifiers import classify_identifier, normalize_identifier
 from plg_core.intake.parser import parse_intake
 from plg_core.intake.attachments import ValidatedImage, copy_proposal_images_to_request, store_proposal_images, validate_attachments
-from plg_core.intake.research_import import ResearchImportPackage
+from plg_core.intake.research_import import ResearchImportPackage, unpack_ppsresearch
 from plg_core.intake.documents import (
     classify_document, supplier_invoice_fields, supplier_quote_fields,
 )
@@ -750,10 +751,36 @@ def submit_research_import(
 
 async def validate_research_import_uploads(
     research_pdf: UploadFile | None,
-    sidecar: UploadFile | None,
+    sidecar: UploadFile | None = None,
 ) -> tuple[ResearchImportPackage, ValidatedImage]:
-    """Validate the canonical PDF+JSON transport used by browser and connectors."""
-    if research_pdf is None or not research_pdf.filename or sidecar is None or not sidecar.filename:
+    """Validate the canonical PDF+JSON transport or a single .ppsresearch package."""
+    if research_pdf is None or not research_pdf.filename:
+        raise HTTPException(status_code=400, detail="Research Import requires a PDF+JSON sidecar or .ppsresearch package.")
+    if Path(research_pdf.filename).suffix.lower() == ".ppsresearch":
+        if sidecar is not None:
+            raise HTTPException(status_code=400, detail="A .ppsresearch package must be uploaded without a sidecar.")
+        package_bytes = await research_pdf.read(24 * 1024 * 1024 + 1)
+        await research_pdf.close()
+        if len(package_bytes) > 24 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Research package is too large.")
+        try:
+            package_data, source_name, source_bytes = unpack_ppsresearch(package_bytes)
+            package = ResearchImportPackage.model_validate(package_data)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Research package is invalid.") from None
+        source = tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024)
+        source.write(source_bytes)
+        source.seek(0)
+        pdf_upload = UploadFile(filename=source_name, file=source, headers={"content-type": "application/pdf"})
+        files = await validate_attachments([pdf_upload])
+        pdf = files[0]
+        actual_sha256 = hashlib.sha256(pdf.data).hexdigest()
+        if actual_sha256 != package.source_pdf.sha256.lower():
+            raise HTTPException(status_code=400, detail="Research package PDF SHA-256 does not match the manifest.")
+        if package.source_pdf.filename != source_name:
+            raise HTTPException(status_code=400, detail="Research package PDF filename does not match source.pdf.")
+        return package, pdf
+    if sidecar is None or not sidecar.filename:
         raise HTTPException(status_code=400, detail="Research Import requires both a PDF and JSON sidecar.")
     if Path(sidecar.filename).suffix.lower() != ".json":
         raise HTTPException(status_code=400, detail="Research Import sidecar must be a JSON file.")

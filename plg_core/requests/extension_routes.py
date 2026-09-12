@@ -89,12 +89,19 @@ async def create_firefox_research_import_package(request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="Research Import package upload is invalid.") from None
     items = list(form.multi_items())
-    if {key for key, _ in items} != {"research_pdf", "sidecar"} or len(items) != 2:
-        raise HTTPException(status_code=400, detail="Research Import requires exactly one PDF and one JSON sidecar.")
-    uploads = {key: value for key, value in items}
-    if not isinstance(uploads.get("research_pdf"), UploadFile) or not isinstance(uploads.get("sidecar"), UploadFile):
-        raise HTTPException(status_code=400, detail="Research Import requires file uploads for both fields.")
-    package, pdf = await validate_research_import_uploads(uploads["research_pdf"], uploads["sidecar"])
+    keys = {key for key, _ in items}
+    if keys == {"research_pdf"} and len(items) == 1:
+        uploads = {key: value for key, value in items}
+        if not isinstance(uploads.get("research_pdf"), UploadFile):
+            raise HTTPException(status_code=400, detail="Research Import requires a file upload.")
+        package, pdf = await validate_research_import_uploads(uploads["research_pdf"])
+    elif keys == {"research_pdf", "sidecar"} and len(items) == 2:
+        uploads = {key: value for key, value in items}
+        if not isinstance(uploads.get("research_pdf"), UploadFile) or not isinstance(uploads.get("sidecar"), UploadFile):
+            raise HTTPException(status_code=400, detail="Research Import requires file uploads for both fields.")
+        package, pdf = await validate_research_import_uploads(uploads["research_pdf"], uploads["sidecar"])
+    else:
+        raise HTTPException(status_code=400, detail="Research Import requires exactly one PDF+JSON pair or one .ppsresearch package.")
     try:
         with closing(get_connection()) as connection:
             proposal_id, duplicate = submit_research_import(

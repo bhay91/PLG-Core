@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from contextlib import closing
 from io import BytesIO
+from zipfile import ZIP_DEFLATED, ZipFile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -100,6 +101,42 @@ class ResearchImportIngestionTests(unittest.TestCase):
         pdf_upload = self._upload(pdf_name or self.pdf_name, pdf_bytes if pdf_bytes is not None else self.pdf_bytes, "application/pdf") if pdf else None
         sidecar_upload = self._upload("package.json", json.dumps(package).encode(), "application/json") if sidecar else None
         return asyncio.run(ingest_research_import(None, pdf_upload, sidecar_upload))
+
+    def _ppsresearch(self, package=None, *, manifest=None, research=None, source_name="source.pdf"):
+        package = package or self._package(source_pdf={"filename": source_name, "sha256": hashlib.sha256(self.pdf_bytes).hexdigest()})
+        stream = BytesIO()
+        with ZipFile(stream, "w", ZIP_DEFLATED) as archive:
+            archive.writestr("manifest.json", json.dumps(manifest or {
+                "format": "ppsresearch", "version": 1,
+                "research": "research.json", "source_pdf": "source.pdf",
+            }))
+            archive.writestr("research.json", json.dumps(research or package))
+            archive.writestr("source.pdf", self.pdf_bytes)
+        return self._upload("research.ppsresearch", stream.getvalue(), "application/zip")
+
+    def test_ppsresearch_stages_the_same_draft_boundary(self):
+        response = asyncio.run(ingest_research_import(None, self._ppsresearch()))
+        self.assertEqual(response.status_code, 303)
+        proposal_id = int(re.search(r"/(\d+)$", response.headers["location"]).group(1))
+        with legacy_app.get_connection() as connection:
+            proposal = connection.execute("SELECT status FROM intake_proposals WHERE id=?", (proposal_id,)).fetchone()
+            attachment = connection.execute("SELECT original_filename FROM intake_proposal_attachments WHERE proposal_id=?", (proposal_id,)).fetchone()
+            self.assertEqual(proposal["status"], "DRAFT")
+            self.assertEqual(attachment["original_filename"], "source.pdf")
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM quotes").fetchone()[0], 0)
+
+    def test_ppsresearch_rejects_invalid_manifest_and_traversal(self):
+        with self.assertRaises(HTTPException) as invalid:
+            asyncio.run(ingest_research_import(None, self._ppsresearch(manifest={"format": "ppsresearch", "version": 2, "research": "research.json", "source_pdf": "source.pdf"})))
+        self.assertEqual(invalid.exception.status_code, 400)
+        stream = BytesIO()
+        with ZipFile(stream, "w", ZIP_DEFLATED) as archive:
+            archive.writestr("manifest.json", "{}")
+            archive.writestr("../research.json", "{}")
+            archive.writestr("source.pdf", self.pdf_bytes)
+        with self.assertRaises(HTTPException) as traversal:
+            asyncio.run(ingest_research_import(None, self._upload("research.ppsresearch", stream.getvalue(), "application/zip")))
+        self.assertEqual(traversal.exception.status_code, 400)
 
     def test_valid_package_stages_draft_and_preserves_candidate_contribution(self):
         with legacy_app.get_connection() as connection:

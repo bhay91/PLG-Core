@@ -7,9 +7,17 @@ Packages are candidate data until an operator reviews and confirms them.
 from __future__ import annotations
 
 import re
+import json
+from io import BytesIO
+from zipfile import BadZipFile, ZipFile
 from decimal import Decimal, InvalidOperation
 from typing import Literal
 from urllib.parse import urlsplit
+
+
+PPSRESEARCH_MAX_MEMBERS = 16
+PPSRESEARCH_MAX_MEMBER_BYTES = 8 * 1024 * 1024
+PPSRESEARCH_MAX_TOTAL_BYTES = 24 * 1024 * 1024
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from plg_core.intake.identifiers import ASSET_TYPES, IDENTIFIER_TYPES
@@ -17,6 +25,57 @@ from plg_core.intake.identifiers import ASSET_TYPES, IDENTIFIER_TYPES
 
 class ResearchImportModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+def unpack_ppsresearch(data: bytes) -> tuple[dict, str, bytes]:
+    """Unpack a single-file transport into the existing package inputs."""
+    try:
+        archive = ZipFile(BytesIO(data))
+    except BadZipFile:
+        raise ValueError("Research package is not a valid .ppsresearch archive.") from None
+    with archive:
+        members = archive.infolist()
+        if len(members) > PPSRESEARCH_MAX_MEMBERS:
+            raise ValueError("Research package contains too many files.")
+        names: list[str] = []
+        total = 0
+        for member in members:
+            name = member.filename
+            path = name.replace("\\", "/")
+            if not path or path.startswith("/") or re.match(r"^[A-Za-z]:/", path) or path.startswith("../") or "/../" in path or path == "..":
+                raise ValueError("Research package contains an unsafe path.")
+            if member.is_dir() or (member.external_attr >> 16) & 0o170000 == 0o120000:
+                raise ValueError("Research package contains an unsupported member.")
+            if path.lower().endswith((".zip", ".ppsresearch")):
+                raise ValueError("Nested research packages are not supported.")
+            if path in names:
+                raise ValueError("Research package contains duplicate files.")
+            names.append(path)
+            if member.file_size > PPSRESEARCH_MAX_MEMBER_BYTES:
+                raise ValueError("Research package member is too large.")
+            total += member.file_size
+            if total > PPSRESEARCH_MAX_TOTAL_BYTES:
+                raise ValueError("Research package is too large.")
+        required = {"manifest.json", "research.json", "source.pdf"}
+        if not required.issubset(names):
+            raise ValueError("Research package requires manifest.json, research.json, and source.pdf.")
+        if any(name not in required for name in names):
+            raise ValueError("Research package contains unsupported files.")
+        try:
+            manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError, KeyError):
+            raise ValueError("Research package manifest is invalid.") from None
+        if not isinstance(manifest, dict) or manifest.get("format") != "ppsresearch" or manifest.get("version") != 1:
+            raise ValueError("Research package format version is unsupported.")
+        if manifest.get("research") != "research.json" or manifest.get("source_pdf") != "source.pdf":
+            raise ValueError("Research package manifest references unsupported members.")
+        try:
+            package = json.loads(archive.read("research.json").decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError, KeyError):
+            raise ValueError("Research package research.json is invalid.") from None
+        if not isinstance(package, dict):
+            raise ValueError("Research package research.json is invalid.")
+        return package, "source.pdf", archive.read("source.pdf")
 
 
 def _https_url(value: str) -> str:

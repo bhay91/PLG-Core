@@ -847,11 +847,11 @@ async def analyze_smart_intake(
 async def ingest_research_import(
     request: Request,
     research_pdf: UploadFile | None = File(default=None),
-    sidecar: UploadFile | None = File(default=None),
+    sidecar: UploadFile | None = None,
 ):
     """Stage a validated PDF+JSON package as a Smart Intake DRAFT only."""
-    if research_pdf is None or not research_pdf.filename or sidecar is None or not sidecar.filename:
-        raise HTTPException(status_code=400, detail="Research Import requires both a PDF and JSON sidecar.")
+    if research_pdf is None or not research_pdf.filename or (sidecar is not None and not sidecar.filename):
+        raise HTTPException(status_code=400, detail="Research Import requires a PDF+JSON sidecar or .ppsresearch package.")
     package, pdf = await validate_research_import_uploads(research_pdf, sidecar)
     with closing(get_connection()) as connection:
         proposal_id, duplicate = submit_research_import(connection, package, pdf=pdf)
