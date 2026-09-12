@@ -946,6 +946,7 @@ def get_follow_up_data(
                     END
                 ) AS subtitle,
                 COALESCE(
+                    NULLIF(q.issued_at,''),
                     NULLIF(q.quote_date,''),
                     q.created_at
                 ) AS waiting_since,

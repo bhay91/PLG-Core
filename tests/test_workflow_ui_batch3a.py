@@ -13,7 +13,7 @@ from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
 from plg_core.basket.routes import add_manual_item, update_basket_item_form
 from plg_core.basket.service import add_item, commit_basket, get_basket, update_item
 from plg_core.crm.routes import search_records
-from plg_core.dashboard.service import get_follow_up_data
+from plg_core.dashboard.service import get_follow_up_data, get_work_queue_data
 from plg_core.database.migrations import run_migrations
 from plg_core.documents import quote_pdf
 from plg_core.followups.routes import (
@@ -254,6 +254,44 @@ class WorkflowUIBatch3ATests(unittest.TestCase):
             c.commit()
             self.assertEqual(get_follow_up_data(c, view="MY_FOLLOW_UPS")["items"], [])
             self.assertEqual(len(get_follow_up_data(c, view="HISTORY")["items"]), 1)
+
+    def test_customer_decision_age_prefers_issued_at_with_safe_fallbacks(self):
+        job_id, _ = self.job()
+        with closing(self.connection()) as c:
+            quote_id = c.execute(
+                "INSERT INTO quotes(quote_number,job_id,quote_date,status,customer_total,issued_at) "
+                "VALUES ('PPS-Q-AGE',?,'2026-08-01','SENT',500,NULL)", (job_id,),
+            ).lastrowid
+            c.commit()
+
+            cases = (
+                ("2026-08-10", "2026-08-01", "2026-08-05", "2026-08-10"),
+                ("", "2026-08-01", "2026-08-05", "2026-08-01"),
+                (None, "2026-08-01", "2026-08-05", "2026-08-01"),
+                (None, "", "2026-08-05", "2026-08-05"),
+            )
+            for issued_at, quote_date, created_at, effective_date in cases:
+                c.execute(
+                    "UPDATE quotes SET issued_at=?,quote_date=?,created_at=? WHERE id=?",
+                    (issued_at, quote_date, created_at, quote_id),
+                )
+                c.commit()
+                follow_up = get_follow_up_data(
+                    c, view="CUSTOMER_DECISIONS", today=date(2026, 8, 12)
+                )["items"][0]
+                dashboard = next(
+                    item for item in get_work_queue_data(c, today=date(2026, 8, 12))["items"]
+                    if item["job_id"] == job_id
+                )
+                expected_age = (date(2026, 8, 12) - date.fromisoformat(effective_date)).days
+                self.assertEqual(follow_up["age_days"], expected_age)
+                if issued_at:
+                    self.assertEqual(dashboard["age_days"], expected_age)
+                self.assertEqual(follow_up["category"], "CUSTOMER_DECISION")
+                self.assertEqual(follow_up["action_label"], "Open Quote")
+                self.assertEqual(follow_up["url"], f"/quotes/{quote_id}/documents")
+                self.assertIsNone(follow_up["due_date"])
+                self.assertFalse(follow_up["is_overdue"])
 
     def test_payment_supplier_and_delivery_views_use_persisted_context(self):
         payment_job, _ = self.job()
