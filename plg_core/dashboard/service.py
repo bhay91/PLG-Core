@@ -255,8 +255,8 @@ def get_work_queue_data(
             need_action = "Waiting for Payment"
         elif pending_revision is not None:
             queue_key, action_label, url = (
-                "READY_TO_QUOTE", "Generate Revised Quote",
-                f"/work-revisions/{int(pending_revision['id'])}/generate-quote",
+                "READY_TO_QUOTE", "Open Command Center",
+                f"/jobs/{job_id}/basket?view=advanced",
             )
             need_action = "Generate Revised Quote"
             display_stage = "Revision Ready"

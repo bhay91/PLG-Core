@@ -273,8 +273,10 @@ class WorkQueuePhase1Tests(unittest.TestCase):
         row = next(item for item in result["items"] if item["job_number"] == "J14")
         self.assertEqual(row["category"], "READY_TO_QUOTE")
         self.assertEqual(row["display_stage"], "Revision Ready")
-        self.assertEqual(row["next_action"], "Generate Revised Quote")
-        self.assertEqual(row["url"], "/work-revisions/42/generate-quote")
+        self.assertEqual(row["need_action"], "Generate Revised Quote")
+        self.assertEqual(row["next_action"], "Open Command Center")
+        self.assertEqual(row["url"], "/jobs/14/basket?view=advanced")
+        self.assertNotIn("/work-revisions/42/generate-quote", row["url"])
         self.assertIn("item.display_stage", (ROOT / "templates" / "dashboard.html").read_text())
         c.close()
 
