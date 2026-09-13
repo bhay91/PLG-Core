@@ -509,6 +509,20 @@ def start_work_revision(
                     )
                 connection.commit()
                 return dict(existing)
+            pending_successor = connection.execute(
+                "SELECT * FROM work_revisions WHERE job_id=? AND state='COMMITTED' "
+                "AND based_on_quote_id IS NOT NULL AND (NOT EXISTS "
+                "(SELECT 1 FROM quotes q WHERE q.work_revision_id=work_revisions.id) "
+                "OR EXISTS (SELECT 1 FROM quotes q WHERE q.work_revision_id=work_revisions.id "
+                "AND q.status='DRAFT' AND q.is_current=0)) "
+                "ORDER BY id DESC LIMIT 1",
+                (job_id,),
+            ).fetchone()
+            if pending_successor is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="A committed quote revision is awaiting successor generation.",
+                )
 
             quote = None
             if based_on_quote_id is not None:

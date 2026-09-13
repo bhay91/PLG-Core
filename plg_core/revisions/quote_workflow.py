@@ -261,6 +261,62 @@ def _write_documents(quote_id: int) -> None:
         connection.commit()
 
 
+def _draft_documents_healthy(quote_id: int) -> bool:
+    """Return true only when both current Draft audience manifests are valid."""
+    from plg_core.documents.paths import resolve_manifest_path
+    from plg_core.documents.quote_pdf import DOCUMENT_ROOT
+    with closing(get_connection()) as connection:
+        rows = connection.execute(
+            "SELECT audience,file_path,sha256,is_current,is_issued FROM quote_documents_manifest "
+            "WHERE quote_id=? AND document_kind='QUOTE' AND is_current=1",
+            (quote_id,),
+        ).fetchall()
+    by_audience = {str(row["audience"]).upper(): row for row in rows}
+    for audience in ("CUSTOMER", "INTERNAL"):
+        row = by_audience.get(audience)
+        if row is None or int(row["is_issued"] or 0) != 0:
+            return False
+        try:
+            path = resolve_manifest_path(row["file_path"], root=DOCUMENT_ROOT.parent)
+            if not path.is_file():
+                return False
+            if hashlib.sha256(path.read_bytes()).hexdigest() != str(row["sha256"] or ""):
+                return False
+        except (OSError, ValueError):
+            return False
+    return True
+
+
+def _activate_staged_successor(quote_id: int, source_quote_id: int, revision_id: int) -> dict:
+    from plg_core.requests.service import archive_originating_requests_for_quote
+    with closing(get_connection()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        source = connection.execute("SELECT * FROM quotes WHERE id=?", (source_quote_id,)).fetchone()
+        successor = connection.execute("SELECT * FROM quotes WHERE id=?", (quote_id,)).fetchone()
+        revision = connection.execute("SELECT * FROM work_revisions WHERE id=?", (revision_id,)).fetchone()
+        if source is None or successor is None or revision is None:
+            raise HTTPException(status_code=409, detail="Quote revision state is incomplete.")
+        if str(successor["status"] or "").upper() != "DRAFT":
+            return dict(successor)
+        if int(source["is_current"] or 0) != 1 or str(source["status"] or "").upper() not in {"DRAFT", "SENT", "REJECTED", "REVISION_REQUIRED", "APPROVED"}:
+            raise HTTPException(status_code=409, detail="The source quote is no longer current.")
+        if str(revision["state"] or "").upper() != "COMMITTED":
+            raise HTTPException(status_code=409, detail="The revision is not committed.")
+        if not _draft_documents_healthy(quote_id):
+            raise HTTPException(status_code=409, detail="Successor Draft documents are incomplete.")
+        connection.execute("UPDATE quotes SET status='SUPERSEDED',is_current=0,superseded_at=CURRENT_TIMESTAMP,supersession_reason=? WHERE id=? AND is_current=1", (revision["reason"], source_quote_id))
+        if connection.execute("SELECT changes()").fetchone()[0] != 1:
+            raise HTTPException(status_code=409, detail="The source quote is no longer current.")
+        connection.execute("UPDATE quotes SET is_current=1 WHERE id=? AND status='DRAFT' AND is_current=0", (quote_id,))
+        connection.execute("INSERT INTO quote_events (quote_id,event_type,from_status,to_status,notes) VALUES (?,'QUOTE_SUPERSEDED',?,'SUPERSEDED',?)", (source_quote_id, source["status"], "Quote superseded: " + str(revision["reason"] or "revision generated")))
+        connection.execute("UPDATE jobs SET status='QUOTED' WHERE id=?", (int(successor["job_id"]),))
+        write_audit(connection, action="REVISED_QUOTE_GENERATED", entity_type="QUOTE", entity_id=quote_id, summary=f"Revised quote generated from {source['quote_number']}", metadata={"job_id": int(successor["job_id"]), "work_revision_id": revision_id, "source_quote_id": source_quote_id})
+        log_job_event(connection, job_id=int(successor["job_id"]), event_type="REVISED_QUOTE_GENERATED", icon="📄", message=f"New quote revises {source['quote_number']}")
+        archive_originating_requests_for_quote(connection, job_id=int(successor["job_id"]), quote_id=quote_id)
+        connection.commit()
+        return dict(connection.execute("SELECT * FROM quotes WHERE id=?", (quote_id,)).fetchone())
+
+
 def generate_quote_from_revision(
     revision_id: int,
     *,
@@ -279,7 +335,14 @@ def generate_quote_from_revision(
             (revision_id,),
         ).fetchone()
         if existing is not None:
-            return dict(existing)
+            existing_id = int(existing["id"])
+            if not _draft_documents_healthy(existing_id):
+                _write_documents(existing_id)
+            if not _draft_documents_healthy(existing_id):
+                raise HTTPException(status_code=500, detail="Successor Draft documents are incomplete.")
+            if int(existing["is_current"] or 0) == 1:
+                return dict(existing)
+            return _activate_staged_successor(existing_id, int(revision["based_on_quote_id"] or 0), revision_id)
         if not source_quote_id:
             raise HTTPException(status_code=409, detail="Revision has no source quote.")
         revision_state = str(revision["state"] or "").upper()
@@ -336,37 +399,6 @@ def generate_quote_from_revision(
             "SELECT * FROM jobs WHERE id=?", (job_id,)
         ).fetchone()
         quote_number = next_quote_number(connection)
-        superseded = connection.execute(
-            """
-            UPDATE quotes
-            SET status='SUPERSEDED',is_current=0,
-                superseded_at=CURRENT_TIMESTAMP,
-                supersession_reason=?
-            WHERE id=? AND is_current=1
-            """,
-            (revision["reason"], source_quote_id),
-        )
-        if superseded.rowcount != 1:
-            raise HTTPException(
-                status_code=409,
-                detail="The source quote is no longer current. Refresh the Job.",
-            )
-        connection.execute(
-            """
-            INSERT INTO quote_events (
-                quote_id,event_type,from_status,to_status,notes
-            ) VALUES (?,'QUOTE_SUPERSEDED',?,'SUPERSEDED',?)
-            """,
-            (
-                source_quote_id,
-                str(source["status"] or ""),
-                (
-                    "Approved quote superseded before invoicing: "
-                    if str(source["status"] or "").upper() == "APPROVED"
-                    else "Quote superseded: "
-                ) + str(revision["reason"] or "revision generated"),
-            ),
-        )
         cursor = connection.execute(
             """
             INSERT INTO quotes (
@@ -386,7 +418,7 @@ def generate_quote_from_revision(
                 totals["parts_subtotal"], totals["shipping_total"],
                 totals["service_charge"], totals["sourcing_fee"],
                 totals["customer_total"], totals["supplier_total"],
-                totals["profit_total"], revision_id, source_quote_id, 1,
+                totals["profit_total"], revision_id, source_quote_id, 0,
                 source["quote_track_id"], "REVISION",
                 source["bill_to_kind"], source["bill_to_name_snapshot"],
                 source["bill_to_company_snapshot"], source["bill_to_address_snapshot"],
@@ -468,44 +500,13 @@ def generate_quote_from_revision(
                         "MOVED", predecessor["quantity"],
                     ),
                 )
-        action = (
-            "DRAFT_QUOTE_CORRECTED"
-            if purpose == "DRAFT_CORRECTION"
-            else "REVISED_QUOTE_GENERATED"
-        )
-        connection.execute(
-            "UPDATE jobs SET status='QUOTED' WHERE id=?", (job_id,)
-        )
-        write_audit(
-            connection, action=action, entity_type="QUOTE", entity_id=quote_id,
-            summary=(
-                f"Quote {source['quote_number']} corrected"
-                if quote_id == source_quote_id
-                else f"Revised quote generated from {source['quote_number']}"
-            ),
-            metadata={
-                "job_id": job_id,
-                "work_revision_id": revision_id,
-                "source_quote_id": source_quote_id,
-            },
-        )
-        log_job_event(
-            connection, job_id=job_id, event_type=action, icon="📄",
-            message=(
-                f"Draft {source['quote_number']} updated"
-                if quote_id == source_quote_id
-                else f"New quote revises {source['quote_number']}"
-            ),
-        )
-        from plg_core.requests.service import archive_originating_requests_for_quote
-        archive_originating_requests_for_quote(
-            connection, job_id=job_id, quote_id=quote_id
-        )
         connection.commit()
 
-    _write_documents(quote_id)
-    with closing(get_connection()) as connection:
-        return dict(_quote(connection, quote_id))
+    if not _draft_documents_healthy(quote_id):
+        _write_documents(quote_id)
+    if not _draft_documents_healthy(quote_id):
+        raise HTTPException(status_code=500, detail="Successor Draft documents are incomplete.")
+    return _activate_staged_successor(quote_id, source_quote_id, revision_id)
 
 
 def cancel_quote_revision(
