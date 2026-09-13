@@ -164,7 +164,7 @@ def update_requested_need(
 
 def create_manual_research_result(
     job_id: int, *, job_asset_id: int | None, requested_need_id: int | None,
-    description: str, manufacturer_part_number: str = "", quantity: int = 1,
+    description: str, manufacturer_part_number: str = "", quantity: int | None = None,
     supplier_name: str = "", supplier_part_number: str = "",
     alternate_part_number: str = "",
     supplier_unit_cost: float | None = None, customer_unit_price_override: float | None = None, source_type: str = "AFTERMARKET",
@@ -174,8 +174,14 @@ def create_manual_research_result(
     research_notes: str = "",
     expected_revision_id: int | None = None, expected_version: int | None = None,
 ):
+    if quantity is None and requested_need_id is not None:
+        with closing(get_connection()) as connection:
+            row = connection.execute("SELECT quantity FROM requested_needs WHERE id=? AND job_id=?", (requested_need_id, job_id)).fetchone()
+            quantity = row["quantity"] if row and row["quantity"] is not None else 1
+    if quantity is None:
+        quantity = 1
     verification_status = str(verification_status or "NEEDS_REVIEW").upper()
-    if verification_status not in {"VERIFIED", "PROVISIONAL", "NEEDS_REVIEW"}:
+    if verification_status not in {"VERIFIED", "PROVISIONAL", "NEEDS_REVIEW", "UNVERIFIED", "REJECTED"}:
         raise HTTPException(status_code=400, detail="Invalid Research Result verification status.")
     if research_session_id is None and job_asset_id is not None:
         with closing(get_connection()) as connection:

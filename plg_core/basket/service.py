@@ -205,6 +205,13 @@ def add_item_with_connection(
         (payload.primary_requested_need_id, job_id),
     ).fetchone() is None:
         raise HTTPException(status_code=409, detail="Requested Need does not belong to this Job.")
+    if payload.primary_requested_need_id is not None and "quantity" not in payload.model_fields_set:
+        inherited = connection.execute(
+            "SELECT quantity FROM requested_needs WHERE id=? AND job_id=?",
+            (payload.primary_requested_need_id, job_id),
+        ).fetchone()
+        if inherited and inherited["quantity"] is not None:
+            payload.quantity = int(inherited["quantity"])
     if payload.research_session_id is not None:
         session = connection.execute(
             "SELECT * FROM verification_sessions WHERE id=? AND job_id=?",

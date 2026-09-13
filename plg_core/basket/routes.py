@@ -33,6 +33,7 @@ from plg_core.basket.service import (
 from plg_core.sources.service import SOURCE_TYPES, list_sources_for_context, validate_source_url
 from plg_core.research.service import derive_result_visibility
 from plg_core.research.service import create_requested_need, update_requested_need
+from plg_core.research.service import create_manual_research_result
 from plg_core.assets.service import add_job_asset, edit_job_asset
 
 
@@ -129,6 +130,34 @@ async def center_edit_need(request: Request, job_id: int, need_id: int):
         if "protects" in detail or "history" in detail:
             detail = "This item is part of committed history and cannot be changed directly."
         elif "revision" in detail.lower() or "version" in detail.lower() or "changed" in detail.lower():
+            detail = "This job changed after you opened it. Refresh and review the latest values before saving."
+        return RedirectResponse(f"/jobs/{job_id}/center?message={quote_plus(detail)}", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/center", status_code=303)
+
+
+@router.post("/jobs/{job_id}/center/needs/{need_id}/sourcing")
+async def center_add_sourcing_option(request: Request, job_id: int, need_id: int):
+    from plg_core.web_security import require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    try:
+        cost = float(form["supplier_unit_cost"]) if form.get("supplier_unit_cost") not in (None, "") else None
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, "Supplier unit cost must be a valid number.") from exc
+    try:
+        create_manual_research_result(
+        job_id, job_asset_id=int(form["job_asset_id"]) if form.get("job_asset_id") else None,
+        requested_need_id=need_id, description=form.get("description") or form.get("supplier_name") or "Research option",
+        supplier_name=form.get("supplier_name", ""), supplier_unit_cost=cost,
+        source_url=form.get("source_url", ""), availability=form.get("availability", ""),
+        verification_status=form.get("verification_status", "NEEDS_REVIEW"),
+        research_evidence=form.get("research_evidence", ""), research_notes=form.get("research_notes", ""),
+        expected_revision_id=int(form["expected_revision_id"]) if form.get("expected_revision_id") else None,
+        expected_version=int(form["expected_version"]) if form.get("expected_version") else None,
+        )
+    except HTTPException as exc:
+        detail = str(exc.detail)
+        if "revision" in detail.lower() or "version" in detail.lower() or "changed" in detail.lower():
             detail = "This job changed after you opened it. Refresh and review the latest values before saving."
         return RedirectResponse(f"/jobs/{job_id}/center?message={quote_plus(detail)}", status_code=303)
     return RedirectResponse(f"/jobs/{job_id}/center", status_code=303)

@@ -218,7 +218,8 @@ def build_workspace(connection, job_id):
         line_items.append({"id": part["id"], "description": part["wording"], "quantity": qty,
                            "supplier": supplier, "actual_cost": round(cost, 2),
                            "sell_price": round(sell, 2), "status": status,
-                           "next_action": next_action})
+                           "next_action": next_action, "options": part_options,
+                           "selected": bool(selected_option)})
     v2_workflow = derive_v2_workflow(snapshot, parts, basket)
     customers = [dict(row) for row in connection.execute(
         "SELECT * FROM customers WHERE active=1 OR id=? ORDER BY name COLLATE NOCASE",

@@ -252,3 +252,7 @@
 @media(max-width:700px){.jv2-add-item form{position:static;min-width:0;margin-top:10px;box-shadow:none}}
 .jv2-customer-form{display:grid!important;grid-template-columns:repeat(3,minmax(140px,1fr));align-items:end}.jv2-customer-form button{width:max-content}
 @media(max-width:700px){.jv2-customer-form{grid-template-columns:1fr}}
+.jv2-sourcing-options{display:grid;gap:8px;margin:10px 0;padding:10px;border:1px solid var(--erp-border);border-radius:8px}.jv2-source-option{display:grid;gap:3px;padding:8px;border-bottom:1px solid var(--erp-border);font-size:12px}.jv2-source-option span,.jv2-source-option small{color:var(--erp-muted)}
+.jv2-sourcing-panel{margin-top:10px}.jv2-sourcing-panel>summary,.jv2-add-source>summary{cursor:pointer;font-weight:600}.jv2-add-source{margin-top:10px}.jv2-add-source form{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:8px;margin-top:8px;padding:10px;border:1px solid var(--erp-border);border-radius:8px}.jv2-add-source form label:last-of-type{grid-column:1/-1}.jv2-add-source form button{width:max-content}@media(max-width:700px){.jv2-add-source form{grid-template-columns:1fr}.jv2-add-source form label:last-of-type{grid-column:auto}}
+
+.jv2-sourcing-panel>summary{list-style:none}.jv2-sourcing-panel>summary::-webkit-details-marker{display:none}
