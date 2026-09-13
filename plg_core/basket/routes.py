@@ -268,6 +268,39 @@ async def center_generate_quote(request: Request, job_id: int):
     return RedirectResponse(f"/jobs/{job_id}/center?tab=quote", status_code=303)
 
 
+@router.post("/jobs/{job_id}/center/quote/send")
+async def center_send_quote(request: Request, job_id: int):
+    """Thin Job Center adapter over the authoritative quote issue workflow."""
+    from plg_core.web_security import require_valid_csrf
+    from plg_core.sales.service import update_quote_status
+    from plg_core.documents.integrity import issue_quote_documents
+    from legacy_app import load_quote
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    try:
+        with closing(get_connection()) as connection:
+            quote = connection.execute(
+                "SELECT * FROM quotes WHERE job_id=? AND is_current=1 ORDER BY id DESC LIMIT 1", (job_id,)
+            ).fetchone()
+        if quote is None or str(quote["status"] or "").upper() != "DRAFT":
+            raise HTTPException(409, "Quote is no longer a Draft.")
+        update_quote_status(int(quote["id"]), "SENT")
+        with closing(get_connection()) as connection:
+            connection.execute("UPDATE quotes SET issued_at=COALESCE(issued_at,CURRENT_TIMESTAMP) WHERE id=?", (quote["id"],))
+            quote, items = load_quote(connection, int(quote["id"]))
+            issue_quote_documents(connection, quote, items)
+            connection.commit()
+    except HTTPException as exc:
+        detail = str(exc.detail)
+        lowered = detail.lower()
+        if "revision" in lowered or "change" in lowered or "progress" in lowered:
+            detail = "This quote cannot be issued while a revision is pending."
+        elif exc.status_code in {400, 409, 423}:
+            detail = "This quote is no longer a Draft. Refresh and review its current status."
+        return RedirectResponse(f"/jobs/{job_id}/center?tab=quote&message={quote_plus(detail)}", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/center?tab=quote", status_code=303)
+
+
 @router.post("/jobs/{job_id}/center/quote-fees")
 async def center_update_quote_fees(request: Request, job_id: int):
     """Save pre-quote fees through the existing governed fee workflow."""

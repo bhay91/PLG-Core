@@ -320,8 +320,21 @@ def build_workspace(connection, job_id):
             "service_charge": float((revision or {}).get("service_charge") or 0),
             "editable": current_quote is None and bool(revision) and editable,
         },
+        "issue_allowed": False,
     }
     if current_quote is not None:
+        pending_revision = connection.execute(
+            "SELECT 1 FROM work_revisions WHERE based_on_quote_id=? AND "
+            "(state='EDITABLE' OR (state='COMMITTED' AND NOT EXISTS "
+            "(SELECT 1 FROM quotes generated WHERE generated.work_revision_id=work_revisions.id))) LIMIT 1",
+            (current_quote["id"],),
+        ).fetchone()
+        quote_panel["issue_allowed"] = (
+            str(current_quote["status"] or "").upper() == "DRAFT" and pending_revision is None
+        )
+        if pending_revision is not None and str(current_quote["status"] or "").upper() == "DRAFT":
+            v2_workflow = dict(v2_workflow)
+            v2_workflow.update({"next_action": "Review pending revision", "next_url": "#quote", "action_method": "GET"})
         quote_items = [dict(row) for row in connection.execute(
             "SELECT * FROM quote_items WHERE quote_id=? ORDER BY id", (current_quote["id"],)
         )]
