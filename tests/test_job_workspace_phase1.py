@@ -146,7 +146,7 @@ class JobWorkspacePhase1Tests(unittest.TestCase):
         need = self.need('Pump qty unknown')
         self.option(need)
         model = self.model()['parts'][0]
-        self.assertNotIn('quantity', model)
+        self.assertIsNone(model.get('quantity'))
         self.assertIn('What the customer needs', self.html())
 
     def test_suggestion_does_not_rank_unknown_or_unverified_offers(self):

@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import closing
 from datetime import date
 from typing import Annotated
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -31,9 +32,106 @@ from plg_core.basket.service import (
 )
 from plg_core.sources.service import SOURCE_TYPES, list_sources_for_context, validate_source_url
 from plg_core.research.service import derive_result_visibility
+from plg_core.research.service import create_requested_need, update_requested_need
+from plg_core.assets.service import add_job_asset, edit_job_asset
 
 
 router = APIRouter(tags=["basket"])
+
+
+@router.post("/jobs/{job_id}/center/edit")
+async def center_edit_job(request: Request, job_id: int):
+    """Thin Job Center adapter over the established job edit guard/audit path."""
+    from legacy_app import update_job
+    from plg_core.web_security import require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    customer_id = int(form["customer_id"]) if form.get("customer_id") else None
+    with closing(get_connection()) as connection:
+        current = connection.execute("SELECT machine_id, customer_id FROM jobs WHERE id=?", (job_id,)).fetchone()
+    machine_id = int(form["machine_id"]) if form.get("machine_id") else (current["machine_id"] if current else None)
+    customer_id = customer_id if customer_id is not None else (current["customer_id"] if current else None)
+    update_job(job_id, customer_id=customer_id, machine_id=machine_id,
+               notes=str(form.get("notes", "")))
+    return RedirectResponse(f"/jobs/{job_id}/center", status_code=303)
+
+
+@router.post("/jobs/{job_id}/center/customer")
+async def center_edit_customer(request: Request, job_id: int):
+    from plg_core.web_security import require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    with closing(get_connection()) as connection:
+        row = connection.execute("SELECT customer_id FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not row or row["customer_id"] is None:
+        raise HTTPException(404, "Customer is not linked to this job.")
+    from legacy_app import update_customer
+    update_customer(int(row["customer_id"]), name=form.get("name", ""), company=form.get("company", ""),
+                    phone=form.get("phone", ""), email=form.get("email", ""), address=form.get("address", ""))
+    return RedirectResponse(f"/jobs/{job_id}/center", status_code=303)
+
+
+@router.post("/jobs/{job_id}/center/assets")
+async def center_add_asset(request: Request, job_id: int):
+    from plg_core.web_security import require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    add_job_asset(job_id, manufacturer=form.get("manufacturer", ""), model=form.get("model", ""),
+                  year=form.get("year", ""), vin_pin_serial=form.get("vin_pin_serial", ""),
+                  name=form.get("name", ""), notes=form.get("notes", ""))
+    return RedirectResponse(f"/jobs/{job_id}/center", status_code=303)
+
+
+@router.post("/jobs/{job_id}/center/assets/{asset_id}")
+async def center_edit_asset(request: Request, job_id: int, asset_id: int):
+    from plg_core.web_security import require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    edit_job_asset(job_id, asset_id, manufacturer=form.get("manufacturer", ""), model=form.get("model", ""),
+                   year=form.get("year", ""), vin_pin_serial=form.get("vin_pin_serial", ""),
+                   name=form.get("name", ""), notes=form.get("notes", ""))
+    return RedirectResponse(f"/jobs/{job_id}/center", status_code=303)
+
+
+@router.post("/jobs/{job_id}/center/needs")
+async def center_add_need(request: Request, job_id: int):
+    from plg_core.web_security import require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    raw_qty = form.get("quantity")
+    try: quantity = int(raw_qty) if raw_qty not in (None, "") else None
+    except (TypeError, ValueError) as exc: raise HTTPException(400, "Quantity must be a whole number of 1 or more.") from exc
+    create_requested_need(job_id, job_asset_id=int(form["job_asset_id"]) if form.get("job_asset_id") else None,
+                          wording=form.get("wording", ""), notes=form.get("notes", ""),
+                          quantity=quantity,
+                          expected_revision_id=int(form["expected_revision_id"]) if form.get("expected_revision_id") else None,
+                          expected_version=int(form["expected_version"]) if form.get("expected_version") else None)
+    return RedirectResponse(f"/jobs/{job_id}/center", status_code=303)
+
+
+@router.post("/jobs/{job_id}/center/needs/{need_id}")
+async def center_edit_need(request: Request, job_id: int, need_id: int):
+    from plg_core.web_security import require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    raw_qty = form.get("quantity")
+    try: quantity = int(raw_qty) if raw_qty not in (None, "") else None
+    except (TypeError, ValueError) as exc: raise HTTPException(400, "Quantity must be a whole number of 1 or more.") from exc
+    kwargs = dict(wording=form.get("wording", ""), state=form.get("state", "OPEN"),
+                  expected_revision_id=int(form["expected_revision_id"]) if form.get("expected_revision_id") else None,
+                  expected_version=int(form["expected_version"]) if form.get("expected_version") else None)
+    if raw_qty not in (None, ""):
+        kwargs["quantity"] = quantity
+    try:
+        update_requested_need(job_id, need_id, **kwargs)
+    except HTTPException as exc:
+        detail = str(exc.detail)
+        if "protects" in detail or "history" in detail:
+            detail = "This item is part of committed history and cannot be changed directly."
+        elif "revision" in detail.lower() or "version" in detail.lower() or "changed" in detail.lower():
+            detail = "This job changed after you opened it. Refresh and review the latest values before saving."
+        return RedirectResponse(f"/jobs/{job_id}/center?message={quote_plus(detail)}", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/center", status_code=303)
 
 
 def normalize_source_url(value):
@@ -1568,9 +1666,9 @@ def update_revenue_adjustments(
     )
 
 @router.get("/jobs/{job_id}/center", response_class=HTMLResponse)
-def job_center_v2_page(request: Request, job_id: int, tab: str = "job"):
+def job_center_v2_page(request: Request, job_id: int, tab: str = "job", message: str = ""):
     from plg_core.jobs.workspace import render_job_center_v2
-    return render_job_center_v2(request, job_id, tab=tab)
+    return render_job_center_v2(request, job_id, tab=tab, message=message)
 
 @router.get("/jobs/{job_id}/shipping", response_class=HTMLResponse)
 def job_shipping_page(request: Request, job_id: int):

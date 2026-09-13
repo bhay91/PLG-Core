@@ -616,6 +616,8 @@ MIGRATIONS.append(
 )
 
 
+
+
 def _migration_0033_operator_quote_revisions(
     connection: sqlite3.Connection,
 ) -> None:
@@ -1073,6 +1075,8 @@ MIGRATIONS.append(
         _migration_0022_request_opportunity_link,
     )
 )
+
+
 
 
 def _migration_0050_structured_receiving_exceptions(
@@ -3204,3 +3208,13 @@ MIGRATIONS.append(
         _migration_0051_invoice_jmd_presentation,
     )
 )
+
+
+def _migration_0052_requested_need_quantity(connection: sqlite3.Connection) -> None:
+    """Store customer-requested quantity separately from sourcing quantities."""
+    _add_columns(connection, "requested_needs", {
+        "quantity": "INTEGER NULL CHECK(quantity IS NULL OR quantity >= 1)",
+    })
+
+
+MIGRATIONS.append(("0052_requested_need_quantity", _migration_0052_requested_need_quantity))

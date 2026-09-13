@@ -23,6 +23,23 @@ SHIPPING_RANK = {
     "VERIFIED": 40,
     "ACTUAL": 50,
 }
+_QUANTITY_UNSET = object()
+
+
+def normalize_requested_quantity(value):
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool) or isinstance(value, float):
+        raise HTTPException(400, "Quantity must be a whole number of 1 or more.")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, "Quantity must be a whole number of 1 or more.") from exc
+    if str(value).strip() != str(parsed) and not isinstance(value, int):
+        raise HTTPException(400, "Quantity must be a whole number of 1 or more.")
+    if parsed < 1:
+        raise HTTPException(400, "Quantity must be a whole number of 1 or more.")
+    return parsed
 
 
 def derive_result_visibility(item: dict, source: dict | None = None, shipping: dict | None = None) -> dict:
@@ -69,10 +86,11 @@ def _active_asset(connection, job_id: int, asset_id: int | None):
 
 
 def create_requested_need(
-    job_id: int, *, job_asset_id: int | None, wording: str, notes: str = "",
+    job_id: int, *, job_asset_id: int | None, wording: str, notes: str = "", quantity: int | None = None,
     expected_revision_id: int | None = None, expected_version: int | None = None,
 ):
     wording = str(wording or "").strip()
+    quantity = normalize_requested_quantity(quantity)
     if not wording:
         raise HTTPException(status_code=400, detail="Requested Need wording is required.")
     with closing(get_connection()) as connection:
@@ -83,9 +101,8 @@ def create_requested_need(
             "SELECT id FROM customer_requests WHERE job_id=? ORDER BY id DESC LIMIT 1", (job_id,)
         ).fetchone()
         need_id = int(connection.execute(
-            "INSERT INTO requested_needs(job_id,job_asset_id,customer_request_id,wording,notes) "
-            "VALUES (?,?,?,?,?)",
-            (job_id, job_asset_id, request["id"] if request else None, wording, str(notes or "").strip()),
+            "INSERT INTO requested_needs(job_id,job_asset_id,customer_request_id,wording,notes,quantity) VALUES (?,?,?,?,?,?)",
+            (job_id, job_asset_id, request["id"] if request else None, wording, str(notes or "").strip(), quantity),
         ).lastrowid)
         touch_revision(connection, int(revision["id"]), int(revision["lock_version"]))
         write_audit(connection, action="REQUESTED_NEED_CREATED", entity_type="REQUESTED_NEED",
@@ -99,7 +116,7 @@ def create_requested_need(
 
 def update_requested_need(
     job_id: int, need_id: int, *, wording: str | None = None,
-    state: str | None = None, resolution: str = "",
+    state: str | None = None, resolution: str = "", quantity=_QUANTITY_UNSET,
     expected_revision_id: int | None = None, expected_version: int | None = None,
 ):
     with closing(get_connection()) as connection:
@@ -119,6 +136,10 @@ def update_requested_need(
             WHERE link.requested_need_id=? AND q.status!='DRAFT' LIMIT 1
             """, (need_id,),
         ).fetchone()
+        if quantity is _QUANTITY_UNSET:
+            quantity = need["quantity"]
+        else:
+            quantity = normalize_requested_quantity(quantity)
         new_wording = str(wording if wording is not None else need["wording"]).strip()
         if not new_wording:
             raise HTTPException(status_code=400, detail="Requested Need wording is required.")
@@ -128,10 +149,10 @@ def update_requested_need(
         if new_state not in {"OPEN", "SATISFIED", "ARCHIVED"}:
             raise HTTPException(status_code=400, detail="Invalid Requested Need state.")
         connection.execute(
-            "UPDATE requested_needs SET wording=?,state=?,resolution=?,lock_version=lock_version+1,"
+            "UPDATE requested_needs SET wording=?,quantity=?,state=?,resolution=?,lock_version=lock_version+1,"
             "resolved_at=CASE WHEN ?='SATISFIED' THEN COALESCE(resolved_at,CURRENT_TIMESTAMP) ELSE NULL END,"
             "updated_at=CURRENT_TIMESTAMP WHERE id=?",
-            (new_wording, new_state, str(resolution or "").strip(), new_state, need_id),
+            (new_wording, quantity, new_state, str(resolution or "").strip(), new_state, need_id),
         )
         touch_revision(connection, int(revision["id"]), int(revision["lock_version"]))
         write_audit(connection, action="REQUESTED_NEED_UPDATED", entity_type="REQUESTED_NEED",

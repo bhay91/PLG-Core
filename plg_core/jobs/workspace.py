@@ -220,9 +220,18 @@ def build_workspace(connection, job_id):
                            "sell_price": round(sell, 2), "status": status,
                            "next_action": next_action})
     v2_workflow = derive_v2_workflow(snapshot, parts, basket)
+    customers = [dict(row) for row in connection.execute(
+        "SELECT * FROM customers WHERE active=1 OR id=? ORDER BY name COLLATE NOCASE",
+        (job.get("customer_id") or -1,),
+    )]
+    machines = [dict(row) for row in connection.execute(
+        "SELECT * FROM machines WHERE active=1 OR id=? ORDER BY name COLLATE NOCASE",
+        (job.get("machine_id") or -1,),
+    )]
     return dict(job=job, operational_snapshot=snapshot, v2_workflow=v2_workflow, basket=basket, revision=revision,
                 work_editable=editable, parts=parts, line_items=line_items, other_options=unassigned,
                 selected_options=selected, outstanding=outstanding, primary_action=action,
+                customers=customers, machines=machines,
                 quote_history=[dict(row) for row in connection.execute(
                     "SELECT * FROM quotes WHERE job_id=? ORDER BY id DESC", (job_id,))],
                 legacy_parts=[dict(row) for row in connection.execute(
@@ -256,13 +265,14 @@ def render_workspace(request, job_id, *, need_id=None):
     return response
 
 
-def render_job_center_v2(request, job_id: int, *, tab="job"):
+def render_job_center_v2(request, job_id: int, *, tab="job", message: str = ""):
     with closing(get_connection()) as connection:
         connection.execute("BEGIN")
         context = build_workspace(connection, job_id)
     token = csrf_token_for_request(request)
     response = templates.TemplateResponse(request=request, name="job_center_v2.html", context={
         **context, "csrf_token": token, "active_page": "jobs",
+        "message": message,
         "active_tab": tab if tab in {"job", "quote", "purchasing", "fulfillment", "documents"} else "job",
     })
     response.set_cookie(CSRF_COOKIE_NAME, token, httponly=True, samesite="strict", secure=request.url.scheme == "https")
