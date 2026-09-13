@@ -54,6 +54,9 @@ def pricing_assessment(
         None if markup_percent is None else effective_markup,
         customer_unit_price_override,
     )
+    # Keep the automatic reference distinct from the effective price when an
+    # operator override is active. Both values use the stored markup.
+    automatic_unit_price = customer_unit_price(cost, effective_markup)
     unit_profit = round(current_price - cost, 2)
     actual_markup_percent = (
         round(((current_price - cost) / cost) * 100, 2)
@@ -83,6 +86,7 @@ def pricing_assessment(
     return {
         "recommended_markup_percent": recommended_markup,
         "recommended_unit_price": recommended_price,
+        "automatic_unit_price": automatic_unit_price,
         "current_markup_percent": effective_markup,
         "actual_markup_percent": actual_markup_percent,
         "current_unit_price": current_price,

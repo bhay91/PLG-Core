@@ -182,6 +182,47 @@ async def center_select_sourcing_option(request: Request, job_id: int, need_id: 
     return RedirectResponse(f"/jobs/{job_id}/center", status_code=303)
 
 
+@router.post("/jobs/{job_id}/center/needs/{need_id}/sourcing/{item_id}/pricing")
+async def center_update_pricing(request: Request, job_id: int, need_id: int, item_id: int):
+    """Thin Job Center adapter over the governed basket pricing update path."""
+    from plg_core.web_security import require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    with closing(get_connection()) as connection:
+        link = connection.execute(
+            "SELECT preferred FROM basket_item_need_links l JOIN basket_items i ON i.id=l.basket_item_id "
+            "JOIN baskets b ON b.id=i.basket_id WHERE l.requested_need_id=? AND l.basket_item_id=? AND b.job_id=?",
+            (need_id, item_id, job_id),
+        ).fetchone()
+    if link is None or not bool(link["preferred"]):
+        return RedirectResponse(f"/jobs/{job_id}/center?message={quote_plus('Choose this supplier before editing its pricing.')}", status_code=303)
+    try:
+        markup = float(form.get("markup_percent", ""))
+        if markup < 0:
+            raise ValueError
+        override_text = str(form.get("customer_unit_price_override", "")).strip()
+        override = None if not override_text else float(override_text)
+        if override is not None and override < 0:
+            raise ValueError
+        update_item(
+            item_id,
+            BasketItemUpdate(markup_percent=markup, customer_unit_price_override=override),
+            expected_job_id=job_id,
+            expected_revision_id=int(form["expected_revision_id"]) if form.get("expected_revision_id") else None,
+            expected_version=int(form["expected_version"]) if form.get("expected_version") else None,
+        )
+    except (TypeError, ValueError):
+        return RedirectResponse(f"/jobs/{job_id}/center?message={quote_plus('Pricing values must be valid non-negative numbers.')}", status_code=303)
+    except HTTPException as exc:
+        detail = str(exc.detail)
+        if "revision" in detail.lower() or "version" in detail.lower() or "changed" in detail.lower():
+            detail = "This job changed after you opened it. Refresh and review the latest values before saving."
+        elif exc.status_code in {409, 423}:
+            detail = "This item is part of committed history and cannot be changed directly."
+        return RedirectResponse(f"/jobs/{job_id}/center?message={quote_plus(detail)}", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/center", status_code=303)
+
+
 def normalize_source_url(value):
     url = str(value or "").strip()
     if url.startswith("[") and "](" in url and url.endswith(")"):

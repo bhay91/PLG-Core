@@ -207,18 +207,33 @@ def build_workspace(connection, job_id):
         else:
             action.update(next_url="#quote", next_action="Review Quote", action_method="GET")
     line_items = []
+    projected_customer_total = 0.0
+    projected_estimated_cost = 0.0
+    customer_total_complete = bool(parts)
+    estimated_cost_complete = bool(parts)
     for part in parts:
         selected_option = part.get("current_options", [])[0] if part.get("current_options") else None
         if selected_option:
             qty = selected_option.get("quantity") or 1
-            cost = (selected_option.get("supplier_unit_cost") or 0) * qty
+            supplier_unit_cost = selected_option.get("supplier_unit_cost")
+            cost = (supplier_unit_cost or 0) * qty
             sell = (selected_option.get("pricing", {}).get("current_unit_price") or 0) * qty
+            if supplier_unit_cost is None:
+                estimated_cost_complete = False
+            else:
+                projected_estimated_cost += cost
+            if selected_option.get("pricing", {}).get("current_unit_price") is None:
+                customer_total_complete = False
+            else:
+                projected_customer_total += sell
             supplier = selected_option.get("supplier_name") or "Supplier not recorded"
             status = "Selected"
             next_action = "Ready for quote"
         else:
             qty = part.get("quantity")
             cost = sell = 0
+            customer_total_complete = False
+            estimated_cost_complete = False
             supplier = "Supplier needed"
             status = part["status_label"]
             next_action = "Review sourcing"
@@ -226,8 +241,33 @@ def build_workspace(connection, job_id):
                            "supplier": supplier, "actual_cost": round(cost, 2),
                            "sell_price": round(sell, 2), "status": status,
                            "next_action": next_action, "options": part.get("options", []),
-                           "preferred_option_ids": {selected_option["id"]} if selected_option else set(),
-                           "selected": bool(selected_option)})
+                           "preferred_option_ids": set(part.get("preferred_option_ids", set())),
+                           "selected": bool(selected_option),
+                           "pricing_editable": bool(selected_option and selected_option["id"] in preferred_links.get(part["id"], [])),
+                           "cost_known": selected_option is not None and selected_option.get("supplier_unit_cost") is not None,
+                           "selected_option": selected_option,
+                           "pricing": selected_option.get("pricing", {}) if selected_option else {}})
+    all_actual_confirmed = bool(snapshot.get("supplier_orders")) and all(
+        o.get("actual_cost_state") == "CONFIRMED" for o in snapshot["supplier_orders"]
+    )
+    actual_cost = round(sum(float(o.get("actual_cost") or 0) for o in snapshot.get("supplier_orders", [])), 2)
+    if all_actual_confirmed:
+        realized_revenue = float(snapshot.get("invoice", {}).get("customer_total") or projected_customer_total) if snapshot.get("invoice") else projected_customer_total
+        financial_projection = {
+            "mode": "REALIZED", "customer_total": round(realized_revenue, 2),
+            "cost": actual_cost, "profit": round(realized_revenue - actual_cost, 2),
+            "complete": True, "customer_total_complete": True,
+            "estimated_cost_complete": True,
+        }
+    else:
+        financial_projection = {
+            "mode": "PROJECTED", "customer_total": round(projected_customer_total, 2),
+            "cost": round(projected_estimated_cost, 2),
+            "profit": round(projected_customer_total - projected_estimated_cost, 2) if customer_total_complete and estimated_cost_complete else None,
+            "complete": customer_total_complete and estimated_cost_complete,
+            "customer_total_complete": customer_total_complete,
+            "estimated_cost_complete": estimated_cost_complete,
+        }
     v2_workflow = derive_v2_workflow(snapshot, parts, basket)
     customers = [dict(row) for row in connection.execute(
         "SELECT * FROM customers WHERE active=1 OR id=? ORDER BY name COLLATE NOCASE",
@@ -240,7 +280,7 @@ def build_workspace(connection, job_id):
     return dict(job=job, operational_snapshot=snapshot, v2_workflow=v2_workflow, basket=basket, revision=revision,
                 work_editable=editable, parts=parts, line_items=line_items, other_options=unassigned,
                 selected_options=selected, outstanding=outstanding, primary_action=action,
-                customers=customers, machines=machines,
+                customers=customers, machines=machines, financial_projection=financial_projection,
                 quote_history=[dict(row) for row in connection.execute(
                     "SELECT * FROM quotes WHERE job_id=? ORDER BY id DESC", (job_id,))],
                 legacy_parts=[dict(row) for row in connection.execute(
