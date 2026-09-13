@@ -329,6 +329,54 @@ def set_quote_candidate(
         return dict(connection.execute("SELECT * FROM basket_items WHERE id=?", (item_id,)).fetchone())
 
 
+def set_preferred_sourcing_option(
+    job_id: int, requested_need_id: int, basket_item_id: int, *,
+    expected_revision_id: int | None = None, expected_version: int | None = None,
+):
+    """Set one preferred candidate for one requested need atomically."""
+    with closing(get_connection()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        revision = _revision(connection, job_id, expected_revision_id, expected_version)
+        need = connection.execute(
+            "SELECT id FROM requested_needs WHERE id=? AND job_id=?", (requested_need_id, job_id)
+        ).fetchone()
+        if need is None:
+            raise HTTPException(status_code=404, detail="Requested Need not found.")
+        item = connection.execute(
+            "SELECT bi.* FROM basket_items bi JOIN baskets b ON b.id=bi.basket_id "
+            "WHERE bi.id=? AND b.job_id=?", (basket_item_id, job_id)
+        ).fetchone()
+        if item is None:
+            raise HTTPException(status_code=404, detail="Sourcing option not found.")
+        link = connection.execute(
+            "SELECT 1 FROM basket_item_need_links WHERE basket_item_id=? AND requested_need_id=?",
+            (basket_item_id, requested_need_id),
+        ).fetchone()
+        if link is None:
+            raise HTTPException(status_code=409, detail="Sourcing option is not linked to this requested item.")
+        if str(item["verification_status"] or "UNVERIFIED").upper() == "REJECTED":
+            raise HTTPException(status_code=409, detail="Rejected sourcing options cannot be preferred.")
+        connection.execute(
+            "UPDATE basket_items SET research_state='QUOTE_CANDIDATE', selected=1, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (basket_item_id,),
+        )
+        connection.execute(
+            "UPDATE basket_item_need_links SET preferred=0 WHERE requested_need_id=?", (requested_need_id,)
+        )
+        connection.execute(
+            "UPDATE basket_item_need_links SET preferred=1 WHERE basket_item_id=? AND requested_need_id=?",
+            (basket_item_id, requested_need_id),
+        )
+        touch_revision(connection, int(revision["id"]), int(revision["lock_version"]))
+        write_audit(connection, action="SOURCING_OPTION_PREFERRED", entity_type="BASKET_ITEM",
+                    entity_id=basket_item_id, summary=f"Sourcing option preferred for requested need {requested_need_id}",
+                    metadata={"job_id": job_id, "requested_need_id": requested_need_id})
+        log_job_event(connection, job_id=job_id, event_type="SOURCING_OPTION_PREFERRED", icon="✓",
+                      message=f"Sourcing option preferred for requested need {requested_need_id}")
+        connection.commit()
+        return dict(connection.execute("SELECT * FROM basket_items WHERE id=?", (basket_item_id,)).fetchone())
+
+
 def save_shipping_data(
     job_id: int, item_id: int, *, quality: str, unit_weight: float | None = None,
     weight_unit: str = "lb", length: float | None = None, width: float | None = None,

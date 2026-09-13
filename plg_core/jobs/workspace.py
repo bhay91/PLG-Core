@@ -50,8 +50,8 @@ def derive_v2_workflow(snapshot: dict, parts: list[dict], basket: dict) -> dict:
     invoice = snapshot.get("invoice") or {}
     movement = snapshot.get("movement") or {}
     orders = snapshot.get("supplier_orders") or []
-    selected = [part for part in parts if part.get("selected_options")]
-    priced = all((part["selected_options"][0].get("supplier_unit_cost") is not None) for part in selected)
+    selected = [part for part in parts if part.get("current_options", part.get("selected_options"))]
+    priced = all((part.get("current_options", part["selected_options"])[0].get("supplier_unit_cost") is not None) for part in selected)
     all_ready = bool(parts) and len(selected) == len(parts) and priced
     ordered = int(movement.get("ordered_units") or 0)
     invoice_paid = bool(invoice) and (str(invoice.get("status") or "").upper() == "PAID" or float(invoice.get("balance_due") or 0) <= 0)
@@ -108,11 +108,14 @@ def build_workspace(connection, job_id):
     assets = {asset["id"]: asset for asset in snapshot["assets"]}
     sources = {source["id"]: source for source in basket["sources"]}
     links = {}
+    preferred_links = {}
     for link in connection.execute(
         "SELECT l.* FROM basket_item_need_links l JOIN basket_items i ON i.id=l.basket_item_id "
         "JOIN baskets b ON b.id=i.basket_id WHERE b.job_id=?", (job_id,),
     ):
         links.setdefault(link["basket_item_id"], set()).add(link["requested_need_id"])
+        if link["preferred"]:
+            preferred_links.setdefault(link["requested_need_id"], []).append(link["basket_item_id"])
     shipping = {row["basket_item_id"]: dict(row) for row in connection.execute(
         "SELECT s.* FROM part_shipping_data s JOIN basket_items i ON i.id=s.basket_item_id "
         "JOIN baskets b ON b.id=i.basket_id WHERE b.job_id=? AND s.is_current=1 ORDER BY s.id",
@@ -142,14 +145,18 @@ def build_workspace(connection, job_id):
     for need in snapshot["needs"]:
         part = dict(need)
         part_options = [item for item in options if need["id"] in item["need_ids"]]
-        selected = [item for item in part_options if item["selected"]]
+        explicit = [item for item in part_options if item["id"] in preferred_links.get(need["id"], [])]
+        legacy_selected = [item for item in part_options if item["selected"]]
+        current = explicit if len(explicit) == 1 else (legacy_selected if not explicit and len(legacy_selected) == 1 else [])
         attached.update(item["id"] for item in part_options)
         # No exclusive replacement or kit allocation is inferred in this phase.
+        selected = legacy_selected
         ambiguous = len(selected) > 1 or any(
             item["shared"] or (need["job_asset_id"] is not None and item["job_asset_id"] != need["job_asset_id"])
             for item in part_options
         )
-        part.update(options=part_options, selected_options=selected, asset=assets.get(need["job_asset_id"]),
+        part.update(options=part_options, selected_options=legacy_selected, current_options=current,
+                    preferred_option_ids={item["id"] for item in current}, asset=assets.get(need["job_asset_id"]),
                     ambiguous=ambiguous, suggested=None)
         part["status_label"] = (
             "Multiple selections · review quantities" if len(selected) > 1 else
@@ -168,7 +175,7 @@ def build_workspace(connection, job_id):
     unassigned = [item for item in options if item["id"] not in attached]
     selected = [item for item in options if item["selected"] and
                 (item.get("research_state") or "LEGACY_CANDIDATE") in {"QUOTE_CANDIDATE", "LEGACY_CANDIDATE"}]
-    needs_options = sum(not part["selected_options"] and part["state"] == "OPEN" for part in parts)
+    needs_options = sum(not part.get("current_options", []) and part["state"] == "OPEN" for part in parts)
     outstanding = f"{needs_options} requested part{'s' if needs_options != 1 else ''} still need an option"
     if parts and not needs_options:
         outstanding = "All requested parts have a selection or are marked covered"
@@ -201,7 +208,7 @@ def build_workspace(connection, job_id):
             action.update(next_url="#quote", next_action="Review Quote", action_method="GET")
     line_items = []
     for part in parts:
-        selected_option = part["selected_options"][0] if part["selected_options"] else None
+        selected_option = part.get("current_options", [])[0] if part.get("current_options") else None
         if selected_option:
             qty = selected_option.get("quantity") or 1
             cost = (selected_option.get("supplier_unit_cost") or 0) * qty
@@ -218,7 +225,8 @@ def build_workspace(connection, job_id):
         line_items.append({"id": part["id"], "description": part["wording"], "quantity": qty,
                            "supplier": supplier, "actual_cost": round(cost, 2),
                            "sell_price": round(sell, 2), "status": status,
-                           "next_action": next_action, "options": part_options,
+                           "next_action": next_action, "options": part.get("options", []),
+                           "preferred_option_ids": {selected_option["id"]} if selected_option else set(),
                            "selected": bool(selected_option)})
     v2_workflow = derive_v2_workflow(snapshot, parts, basket)
     customers = [dict(row) for row in connection.execute(

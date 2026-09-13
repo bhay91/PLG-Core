@@ -33,7 +33,7 @@ from plg_core.basket.service import (
 from plg_core.sources.service import SOURCE_TYPES, list_sources_for_context, validate_source_url
 from plg_core.research.service import derive_result_visibility
 from plg_core.research.service import create_requested_need, update_requested_need
-from plg_core.research.service import create_manual_research_result
+from plg_core.research.service import create_manual_research_result, set_preferred_sourcing_option
 from plg_core.assets.service import add_job_asset, edit_job_asset
 
 
@@ -154,6 +154,25 @@ async def center_add_sourcing_option(request: Request, job_id: int, need_id: int
         research_evidence=form.get("research_evidence", ""), research_notes=form.get("research_notes", ""),
         expected_revision_id=int(form["expected_revision_id"]) if form.get("expected_revision_id") else None,
         expected_version=int(form["expected_version"]) if form.get("expected_version") else None,
+        )
+    except HTTPException as exc:
+        detail = str(exc.detail)
+        if "revision" in detail.lower() or "version" in detail.lower() or "changed" in detail.lower():
+            detail = "This job changed after you opened it. Refresh and review the latest values before saving."
+        return RedirectResponse(f"/jobs/{job_id}/center?message={quote_plus(detail)}", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/center", status_code=303)
+
+
+@router.post("/jobs/{job_id}/center/needs/{need_id}/sourcing/{item_id}/select")
+async def center_select_sourcing_option(request: Request, job_id: int, need_id: int, item_id: int):
+    from plg_core.web_security import require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    try:
+        set_preferred_sourcing_option(
+            job_id, need_id, item_id,
+            expected_revision_id=int(form["expected_revision_id"]) if form.get("expected_revision_id") else None,
+            expected_version=int(form["expected_version"]) if form.get("expected_version") else None,
         )
     except HTTPException as exc:
         detail = str(exc.detail)

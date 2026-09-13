@@ -3218,3 +3218,17 @@ def _migration_0052_requested_need_quantity(connection: sqlite3.Connection) -> N
 
 
 MIGRATIONS.append(("0052_requested_need_quantity", _migration_0052_requested_need_quantity))
+
+
+def _migration_0053_preferred_sourcing_option(connection: sqlite3.Connection) -> None:
+    """Track the operator's preferred candidate per requested need link."""
+    _add_columns(connection, "basket_item_need_links", {
+        "preferred": "INTEGER NOT NULL DEFAULT 0 CHECK(preferred IN (0,1))",
+    })
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_need_preferred_candidate "
+        "ON basket_item_need_links(requested_need_id) WHERE preferred=1"
+    )
+
+
+MIGRATIONS.append(("0053_preferred_sourcing_option", _migration_0053_preferred_sourcing_option))
