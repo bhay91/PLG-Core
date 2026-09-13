@@ -3159,6 +3159,8 @@ def purchasing_order_detail(
     )
     csrf_token = csrf_token_for_request(request)
     actor = request_actor(request)
+    if actor == "system":
+        actor = "web.operator"
     for item in order["items"]:
         item["actual_request_id"] = new_idempotency_key()
     receipt_result = None
@@ -3210,7 +3212,7 @@ def purchasing_order_receive_simple(request: Request, order_id: int):
             "items": order["items"],
             "csrf_token": csrf_token,
             "idempotency_key": new_idempotency_key(),
-            "receiver_default": "" if request_actor(request) == "system" else request_actor(request),
+            "receiver_default": (request_actor(request) if request_actor(request) != "system" else "web.operator"),
             "active_page": "purchasing",
         },
     )
@@ -3352,13 +3354,15 @@ def record_actual_cost_web(
 
     require_valid_csrf(request, csrf_token)
     actor = request_actor(request)
+    if actor == "system":
+        actor = "web.operator"
     record_actual_cost_adjustment(
         order_id,
         cost_kind=cost_kind,
         new_amount=new_amount,
         supplier_order_item_id=supplier_order_item_id,
         reason=reason,
-        actor=actor if actor != "system" else actor_name,
+        actor=actor,
         request_id=request_id_value,
         supplier_reference=supplier_reference,
     )
