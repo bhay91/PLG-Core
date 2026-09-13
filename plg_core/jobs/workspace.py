@@ -72,6 +72,8 @@ def derive_v2_workflow(snapshot: dict, parts: list[dict], basket: dict) -> dict:
         return {"stage": derive_v2_stage(snapshot), "next_action": "Ready to order", "next_url": snapshot.get("workflow", {}).get("next_url") or "/purchasing", "action_method": "GET"}
     if status == "SENT":
         return {"stage": derive_v2_stage(snapshot), "next_action": "Waiting for customer", "next_url": snapshot.get("workflow", {}).get("next_url") or "#quote", "action_method": "GET"}
+    if status == "REVISION_REQUIRED":
+        return {"stage": derive_v2_stage(snapshot), "next_action": "Create quote revision", "next_url": "#quote", "action_method": "GET"}
     if quote and status in {"DRAFT", "REVISION_REQUIRED"}:
         return {"stage": derive_v2_stage(snapshot), "next_action": "Ready to send", "next_url": "#quote", "action_method": "GET"}
     if all_ready:
@@ -321,8 +323,24 @@ def build_workspace(connection, job_id):
             "editable": current_quote is None and bool(revision) and editable,
         },
         "issue_allowed": False,
+        "decision_allowed": False,
+        "decision": None,
+        "decision_at": None,
+        "decision_notes": "",
     }
     if current_quote is not None:
+        decision_statuses = {"APPROVED", "REJECTED", "REVISION_REQUIRED"}
+        quote_status = str(current_quote["status"] or "").upper()
+        if quote_status in decision_statuses:
+            decision_event = connection.execute(
+                "SELECT created_at,notes FROM quote_events WHERE quote_id=? AND to_status=? ORDER BY id DESC LIMIT 1",
+                (current_quote["id"], quote_status),
+            ).fetchone()
+            quote_panel.update({"decision": quote_status, "decision_allowed": False,
+                                "decision_at": decision_event["created_at"] if decision_event else None,
+                                "decision_notes": decision_event["notes"] if decision_event else ""})
+        elif quote_status == "SENT":
+            quote_panel["decision_allowed"] = True
         pending_revision = connection.execute(
             "SELECT 1 FROM work_revisions WHERE based_on_quote_id=? AND "
             "(state='EDITABLE' OR (state='COMMITTED' AND NOT EXISTS "
@@ -332,6 +350,12 @@ def build_workspace(connection, job_id):
         quote_panel["issue_allowed"] = (
             str(current_quote["status"] or "").upper() == "DRAFT" and pending_revision is None
         )
+        if quote_status == "APPROVED":
+            v2_workflow = dict(v2_workflow)
+            v2_workflow.update({"next_action": "Quote approved", "next_url": "#quote", "action_method": "GET"})
+        elif quote_status == "REJECTED":
+            v2_workflow = dict(v2_workflow)
+            v2_workflow.update({"next_action": "Quote rejected", "next_url": "#quote", "action_method": "GET"})
         if pending_revision is not None and str(current_quote["status"] or "").upper() == "DRAFT":
             v2_workflow = dict(v2_workflow)
             v2_workflow.update({"next_action": "Review pending revision", "next_url": "#quote", "action_method": "GET"})

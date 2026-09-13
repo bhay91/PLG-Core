@@ -301,6 +301,39 @@ async def center_send_quote(request: Request, job_id: int):
     return RedirectResponse(f"/jobs/{job_id}/center?tab=quote", status_code=303)
 
 
+@router.post("/jobs/{job_id}/center/quote/decision")
+async def center_quote_decision(request: Request, job_id: int):
+    """Record a customer decision through the authoritative lifecycle service."""
+    from plg_core.web_security import require_valid_csrf
+    from plg_core.sales.service import update_quote_status
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    decision = str(form.get("decision", "")).strip().upper()
+    if decision not in {"APPROVED", "REJECTED", "REVISION_REQUIRED"}:
+        return RedirectResponse(f"/jobs/{job_id}/center?tab=quote&message={quote_plus('Choose an approved customer decision.')}", status_code=303)
+    try:
+        with closing(get_connection()) as connection:
+            quote = connection.execute("SELECT * FROM quotes WHERE job_id=? AND is_current=1 ORDER BY id DESC LIMIT 1", (job_id,)).fetchone()
+        if quote is None:
+            raise HTTPException(404, "Quote not found.")
+        current_status = str(quote["status"] or "").upper()
+        if current_status in {"APPROVED", "REJECTED", "REVISION_REQUIRED"}:
+            raise HTTPException(409, "This quote already has a customer decision.")
+        if current_status != "SENT":
+            raise HTTPException(409, "Only a Sent quote can receive a customer decision.")
+        update_quote_status(int(quote["id"]), decision)
+    except HTTPException as exc:
+        detail = str(exc.detail)
+        if "cannot change" in detail.lower() or "already" in detail.lower():
+            detail = "This quote already has a customer decision. Refresh to review its current status."
+        elif "revision" in detail.lower() or "progress" in detail.lower():
+            detail = "This quote's current workflow has changed. Refresh before recording a decision."
+        elif exc.status_code in {400, 409}:
+            detail = "Only a Sent quote can receive a customer decision."
+        return RedirectResponse(f"/jobs/{job_id}/center?tab=quote&message={quote_plus(detail)}", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/center?tab=quote", status_code=303)
+
+
 @router.post("/jobs/{job_id}/center/quote-fees")
 async def center_update_quote_fees(request: Request, job_id: int):
     """Save pre-quote fees through the existing governed fee workflow."""

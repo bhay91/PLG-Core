@@ -326,10 +326,10 @@ class Batch3B1Tests(unittest.TestCase):
             self.assertEqual(after_manifests, before["manifests"])
             for table, value in before["counts"].items(): self.assertEqual(c.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0], value)
 
-    def test_sent_job_center_html_hides_draft_and_decision_actions(self):
+    def test_sent_job_center_html_hides_draft_and_invoice_actions(self):
         quote = self._issue_with_temp_documents()
         request = type("R", (), {"url_for": lambda self, *a, **k: "http://test/static/x", "url": type("U", (), {"scheme": "http"})(), "cookies": {}})()
         html = job_center_v2_page(request, self.job, tab="quote").body.decode()
         self.assertIn(quote["quote_number"], html); self.assertIn("Sent", html); self.assertIn("View customer PDF", html); self.assertIn("View internal PDF", html); self.assertIn(str(quote["issued_at"])[:10], html)
-        for text in ("Generate Quote", "Quote fees", "Issue / Mark as Sent", "Approve", "Accept", "Reject", "Decline", "Revision required", "Create revision", "Create Invoice"):
+        for text in ("Generate Quote", "Quote fees", "Issue / Mark as Sent", "Create Invoice"):
             self.assertNotIn(text, html)
