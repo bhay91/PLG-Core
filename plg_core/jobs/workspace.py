@@ -21,6 +21,29 @@ def _safe_url(value):
 
 
 
+
+def derive_v2_stage(snapshot: dict) -> str:
+    """Return a concise non-persisted stage distinct from the next action."""
+    quote = snapshot.get("quote") or {}
+    invoice = snapshot.get("invoice") or {}
+    movement = snapshot.get("movement") or {}
+    ordered = int(movement.get("ordered_units") or 0)
+    invoice_paid = bool(invoice) and (str(invoice.get("status") or "").upper() == "PAID" or float(invoice.get("balance_due") or 0) <= 0)
+    if invoice_paid and str(quote.get("status") or "").upper() == "CONVERTED":
+        return {"stage": "Complete", "next_action": "Complete", "next_url": snapshot.get("delivery_url") or "#", "action_method": "GET"}
+    received = int(movement.get("received_units") or 0)
+    delivered = int(movement.get("delivered_units") or 0)
+    if ordered and delivered >= ordered:
+        return "Billing" if invoice else "Fulfillment"
+    if ordered:
+        return "Fulfillment"
+    status = str(quote.get("status") or "").upper()
+    if status == "SENT":
+        return "Awaiting Customer"
+    if quote:
+        return "Quote"
+    return "Sourcing"
+
 def derive_v2_workflow(snapshot: dict, parts: list[dict], basket: dict) -> dict:
     """Translate authoritative lifecycle evidence into operator-facing V2 language."""
     quote = snapshot.get("quote") or {}
@@ -31,25 +54,28 @@ def derive_v2_workflow(snapshot: dict, parts: list[dict], basket: dict) -> dict:
     priced = all((part["selected_options"][0].get("supplier_unit_cost") is not None) for part in selected)
     all_ready = bool(parts) and len(selected) == len(parts) and priced
     ordered = int(movement.get("ordered_units") or 0)
+    invoice_paid = bool(invoice) and (str(invoice.get("status") or "").upper() == "PAID" or float(invoice.get("balance_due") or 0) <= 0)
+    if invoice_paid and str(quote.get("status") or "").upper() == "CONVERTED":
+        return {"stage": "Complete", "next_action": "Complete", "next_url": snapshot.get("delivery_url") or "#", "action_method": "GET"}
     received = int(movement.get("received_units") or 0)
     delivered = int(movement.get("delivered_units") or 0)
     if ordered and delivered >= ordered:
         paid = str(invoice.get("payment_state") or invoice.get("status") or "").upper() == "PAID" or float(invoice.get("balance_due") or 0) <= 0 if invoice else False
-        return {"stage": "Complete" if paid else "Payment due", "next_action": "Complete" if paid else "Payment due", "next_url": snapshot.get("delivery_url") or "#", "action_method": "GET"}
+        return {"stage": derive_v2_stage(snapshot), "next_action": "Complete" if paid else "Payment due", "next_url": snapshot.get("delivery_url") or "#", "action_method": "GET"}
     if ordered and received >= ordered and delivered < ordered:
-        return {"stage": "Ready to deliver", "next_action": "Ready to deliver", "next_url": snapshot.get("delivery_url") or "#", "action_method": "GET"}
+        return {"stage": derive_v2_stage(snapshot), "next_action": "Ready to deliver", "next_url": snapshot.get("delivery_url") or "#", "action_method": "GET"}
     if ordered and received < ordered:
-        return {"stage": "Waiting on supplier", "next_action": "Waiting on supplier", "next_url": snapshot.get("workflow", {}).get("next_url") or "/purchasing", "action_method": "GET"}
+        return {"stage": derive_v2_stage(snapshot), "next_action": "Waiting on supplier", "next_url": snapshot.get("workflow", {}).get("next_url") or "/purchasing", "action_method": "GET"}
     status = str(quote.get("status") or "").upper()
     if status == "APPROVED" and not orders:
-        return {"stage": "Ready to order", "next_action": "Ready to order", "next_url": snapshot.get("workflow", {}).get("next_url") or "/purchasing", "action_method": "GET"}
+        return {"stage": derive_v2_stage(snapshot), "next_action": "Ready to order", "next_url": snapshot.get("workflow", {}).get("next_url") or "/purchasing", "action_method": "GET"}
     if status == "SENT":
-        return {"stage": "Waiting for customer", "next_action": "Waiting for customer", "next_url": snapshot.get("workflow", {}).get("next_url") or "#quote", "action_method": "GET"}
+        return {"stage": derive_v2_stage(snapshot), "next_action": "Waiting for customer", "next_url": snapshot.get("workflow", {}).get("next_url") or "#quote", "action_method": "GET"}
     if quote and status in {"DRAFT", "REVISION_REQUIRED"}:
-        return {"stage": "Ready to send", "next_action": "Ready to send", "next_url": "#quote", "action_method": "GET"}
+        return {"stage": derive_v2_stage(snapshot), "next_action": "Ready to send", "next_url": "#quote", "action_method": "GET"}
     if all_ready:
-        return {"stage": "Ready to quote", "next_action": "Ready to quote", "next_url": "#quote", "action_method": "GET"}
-    return {"stage": "Needs supplier", "next_action": "Needs supplier", "next_url": "#parts", "action_method": "GET"}
+        return {"stage": derive_v2_stage(snapshot), "next_action": "Ready to quote", "next_url": "#quote", "action_method": "GET"}
+    return {"stage": derive_v2_stage(snapshot), "next_action": "Needs supplier", "next_url": "#parts", "action_method": "GET"}
 
 def build_workspace(connection, job_id):
     row = connection.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
@@ -129,7 +155,7 @@ def build_workspace(connection, job_id):
             "Multiple selections · review quantities" if len(selected) > 1 else
             "Selected option" if selected else
             "Marked covered" if need["state"] == "SATISFIED" else
-            f"{len(part_options)} options found" if part_options else "Need sourcing"
+            f"{len(part_options)} option{'s' if len(part_options) != 1 else ''} found" if part_options else "Need sourcing"
         )
         # An option can only be suggested when price, availability and fitment are
         # comparable. Shipping is shared/unknown, so never claim a landed-cost best.

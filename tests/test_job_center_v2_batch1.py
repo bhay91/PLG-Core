@@ -9,7 +9,7 @@ from starlette.requests import Request
 from plg_core.application import app
 from plg_core.basket.routes import job_center_v2_page
 from plg_core.database.migrations import run_migrations
-from plg_core.jobs.workspace import build_workspace, derive_v2_workflow
+from plg_core.jobs.workspace import build_workspace, derive_v2_workflow, derive_v2_stage
 from plg_core.research.service import create_requested_need, create_manual_research_result
 
 
@@ -66,6 +66,16 @@ class V2NextActionTests(unittest.TestCase):
         base = {"quote": None, "invoice": None, "movement": {"ordered_units": 0, "received_units": 0, "delivered_units": 0}, "supplier_orders": [], "workflow": {"next_url": "#quote"}, "delivery_url": "/delivery"}
         base.update(kwargs)
         return base
+
+
+    def test_stage_is_distinct_from_next_action(self):
+        from plg_core.jobs.workspace import derive_v2_workflow
+        self.assertEqual(derive_v2_workflow(self.snap(), [], {})["stage"], "Sourcing")
+        self.assertEqual(derive_v2_workflow(self.snap(quote={"status": "SENT"}), [], {})["stage"], "Awaiting Customer")
+        self.assertEqual(derive_v2_workflow(self.snap(quote={"status": "APPROVED"}), [], {})["stage"], "Quote")
+        self.assertEqual(derive_v2_workflow(self.snap(movement={"ordered_units": 1, "received_units": 1, "delivered_units": 0}), [], {})["stage"], "Fulfillment")
+        self.assertEqual(derive_v2_workflow(self.snap(invoice={"status": "OPEN", "balance_due": 1}, movement={"ordered_units": 1, "received_units": 1, "delivered_units": 1}), [], {})["stage"], "Billing")
+        self.assertEqual(derive_v2_workflow(self.snap(quote={"status": "CONVERTED"}, invoice={"status": "PAID", "balance_due": 0}), [], {})["next_action"], "Complete")
 
     def test_approved_operator_next_actions(self):
         from plg_core.jobs.workspace import derive_v2_workflow
