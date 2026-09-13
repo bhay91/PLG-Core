@@ -7,7 +7,7 @@
   <div>
     <p class="eyebrow">CUSTOMER QUOTE</p>
     <h1>{{ quote.quote_number }}</h1>
-    <p class="muted">Quote date: {{ quote.quote_date }}</p>
+    <p class="muted">Quote date: {{ quote.quote_date }} · Valid until: {{ quote.valid_until or quote.quote_date }}</p>
   </div>
   <div class="actions">
     <a class="button" href="/quotes/{{ quote.id }}/internal">Internal Copy</a>
@@ -59,11 +59,11 @@
 
 <section class="panel">
   <div class="totals-block">
-    <div><span>Subtotal</span><strong>${{ "%.2f"|format((quote.customer_total or 0) - (quote.shipping_total or 0)) }}</strong></div>
-    {% if quote.shipping_total %}
-    <div><span>Shipping</span><strong>${{ "%.2f"|format(quote.shipping_total) }}</strong></div>
-    {% endif %}
-    <div><span>Total</span><strong>${{ "%.2f"|format(quote.customer_total) }}</strong></div>
+      <div><span>Parts subtotal</span><strong>${{ "%.2f"|format(quote.parts_subtotal or 0) }}</strong></div>
+      <div><span>Shipping</span><strong>${{ "%.2f"|format(quote.shipping_total or 0) }}</strong></div>
+      <div><span>Sourcing fee</span><strong>${{ "%.2f"|format(quote.sourcing_fee or 0) }}</strong></div>
+      <div><span>Service charge</span><strong>${{ "%.2f"|format(quote.service_charge or 0) }}</strong></div>
+      <div><span>Total</span><strong>${{ "%.2f"|format(quote.customer_total or 0) }}</strong></div>
   </div>
 </section>
 {% endblock %}

@@ -13,6 +13,7 @@ from plg_core.revisions.quote_workflow import (
 )
 from plg_core.revisions.service import (
     commit_work_revision, ensure_revision_mutable, start_work_revision, touch_revision,
+    validate_selected_items_for_quote,
 )
 from plg_core.timeline import log_job_event
 
@@ -180,6 +181,12 @@ def create_selective_draft_quote(
         ).fetchall()
         if len(actual) != len(selected_ids):
             raise HTTPException(status_code=409, detail="One or more selected lines are stale.")
+        # Validate quote-specific readiness before changing basket selection or
+        # committing the work revision. This keeps failed quote attempts
+        # completely non-mutating.
+        validate_selected_items_for_quote(
+            connection, int(basket["id"]), item_ids=selected_ids,
+        )
         connection.execute("UPDATE basket_items SET selected=0 WHERE basket_id=?", (basket["id"],))
         connection.execute(
             f"UPDATE basket_items SET selected=1 WHERE basket_id=? AND id IN ({placeholders})",

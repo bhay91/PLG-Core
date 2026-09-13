@@ -9,6 +9,7 @@ from legacy_app import get_connection, templates
 from plg_core.basket.service import serialize_basket
 from plg_core.jobs.service import get_job_operational_snapshot
 from plg_core.pricing import pricing_assessment
+from plg_core.revisions.service import validate_selected_items_for_quote
 from plg_core.sources.service import list_sources_for_context, validate_source_url
 from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
 
@@ -156,7 +157,9 @@ def build_workspace(connection, job_id):
             for item in part_options
         )
         part.update(options=part_options, selected_options=legacy_selected, current_options=current,
-                    preferred_option_ids={item["id"] for item in current}, asset=assets.get(need["job_asset_id"]),
+                   preferred_option_ids={item["id"] for item in current},
+                   explicit_preferred_option_ids={item["id"] for item in explicit},
+                   asset=assets.get(need["job_asset_id"]),
                     ambiguous=ambiguous, suggested=None)
         part["status_label"] = (
             "Multiple selections · review quantities" if len(selected) > 1 else
@@ -269,6 +272,78 @@ def build_workspace(connection, job_id):
             "estimated_cost_complete": estimated_cost_complete,
         }
     v2_workflow = derive_v2_workflow(snapshot, parts, basket)
+    # Quote generation is intentionally based only on explicit per-need
+    # preferences.  Legacy selected candidates remain display-only until an
+    # operator explicitly prefers one for each requested need.
+    quote_history_rows = [dict(row) for row in connection.execute(
+        "SELECT * FROM quotes WHERE job_id=? ORDER BY id DESC", (job_id,)
+    )]
+    current_quote = next(
+        (row for row in quote_history_rows if int(row.get("is_current", 1) or 0)),
+        None,
+    )
+    quote_blockers = []
+    preferred_basket_item_ids = []
+    for part in parts:
+        if str(part.get("state") or "OPEN").upper() == "ARCHIVED":
+            continue
+        explicit = part.get("current_options") or []
+        explicit_ids = part.get("explicit_preferred_option_ids") or set()
+        if len(explicit) != 1 or len(explicit_ids) != 1:
+            quote_blockers.append(f"Choose a supplier explicitly for {part['wording']}")
+            continue
+        option = explicit[0]
+        preferred_basket_item_ids.append(int(option["id"]))
+    if not quote_blockers and preferred_basket_item_ids:
+        try:
+            validate_selected_items_for_quote(
+                connection, int((basket or {}).get("id") or 0),
+                item_ids=preferred_basket_item_ids,
+            )
+        except HTTPException as exc:
+            detail = str(exc.detail)
+            if "supplier cost" in detail.lower():
+                for part in parts:
+                    current = part.get("current_options") or []
+                    if current and current[0].get("supplier_unit_cost") is None:
+                        quote_blockers.append(f"Supplier cost needed for {part['wording']}")
+            else:
+                quote_blockers.append("Review the requirements before generating a quote")
+    quote_panel = {
+        "exists": current_quote is not None,
+        "can_generate": current_quote is None and bool(parts) and not quote_blockers,
+        "blockers": quote_blockers,
+        "quote": current_quote,
+        "preferred_basket_item_ids": preferred_basket_item_ids,
+        "prequote_fees": {
+            "sourcing_fee": float((revision or {}).get("sourcing_fee") or 0),
+            "service_charge": float((revision or {}).get("service_charge") or 0),
+            "editable": current_quote is None and bool(revision) and editable,
+        },
+    }
+    if current_quote is not None:
+        quote_items = [dict(row) for row in connection.execute(
+            "SELECT * FROM quote_items WHERE quote_id=? ORDER BY id", (current_quote["id"],)
+        )]
+        quote_panel["items"] = quote_items
+        manifest_rows = {
+            row["audience"]: row for row in connection.execute(
+                "SELECT audience,sha256 FROM quote_documents_manifest "
+                "WHERE quote_id=? AND document_kind='QUOTE' AND is_current=1",
+                (current_quote["id"],),
+            ).fetchall()
+        }
+        def document_url(audience, path):
+            row = manifest_rows.get(audience)
+            digest = str((row["sha256"] if row else "") or "")
+            return f"{path}?v={digest[:12]}" if digest else path
+        quote_panel["documents"] = [
+            {"label": "View customer PDF", "url": document_url("CUSTOMER", f"/quotes/{current_quote['id']}/customer/pdf")},
+            {"label": "View internal PDF", "url": document_url("INTERNAL", f"/quotes/{current_quote['id']}/internal/pdf")},
+        ]
+    else:
+        quote_panel["items"] = []
+        quote_panel["documents"] = []
     customers = [dict(row) for row in connection.execute(
         "SELECT * FROM customers WHERE active=1 OR id=? ORDER BY name COLLATE NOCASE",
         (job.get("customer_id") or -1,),
@@ -281,8 +356,8 @@ def build_workspace(connection, job_id):
                 work_editable=editable, parts=parts, line_items=line_items, other_options=unassigned,
                 selected_options=selected, outstanding=outstanding, primary_action=action,
                 customers=customers, machines=machines, financial_projection=financial_projection,
-                quote_history=[dict(row) for row in connection.execute(
-                    "SELECT * FROM quotes WHERE job_id=? ORDER BY id DESC", (job_id,))],
+                quote_history=quote_history_rows,
+                quote_panel=quote_panel,
                 legacy_parts=[dict(row) for row in connection.execute(
                     "SELECT id,requested_description,quantity FROM job_parts WHERE job_id=? ORDER BY id", (job_id,))])
 

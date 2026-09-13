@@ -7,7 +7,7 @@
   <div>
     <p class="eyebrow">INTERNAL ACCOUNTING COPY</p>
     <h1>{{ quote.quote_number }}</h1>
-    <p class="muted">Quote date: {{ quote.quote_date }}</p>
+    <p class="muted">Quote date: {{ quote.quote_date }} · Valid until: {{ quote.valid_until or quote.quote_date }}</p>
   </div>
   <div class="actions">
     <a class="button" href="/quotes/{{ quote.id }}/customer">Customer Copy</a>
@@ -52,9 +52,10 @@
 
 <section class="panel">
   <div class="totals-block">
-    <div><span>Supplier Parts</span><strong>${{ "%.2f"|format(quote.supplier_total - quote.shipping_total) }}</strong></div>
+    <div><span>Estimated Supplier Cost</span><strong>${{ "%.2f"|format((quote.supplier_total or 0) - (quote.shipping_total or 0)) }}</strong></div>
     <div><span>Shipping</span><strong>${{ "%.2f"|format(quote.shipping_total) }}</strong></div>
     <div><span>Supplier Total</span><strong>${{ "%.2f"|format(quote.supplier_total) }}</strong></div>
+    <div><span>Customer Parts Subtotal</span><strong>${{ "%.2f"|format(quote.parts_subtotal or 0) }}</strong></div>
     {% if quote.service_charge %}
     <div><span>Service Charge</span><strong>${{ "%.2f"|format(quote.service_charge) }}</strong></div>
     {% endif %}
@@ -62,7 +63,7 @@
     <div><span>Sourcing Fee</span><strong>${{ "%.2f"|format(quote.sourcing_fee) }}</strong></div>
     {% endif %}
     <div><span>Customer Total</span><strong>${{ "%.2f"|format(quote.customer_total) }}</strong></div>
-    <div><span>Net Profit</span><strong>${{ "%.2f"|format(quote.profit_total) }}</strong></div>
+    <div><span>{{ "Projected Profit" if (quote.status or "DRAFT")|upper == "DRAFT" else "Net Profit" }}</span><strong>${{ "%.2f"|format(quote.profit_total or 0) }}</strong></div>
   </div>
 </section>
 {% endblock %}

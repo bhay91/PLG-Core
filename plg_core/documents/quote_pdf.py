@@ -679,12 +679,13 @@ def _totals_box(quote, internal: bool):
         )
 
         rows = [
-            ["Supplier Parts", money(supplier_parts)],
+            ["Estimated Supplier Cost", money(supplier_parts)],
             ["Shipping", money(shipping)],
             [
                 "Supplier Total",
                 money(_value(quote, "supplier_total", 0)),
             ],
+            ["Customer Parts Subtotal", money(_value(quote, "parts_subtotal", 0))],
         ]
 
         if service_charge > 0:
@@ -705,27 +706,17 @@ def _totals_box(quote, internal: bool):
                 money(_value(quote, "customer_total", 0)),
             ],
             [
-                "NET PROFIT",
+                "PROJECTED PROFIT" if str(_value(quote, "status", "DRAFT")).upper() == "DRAFT" else "NET PROFIT",
                 money(_value(quote, "profit_total", 0)),
             ],
         ])
     else:
-        customer_subtotal = (
-            float(_value(quote, "customer_total", 0) or 0)
-            - shipping
-        )
         rows = [
-            [
-                "Subtotal",
-                money(customer_subtotal),
-            ],
+            ["Parts subtotal", money(_value(quote, "parts_subtotal", 0))],
+            ["Shipping", money(shipping)],
+            ["Sourcing fee", money(sourcing_fee)],
+            ["Service charge", money(service_charge)],
         ]
-
-        if shipping > 0:
-            rows.append([
-                "Shipping",
-                money(shipping),
-            ])
 
         rows.append([
             "TOTAL",

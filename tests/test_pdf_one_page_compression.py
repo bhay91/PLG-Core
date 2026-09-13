@@ -177,9 +177,9 @@ class PDFOnePageCompressionTests(unittest.TestCase):
             self.assertIn("PAYMENT INFORMATION", body)
             if internal:
                 self.assertIn("Service Charge", body)
-            else:
-                self.assertNotIn("Service Charge", body)
-                self.assertNotIn("Sourcing Fee", body)
+            elif name == "customer-quote":
+                self.assertIn("Service charge", body)
+                self.assertIn("Sourcing fee", body)
                 self.assertIn("$1,000.00", body)
             if name == "internal-invoice":
                 self.assertIn("Revenue", body)
@@ -188,9 +188,11 @@ class PDFOnePageCompressionTests(unittest.TestCase):
             elif internal:
                 self.assertIn("Customer Total", body)
                 self.assertIn("NET PROFIT", body)
+            elif name == "customer-quote":
+                self.assertIn("Parts subtotal", body)
+                self.assertIn("TOTAL", body)
             else:
                 self.assertIn("Subtotal", body)
-                self.assertIn("TOTAL", body)
             assert_boxes_inside_page(self, path)
 
     def test_custom_invoice_is_one_page(self):

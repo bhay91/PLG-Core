@@ -290,6 +290,13 @@ def generate_quote_from_revision(
             )
 
     if revision_state == "EDITABLE":
+        from plg_core.revisions.service import validate_selected_items_for_quote
+        with closing(get_connection()) as connection:
+            basket = connection.execute(
+                "SELECT id FROM baskets WHERE job_id=? ORDER BY id DESC LIMIT 1", (job_id,)
+            ).fetchone()
+            if basket is not None:
+                validate_selected_items_for_quote(connection, int(basket["id"]))
         commit_work_revision(
             job_id,
             expected_revision_id=revision_id,

@@ -2150,6 +2150,14 @@ def generate_quote(job_id: int):
     # The basket commit is an internal step. The user should not
     # have to click Review Quote before generating the quote.
     from plg_core.basket.service import commit_basket
+    from plg_core.revisions.service import validate_selected_items_for_quote
+
+    with closing(get_connection()) as connection:
+        basket = connection.execute(
+            "SELECT id FROM baskets WHERE job_id=? ORDER BY id DESC LIMIT 1", (job_id,)
+        ).fetchone()
+        if basket is not None:
+            validate_selected_items_for_quote(connection, int(basket["id"]))
 
     commit_basket(job_id)
 
@@ -4929,7 +4937,8 @@ def customer_quote_pdf(quote_id: int, download: int = 0):
             path = quote_paths(quote["customer"], quote["quote_number"])["customer"]
     if not path.exists():
         generate_quote_pdfs(quote, items)
-    return FileResponse(path=path, media_type="application/pdf", filename=path.name, content_disposition_type="attachment" if download else "inline")
+    headers = {"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"} if str(quote["status"] or "").upper() == "DRAFT" else None
+    return FileResponse(path=path, media_type="application/pdf", filename=path.name, content_disposition_type="attachment" if download else "inline", headers=headers)
 
 @app.get("/quotes/{quote_id}/internal/pdf")
 def internal_quote_pdf(quote_id: int, download: int = 0):
@@ -4945,12 +4954,14 @@ def internal_quote_pdf(quote_id: int, download: int = 0):
             path = quote_paths(quote["customer"], quote["quote_number"])["internal"]
     if not path.exists():
         generate_quote_pdfs(quote, items)
-    return FileResponse(path=path, media_type="application/pdf", filename=path.name, content_disposition_type="attachment" if download else "inline")
+    headers = {"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"} if str(quote["status"] or "").upper() == "DRAFT" else None
+    return FileResponse(path=path, media_type="application/pdf", filename=path.name, content_disposition_type="attachment" if download else "inline", headers=headers)
 
 @app.get("/quotes/{quote_id}/customer", response_class=HTMLResponse)
 def customer_quote(request: Request, quote_id: int):
     with closing(get_connection()) as connection:
         quote, items = load_quote(connection, quote_id)
+    from plg_core.documents.quote_pdf import _valid_until
 
     return templates.TemplateResponse(
         request=request,
@@ -4958,6 +4969,7 @@ def customer_quote(request: Request, quote_id: int):
         context={
             "quote": quote,
             "items": items,
+            "valid_until": _valid_until(quote["quote_date"]),
             "active_page": "quotes",
         },
     )
@@ -4967,6 +4979,7 @@ def customer_quote(request: Request, quote_id: int):
 def internal_quote(request: Request, quote_id: int):
     with closing(get_connection()) as connection:
         quote, items = load_quote(connection, quote_id)
+    from plg_core.documents.quote_pdf import _valid_until
 
     return templates.TemplateResponse(
         request=request,
@@ -4974,6 +4987,7 @@ def internal_quote(request: Request, quote_id: int):
         context={
             "quote": quote,
             "items": items,
+            "valid_until": _valid_until(quote["quote_date"]),
             "active_page": "quotes",
         },
     )

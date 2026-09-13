@@ -35,6 +35,7 @@ from plg_core.research.service import derive_result_visibility
 from plg_core.research.service import create_requested_need, update_requested_need
 from plg_core.research.service import create_manual_research_result, set_preferred_sourcing_option
 from plg_core.assets.service import add_job_asset, edit_job_asset
+from plg_core.commercial.service import create_selective_draft_quote
 
 
 router = APIRouter(tags=["basket"])
@@ -221,6 +222,93 @@ async def center_update_pricing(request: Request, job_id: int, need_id: int, ite
             detail = "This item is part of committed history and cannot be changed directly."
         return RedirectResponse(f"/jobs/{job_id}/center?message={quote_plus(detail)}", status_code=303)
     return RedirectResponse(f"/jobs/{job_id}/center", status_code=303)
+
+
+@router.post("/jobs/{job_id}/center/quote")
+async def center_generate_quote(request: Request, job_id: int):
+    """Create a draft quote from explicit per-need preferred options only."""
+    from plg_core.web_security import require_valid_csrf
+    from plg_core.jobs.workspace import build_workspace
+
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    try:
+        expected_revision_id = int(form["expected_revision_id"])
+        expected_version = int(form["expected_version"])
+    except (KeyError, TypeError, ValueError):
+        return RedirectResponse(
+            f"/jobs/{job_id}/center?tab=quote&message={quote_plus('This job changed after you opened it. Refresh and review the latest values before saving.')}",
+            status_code=303,
+        )
+    with closing(get_connection()) as connection:
+        context = build_workspace(connection, job_id)
+        panel = context["quote_panel"]
+        if panel["exists"]:
+            detail = "A current quote already exists for this job."
+            return RedirectResponse(f"/jobs/{job_id}/center?tab=quote&message={quote_plus(detail)}", status_code=303)
+        if not panel["can_generate"]:
+            detail = "This job is not ready to generate a quote. Review the missing requirements."
+            return RedirectResponse(f"/jobs/{job_id}/center?tab=quote&message={quote_plus(detail)}", status_code=303)
+        basket_item_ids = list(panel["preferred_basket_item_ids"])
+    try:
+        create_selective_draft_quote(
+            job_id,
+            basket_item_ids=basket_item_ids,
+            expected_revision_id=expected_revision_id,
+            expected_version=expected_version,
+        )
+    except HTTPException as exc:
+        detail = str(exc.detail)
+        lowered = detail.lower()
+        if "revision" in lowered or "version" in lowered or "changed" in lowered:
+            detail = "This job changed after you opened it. Refresh and review the latest values before saving."
+        elif exc.status_code in {400, 409}:
+            detail = "This job is not ready to generate a quote. Review the missing requirements."
+        return RedirectResponse(f"/jobs/{job_id}/center?tab=quote&message={quote_plus(detail)}", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/center?tab=quote", status_code=303)
+
+
+@router.post("/jobs/{job_id}/center/quote-fees")
+async def center_update_quote_fees(request: Request, job_id: int):
+    """Save pre-quote fees through the existing governed fee workflow."""
+    from plg_core.web_security import require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    try:
+        expected_revision_id = int(form["expected_revision_id"])
+        expected_version = int(form["expected_version"])
+        service_charge = str(form.get("service_charge", ""))
+        sourcing_fee = str(form.get("sourcing_fee", ""))
+        with closing(get_connection()) as connection:
+            existing_job = connection.execute(
+                "SELECT service_charge_description,sourcing_fee_description FROM jobs WHERE id=?",
+                (job_id,),
+            ).fetchone()
+        update_revenue_adjustments(
+            job_id,
+            service_charge=service_charge,
+            service_charge_description=(existing_job["service_charge_description"] if existing_job else ""),
+            sourcing_fee=sourcing_fee,
+            sourcing_fee_description=(existing_job["sourcing_fee_description"] if existing_job else ""),
+            expected_revision_id=expected_revision_id,
+            expected_version=expected_version,
+        )
+    except (KeyError, TypeError, ValueError):
+        detail = "Fee values must be valid non-negative numbers."
+        return RedirectResponse(f"/jobs/{job_id}/center?tab=quote&message={quote_plus(detail)}", status_code=303)
+    except HTTPException as exc:
+        raw = str(exc.detail)
+        lowered = raw.lower()
+        if "stale" in lowered or "revision" in lowered or "version" in lowered or "changed" in lowered:
+            raw = "This job changed after you opened it. Refresh and review the latest values before saving."
+        elif exc.status_code in {409, 423}:
+            raw = "This item is part of committed history and cannot be changed directly."
+        elif "at least $50" in raw.lower() or "service charge must be $0" in raw.lower():
+            raw = "Service charge must be $0 or at least $50."
+        elif exc.status_code == 400:
+            raw = "Fee values must be valid non-negative numbers."
+        return RedirectResponse(f"/jobs/{job_id}/center?tab=quote&message={quote_plus(raw)}", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/center?tab=quote", status_code=303)
 
 
 def normalize_source_url(value):

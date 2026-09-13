@@ -630,11 +630,34 @@ def clone_work_revision(
     )
 
 
-def _validate_selected_items(connection: sqlite3.Connection, basket_id: int):
-    items = connection.execute(
-        "SELECT * FROM basket_items WHERE basket_id=? AND selected=1 ORDER BY id",
-        (basket_id,),
-    ).fetchall()
+def validate_selected_items_for_commit(
+    connection: sqlite3.Connection,
+    basket_id: int,
+    item_ids: list[int] | None = None,
+):
+    """Validate commit-eligible basket items without changing database state.
+
+    ``item_ids`` is used by Job Center preflight so it can validate the
+    explicit per-need preferences without temporarily changing global basket
+    selection. Commit paths omit it and validate the selected basket rows.
+    """
+    if item_ids is None:
+        items = connection.execute(
+            "SELECT * FROM basket_items WHERE basket_id=? AND selected=1 ORDER BY id",
+            (basket_id,),
+        ).fetchall()
+    else:
+        normalized = sorted({int(value) for value in item_ids})
+        if not normalized:
+            items = []
+        else:
+            marks = ",".join("?" for _ in normalized)
+            items = connection.execute(
+                f"SELECT * FROM basket_items WHERE basket_id=? AND id IN ({marks}) ORDER BY id",
+                (basket_id, *normalized),
+            ).fetchall()
+            if len(items) != len(normalized):
+                raise HTTPException(status_code=409, detail="One or more selected lines are stale.")
     if not items:
         raise HTTPException(status_code=400, detail="Select at least one basket item.")
     unpromoted = [
@@ -665,6 +688,22 @@ def _validate_selected_items(connection: sqlite3.Connection, basket_id: int):
             detail="Legacy selected parts must retain verified or documented override metadata.",
         )
     return items
+
+
+def validate_selected_items_for_quote(
+    connection: sqlite3.Connection,
+    basket_id: int,
+    item_ids: list[int] | None = None,
+):
+    """Apply commit eligibility plus quote-specific cost readiness."""
+    items = validate_selected_items_for_commit(connection, basket_id, item_ids=item_ids)
+    if any(item["supplier_unit_cost"] is None for item in items):
+        raise HTTPException(status_code=400, detail="Supplier cost is required before generating a quote.")
+    return items
+
+
+def _validate_selected_items(connection: sqlite3.Connection, basket_id: int):
+    return validate_selected_items_for_commit(connection, basket_id)
 
 
 def commit_work_revision(
