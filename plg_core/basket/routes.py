@@ -36,6 +36,7 @@ from plg_core.research.service import create_requested_need, update_requested_ne
 from plg_core.research.service import create_manual_research_result, set_preferred_sourcing_option
 from plg_core.assets.service import add_job_asset, edit_job_asset
 from plg_core.commercial.service import create_selective_draft_quote
+from plg_core.revisions.quote_workflow import start_quote_revision
 
 
 router = APIRouter(tags=["basket"])
@@ -297,6 +298,39 @@ async def center_send_quote(request: Request, job_id: int):
             detail = "This quote cannot be issued while a revision is pending."
         elif exc.status_code in {400, 409, 423}:
             detail = "This quote is no longer a Draft. Refresh and review its current status."
+        return RedirectResponse(f"/jobs/{job_id}/center?tab=quote&message={quote_plus(detail)}", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/center?tab=quote", status_code=303)
+
+
+@router.post("/jobs/{job_id}/center/quote/revision")
+async def center_create_quote_revision(request: Request, job_id: int):
+    """Start the governed editable revision for the current revision-required quote."""
+    from plg_core.web_security import require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    try:
+        with closing(get_connection()) as connection:
+            quote = connection.execute(
+                "SELECT * FROM quotes WHERE job_id=? AND is_current=1 ORDER BY id DESC LIMIT 1",
+                (job_id,),
+            ).fetchone()
+            if quote is None or str(quote["status"] or "").upper() != "REVISION_REQUIRED":
+                raise HTTPException(409, "This quote's workflow has changed. Refresh before creating a revision.")
+            existing = connection.execute(
+                "SELECT 1 FROM work_revisions WHERE job_id=? AND based_on_quote_id=? AND state='EDITABLE' LIMIT 1",
+                (job_id, quote["id"]),
+            ).fetchone()
+            if existing:
+                raise HTTPException(409, "A quote revision is already in progress.")
+            quote_id = int(quote["id"])
+        start_quote_revision(quote_id, "Customer requested quote revision")
+    except HTTPException as exc:
+        detail = str(exc.detail)
+        lowered = detail.lower()
+        if "already" in lowered or "editable" in lowered:
+            detail = "A quote revision is already in progress."
+        elif "current" in lowered or "changed" in lowered or "status" in lowered:
+            detail = "This quote's workflow has changed. Refresh before creating a revision."
         return RedirectResponse(f"/jobs/{job_id}/center?tab=quote&message={quote_plus(detail)}", status_code=303)
     return RedirectResponse(f"/jobs/{job_id}/center?tab=quote", status_code=303)
 

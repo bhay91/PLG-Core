@@ -327,6 +327,8 @@ def build_workspace(connection, job_id):
         "decision": None,
         "decision_at": None,
         "decision_notes": "",
+        "revision": None,
+        "revision_create_allowed": False,
     }
     if current_quote is not None:
         decision_statuses = {"APPROVED", "REJECTED", "REVISION_REQUIRED"}
@@ -342,20 +344,40 @@ def build_workspace(connection, job_id):
         elif quote_status == "SENT":
             quote_panel["decision_allowed"] = True
         pending_revision = connection.execute(
-            "SELECT 1 FROM work_revisions WHERE based_on_quote_id=? AND "
+            "SELECT * FROM work_revisions WHERE based_on_quote_id=? AND "
             "(state='EDITABLE' OR (state='COMMITTED' AND NOT EXISTS "
             "(SELECT 1 FROM quotes generated WHERE generated.work_revision_id=work_revisions.id))) LIMIT 1",
             (current_quote["id"],),
         ).fetchone()
+        if pending_revision is not None:
+            revision_projection = dict(pending_revision)
+            revision_projection.update({
+                "exists": True,
+                "editable": str(pending_revision["state"] or "").upper() == "EDITABLE",
+                "based_on_quote_number": current_quote.get("quote_number"),
+            })
+            quote_panel["revision"] = revision_projection
+        quote_panel["revision_create_allowed"] = (
+            quote_status == "REVISION_REQUIRED" and pending_revision is None
+        )
         quote_panel["issue_allowed"] = (
             str(current_quote["status"] or "").upper() == "DRAFT" and pending_revision is None
         )
         if quote_status == "APPROVED":
             v2_workflow = dict(v2_workflow)
-            v2_workflow.update({"next_action": "Quote approved", "next_url": "#quote", "action_method": "GET"})
+            v2_workflow.update({"stage": "Customer Approved", "next_action": "Quote approved", "next_url": "#quote", "action_method": "GET"})
         elif quote_status == "REJECTED":
             v2_workflow = dict(v2_workflow)
-            v2_workflow.update({"next_action": "Quote rejected", "next_url": "#quote", "action_method": "GET"})
+            v2_workflow.update({"stage": "Quote Rejected", "next_action": "Quote rejected", "next_url": "#quote", "action_method": "GET"})
+        elif quote_status == "REVISION_REQUIRED":
+            v2_workflow = dict(v2_workflow)
+            v2_workflow.update({"stage": "Revision in Progress" if pending_revision is not None else "Revision Needed",
+                                "next_action": "Edit quote revision" if pending_revision is not None else "Create quote revision",
+                                "next_url": "/jobs/%s/center?tab=job" % job_id if pending_revision is not None else "#quote",
+                                "action_method": "GET"})
+        elif quote_status == "SENT" and quote_panel.get("decision_allowed"):
+            v2_workflow = dict(v2_workflow)
+            v2_workflow.update({"stage": "Awaiting Customer"})
         if pending_revision is not None and str(current_quote["status"] or "").upper() == "DRAFT":
             v2_workflow = dict(v2_workflow)
             v2_workflow.update({"next_action": "Review pending revision", "next_url": "#quote", "action_method": "GET"})
