@@ -20,6 +20,37 @@ def _safe_url(value):
         return ""
 
 
+
+def derive_v2_workflow(snapshot: dict, parts: list[dict], basket: dict) -> dict:
+    """Translate authoritative lifecycle evidence into operator-facing V2 language."""
+    quote = snapshot.get("quote") or {}
+    invoice = snapshot.get("invoice") or {}
+    movement = snapshot.get("movement") or {}
+    orders = snapshot.get("supplier_orders") or []
+    selected = [part for part in parts if part.get("selected_options")]
+    priced = all((part["selected_options"][0].get("supplier_unit_cost") is not None) for part in selected)
+    all_ready = bool(parts) and len(selected) == len(parts) and priced
+    ordered = int(movement.get("ordered_units") or 0)
+    received = int(movement.get("received_units") or 0)
+    delivered = int(movement.get("delivered_units") or 0)
+    if ordered and delivered >= ordered:
+        paid = str(invoice.get("payment_state") or invoice.get("status") or "").upper() == "PAID" or float(invoice.get("balance_due") or 0) <= 0 if invoice else False
+        return {"stage": "Complete" if paid else "Payment due", "next_action": "Complete" if paid else "Payment due", "next_url": snapshot.get("delivery_url") or "#", "action_method": "GET"}
+    if ordered and received >= ordered and delivered < ordered:
+        return {"stage": "Ready to deliver", "next_action": "Ready to deliver", "next_url": snapshot.get("delivery_url") or "#", "action_method": "GET"}
+    if ordered and received < ordered:
+        return {"stage": "Waiting on supplier", "next_action": "Waiting on supplier", "next_url": snapshot.get("workflow", {}).get("next_url") or "/purchasing", "action_method": "GET"}
+    status = str(quote.get("status") or "").upper()
+    if status == "APPROVED" and not orders:
+        return {"stage": "Ready to order", "next_action": "Ready to order", "next_url": snapshot.get("workflow", {}).get("next_url") or "/purchasing", "action_method": "GET"}
+    if status == "SENT":
+        return {"stage": "Waiting for customer", "next_action": "Waiting for customer", "next_url": snapshot.get("workflow", {}).get("next_url") or "#quote", "action_method": "GET"}
+    if quote and status in {"DRAFT", "REVISION_REQUIRED"}:
+        return {"stage": "Ready to send", "next_action": "Ready to send", "next_url": "#quote", "action_method": "GET"}
+    if all_ready:
+        return {"stage": "Ready to quote", "next_action": "Ready to quote", "next_url": "#quote", "action_method": "GET"}
+    return {"stage": "Needs supplier", "next_action": "Needs supplier", "next_url": "#parts", "action_method": "GET"}
+
 def build_workspace(connection, job_id):
     row = connection.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
     if row is None:
@@ -142,8 +173,29 @@ def build_workspace(connection, job_id):
             action.update(next_url="#parts", next_action="Find / Add Options", action_method="GET")
         else:
             action.update(next_url="#quote", next_action="Review Quote", action_method="GET")
-    return dict(job=job, operational_snapshot=snapshot, basket=basket, revision=revision,
-                work_editable=editable, parts=parts, other_options=unassigned,
+    line_items = []
+    for part in parts:
+        selected_option = part["selected_options"][0] if part["selected_options"] else None
+        if selected_option:
+            qty = selected_option.get("quantity") or 1
+            cost = (selected_option.get("supplier_unit_cost") or 0) * qty
+            sell = (selected_option.get("pricing", {}).get("current_unit_price") or 0) * qty
+            supplier = selected_option.get("supplier_name") or "Supplier not recorded"
+            status = "Selected"
+            next_action = "Ready for quote"
+        else:
+            qty = part.get("quantity")
+            cost = sell = 0
+            supplier = "Supplier needed"
+            status = part["status_label"]
+            next_action = "Review sourcing"
+        line_items.append({"id": part["id"], "description": part["wording"], "quantity": qty,
+                           "supplier": supplier, "actual_cost": round(cost, 2),
+                           "sell_price": round(sell, 2), "status": status,
+                           "next_action": next_action})
+    v2_workflow = derive_v2_workflow(snapshot, parts, basket)
+    return dict(job=job, operational_snapshot=snapshot, v2_workflow=v2_workflow, basket=basket, revision=revision,
+                work_editable=editable, parts=parts, line_items=line_items, other_options=unassigned,
                 selected_options=selected, outstanding=outstanding, primary_action=action,
                 quote_history=[dict(row) for row in connection.execute(
                     "SELECT * FROM quotes WHERE job_id=? ORDER BY id DESC", (job_id,))],
@@ -175,4 +227,17 @@ def render_workspace(request, job_id, *, need_id=None):
     })
     response.set_cookie(CSRF_COOKIE_NAME, token, httponly=True, samesite="strict",
                         secure=request.url.scheme == "https")
+    return response
+
+
+def render_job_center_v2(request, job_id: int, *, tab="job"):
+    with closing(get_connection()) as connection:
+        connection.execute("BEGIN")
+        context = build_workspace(connection, job_id)
+    token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(request=request, name="job_center_v2.html", context={
+        **context, "csrf_token": token, "active_page": "jobs",
+        "active_tab": tab if tab in {"job", "quote", "purchasing", "fulfillment", "documents"} else "job",
+    })
+    response.set_cookie(CSRF_COOKIE_NAME, token, httponly=True, samesite="strict", secure=request.url.scheme == "https")
     return response

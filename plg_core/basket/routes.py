@@ -1567,6 +1567,11 @@ def update_revenue_adjustments(
         status_code=303,
     )
 
+@router.get("/jobs/{job_id}/center", response_class=HTMLResponse)
+def job_center_v2_page(request: Request, job_id: int, tab: str = "job"):
+    from plg_core.jobs.workspace import render_job_center_v2
+    return render_job_center_v2(request, job_id, tab=tab)
+
 @router.get("/jobs/{job_id}/shipping", response_class=HTMLResponse)
 def job_shipping_page(request: Request, job_id: int):
     from plg_core.jobs.workspace import build_workspace
