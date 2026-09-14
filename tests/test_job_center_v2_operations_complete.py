@@ -44,6 +44,25 @@ def test_job_center_keeps_authoritative_usd_and_currency_snapshot_read_model():
     assert "Open delivery workflow" in source
 
 
+def test_jobs_list_targets_canonical_job_center():
+    source = (ROOT / "templates" / "jobs.html").read_text()
+    assert 'href="/jobs/{{ job.id }}/center"' in source
+    assert 'href="/jobs/{{ job.id }}/basket?view=advanced"' not in source
+
+
+def test_dashboard_job_entries_target_canonical_job_center():
+    source = (ROOT / "templates" / "operator_dashboard.html").read_text()
+    assert "'/jobs/' ~ item.job_id ~ '/center'" in source
+
+
+def test_legacy_job_detail_entry_redirects_to_job_center():
+    import legacy_app
+
+    response = legacy_app.job_detail(_Request(), 17)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/jobs/17/center"
+
+
 class _Request:
     pass
 

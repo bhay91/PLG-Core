@@ -53,7 +53,7 @@
       <header class="erp-panel-heading"><div><p class="erp-overline">SOURCING WORK</p><h2>Requested Needs</h2></div><a href="/jobs">Open Jobs</a></header>
       <div class="erp-panel-list">
         {% for item in jobs %}
-        <a class="erp-need-row" href="{{ item.dashboard_url or item.url }}">
+        <a class="erp-need-row" href="{{ '/jobs/' ~ item.job_id ~ '/center' if item.job_id else (item.dashboard_url or item.url) }}">
           <span><small>{{ item.job_number }} · {{ item.customer }}</small><strong>{{ item.need_label }}</strong><em>{% if item.context_detail %}{{ item.context_detail }} · {% endif %}{% if item.age_days is not none %}{{ item.age_days }}d in queue{% else %}Current work{% endif %}</em></span>
           <span class="erp-status erp-status-purple">{{ item.category|replace('_',' ')|title }}</span>
         </a>
@@ -92,7 +92,7 @@
       <table class="erp-table">
         <thead><tr><th>Job</th><th>Customer</th><th>Requested Need</th><th>Stage</th><th>Payment</th><th>Next Action</th><th>Age</th></tr></thead>
         <tbody>{% for item in active_rows[:8] %}<tr>
-          <td data-label="Job"><a href="{{ item.dashboard_url or item.url }}">{{ item.job_number }}</a></td>
+          <td data-label="Job"><a href="{{ '/jobs/' ~ item.job_id ~ '/center' if item.job_id else (item.dashboard_url or item.url) }}">{{ item.job_number }}</a></td>
           <td data-label="Customer"><strong>{{ item.customer }}</strong></td>
           <td data-label="Requested Need"><span class="erp-table-need">{{ item.need_label }}</span></td>
           <td data-label="Stage"><span class="erp-status {% if item.category == 'WAITING_FOR_PAYMENT' %}erp-status-red{% elif item.category in ['WAITING_FOR_PARTS','READY_TO_ORDER'] %}erp-status-amber{% elif item.category == 'READY_FOR_DELIVERY' %}erp-status-green{% else %}erp-status-purple{% endif %}">{{ item.category|replace('_',' ')|title }}</span></td>

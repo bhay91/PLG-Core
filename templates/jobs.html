@@ -60,7 +60,7 @@
   {% for job in jobs %}
   <a
     class="smart-job-row erp-job-row stage-{{ job.stage_key|lower }}"
-    href="/jobs/{{ job.id }}/basket?view=advanced"
+    href="/jobs/{{ job.id }}/center"
     data-search="
       {{ job.job_number }}
       {{ job.customer }}

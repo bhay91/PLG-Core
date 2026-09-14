@@ -1668,7 +1668,7 @@ def list_jobs(request: Request, view: str = "active"):
 @app.get("/jobs/{job_id}", response_class=HTMLResponse)
 def job_detail(request: Request, job_id: int):
     return RedirectResponse(
-        url=f"/jobs/{job_id}/basket?view=advanced",
+        url=f"/jobs/{job_id}/center",
         status_code=303,
     )
 
