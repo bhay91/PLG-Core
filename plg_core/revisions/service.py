@@ -200,6 +200,93 @@ def touch_revision(
     return expected_version + 1
 
 
+def _apply_revision_currency_config(connection, revision, *, expected_version,
+                                    display_mode, fx_rate, fx_rate_source,
+                                    actor="system", audit_action="WORK_REVISION_CURRENCY_UPDATED"):
+    from plg_core.currency.service import build_quote_currency_snapshot
+    if str(revision["state"]).upper() != "EDITABLE":
+        raise HTTPException(status_code=409, detail="Committed work revision currency is immutable.")
+    if int(revision["lock_version"]) != int(expected_version):
+        raise HTTPException(status_code=409, detail=STALE_DETAIL)
+    try:
+        snapshot = build_quote_currency_snapshot(display_mode=display_mode, jmd_rate=fx_rate, rate_source=fx_rate_source)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail="Work Revision currency snapshot is invalid.") from error
+    old = {"display_currency_mode": revision["display_currency_mode"], "fx_rate": revision["fx_rate"], "fx_rate_source": revision["fx_rate_source"]}
+    new = {"display_currency_mode": snapshot["display_currency_mode"], "fx_rate": snapshot["fx_rate"], "fx_rate_source": snapshot["fx_rate_source"]}
+    if new == old:
+        return dict(revision)
+    cursor = connection.execute(
+        "UPDATE work_revisions SET display_currency_mode=?,fx_rate=?,fx_rate_source=?,lock_version=lock_version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='EDITABLE' AND lock_version=?",
+        (new["display_currency_mode"], new["fx_rate"], new["fx_rate_source"], revision["id"], expected_version),
+    )
+    if cursor.rowcount != 1:
+        raise HTTPException(status_code=409, detail=STALE_DETAIL)
+    write_audit(connection, action=audit_action, entity_type="WORK_REVISION", entity_id=revision["id"], summary="Updated Work Revision currency context", metadata={"previous": old, "new": new}, actor=actor)
+    return dict(connection.execute("SELECT * FROM work_revisions WHERE id=?", (revision["id"],)).fetchone())
+
+
+def update_revision_currency_config(
+    revision_id: int, *, expected_version: int, display_mode=..., jmd_rate=...,
+    actor: str = "system",
+) -> dict[str, Any]:
+    """Update editable revision FX; omitted fields are preserved."""
+    from plg_core.currency.service import UNSET, _mode, canonical_rate
+    display_mode = UNSET if display_mode is ... else display_mode
+    jmd_rate = UNSET if jmd_rate is ... else jmd_rate
+    if display_mode is None or jmd_rate is None:
+        raise HTTPException(status_code=400, detail="Use explicit reset semantics for revision currency values.")
+    with closing(get_connection()) as connection:
+        _begin_immediate(connection)
+        revision = connection.execute(
+            "SELECT * FROM work_revisions WHERE id=?", (revision_id,)
+        ).fetchone()
+        if revision is None:
+            raise HTTPException(status_code=404, detail="Work Revision not found.")
+        if revision["display_currency_mode"] is None or revision["fx_rate"] is None or revision["fx_rate_source"] is None:
+            raise HTTPException(status_code=409, detail="Work Revision currency snapshot is incomplete.")
+        try:
+            mode = revision["display_currency_mode"] if display_mode is UNSET else _mode(display_mode)
+            rate = revision["fx_rate"] if jmd_rate is UNSET else canonical_rate(jmd_rate)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        source = "MANUAL_OVERRIDE" if jmd_rate is not UNSET else revision["fx_rate_source"]
+        result = _apply_revision_currency_config(connection, revision, expected_version=expected_version, display_mode=mode, fx_rate=rate, fx_rate_source=source, actor=actor)
+        connection.commit()
+        return result
+
+
+def reset_revision_currency_to_source(
+    revision_id: int,
+    *,
+    expected_version: int,
+    actor: str = "system",
+) -> dict[str, Any]:
+    """Restore an editable revision's modern source quote FX context."""
+    from plg_core.currency.service import build_revision_currency_defaults_from_quote, is_legacy_quote_currency_snapshot
+    with closing(get_connection()) as connection:
+        _begin_immediate(connection)
+        revision = connection.execute("SELECT * FROM work_revisions WHERE id=?", (revision_id,)).fetchone()
+        if revision is None:
+            raise HTTPException(status_code=404, detail="Work Revision not found.")
+        if revision["based_on_quote_id"] is None:
+            raise HTTPException(status_code=409, detail="This revision has no source quote currency snapshot.")
+        source = connection.execute("SELECT * FROM quotes WHERE id=?", (revision["based_on_quote_id"],)).fetchone()
+        if source is None:
+            raise HTTPException(status_code=409, detail="Source quote not found.")
+        if is_legacy_quote_currency_snapshot(source):
+            raise HTTPException(status_code=409, detail="Legacy source quote has no historical currency context to restore.")
+        try:
+            defaults = build_revision_currency_defaults_from_quote(source, connection=connection)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail="Source quote currency snapshot is unavailable for reset.") from error
+        result = _apply_revision_currency_config(connection, revision, expected_version=expected_version,
+            display_mode=defaults["display_currency_mode"], fx_rate=defaults["fx_rate"],
+            fx_rate_source=defaults["fx_rate_source"], actor=actor, audit_action="WORK_REVISION_CURRENCY_RESET")
+        connection.commit()
+        return result
+
+
 def _pricing_mode(item) -> str:
     keys = set(item.keys())
     if "pricing_mode" in keys and item["pricing_mode"]:
@@ -633,6 +720,22 @@ def start_work_revision(
                 ),
             )
             revision_id = int(cursor.lastrowid)
+            if quote is not None:
+                from plg_core.currency.service import build_revision_currency_defaults_from_quote
+                try:
+                    fx_defaults = build_revision_currency_defaults_from_quote(
+                        quote, connection=connection,
+                    )
+                except ValueError as error:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Source quote currency snapshot is incomplete or invalid.",
+                    ) from error
+                connection.execute(
+                    "UPDATE work_revisions SET display_currency_mode=?,fx_rate=?,fx_rate_source=? WHERE id=?",
+                    (fx_defaults["display_currency_mode"], fx_defaults["fx_rate"],
+                     fx_defaults["fx_rate_source"], revision_id),
+                )
             _clear_projection(connection, int(basket["id"]))
             if quote is not None:
                 _clone_quote_to_basket(connection, int(quote["id"]), int(basket["id"]))
@@ -781,6 +884,18 @@ def commit_work_revision(
             connection, job_id, expected_revision_id=expected_revision_id,
             expected_version=expected_version,
         )
+        if revision["based_on_quote_id"] is not None:
+            from plg_core.currency.service import build_quote_currency_snapshot
+            if any(revision[field] is None for field in ("display_currency_mode", "fx_rate", "fx_rate_source")):
+                raise HTTPException(status_code=409, detail="Work Revision currency snapshot is incomplete.")
+            try:
+                build_quote_currency_snapshot(
+                    display_mode=revision["display_currency_mode"],
+                    jmd_rate=revision["fx_rate"],
+                    rate_source=revision["fx_rate_source"],
+                )
+            except ValueError as error:
+                raise HTTPException(status_code=409, detail="Work Revision currency snapshot is invalid.") from error
         basket = _basket(connection, job_id)
         items = _validate_selected_items(connection, int(basket["id"]))
         item_map = _snapshot_revision(connection, int(revision["id"]), basket)

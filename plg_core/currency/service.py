@@ -10,6 +10,29 @@ from plg_core.audit import write_audit
 DISPLAY_MODES = ("USD", "JMD", "USD_JMD")
 RATE_SOURCES = ("BUSINESS_WORKING_RATE", "MANUAL_OVERRIDE")
 UNSET = object()
+QUOTE_SNAPSHOT_FIELDS = ("currency_code", "display_currency_mode", "fx_rate", "fx_rate_source", "fx_locked_at")
+
+
+def is_legacy_quote_currency_snapshot(quote) -> bool:
+    """Return whether a quote has no Phase-1 FX snapshot at all."""
+    return all(quote[field] is None for field in QUOTE_SNAPSHOT_FIELDS)
+
+
+def validate_quote_currency_snapshot(quote) -> dict | None:
+    """Validate a quote's complete modern snapshot, or return ``None`` for legacy."""
+    if is_legacy_quote_currency_snapshot(quote):
+        return None
+    if quote["currency_code"] != "USD" or any(quote[field] is None for field in QUOTE_SNAPSHOT_FIELDS[1:]):
+        raise ValueError("Modern quote currency snapshot is incomplete.")
+    try:
+        return build_quote_currency_snapshot(
+            display_mode=quote["display_currency_mode"],
+            jmd_rate=quote["fx_rate"],
+            rate_source=quote["fx_rate_source"],
+            locked_at=quote["fx_locked_at"],
+        )
+    except ValueError:
+        raise ValueError("Modern quote currency snapshot is invalid.") from None
 
 
 def build_quote_currency_snapshot(*, display_mode, jmd_rate, rate_source,
@@ -27,6 +50,23 @@ def build_quote_currency_snapshot(*, display_mode, jmd_rate, rate_source,
         "fx_rate_source": source,
         "fx_locked_at": locked_at,
     }
+
+
+def build_revision_currency_defaults_from_quote(quote, *, connection=None) -> dict:
+    """Build editable revision FX defaults from a source quote.
+
+    Legacy NULL snapshots intentionally start from the current business
+    settings; modern snapshots must be complete and valid.
+    """
+    if is_legacy_quote_currency_snapshot(quote):
+        settings = get_currency_settings(connection)
+        return {
+            "display_currency_mode": settings["default_display_mode"],
+            "fx_rate": settings["jmd_working_rate"],
+            "fx_rate_source": "BUSINESS_WORKING_RATE",
+        }
+    snapshot = validate_quote_currency_snapshot(quote)
+    return {key: snapshot[key] for key in ("display_currency_mode", "fx_rate", "fx_rate_source")}
 
 
 def canonical_rate(value) -> str:
