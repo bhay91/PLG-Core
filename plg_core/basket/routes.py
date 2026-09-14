@@ -59,6 +59,45 @@ async def center_edit_job(request: Request, job_id: int):
     return RedirectResponse(f"/jobs/{job_id}/center", status_code=303)
 
 
+@router.post("/jobs/{job_id}/center/currency")
+async def center_update_currency(request: Request, job_id: int):
+    """Thin V2 adapter for mutable basket or editable revision FX settings."""
+    from plg_core.web_security import require_valid_csrf, request_actor
+    from plg_core.currency.service import clear_basket_currency_overrides, set_basket_currency_overrides
+    from plg_core.revisions.service import reset_revision_currency_to_source, update_revision_currency_config
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    action = str(form.get("action", "save") or "save")
+    with closing(get_connection()) as connection:
+        current_quote = connection.execute("SELECT * FROM quotes WHERE job_id=? AND is_current=1 ORDER BY id DESC LIMIT 1", (job_id,)).fetchone()
+        revision = connection.execute("SELECT * FROM work_revisions WHERE id=(SELECT active_work_revision_id FROM jobs WHERE id=?)", (job_id,)).fetchone()
+        basket = connection.execute("SELECT id FROM baskets WHERE job_id=? ORDER BY id DESC LIMIT 1", (job_id,)).fetchone()
+    try:
+        if revision is not None and str(revision["state"] or "").upper() == "EDITABLE" and revision["based_on_quote_id"] is not None:
+            expected = int(form.get("expected_version"))
+            if action == "reset":
+                reset_revision_currency_to_source(int(revision["id"]), expected_version=expected, actor=request_actor(request))
+            else:
+                update_revision_currency_config(int(revision["id"]), expected_version=expected,
+                    display_mode=form.get("display_mode", ...), jmd_rate=form.get("jmd_rate", ...), actor=request_actor(request))
+        else:
+            if current_quote is not None:
+                raise HTTPException(409, "The current quote is locked. Start a governed revision to change its currency display.")
+            if basket is None:
+                raise HTTPException(404, "Quote preparation basket not found.")
+            with closing(get_connection()) as connection:
+                if action == "reset":
+                    clear_basket_currency_overrides(connection, int(basket["id"]), display_mode=True, jmd_rate=True)
+                else:
+                    set_basket_currency_overrides(connection, int(basket["id"]), display_mode=form.get("display_mode", ...), jmd_rate=form.get("jmd_rate", ...))
+                connection.commit()
+    except (TypeError, ValueError) as error:
+        return RedirectResponse(f"/jobs/{job_id}/center?tab=job&message={quote_plus(str(error))}", status_code=303)
+    except HTTPException as error:
+        return RedirectResponse(f"/jobs/{job_id}/center?tab=job&message={quote_plus(str(error.detail))}", status_code=303)
+    return RedirectResponse(f"/jobs/{job_id}/center?tab=job&message={quote_plus('Currency settings saved.')}", status_code=303)
+
+
 @router.post("/jobs/{job_id}/center/customer")
 async def center_edit_customer(request: Request, job_id: int):
     from plg_core.web_security import require_valid_csrf

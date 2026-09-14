@@ -12,6 +12,7 @@ from plg_core.pricing import pricing_assessment
 from plg_core.revisions.service import validate_selected_items_for_quote
 from plg_core.sources.service import list_sources_for_context, validate_source_url
 from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
+from plg_core.currency.service import build_quote_currency_presentation, get_currency_settings, resolve_basket_currency_config
 
 
 def _safe_url(value):
@@ -100,6 +101,14 @@ def build_workspace(connection, job_id):
         (job.get("active_work_revision_id"), job_id),
     ).fetchone()
     revision = dict(revision_row) if revision_row else None
+    currency_settings = get_currency_settings(connection)
+    currency_config = None
+    currency_error = None
+    if basket_row is not None:
+        try:
+            currency_config = resolve_basket_currency_config(connection, int(basket_row["id"]))
+        except ValueError as error:
+            currency_error = str(error)
     durable = bool(snapshot["quote"] or snapshot["invoice"] or snapshot["supplier_orders"])
     editable = (
         job["status"].upper() not in {"CANCELLED", "ARCHIVED", "DELIVERED", "COMPLETED", "COMPLETE", "CLOSED"}
@@ -331,8 +340,13 @@ def build_workspace(connection, job_id):
         "revision_create_allowed": False,
         "revision_generation_allowed": False,
         "previous_quote": None,
+        "currency_error": None,
     }
     if current_quote is not None:
+        try:
+            quote_panel["currency_presentation"] = build_quote_currency_presentation(current_quote)
+        except ValueError as error:
+            quote_panel["currency_error"] = str(error)
         decision_statuses = {"APPROVED", "REJECTED", "REVISION_REQUIRED"}
         quote_status = str(current_quote["status"] or "").upper()
         if quote_status in decision_statuses:
@@ -450,6 +464,10 @@ def build_workspace(connection, job_id):
                     if digest:
                         document["url"] += f"?v={digest[:12]}"
                 quote_panel["previous_quote"] = predecessor
+                try:
+                    quote_panel["previous_currency_presentation"] = build_quote_currency_presentation(predecessor)
+                except ValueError as error:
+                    quote_panel["currency_error"] = str(error)
     else:
         quote_panel["items"] = []
         quote_panel["documents"] = []
@@ -461,7 +479,19 @@ def build_workspace(connection, job_id):
         "SELECT * FROM machines WHERE active=1 OR id=? ORDER BY name COLLATE NOCASE",
         (job.get("machine_id") or -1,),
     )]
+    if revision and revision.get("based_on_quote_id") is not None:
+        revision["currency_error"] = None
+        try:
+            from plg_core.currency.service import is_legacy_quote_currency_snapshot
+            source_quote = connection.execute("SELECT * FROM quotes WHERE id=?", (revision["based_on_quote_id"],)).fetchone()
+            revision["currency_reset_allowed"] = source_quote is not None and not is_legacy_quote_currency_snapshot(source_quote)
+            revision["currency_rate_display"] = f"J${revision['fx_rate']}" if revision.get("fx_rate") else None
+            revision["currency_rate_source_label"] = {"BUSINESS_WORKING_RATE": "Business working rate", "MANUAL_OVERRIDE": "Manual override"}.get(revision.get("fx_rate_source"))
+        except Exception:
+            revision["currency_error"] = "Revision currency snapshot is invalid."
+            revision["currency_reset_allowed"] = False
     return dict(job=job, operational_snapshot=snapshot, v2_workflow=v2_workflow, basket=basket, revision=revision,
+                currency_settings=currency_settings, currency_config=currency_config, currency_error=currency_error,
                 work_editable=editable, parts=parts, line_items=line_items, other_options=unassigned,
                 selected_options=selected, outstanding=outstanding, primary_action=action,
                 customers=customers, machines=machines, financial_projection=financial_projection,

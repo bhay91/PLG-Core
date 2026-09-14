@@ -661,6 +661,7 @@ def _payment_box():
 
 
 def _totals_box(quote, internal: bool):
+    from plg_core.currency.service import build_quote_currency_presentation
     s = _styles()
     shipping = float(
         _value(quote, "shipping_total", 0) or 0
@@ -671,6 +672,7 @@ def _totals_box(quote, internal: bool):
     sourcing_fee = float(
         _value(quote, "sourcing_fee", 0) or 0
     )
+    currency = build_quote_currency_presentation(quote)
 
     if internal:
         supplier_parts = (
@@ -710,6 +712,13 @@ def _totals_box(quote, internal: bool):
                 money(_value(quote, "profit_total", 0)),
             ],
         ])
+        if currency["jmd_total"]:
+            rows.extend([
+                ["Customer Display (JMD)", currency["jmd_total"]],
+                ["FX", currency["rate_display"]],
+                ["FX source", currency["rate_source_label"]],
+                ["FX locked", str(currency["locked_at"] or "")],
+            ])
     else:
         rows = [
             ["Parts subtotal", money(_value(quote, "parts_subtotal", 0))],
@@ -722,6 +731,11 @@ def _totals_box(quote, internal: bool):
             "TOTAL",
             money(_value(quote, "customer_total", 0)),
         ])
+        if currency["jmd_total"]:
+            rows.extend([
+                ["JMD total", currency["jmd_total"]],
+                ["Exchange rate used", currency["rate_display"]],
+            ])
 
     table = Table(
         rows,

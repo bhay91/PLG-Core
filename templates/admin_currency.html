@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Currency · Administration{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">ADMINISTRATION · CURRENCY</p><h1>Currency settings</h1><p class="muted">USD remains the authoritative commercial currency. JMD is customer-facing display conversion.</p></div><a class="button ghost" href="/admin">Back to Administration</a></section>
+{% if message %}<div class="alert" role="status">{{ message }}</div>{% endif %}
+<section class="panel" style="max-width: 40rem">
+  <form method="post" action="/admin/currency">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Base currency<input value="USD" readonly aria-readonly="true"></label>
+    <label>Jamaican working rate <span class="muted">1 USD = J$</span><input name="jmd_working_rate" value="{{ settings.jmd_working_rate }}" inputmode="decimal" min="0.000001" step="0.01" required></label>
+    <label>Default customer display<select name="default_display_mode"><option value="USD" {% if settings.default_display_mode == 'USD' %}selected{% endif %}>USD</option><option value="JMD" {% if settings.default_display_mode == 'JMD' %}selected{% endif %}>JMD</option><option value="USD_JMD" {% if settings.default_display_mode == 'USD_JMD' %}selected{% endif %}>USD + JMD</option></select></label>
+    <p class="muted">Rate source: Business working rate. Existing quotes and documents keep their locked snapshots.</p>
+    <button class="button" type="submit">Save currency settings</button>
+  </form>
+</section>
+{% endblock %}

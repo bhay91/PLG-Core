@@ -13,23 +13,30 @@ UNSET = object()
 QUOTE_SNAPSHOT_FIELDS = ("currency_code", "display_currency_mode", "fx_rate", "fx_rate_source", "fx_locked_at")
 
 
+def _quote_field(quote, field):
+    try:
+        return quote[field]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
 def is_legacy_quote_currency_snapshot(quote) -> bool:
     """Return whether a quote has no Phase-1 FX snapshot at all."""
-    return all(quote[field] is None for field in QUOTE_SNAPSHOT_FIELDS)
+    return all(_quote_field(quote, field) is None for field in QUOTE_SNAPSHOT_FIELDS)
 
 
 def validate_quote_currency_snapshot(quote) -> dict | None:
     """Validate a quote's complete modern snapshot, or return ``None`` for legacy."""
     if is_legacy_quote_currency_snapshot(quote):
         return None
-    if quote["currency_code"] != "USD" or any(quote[field] is None for field in QUOTE_SNAPSHOT_FIELDS[1:]):
+    if _quote_field(quote, "currency_code") != "USD" or any(_quote_field(quote, field) is None for field in QUOTE_SNAPSHOT_FIELDS[1:]):
         raise ValueError("Modern quote currency snapshot is incomplete.")
     try:
         return build_quote_currency_snapshot(
-            display_mode=quote["display_currency_mode"],
-            jmd_rate=quote["fx_rate"],
-            rate_source=quote["fx_rate_source"],
-            locked_at=quote["fx_locked_at"],
+            display_mode=_quote_field(quote, "display_currency_mode"),
+            jmd_rate=_quote_field(quote, "fx_rate"),
+            rate_source=_quote_field(quote, "fx_rate_source"),
+            locked_at=_quote_field(quote, "fx_locked_at"),
         )
     except ValueError:
         raise ValueError("Modern quote currency snapshot is invalid.") from None
@@ -114,6 +121,38 @@ def convert_usd_to_jmd(amount, rate) -> Decimal:
     except (InvalidOperation, ValueError):
         raise ValueError("USD amount and JMD rate must be valid numbers.") from None
     return (usd * jmd_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def format_currency_amount(amount, prefix="US$") -> str:
+    """Format an authoritative or converted display amount without float math."""
+    try:
+        value = amount if isinstance(amount, Decimal) else Decimal(str(amount or 0))
+    except (InvalidOperation, ValueError):
+        raise ValueError("Currency amount must be numeric.") from None
+    if not value.is_finite():
+        raise ValueError("Currency amount must be finite.")
+    return f"{prefix}{value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):,.2f}"
+
+
+def build_quote_currency_presentation(quote, *, usd_amount=None) -> dict:
+    """Prepare immutable quote currency display data; never reads or writes settings."""
+    amount = quote["customer_total"] if usd_amount is None else usd_amount
+    if is_legacy_quote_currency_snapshot(quote):
+        return {
+            "is_legacy": True, "mode": "USD", "usd_total": format_currency_amount(amount),
+            "jmd_total": None, "rate": None, "rate_display": None,
+            "rate_source_label": None, "locked_at": None,
+        }
+    snapshot = validate_quote_currency_snapshot(quote)
+    mode = snapshot["display_currency_mode"]
+    jmd = format_currency_amount(convert_usd_to_jmd(amount, snapshot["fx_rate"]), "J$") if mode in {"JMD", "USD_JMD"} else None
+    source_label = {"BUSINESS_WORKING_RATE": "Business working rate", "MANUAL_OVERRIDE": "Manual override"}[snapshot["fx_rate_source"]]
+    return {
+        "is_legacy": False, "mode": mode, "usd_total": format_currency_amount(amount),
+        "jmd_total": jmd, "rate": snapshot["fx_rate"],
+        "rate_display": f"US$1 = J${format_currency_amount(snapshot['fx_rate'], '').strip('$')}".replace("J$J$", "J$"),
+        "rate_source_label": source_label, "locked_at": snapshot["fx_locked_at"],
+    }
 
 
 def get_currency_settings(connection: sqlite3.Connection | None = None) -> dict:

@@ -6364,6 +6364,38 @@ def admin_home(request: Request):
     )
 
 
+@app.get("/admin/currency", response_class=HTMLResponse)
+def admin_currency(request: Request, message: str = ""):
+    from plg_core.currency.service import get_currency_settings
+    from plg_core.web_security import csrf_token_for_request, CSRF_COOKIE_NAME
+    with closing(get_connection()) as connection:
+        settings = get_currency_settings(connection)
+    token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(request=request, name="admin_currency.html", context={
+        "settings": settings, "csrf_token": token, "message": message, "active_page": "admin",
+    })
+    response.set_cookie(CSRF_COOKIE_NAME, token, httponly=True, samesite="strict", secure=request.url.scheme == "https")
+    return response
+
+
+@app.post("/admin/currency")
+async def save_admin_currency(request: Request):
+    from urllib.parse import quote_plus
+    from plg_core.currency.service import update_currency_settings
+    from plg_core.web_security import require_valid_csrf, request_actor
+    form = await request.form()
+    require_valid_csrf(request, str(form.get("csrf_token", "")))
+    try:
+        update_currency_settings(
+            jmd_working_rate=str(form.get("jmd_working_rate", "")),
+            default_display_mode=str(form.get("default_display_mode", "")),
+            actor=request_actor(request),
+        )
+    except (ValueError, RuntimeError) as error:
+        return RedirectResponse(f"/admin/currency?message={quote_plus(str(error))}", status_code=303)
+    return RedirectResponse("/admin/currency?message=Currency+settings+saved", status_code=303)
+
+
 @app.get("/admin/document-templates", response_class=HTMLResponse)
 def admin_document_templates(request: Request):
     with closing(get_connection()) as connection:
