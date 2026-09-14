@@ -98,6 +98,32 @@ async def center_update_currency(request: Request, job_id: int):
     return RedirectResponse(f"/jobs/{job_id}/center?tab=job&message={quote_plus('Currency settings saved.')}", status_code=303)
 
 
+@router.post("/jobs/{job_id}/center/invoice")
+def center_create_invoice(request: Request, job_id: int, quote_id: int = Form(...), csrf_token: str = Form("")):
+    from plg_core.web_security import require_valid_csrf
+    require_valid_csrf(request, csrf_token)
+    from legacy_app import convert_quote_to_invoice
+    with closing(get_connection()) as connection:
+        quote = connection.execute("SELECT job_id FROM quotes WHERE id=?", (int(quote_id),)).fetchone()
+    if quote is None or int(quote["job_id"]) != int(job_id):
+        raise HTTPException(404, "Quote not found for this job.")
+    convert_quote_to_invoice(int(quote_id))
+    return RedirectResponse(f"/jobs/{job_id}/center?tab=quote&message=Invoice+created", status_code=303)
+
+
+@router.post("/jobs/{job_id}/center/supplier-orders")
+def center_create_supplier_orders(request: Request, job_id: int, invoice_id: int = Form(...), csrf_token: str = Form("")):
+    from plg_core.web_security import require_valid_csrf
+    require_valid_csrf(request, csrf_token)
+    from plg_core.supply.service import create_orders_from_paid_invoice
+    with closing(get_connection()) as connection:
+        invoice = connection.execute("SELECT job_id FROM invoices WHERE id=?", (int(invoice_id),)).fetchone()
+    if invoice is None or int(invoice["job_id"]) != int(job_id):
+        raise HTTPException(404, "Invoice not found for this job.")
+    create_orders_from_paid_invoice(int(invoice_id))
+    return RedirectResponse(f"/jobs/{job_id}/center?tab=purchasing&message=Supplier+orders+created", status_code=303)
+
+
 @router.post("/jobs/{job_id}/center/customer")
 async def center_edit_customer(request: Request, job_id: int):
     from plg_core.web_security import require_valid_csrf
