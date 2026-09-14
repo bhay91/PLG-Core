@@ -2184,6 +2184,23 @@ def generate_quote(job_id: int):
                 status_code=404,
                 detail="Job not found.",
             )
+        from plg_core.revisions.service import ensure_initial_revision_currency_snapshot
+        active_revision = connection.execute(
+            "SELECT id FROM work_revisions WHERE id=(SELECT active_work_revision_id FROM jobs WHERE id=?)",
+            (job_id,),
+        ).fetchone()
+        basket_for_fx = connection.execute(
+            "SELECT id FROM baskets WHERE job_id=? ORDER BY id DESC LIMIT 1", (job_id,)
+        ).fetchone()
+        if active_revision is None or basket_for_fx is None:
+            raise HTTPException(status_code=409, detail="Quote preparation state is incomplete.")
+        ensure_initial_revision_currency_snapshot(
+            connection, int(active_revision["id"]), basket_id=int(basket_for_fx["id"]),
+        )
+        active_fx_revision = connection.execute(
+            "SELECT display_currency_mode,fx_rate,fx_rate_source "
+            "FROM work_revisions WHERE id=?", (active_revision["id"],)
+        ).fetchone()
 
         selected = connection.execute(
             """
@@ -2431,13 +2448,13 @@ def generate_quote(job_id: int):
                 address_snapshot,
                 manufacturer_snapshot,
                 machine_snapshot,
-                pin_serial_snapshot
+                pin_serial_snapshot,currency_code,display_currency_mode,fx_rate,fx_rate_source,fx_locked_at
                 ,bill_to_kind,bill_to_name_snapshot,bill_to_company_snapshot,
                 bill_to_address_snapshot,bill_to_phone_snapshot,bill_to_email_snapshot
             )
             VALUES (
                 ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                'CONTACT',?,?,?,?,?
+                ?, ?, ?, ?, CURRENT_TIMESTAMP, 'CONTACT',?,?,?,?,?
             )
                 """,
                 (
@@ -2459,7 +2476,8 @@ def generate_quote(job_id: int):
                 job["address"],
                 job["manufacturer"],
                 job["machine"],
-                job["pin_serial"],
+                job["pin_serial"], "USD", active_fx_revision["display_currency_mode"],
+                active_fx_revision["fx_rate"], active_fx_revision["fx_rate_source"],
                 job["customer"],job["company"] or "",job["address"] or "",
                 job["phone"] or "",job["email"] or "",
                 ),

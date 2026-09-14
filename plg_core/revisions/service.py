@@ -138,6 +138,50 @@ def ensure_revision_mutable(
     return revision
 
 
+def ensure_initial_revision_currency_snapshot(
+    connection: sqlite3.Connection,
+    revision_id: int,
+    *,
+    basket_id: int,
+) -> dict:
+    """Freeze initial basket FX context on a revision exactly once."""
+    from plg_core.currency.service import (
+        build_quote_currency_snapshot,
+        resolve_basket_currency_config,
+    )
+    revision = connection.execute(
+        "SELECT display_currency_mode,fx_rate,fx_rate_source "
+        "FROM work_revisions WHERE id=?", (revision_id,)
+    ).fetchone()
+    if revision is None:
+        raise HTTPException(status_code=404, detail="Work Revision not found.")
+    values = (revision["display_currency_mode"], revision["fx_rate"], revision["fx_rate_source"])
+    if all(value is None for value in values):
+        resolved = resolve_basket_currency_config(connection, basket_id)
+        snapshot = build_quote_currency_snapshot(
+            display_mode=resolved["display_currency_mode"],
+            jmd_rate=resolved["jmd_working_rate"],
+            rate_source=resolved["fx_rate_source"],
+        )
+        connection.execute(
+            "UPDATE work_revisions SET display_currency_mode=?,fx_rate=?,fx_rate_source=?,"
+            "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (snapshot["display_currency_mode"], snapshot["fx_rate"],
+             snapshot["fx_rate_source"], revision_id),
+        )
+        return snapshot
+    if any(value is None for value in values):
+        raise HTTPException(status_code=409, detail="Work Revision currency snapshot is incomplete.")
+    try:
+        return build_quote_currency_snapshot(
+            display_mode=revision["display_currency_mode"],
+            jmd_rate=revision["fx_rate"],
+            rate_source=revision["fx_rate_source"],
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail="Work Revision currency snapshot is invalid.") from error
+
+
 def touch_revision(
     connection: sqlite3.Connection,
     revision_id: int,

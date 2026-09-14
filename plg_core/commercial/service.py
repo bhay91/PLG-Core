@@ -13,7 +13,7 @@ from plg_core.revisions.quote_workflow import (
 )
 from plg_core.revisions.service import (
     commit_work_revision, ensure_revision_mutable, start_work_revision, touch_revision,
-    validate_selected_items_for_quote,
+    validate_selected_items_for_quote, ensure_initial_revision_currency_snapshot,
 )
 from plg_core.timeline import log_job_event
 
@@ -187,6 +187,9 @@ def create_selective_draft_quote(
         validate_selected_items_for_quote(
             connection, int(basket["id"]), item_ids=selected_ids,
         )
+        ensure_initial_revision_currency_snapshot(
+            connection, int(revision["id"]), basket_id=int(basket["id"]),
+        )
         connection.execute("UPDATE basket_items SET selected=0 WHERE basket_id=?", (basket["id"],))
         connection.execute(
             f"UPDATE basket_items SET selected=1 WHERE basket_id=? AND id IN ({placeholders})",
@@ -219,6 +222,12 @@ def create_selective_draft_quote(
             quote_id = _insert_quote(
                 connection, job=job, revision_id=revision_id, rows=rows,
                 totals=totals, bill_to=bill_to,
+            )
+            connection.execute(
+                "UPDATE quotes SET currency_code='USD',display_currency_mode=?,"
+                "fx_rate=?,fx_rate_source=?,fx_locked_at=CURRENT_TIMESTAMP WHERE id=?",
+                (revision["display_currency_mode"], revision["fx_rate"],
+                 revision["fx_rate_source"], quote_id),
             )
             connection.execute("UPDATE jobs SET status='QUOTED' WHERE id=?", (job_id,))
             write_audit(

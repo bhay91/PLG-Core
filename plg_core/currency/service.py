@@ -12,6 +12,23 @@ RATE_SOURCES = ("BUSINESS_WORKING_RATE", "MANUAL_OVERRIDE")
 UNSET = object()
 
 
+def build_quote_currency_snapshot(*, display_mode, jmd_rate, rate_source,
+                                  locked_at=None) -> dict:
+    """Validate and normalize one immutable USD/JMD quote snapshot."""
+    mode = _mode(display_mode)
+    rate = canonical_rate(jmd_rate)
+    source = str(rate_source or "").strip().upper()
+    if source not in RATE_SOURCES:
+        raise ValueError("Invalid currency rate source.")
+    return {
+        "currency_code": "USD",
+        "display_currency_mode": mode,
+        "fx_rate": rate,
+        "fx_rate_source": source,
+        "fx_locked_at": locked_at,
+    }
+
+
 def canonical_rate(value) -> str:
     if isinstance(value, bool) or value is None:
         raise ValueError("JMD exchange rate must be a finite positive number.")
