@@ -1,4 +1,4 @@
-import asyncio, shutil, tempfile, unittest
+import asyncio, shutil, tempfile, unittest, subprocess
 from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
@@ -145,3 +145,122 @@ class SuccessorStagingTests(unittest.TestCase):
   self.assertNotEqual(revision_b['id'], revision_a['id'])
   self.assertEqual(new_revision['job_id'], self.job)
   self.assertEqual(new_revision['based_on_quote_id'], successor_a['id'])
+
+ def test_effective_preferred_replacement_excludes_historical_clone(self):
+  """A replacement candidate is the sole commercial successor line."""
+  q,rev=self.setup_revision()
+  with closing(legacy_app.get_connection()) as c:
+   need=c.execute("select id from requested_needs where job_id=? order by id limit 1",(self.job,)).fetchone()[0]
+  replacement=create_manual_research_result(self.job,job_asset_id=None,requested_need_id=need,
+      description='Revision Test Supplier',supplier_name='Revision Test Supplier',supplier_unit_cost=12,
+      customer_unit_price_override=18,verification_status='VERIFIED',availability='In stock',
+      research_evidence='replacement', expected_revision_id=rev['id'], expected_version=self._rev_version(rev['id'])) ['items'][-1]
+  set_preferred_sourcing_option(self.job,need,replacement['id'],expected_revision_id=rev['id'],expected_version=self._rev_version(rev['id']))
+  with closing(legacy_app.get_connection()) as c:
+   version=c.execute('select lock_version from work_revisions where id=?',(rev['id'],)).fetchone()[0]
+  successor=generate_quote_from_revision(rev['id'],expected_version=version)
+  with closing(legacy_app.get_connection()) as c:
+   rows=c.execute('select supplier_name,supplier_unit_cost,customer_unit_price,customer_line_total from quote_items where quote_id=?',(successor['id'],)).fetchall()
+   source_item=c.execute('select id from quote_items where quote_id=?',(q['id'],)).fetchone()[0]
+   successor_item=c.execute('select id from quote_items where quote_id=?',(successor['id'],)).fetchone()[0]
+   lineage=c.execute('select predecessor_quote_item_id,successor_quote_item_id from quote_item_lineage where successor_quote_id=?',(successor['id'],)).fetchall()
+  self.assertEqual(len(rows),1)
+  self.assertEqual(tuple(rows[0]),('Revision Test Supplier',12.0,18.0,18.0))
+  self.assertNotIn(14.0,[row['customer_line_total'] for row in rows])
+  self.assertEqual(successor['customer_total'],18.0)
+  self.assertEqual([(r['predecessor_quote_item_id'],r['successor_quote_item_id']) for r in lineage],[(source_item,successor_item)])
+  with closing(legacy_app.get_connection()) as c:
+   docs=[dict(row) for row in c.execute("select audience,file_path from quote_documents_manifest where quote_id=? and is_current=1",(successor['id'],))]
+  for doc in docs:
+   from plg_core.documents.paths import resolve_manifest_path
+   path=resolve_manifest_path(doc['file_path'])
+   text=subprocess.run(['pdftotext',str(path),'-'],check=True,capture_output=True,text=True).stdout
+   self.assertIn('$18.00', text)
+
+ def test_effective_snapshot_preserves_unchanged_line_and_replaces_only_target(self):
+  """Distinct needs retain unchanged lines while replacing one preferred line."""
+  first_need=self._first_need_id()
+  second=create_requested_need(self.job,job_asset_id=None,wording='Unchanged line')
+  second_item=create_manual_research_result(self.job,job_asset_id=None,requested_need_id=second['id'],
+      description='Unchanged line',supplier_name='Stable Supplier',supplier_unit_cost=15,
+      customer_unit_price_override=20,verification_status='VERIFIED')['items'][-1]
+  set_preferred_sourcing_option(self.job,second['id'],second_item['id'])
+  q,rev=self.setup_revision()
+  replacement=create_manual_research_result(self.job,job_asset_id=None,requested_need_id=first_need,
+      description='Replacement line',supplier_name='Replacement Supplier',supplier_unit_cost=12,
+      customer_unit_price_override=18,verification_status='VERIFIED', expected_revision_id=rev['id'], expected_version=self._rev_version(rev['id']))['items'][-1]
+  set_preferred_sourcing_option(self.job,first_need,replacement['id'],expected_revision_id=rev['id'],expected_version=self._rev_version(rev['id']))
+  with closing(legacy_app.get_connection()) as c: version=c.execute('select lock_version from work_revisions where id=?',(rev['id'],)).fetchone()[0]
+  successor=generate_quote_from_revision(rev['id'],expected_version=version)
+  with closing(legacy_app.get_connection()) as c:
+   rows=c.execute('select description,customer_line_total from quote_items where quote_id=? order by id',(successor['id'],)).fetchall()
+  self.assertEqual(sorted((r['description'],r['customer_line_total']) for r in rows), [('Replacement line',18.0),('Unchanged line',20.0)])
+  self.assertEqual(successor['customer_total'],38.0)
+
+ def test_new_requested_revision_line_is_snapshotted_once(self):
+  q,rev=self.setup_revision()
+  new_need=create_requested_need(self.job,job_asset_id=None,wording='New revision line', expected_revision_id=rev['id'], expected_version=self._rev_version(rev['id']))
+  new_item=create_manual_research_result(self.job,job_asset_id=None,requested_need_id=new_need['id'],
+      description='New revision line',supplier_name='New Supplier',supplier_unit_cost=5,
+      customer_unit_price_override=7,verification_status='VERIFIED', expected_revision_id=rev['id'], expected_version=self._rev_version(rev['id']))['items'][-1]
+  set_preferred_sourcing_option(self.job,new_need['id'],new_item['id'],expected_revision_id=rev['id'],expected_version=self._rev_version(rev['id']))
+  with closing(legacy_app.get_connection()) as c: version=c.execute('select lock_version from work_revisions where id=?',(rev['id'],)).fetchone()[0]
+  successor=generate_quote_from_revision(rev['id'],expected_version=version)
+  with closing(legacy_app.get_connection()) as c:
+   rows=c.execute("select description,customer_line_total from quote_items where quote_id=? and description='New revision line'",(successor['id'],)).fetchall()
+  self.assertEqual(len(rows),1)
+  self.assertEqual(rows[0]['customer_line_total'],7.0)
+
+ def test_explicit_preference_unresolved_fails_closed(self):
+  q,rev=self.setup_revision()
+  with closing(legacy_app.get_connection()) as c:
+   need=c.execute("select id from requested_needs where job_id=? order by id limit 1",(self.job,)).fetchone()[0]
+   item=c.execute("select basket_item_id from basket_item_need_links where requested_need_id=?",(need,)).fetchone()[0]
+   c.execute("update basket_item_need_links set preferred=1 where basket_item_id=? and requested_need_id=?",(item,need))
+   c.commit()
+  commit_work_revision(self.job, expected_revision_id=rev['id'], expected_version=rev['lock_version'])
+  with closing(legacy_app.get_connection()) as c:
+   c.execute("update basket_items set supplier_name='No Longer Matching', requested_description='No Longer Matching' where basket_id=(select id from baskets where job_id=? and status='COMMITTED') and selected=1",(self.job,)); c.commit()
+  with self.assertRaises(Exception):
+   generate_quote_from_revision(rev['id'],expected_version=rev['lock_version'])
+  with closing(legacy_app.get_connection()) as c:
+   self.assertEqual(tuple(c.execute('select status,is_current from quotes where id=?',(q['id'],)).fetchone()),('REVISION_REQUIRED',1))
+   self.assertEqual(c.execute('select count(*) from quotes where work_revision_id=?',(rev['id'],)).fetchone()[0],0)
+
+ def test_explicit_preference_ambiguous_fails_closed(self):
+  q,rev=self.setup_revision()
+  # Add an identical candidate, then deliberately leave both links preferred
+  # to model conflicting preference state from concurrent/legacy data.
+  with closing(legacy_app.get_connection()) as c:
+   need=c.execute("select id from requested_needs where job_id=? order by id limit 1",(self.job,)).fetchone()[0]
+  item=create_manual_research_result(self.job,job_asset_id=None,requested_need_id=need,
+      description='Stage part',supplier_name='Stage Supplier',supplier_unit_cost=10,
+      verification_status='VERIFIED',expected_revision_id=rev['id'],expected_version=self._rev_version(rev['id']))['items'][-1]
+  with closing(legacy_app.get_connection()) as c:
+   c.execute("update basket_item_need_links set preferred=1 where basket_item_id=? and requested_need_id=?",(item['id'],need))
+   c.commit()
+  set_preferred_sourcing_option(self.job,need,item['id'],expected_revision_id=rev['id'],expected_version=self._rev_version(rev['id']))
+  version=self._rev_version(rev['id'])
+  # Both candidates are selected and committed; explicit preference must not
+  # silently fall back to emitting every candidate.  Depending on the
+  # repository's committed projection, this is either rejected as ambiguous
+  # or resolves to one effective line.
+  try:
+   out=generate_quote_from_revision(rev['id'],expected_version=version)
+  except Exception:
+   out=None
+  if out is None:
+   with closing(legacy_app.get_connection()) as c:
+    self.assertEqual(tuple(c.execute('select status,is_current from quotes where id=?',(q['id'],)).fetchone()),('REVISION_REQUIRED',1))
+    self.assertEqual(c.execute('select count(*) from quotes where work_revision_id=?',(rev['id'],)).fetchone()[0],0)
+  else:
+   with closing(legacy_app.get_connection()) as c:
+    self.assertLessEqual(c.execute('select count(*) from quote_items where quote_id=?',(out['id'],)).fetchone()[0],1)
+
+ def _first_need_id(self):
+  with closing(legacy_app.get_connection()) as c:
+   return c.execute("select id from requested_needs where job_id=? order by id limit 1",(self.job,)).fetchone()[0]
+
+ def _rev_version(self, revision_id):
+  with closing(legacy_app.get_connection()) as c:
+   return c.execute('select lock_version from work_revisions where id=?',(revision_id,)).fetchone()[0]

@@ -110,6 +110,9 @@ def start_quote_revision(quote_id: int, reason: str) -> dict:
 
 
 def _revision_quote_rows(connection, revision_id: int):
+    revision = connection.execute(
+        "SELECT job_id FROM work_revisions WHERE id=?", (revision_id,)
+    ).fetchone()
     rows = connection.execute(
         """
         SELECT
@@ -148,7 +151,57 @@ def _revision_quote_rows(connection, revision_id: int):
             status_code=400,
             detail="Revised work has no selected quoted parts.",
         )
-    return rows
+    # The editable workspace defines the effective commercial set as the
+    # explicitly preferred source for each requested need.  A revision may
+    # retain historical/cloned candidates alongside a replacement; snapshot
+    # only the preferred candidate when that authority exists, while
+    # preserving legacy revisions that have no explicit preference.
+    preferred = {}
+    if revision is not None:
+        for item in connection.execute(
+            """
+            SELECT l.requested_need_id, i.requested_description, i.supplier_name,
+                   i.supplier_unit_cost, i.customer_unit_price_override, i.quantity
+            FROM basket_item_need_links l
+            JOIN basket_items i ON i.id=l.basket_item_id
+            JOIN baskets b ON b.id=i.basket_id
+            WHERE b.id=(SELECT id FROM baskets WHERE job_id=? AND status='COMMITTED' ORDER BY id DESC LIMIT 1)
+              AND l.preferred=1
+            """,
+            (int(revision["job_id"]),),
+        ).fetchall():
+            preferred.setdefault(int(item["requested_need_id"]), []).append(item)
+
+    def matches(candidate, selected):
+        def norm(value):
+            return str(value or "").strip().lower()
+        return (
+            norm(candidate["description"]) == norm(selected["requested_description"])
+            and norm(candidate["supplier_name"]) == norm(selected["supplier_name"])
+            and round(float(candidate["supplier_unit_cost"] or 0), 2)
+                == round(float(selected["supplier_unit_cost"] or 0), 2)
+            and round(float(candidate["customer_unit_price_override"] or 0), 2)
+                == round(float(selected["customer_unit_price_override"] or 0), 2)
+            and int(candidate["quantity"] or 1) == int(selected["quantity"] or 1)
+        )
+
+    effective = []
+    grouped = {}
+    for row in rows:
+        grouped.setdefault(row["primary_requested_need_id"], []).append(row)
+    for need_id, candidates in grouped.items():
+        selections = preferred.get(int(need_id), []) if need_id is not None else []
+        if selections:
+            chosen = [row for row in candidates if any(matches(row, item) for item in selections)]
+            if len(chosen) != 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail="The preferred revision source could not be resolved safely. Refresh and review the revision.",
+                )
+            effective.extend(chosen)
+        else:
+            effective.extend(candidates)
+    return effective
 
 
 def _totals(connection, revision, rows):
@@ -435,7 +488,7 @@ def generate_quote_from_revision(
             "SELECT id FROM quote_items WHERE quote_id=?", (quote_id,)
         )
         predecessor_items = connection.execute(
-            "SELECT id,part_id,origin_work_revision_item_id,quantity,description,"
+            "SELECT id,part_id,origin_work_revision_item_id,primary_requested_need_id,quantity,description,"
             "supplier_part_number,supplier_name "
             "FROM quote_items WHERE quote_id=?",
             (source_quote_id,),
@@ -454,6 +507,11 @@ def generate_quote_from_revision(
             int(row["source_revision_item_id"]): item_id
             for row, item_id in zip(rows, successor_item_ids)
             if row["source_revision_item_id"] is not None
+        }
+        successor_by_need = {
+            int(row["primary_requested_need_id"]): item_id
+            for row, item_id in zip(rows, successor_item_ids)
+            if row["primary_requested_need_id"] is not None
         }
         successor_by_signature = {
             (
@@ -482,12 +540,21 @@ def generate_quote_from_revision(
                 predecessor_source_items.get(predecessor["id"])
             ) or successor_by_part.get(predecessor["part_id"])
             if successor_item_id is None:
+                successor_item_id = successor_by_need.get(predecessor["primary_requested_need_id"])
+            if successor_item_id is None:
                 successor_item_id = successor_by_signature.get((
                     str(predecessor["description"] or "").strip().lower(),
                     str(predecessor["supplier_part_number"] or "").strip().lower(),
                     str(predecessor["supplier_name"] or "").strip().lower(),
                 ))
             if successor_item_id is not None:
+                duplicate = connection.execute(
+                    "SELECT 1 FROM quote_item_lineage WHERE predecessor_quote_item_id=? "
+                    "AND successor_quote_item_id=? LIMIT 1",
+                    (predecessor["id"], successor_item_id),
+                ).fetchone()
+                if duplicate is not None:
+                    continue
                 connection.execute(
                     """
                     INSERT INTO quote_item_lineage(
