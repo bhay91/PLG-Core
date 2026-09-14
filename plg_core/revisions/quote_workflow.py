@@ -342,6 +342,7 @@ def _draft_documents_healthy(quote_id: int) -> bool:
 
 def _activate_staged_successor(quote_id: int, source_quote_id: int, revision_id: int) -> dict:
     from plg_core.requests.service import archive_originating_requests_for_quote
+    from plg_core.currency.service import build_quote_currency_snapshot_from_revision, validate_quote_currency_snapshot
     with closing(get_connection()) as connection:
         connection.execute("BEGIN IMMEDIATE")
         source = connection.execute("SELECT * FROM quotes WHERE id=?", (source_quote_id,)).fetchone()
@@ -355,6 +356,13 @@ def _activate_staged_successor(quote_id: int, source_quote_id: int, revision_id:
             raise HTTPException(status_code=409, detail="The source quote is no longer current.")
         if str(revision["state"] or "").upper() != "COMMITTED":
             raise HTTPException(status_code=409, detail="The revision is not committed.")
+        try:
+            expected_snapshot = build_quote_currency_snapshot_from_revision(revision)
+            actual_snapshot = validate_quote_currency_snapshot(successor)
+            if actual_snapshot is None or any(actual_snapshot[key] != expected_snapshot[key] for key in ("currency_code", "display_currency_mode", "fx_rate", "fx_rate_source")):
+                raise ValueError("Successor currency snapshot does not match its revision.")
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail="Successor currency snapshot is incomplete or inconsistent.") from error
         if not _draft_documents_healthy(quote_id):
             raise HTTPException(status_code=409, detail="Successor Draft documents are incomplete.")
         connection.execute("UPDATE quotes SET status='SUPERSEDED',is_current=0,superseded_at=CURRENT_TIMESTAMP,supersession_reason=? WHERE id=? AND is_current=1", (revision["reason"], source_quote_id))
@@ -389,6 +397,14 @@ def generate_quote_from_revision(
         ).fetchone()
         if existing is not None:
             existing_id = int(existing["id"])
+            from plg_core.currency.service import build_quote_currency_snapshot_from_revision, validate_quote_currency_snapshot
+            try:
+                expected_snapshot = build_quote_currency_snapshot_from_revision(revision)
+                actual_snapshot = validate_quote_currency_snapshot(existing)
+                if actual_snapshot is None or any(actual_snapshot[key] != expected_snapshot[key] for key in ("currency_code", "display_currency_mode", "fx_rate", "fx_rate_source")):
+                    raise ValueError("Successor currency snapshot does not match its revision.")
+            except ValueError as error:
+                raise HTTPException(status_code=409, detail="Successor currency snapshot is incomplete or inconsistent.") from error
             if not _draft_documents_healthy(existing_id):
                 _write_documents(existing_id)
             if not _draft_documents_healthy(existing_id):
@@ -431,6 +447,11 @@ def generate_quote_from_revision(
             "SELECT * FROM work_revisions WHERE id=? AND state='COMMITTED'",
             (revision_id,),
         ).fetchone()
+        from plg_core.currency.service import build_quote_currency_snapshot_from_revision
+        try:
+            successor_snapshot = build_quote_currency_snapshot_from_revision(revision)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail="Committed revision currency snapshot is incomplete or invalid.") from error
         source = _quote(connection, source_quote_id)
         _ensure_no_downstream_history(connection, job_id)
         rows = _revision_quote_rows(connection, revision_id)
@@ -463,8 +484,9 @@ def generate_quote_from_revision(
                 bill_to_address_snapshot,bill_to_phone_snapshot,bill_to_email_snapshot,
                 customer_name_snapshot,company_snapshot,phone_snapshot,
                 email_snapshot,address_snapshot,manufacturer_snapshot,
-                machine_snapshot,pin_serial_snapshot
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                machine_snapshot,pin_serial_snapshot,currency_code,
+                display_currency_mode,fx_rate,fx_rate_source,fx_locked_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
             """,
             (
                 quote_number, job_id, date.today().isoformat(), "DRAFT",
@@ -478,7 +500,9 @@ def generate_quote_from_revision(
                 source["bill_to_phone_snapshot"], source["bill_to_email_snapshot"],
                 job["customer"], job["company"], job["phone"], job["email"],
                 job["address"], job["manufacturer"], job["machine"],
-                job["pin_serial"],
+                job["pin_serial"], successor_snapshot["currency_code"],
+                successor_snapshot["display_currency_mode"], successor_snapshot["fx_rate"],
+                successor_snapshot["fx_rate_source"],
             ),
         )
         quote_id = int(cursor.lastrowid)

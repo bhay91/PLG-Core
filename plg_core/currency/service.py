@@ -69,6 +69,21 @@ def build_revision_currency_defaults_from_quote(quote, *, connection=None) -> di
     return {key: snapshot[key] for key in ("display_currency_mode", "fx_rate", "fx_rate_source")}
 
 
+def build_quote_currency_snapshot_from_revision(revision, *, locked_at=None) -> dict:
+    """Build a complete successor snapshot from committed revision FX only."""
+    if any(revision[field] is None for field in ("display_currency_mode", "fx_rate", "fx_rate_source")):
+        raise ValueError("Work Revision currency snapshot is incomplete.")
+    try:
+        return build_quote_currency_snapshot(
+            display_mode=revision["display_currency_mode"],
+            jmd_rate=revision["fx_rate"],
+            rate_source=revision["fx_rate_source"],
+            locked_at=locked_at,
+        )
+    except ValueError:
+        raise ValueError("Work Revision currency snapshot is invalid.") from None
+
+
 def canonical_rate(value) -> str:
     if isinstance(value, bool) or value is None:
         raise ValueError("JMD exchange rate must be a finite positive number.")
