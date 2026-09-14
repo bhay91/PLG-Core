@@ -329,6 +329,8 @@ def build_workspace(connection, job_id):
         "decision_notes": "",
         "revision": None,
         "revision_create_allowed": False,
+        "revision_generation_allowed": False,
+        "previous_quote": None,
     }
     if current_quote is not None:
         decision_statuses = {"APPROVED", "REJECTED", "REVISION_REQUIRED"}
@@ -345,16 +347,30 @@ def build_workspace(connection, job_id):
             quote_panel["decision_allowed"] = True
         pending_revision = connection.execute(
             "SELECT * FROM work_revisions WHERE based_on_quote_id=? AND "
-            "(state='EDITABLE' OR (state='COMMITTED' AND NOT EXISTS "
-            "(SELECT 1 FROM quotes generated WHERE generated.work_revision_id=work_revisions.id))) LIMIT 1",
+            "(state='EDITABLE' OR (state='COMMITTED' AND (NOT EXISTS "
+            "(SELECT 1 FROM quotes generated WHERE generated.work_revision_id=work_revisions.id) "
+            "OR EXISTS (SELECT 1 FROM quotes generated WHERE generated.work_revision_id=work_revisions.id "
+            "AND generated.status='DRAFT' AND generated.is_current=0)))) "
+            "ORDER BY id DESC LIMIT 1",
             (current_quote["id"],),
         ).fetchone()
         if pending_revision is not None:
             revision_projection = dict(pending_revision)
+            successor = connection.execute(
+                "SELECT id,quote_number,status,is_current FROM quotes "
+                "WHERE work_revision_id=? ORDER BY id DESC LIMIT 1",
+                (pending_revision["id"],),
+            ).fetchone()
             revision_projection.update({
                 "exists": True,
                 "editable": str(pending_revision["state"] or "").upper() == "EDITABLE",
                 "based_on_quote_number": current_quote.get("quote_number"),
+                "successor_id": successor["id"] if successor else None,
+                "successor_quote_number": successor["quote_number"] if successor else None,
+                "successor_status": successor["status"] if successor else None,
+                "successor_is_current": bool(successor and successor["is_current"]),
+                "staged": bool(successor and str(successor["status"] or "").upper() == "DRAFT" and not successor["is_current"]),
+                "generation_recoverable": True,
             })
             quote_panel["revision"] = revision_projection
         quote_panel["revision_create_allowed"] = (
@@ -371,10 +387,13 @@ def build_workspace(connection, job_id):
             v2_workflow.update({"stage": "Quote Rejected", "next_action": "Quote rejected", "next_url": "#quote", "action_method": "GET"})
         elif quote_status == "REVISION_REQUIRED":
             v2_workflow = dict(v2_workflow)
-            v2_workflow.update({"stage": "Revision in Progress" if pending_revision is not None else "Revision Needed",
-                                "next_action": "Edit quote revision" if pending_revision is not None else "Create quote revision",
-                                "next_url": "/jobs/%s/center?tab=job" % job_id if pending_revision is not None else "#quote",
-                                "action_method": "GET"})
+            if pending_revision is None:
+                v2_workflow.update({"stage": "Revision Needed", "next_action": "Create quote revision", "next_url": "#quote", "action_method": "GET"})
+            elif str(pending_revision["state"] or "").upper() == "EDITABLE":
+                v2_workflow.update({"stage": "Revision in Progress", "next_action": "Generate revised Draft", "next_url": "/jobs/%s/center/quote/revision/generate" % job_id, "action_method": "POST"})
+            else:
+                staged = bool(quote_panel["revision"].get("staged"))
+                v2_workflow.update({"stage": "Revised Draft pending completion" if staged else "Revision Pending Completion", "next_action": "Complete revised Draft", "next_url": "/jobs/%s/center/quote/revision/generate" % job_id, "action_method": "POST"})
         elif quote_status == "SENT" and quote_panel.get("decision_allowed"):
             v2_workflow = dict(v2_workflow)
             v2_workflow.update({"stage": "Awaiting Customer"})
@@ -400,6 +419,37 @@ def build_workspace(connection, job_id):
             {"label": "View customer PDF", "url": document_url("CUSTOMER", f"/quotes/{current_quote['id']}/customer/pdf")},
             {"label": "View internal PDF", "url": document_url("INTERNAL", f"/quotes/{current_quote['id']}/internal/pdf")},
         ]
+        quote_panel["revision_generation_allowed"] = bool(
+            pending_revision is not None
+            and quote_status == "REVISION_REQUIRED"
+            and quote_panel["revision"].get("generation_recoverable")
+        )
+        quote_panel["previous_quote"] = None
+        predecessor_id = current_quote.get("supersedes_quote_id")
+        if predecessor_id:
+            predecessor = connection.execute(
+                "SELECT * FROM quotes WHERE id=?", (predecessor_id,)
+            ).fetchone()
+            if predecessor:
+                predecessor = dict(predecessor)
+                predecessor_manifest = {
+                    row["audience"]: dict(row) for row in connection.execute(
+                        "SELECT audience,sha256 FROM quote_documents_manifest "
+                        "WHERE quote_id=? AND document_kind='QUOTE' AND is_current=1",
+                        (predecessor_id,),
+                    ).fetchall()
+                }
+                predecessor["documents"] = [
+                    {"label": "View customer PDF", "url": f"/quotes/{predecessor_id}/customer/pdf"},
+                    {"label": "View internal PDF", "url": f"/quotes/{predecessor_id}/internal/pdf"},
+                ]
+                # Use the predecessor's own manifest hashes for cache-busting.
+                for document in predecessor["documents"]:
+                    audience = "CUSTOMER" if "customer" in document["label"].lower() else "INTERNAL"
+                    digest = str((predecessor_manifest.get(audience) or {}).get("sha256") or "")
+                    if digest:
+                        document["url"] += f"?v={digest[:12]}"
+                quote_panel["previous_quote"] = predecessor
     else:
         quote_panel["items"] = []
         quote_panel["documents"] = []

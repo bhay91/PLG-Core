@@ -96,7 +96,7 @@ class RevisionFoundationTests(unittest.TestCase):
                 self.assertEqual(c.execute(f'select count(*) from {t}').fetchone()[0],before[t])
     def test_revision_workspace_link_preserves_lineage(self):
         q=self.make_quote(); asyncio.run(self.post(f'/jobs/{self.job}/center/quote/decision',{'decision':'REVISION_REQUIRED','csrf_token':'token'})); asyncio.run(self.post(f'/jobs/{self.job}/center/quote/revision',{'csrf_token':'token'}))
-        ws=self.render(); rev=ws['quote_panel']['revision']; self.assertEqual(rev['based_on_quote_id'],q['id']); self.assertEqual(ws['quote_panel']['quote']['is_current'],1); self.assertEqual(ws['quote_panel']['quote']['status'],'REVISION_REQUIRED'); self.assertEqual(ws['v2_workflow']['next_action'],'Edit quote revision'); self.assertIn('/center?tab=job',self._html()); self.assertNotIn('Open advanced quote workflow',self._html())
+        ws=self.render(); rev=ws['quote_panel']['revision']; self.assertEqual(rev['based_on_quote_id'],q['id']); self.assertEqual(ws['quote_panel']['quote']['is_current'],1); self.assertEqual(ws['quote_panel']['quote']['status'],'REVISION_REQUIRED'); self.assertEqual(ws['v2_workflow']['next_action'],'Generate revised Draft'); self.assertIn('/center/quote/revision/generate',self._html()); self.assertNotIn('Open advanced quote workflow',self._html())
     def test_governed_revision_edit_routes_and_read_only_context(self):
         from plg_core.basket import routes
         governed = {

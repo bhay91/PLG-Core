@@ -335,6 +335,73 @@ async def center_create_quote_revision(request: Request, job_id: int):
     return RedirectResponse(f"/jobs/{job_id}/center?tab=quote", status_code=303)
 
 
+@router.post("/jobs/{job_id}/center/quote/revision/generate")
+async def center_generate_revised_quote(request: Request, job_id: int):
+    """Generate the current governed revision through the authoritative workflow."""
+    from plg_core.web_security import require_valid_csrf
+    from plg_core.revisions.quote_workflow import generate_quote_from_revision
+
+    form = await request.form()
+    require_valid_csrf(request, form.get("csrf_token", ""))
+    try:
+        expected_revision_id = int(form["expected_revision_id"])
+        expected_version = int(form["expected_version"])
+    except (KeyError, TypeError, ValueError):
+        return RedirectResponse(
+            f"/jobs/{job_id}/center?tab=job&message={quote_plus('This quote revision has changed. Refresh before generating the revised Draft.')}",
+            status_code=303,
+        )
+    try:
+        with closing(get_connection()) as connection:
+            current_quote = connection.execute(
+                "SELECT * FROM quotes WHERE job_id=? AND is_current=1 ORDER BY id DESC LIMIT 1",
+                (job_id,),
+            ).fetchone()
+            revision = connection.execute(
+                "SELECT * FROM work_revisions WHERE id=? AND job_id=?",
+                (expected_revision_id, job_id),
+            ).fetchone()
+            if current_quote is None or str(current_quote["status"] or "").upper() != "REVISION_REQUIRED":
+                completed = connection.execute(
+                    "SELECT * FROM quotes WHERE job_id=? AND work_revision_id=? "
+                    "AND supersedes_quote_id=? AND is_current=1 ORDER BY id DESC LIMIT 1",
+                    (job_id, expected_revision_id, revision["based_on_quote_id"] if revision else 0),
+                ).fetchone() if revision is not None else None
+                if completed is not None and current_quote is not None and int(completed["id"]) == int(current_quote["id"]):
+                    return RedirectResponse(
+                        f"/jobs/{job_id}/center?tab=quote&message={quote_plus('Revised Draft already created.')}",
+                        status_code=303,
+                    )
+                raise HTTPException(409, "This quote's workflow has changed. Refresh before generating the revised Draft.")
+            if revision is None or int(revision["based_on_quote_id"] or 0) != int(current_quote["id"]):
+                raise HTTPException(409, "This quote revision has changed. Refresh before generating the revised Draft.")
+            if str(revision["state"] or "").upper() not in {"EDITABLE", "COMMITTED"}:
+                raise HTTPException(409, "This quote revision is no longer available for generation.")
+        generate_quote_from_revision(expected_revision_id, expected_version=expected_version)
+    except HTTPException as exc:
+        detail = str(exc.detail)
+        lowered = detail.lower()
+        if "ready" in lowered or "supplier" in lowered or "selected" in lowered or "required" in lowered:
+            detail = detail
+        elif "revision" in lowered or "version" in lowered or "changed" in lowered:
+            detail = "This quote revision has changed. Refresh before generating the revised Draft."
+        elif exc.status_code in {400, 409, 423}:
+            detail = "This quote revision could not be completed. Refresh and review its current state."
+        return RedirectResponse(
+            f"/jobs/{job_id}/center?tab=quote&message={quote_plus(detail)}",
+            status_code=303,
+        )
+    except Exception:
+        return RedirectResponse(
+            f"/jobs/{job_id}/center?tab=quote&message={quote_plus('The revised Draft could not be completed. Refresh and try again.')}",
+            status_code=303,
+        )
+    return RedirectResponse(
+        f"/jobs/{job_id}/center?tab=quote&message={quote_plus('Revised Draft created.')}",
+        status_code=303,
+    )
+
+
 @router.post("/jobs/{job_id}/center/quote/decision")
 async def center_quote_decision(request: Request, job_id: int):
     """Record a customer decision through the authoritative lifecycle service."""
