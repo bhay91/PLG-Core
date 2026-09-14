@@ -3274,3 +3274,16 @@ def _migration_0054_currency_a1_foundation(connection: sqlite3.Connection) -> No
 
 
 MIGRATIONS.append(("0054_currency_a1_foundation", _migration_0054_currency_a1_foundation))
+
+def _migration_0055_invoice_currency_snapshot(connection: sqlite3.Connection) -> None:
+    """Add immutable presentation snapshot fields for modern invoices."""
+    _add_columns(connection, "invoices", {
+        "currency_code": "TEXT NULL",
+        "display_currency_mode": "TEXT NULL",
+        "fx_rate": "TEXT NULL",
+        "fx_rate_source": "TEXT NULL",
+        "fx_locked_at": "TEXT NULL",
+    })
+
+
+MIGRATIONS.append(("0055_invoice_currency_snapshot", _migration_0055_invoice_currency_snapshot))

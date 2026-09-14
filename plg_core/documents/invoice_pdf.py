@@ -75,6 +75,16 @@ def money(value) -> str:
 
 def jmd_reference(invoice) -> tuple[Decimal, Decimal] | None:
     """Return the saved presentation-only rate and JMD total, if enabled."""
+    if _value(invoice, "currency_code", None) is not None:
+        from plg_core.currency.service import build_invoice_currency_presentation
+        try:
+            presentation = build_invoice_currency_presentation(invoice)
+            if presentation.get("jmd_total") and presentation.get("rate"):
+                rate = Decimal(str(presentation["rate"]))
+                total = Decimal(str(presentation["jmd_total"].replace("J$", "").replace(",", "")))
+                return rate, total
+        except ValueError:
+            return None
     if not int(_value(invoice, "show_jmd_total", 0) or 0):
         return None
     try:
@@ -781,6 +791,11 @@ def _totals_box(invoice, internal: bool):
             rate, jmd_total = jmd
             rows.append(["JMD Total", f"J${jmd_total:,.2f}"])
             rows.append(["Rate", f"1 USD = {_decimal_text(rate)} JMD"])
+            if internal and _value(invoice, "currency_code", None) is not None:
+                from plg_core.currency.service import build_invoice_currency_presentation
+                presentation = build_invoice_currency_presentation(invoice)
+                rows.append(["FX source", presentation.get("rate_source_label") or ""])
+                rows.append(["FX locked", str(presentation.get("locked_at") or "")])
 
         credit_applied = float(
             _value(invoice, "credit_applied", 0) or 0

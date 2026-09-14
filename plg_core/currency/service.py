@@ -155,6 +155,22 @@ def build_quote_currency_presentation(quote, *, usd_amount=None) -> dict:
     }
 
 
+def build_invoice_currency_presentation(invoice, *, usd_amount=None) -> dict:
+    """Prepare invoice display data, preserving legacy JMD fields."""
+    amount = _quote_field(invoice, "customer_total") if usd_amount is None else usd_amount
+    fields = tuple(_quote_field(invoice, field) for field in QUOTE_SNAPSHOT_FIELDS)
+    if all(value is None for value in fields):
+        if int(_quote_field(invoice, "show_jmd_total") or 0):
+            rate = canonical_rate(_quote_field(invoice, "jmd_exchange_rate"))
+            jmd = format_currency_amount(convert_usd_to_jmd(amount, rate), "J$")
+            return {"is_legacy": True, "mode": "JMD", "usd_total": format_currency_amount(amount),
+                    "jmd_total": jmd, "rate": rate, "rate_display": f"US$1 = J${format_currency_amount(rate, '').strip('$')}",
+                    "rate_source_label": None, "locked_at": None}
+        return build_quote_currency_presentation({"customer_total": amount})
+    snapshot = validate_quote_currency_snapshot(invoice)
+    return build_quote_currency_presentation({**dict(invoice), "customer_total": amount})
+
+
 def get_currency_settings(connection: sqlite3.Connection | None = None) -> dict:
     owned = connection is None
     connection = connection or get_connection()

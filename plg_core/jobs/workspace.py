@@ -12,7 +12,7 @@ from plg_core.pricing import pricing_assessment
 from plg_core.revisions.service import validate_selected_items_for_quote
 from plg_core.sources.service import list_sources_for_context, validate_source_url
 from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
-from plg_core.currency.service import build_quote_currency_presentation, get_currency_settings, resolve_basket_currency_config
+from plg_core.currency.service import build_invoice_currency_presentation, build_quote_currency_presentation, get_currency_settings, resolve_basket_currency_config
 
 
 def _safe_url(value):
@@ -342,6 +342,12 @@ def build_workspace(connection, job_id):
         "previous_quote": None,
         "currency_error": None,
     }
+    invoice_presentation = None
+    if snapshot.get("invoice"):
+        try:
+            invoice_presentation = build_invoice_currency_presentation(snapshot["invoice"])
+        except ValueError:
+            invoice_presentation = {"error": "Invoice currency presentation unavailable."}
     if current_quote is not None:
         try:
             quote_panel["currency_presentation"] = build_quote_currency_presentation(current_quote)
@@ -490,7 +496,7 @@ def build_workspace(connection, job_id):
         except Exception:
             revision["currency_error"] = "Revision currency snapshot is invalid."
             revision["currency_reset_allowed"] = False
-    return dict(job=job, operational_snapshot=snapshot, v2_workflow=v2_workflow, basket=basket, revision=revision,
+    return dict(job=job, operational_snapshot=snapshot, invoice_presentation=invoice_presentation, v2_workflow=v2_workflow, basket=basket, revision=revision,
                 currency_settings=currency_settings, currency_config=currency_config, currency_error=currency_error,
                 work_editable=editable, parts=parts, line_items=line_items, other_options=unassigned,
                 selected_options=selected, outstanding=outstanding, primary_action=action,

@@ -3859,10 +3859,15 @@ def list_invoices(request: Request, view: str = "all"):
 @app.post("/quotes/{quote_id}/convert-to-invoice")
 def convert_quote_to_invoice(quote_id: int):
     from plg_core.audit import write_audit
+    from plg_core.currency.service import is_legacy_quote_currency_snapshot, validate_quote_currency_snapshot
 
     with closing(get_connection()) as connection:
         connection.execute("BEGIN IMMEDIATE")
         quote, quote_items = load_quote(connection, quote_id)
+        try:
+            currency_snapshot = validate_quote_currency_snapshot(quote)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail="Quote currency snapshot is invalid or incomplete.") from error
         existing = connection.execute("SELECT id FROM invoices WHERE quote_id=?",(quote_id,)).fetchone()
         if existing is not None:
             return RedirectResponse(url=f"/invoices/{existing['id']}/documents",status_code=303)
@@ -3912,7 +3917,9 @@ def convert_quote_to_invoice(quote_id: int):
         credit_applied = min(available_credit,customer_total)
         balance_due = max(customer_total-credit_applied,0.0)
         status = "PAID" if balance_due == 0 else ("PARTIAL" if credit_applied > 0 else "UNPAID")
-        cur = connection.execute("""INSERT INTO invoices (invoice_number,quote_id,job_id,invoice_date,status,parts_subtotal,shipping_total,service_charge,sourcing_fee,customer_total,supplier_total,profit_total,credit_applied,balance_due,bill_to_kind,bill_to_name_snapshot,bill_to_company_snapshot,bill_to_address_snapshot,bill_to_phone_snapshot,bill_to_email_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_number,quote_id,quote["job_id"],invoice_date,status,float(quote["parts_subtotal"] or 0),float(quote["shipping_total"] or 0),float(quote["service_charge"] or 0),float(quote["sourcing_fee"] or 0),customer_total,float(quote["supplier_total"] or 0),float(quote["profit_total"] or 0),credit_applied,balance_due,quote["bill_to_kind"],quote["bill_to_name_snapshot"],quote["bill_to_company_snapshot"],quote["bill_to_address_snapshot"],quote["bill_to_phone_snapshot"],quote["bill_to_email_snapshot"]))
+        modern_invoice_values = currency_snapshot or {}
+        invoice_fx_locked_at = connection.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0] if currency_snapshot else None
+        cur = connection.execute("""INSERT INTO invoices (invoice_number,quote_id,job_id,invoice_date,status,parts_subtotal,shipping_total,service_charge,sourcing_fee,customer_total,supplier_total,profit_total,credit_applied,balance_due,bill_to_kind,bill_to_name_snapshot,bill_to_company_snapshot,bill_to_address_snapshot,bill_to_phone_snapshot,bill_to_email_snapshot,currency_code,display_currency_mode,fx_rate,fx_rate_source,fx_locked_at,show_jmd_total,jmd_exchange_rate) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_number,quote_id,quote["job_id"],invoice_date,status,float(quote["parts_subtotal"] or 0),float(quote["shipping_total"] or 0),float(quote["service_charge"] or 0),float(quote["sourcing_fee"] or 0),customer_total,float(quote["supplier_total"] or 0),float(quote["profit_total"] or 0),credit_applied,balance_due,quote["bill_to_kind"],quote["bill_to_name_snapshot"],quote["bill_to_company_snapshot"],quote["bill_to_address_snapshot"],quote["bill_to_phone_snapshot"],quote["bill_to_email_snapshot"],modern_invoice_values.get("currency_code"),modern_invoice_values.get("display_currency_mode"),modern_invoice_values.get("fx_rate"),modern_invoice_values.get("fx_rate_source"),invoice_fx_locked_at,int(modern_invoice_values.get("display_currency_mode") in {"JMD","USD_JMD"}),modern_invoice_values.get("fx_rate")))
         invoice_id = cur.lastrowid
         for item in quote_items:
             connection.execute("""INSERT INTO invoice_items (invoice_id,quote_item_id,part_id,source_id,job_asset_id,primary_requested_need_id,quantity,description,internal_part_number,supplier_name,source_type,brand,supplier_part_number,supplier_unit_cost,customer_unit_price,supplier_line_total,customer_line_total,line_profit,asset_name_snapshot,asset_type_snapshot,asset_manufacturer_snapshot,asset_model_snapshot,asset_year_snapshot,asset_serial_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_id,item["id"],item["part_id"],item["source_id"],item["job_asset_id"],item["primary_requested_need_id"],item["quantity"],item["description"],item["internal_part_number"] or "",item["supplier_name"],item["source_type"],item["brand"],item["supplier_part_number"],item["supplier_unit_cost"],item["customer_unit_price"],item["supplier_line_total"],item["customer_line_total"],item["line_profit"],item["asset_name_snapshot"],item["asset_type_snapshot"],item["asset_manufacturer_snapshot"],item["asset_model_snapshot"],item["asset_year_snapshot"],item["asset_serial_snapshot"]))
