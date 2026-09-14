@@ -3232,3 +3232,45 @@ def _migration_0053_preferred_sourcing_option(connection: sqlite3.Connection) ->
 
 
 MIGRATIONS.append(("0053_preferred_sourcing_option", _migration_0053_preferred_sourcing_option))
+
+
+def _migration_0054_currency_a1_foundation(connection: sqlite3.Connection) -> None:
+    """Add USD/JMD preparation, revision, and quote snapshot metadata."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS currency_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            base_currency TEXT NOT NULL DEFAULT 'USD' CHECK (base_currency = 'USD'),
+            jmd_working_rate TEXT NOT NULL DEFAULT '160',
+            default_display_mode TEXT NOT NULL DEFAULT 'USD'
+                CHECK (default_display_mode IN ('USD','JMD','USD_JMD')),
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO currency_settings (id, base_currency, jmd_working_rate, default_display_mode)
+        VALUES (1, 'USD', '160', 'USD')
+        ON CONFLICT(id) DO NOTHING
+        """
+    )
+    _add_columns(connection, "baskets", {
+        "customer_display_currency_mode_override": "TEXT NULL",
+        "customer_jmd_fx_rate_override": "TEXT NULL",
+    })
+    _add_columns(connection, "work_revisions", {
+        "display_currency_mode": "TEXT NULL",
+        "fx_rate": "TEXT NULL",
+        "fx_rate_source": "TEXT NULL",
+    })
+    _add_columns(connection, "quotes", {
+        "currency_code": "TEXT NULL",
+        "display_currency_mode": "TEXT NULL",
+        "fx_rate": "TEXT NULL",
+        "fx_rate_source": "TEXT NULL",
+        "fx_locked_at": "TEXT NULL",
+    })
+
+
+MIGRATIONS.append(("0054_currency_a1_foundation", _migration_0054_currency_a1_foundation))

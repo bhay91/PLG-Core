@@ -1,0 +1,127 @@
+from __future__ import annotations
+
+from contextlib import closing
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import sqlite3
+
+from legacy_app import get_connection
+from plg_core.audit import write_audit
+
+DISPLAY_MODES = ("USD", "JMD", "USD_JMD")
+RATE_SOURCES = ("BUSINESS_WORKING_RATE", "MANUAL_OVERRIDE")
+UNSET = object()
+
+
+def canonical_rate(value) -> str:
+    if isinstance(value, bool) or value is None:
+        raise ValueError("JMD exchange rate must be a finite positive number.")
+    try:
+        rate = Decimal(str(value).strip())
+    except (InvalidOperation, ValueError, AttributeError):
+        raise ValueError("JMD exchange rate must be a finite positive number.") from None
+    if not rate.is_finite() or rate <= 0:
+        raise ValueError("JMD exchange rate must be a finite positive number.")
+    return format(rate.normalize(), "f")
+
+
+def _mode(value: str) -> str:
+    mode = str(value or "").strip().upper()
+    if mode not in DISPLAY_MODES:
+        raise ValueError("Invalid currency display mode.")
+    return mode
+
+
+def convert_usd_to_jmd(amount, rate) -> Decimal:
+    try:
+        if amount is None or isinstance(amount, bool):
+            raise ValueError
+        usd = amount if isinstance(amount, Decimal) else Decimal(str(amount))
+        if not usd.is_finite():
+            raise ValueError
+        jmd_rate = Decimal(canonical_rate(rate))
+    except (InvalidOperation, ValueError):
+        raise ValueError("USD amount and JMD rate must be valid numbers.") from None
+    return (usd * jmd_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def get_currency_settings(connection: sqlite3.Connection | None = None) -> dict:
+    owned = connection is None
+    connection = connection or get_connection()
+    try:
+        row = connection.execute("SELECT * FROM currency_settings WHERE id=1").fetchone()
+        if row is None:
+            raise RuntimeError("Currency settings are not initialized.")
+        return {
+            "id": int(row["id"]), "base_currency": row["base_currency"],
+            "jmd_working_rate": canonical_rate(row["jmd_working_rate"]),
+            "default_display_mode": _mode(row["default_display_mode"]),
+            "updated_at": row["updated_at"],
+        }
+    finally:
+        if owned:
+            connection.close()
+
+
+def update_currency_settings(*, jmd_working_rate=None, default_display_mode=None,
+                             actor: str = "system", connection: sqlite3.Connection | None = None) -> dict:
+    owned = connection is None
+    connection = connection or get_connection()
+    try:
+        current = get_currency_settings(connection)
+        rate = canonical_rate(jmd_working_rate) if jmd_working_rate is not None else current["jmd_working_rate"]
+        mode = _mode(default_display_mode) if default_display_mode is not None else current["default_display_mode"]
+        if rate != current["jmd_working_rate"] or mode != current["default_display_mode"]:
+            connection.execute("UPDATE currency_settings SET jmd_working_rate=?,default_display_mode=?,updated_at=CURRENT_TIMESTAMP WHERE id=1", (rate, mode))
+            write_audit(connection, action="CURRENCY_SETTINGS_UPDATED", entity_type="CURRENCY_SETTINGS", entity_id=1,
+                        summary="Updated USD/JMD currency settings",
+                        metadata={"previous": current, "new": {"jmd_working_rate": rate, "default_display_mode": mode}}, actor=actor)
+            if owned:
+                connection.commit()
+        return get_currency_settings(connection)
+    finally:
+        if owned:
+            connection.close()
+
+
+def resolve_basket_currency_config(connection: sqlite3.Connection, basket_id: int) -> dict:
+    basket = connection.execute("SELECT customer_display_currency_mode_override,customer_jmd_fx_rate_override FROM baskets WHERE id=?", (basket_id,)).fetchone()
+    if basket is None:
+        raise ValueError("Basket not found.")
+    settings = get_currency_settings(connection)
+    mode_override = basket["customer_display_currency_mode_override"]
+    rate_override = basket["customer_jmd_fx_rate_override"]
+    mode = _mode(mode_override) if mode_override is not None else settings["default_display_mode"]
+    rate = canonical_rate(rate_override) if rate_override is not None else settings["jmd_working_rate"]
+    return {"display_currency_mode": mode, "jmd_working_rate": rate,
+            "fx_rate_source": "MANUAL_OVERRIDE" if rate_override else "BUSINESS_WORKING_RATE",
+            "display_mode_overridden": bool(mode_override), "rate_overridden": bool(rate_override)}
+
+
+def set_basket_currency_overrides(connection: sqlite3.Connection, basket_id: int, *,
+                                  display_mode=UNSET, jmd_rate=UNSET) -> dict:
+    if display_mode is None or jmd_rate is None:
+        raise ValueError("Use the explicit clear helper to remove an override.")
+    current = connection.execute(
+        "SELECT customer_display_currency_mode_override,customer_jmd_fx_rate_override FROM baskets WHERE id=?",
+        (basket_id,),
+    ).fetchone()
+    if current is None:
+        raise ValueError("Basket not found.")
+    mode = current["customer_display_currency_mode_override"] if display_mode is UNSET else _mode(display_mode)
+    rate = current["customer_jmd_fx_rate_override"] if jmd_rate is UNSET else canonical_rate(jmd_rate)
+    connection.execute("UPDATE baskets SET customer_display_currency_mode_override=?,customer_jmd_fx_rate_override=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (mode, rate, basket_id))
+    return resolve_basket_currency_config(connection, basket_id)
+
+
+def clear_basket_currency_overrides(connection: sqlite3.Connection, basket_id: int, *,
+                                    display_mode=False, jmd_rate=False) -> dict:
+    fields = []
+    values = []
+    if display_mode:
+        fields.append("customer_display_currency_mode_override=?"); values.append(None)
+    if jmd_rate:
+        fields.append("customer_jmd_fx_rate_override=?"); values.append(None)
+    if fields:
+        values.append(basket_id)
+        connection.execute(f"UPDATE baskets SET {','.join(fields)},updated_at=CURRENT_TIMESTAMP WHERE id=?", values)
+    return resolve_basket_currency_config(connection, basket_id)

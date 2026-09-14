@@ -13,6 +13,32 @@ from plg_core.basket.models import BasketItemCreate, BasketItemUpdate
 from plg_core.pricing import effective_customer_unit_price
 
 
+def get_customer_display_fx(connection: sqlite3.Connection, basket_id: int):
+    """Resolve customer-display currency overrides without changing source currency."""
+    from plg_core.currency.service import resolve_basket_currency_config
+    return resolve_basket_currency_config(connection, basket_id)
+
+
+def set_customer_display_fx(connection: sqlite3.Connection, basket_id: int, *,
+                             display_mode=None, jmd_rate=None):
+    from plg_core.currency.service import UNSET, set_basket_currency_overrides
+    if display_mode is None:
+        display_mode = UNSET
+    if jmd_rate is None:
+        jmd_rate = UNSET
+    return set_basket_currency_overrides(
+        connection, basket_id, display_mode=display_mode, jmd_rate=jmd_rate
+    )
+
+
+def clear_customer_display_fx(connection: sqlite3.Connection, basket_id: int, *,
+                               display_mode=False, jmd_rate=False):
+    from plg_core.currency.service import clear_basket_currency_overrides
+    return clear_basket_currency_overrides(
+        connection, basket_id, display_mode=display_mode, jmd_rate=jmd_rate
+    )
+
+
 def _next_internal_part_number(connection: sqlite3.Connection) -> str:
     row = connection.execute(
         "UPDATE internal_part_number_sequence SET last_number=last_number+1 "
