@@ -2012,3 +2012,6 @@ body.erp-app a.button.danger-outline.erp-header-delete:hover {
 :root[data-theme="dark"] .erp-app .cc-shell :is(.job-command-next,.job-workflow-strip,.job-ops-movement) :is(h1,h2,h3,h4,h5,h6,strong,span,p,small) {
   color: var(--text-primary) !important;
 }
+
+.erp-age.erp-age-warn { color: #d99700; font-weight: 600; }
+.erp-age.erp-age-critical { color: #e5484d; font-weight: 700; }

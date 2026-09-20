@@ -61,7 +61,10 @@
       <div class="erp-panel-list">
         {% for item in jobs %}
         <a class="erp-need-row" href="{{ '/jobs/' ~ item.job_id ~ '/center' if item.job_id else (item.dashboard_url or item.url) }}">
-          <span><small>{{ item.job_number }} · {{ item.customer }}</small><strong>{{ item.need_label }}</strong><em>{% if item.context_detail %}{{ item.context_detail }} · {% endif %}{% if item.age_days is not none %}{{ item.age_days }}d in queue{% else %}Current work{% endif %}</em></span>
+          <span><small>{{ item.job_number }} · {{ item.customer }}</small><strong>{{ item.need_label }}</strong><em class="erp-age{% if item.age_days is not none and item.age_days >= 21 %} erp-age-critical{% elif item.age_days is not none and item.age_days >= 7 %} erp-age-warn{% endif %}">
+            {% if item.context_detail %}{{ item.context_detail }} · {% endif %}
+            {% if item.age_days is not none %}{{ item.age_days }}d in queue{% else %}Current work{% endif %}
+          </em></span>
           <span class="erp-status erp-status-purple">{{ item.category|replace('_',' ')|title }}</span>
         </a>
         {% else %}<p class="erp-empty">No sourcing or customer-decision work needs attention.</p>{% endfor %}
