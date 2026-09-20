@@ -56,7 +56,7 @@ class FirefoxChatGPTBridgeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.playwright = sync_playwright().start()
         cls.addClassCleanup(cls.playwright.stop)
-        cls.browser = cls.playwright.chromium.launch(executable_path="/usr/bin/chromium-browser", headless=True)
+        cls.browser = cls.playwright.chromium.launch(headless=True)
         cls.addClassCleanup(cls.browser.close)
 
     def page(self):

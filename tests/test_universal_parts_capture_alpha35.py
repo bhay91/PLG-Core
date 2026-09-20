@@ -28,7 +28,7 @@ class UniversalCaptureParserAlpha35Tests(unittest.TestCase):
     def setUpClass(cls):
         cls.playwright = sync_playwright().start()
         cls.browser = cls.playwright.chromium.launch(
-            executable_path="/usr/bin/chromium-browser", headless=True,
+            headless=True,
             args=["--no-sandbox", "--disable-dev-shm-usage"],
         )
 
