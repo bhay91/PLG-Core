@@ -73,3 +73,6 @@ plg.db
 # Local deployment safety copies
 *.pre-online-deploy
 .playwright-mcp/
+
+# Local working seed DB (regenerated from data/plg_core.db on demand)
+data/plg_core.db
