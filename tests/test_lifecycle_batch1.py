@@ -664,7 +664,7 @@ class LifecycleBatch1Tests(unittest.TestCase):
             response = legacy_app.job_detail(request, job_id)
 
         self.assertEqual(response.status_code, 303)
-        self.assertEqual(response.headers["location"], f"/jobs/{job_id}/basket?view=advanced")
+        self.assertEqual(response.headers["location"], f"/jobs/{job_id}/center")
 
         template = (ROOT / "templates" / "job_detail.html").read_text()
         self.assertIn("{{ operational_snapshot.workflow.stage }}", template)

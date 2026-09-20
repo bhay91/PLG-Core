@@ -98,7 +98,7 @@ class NavigationRouteConsolidationBatch3Tests(unittest.TestCase):
         basket = basket_page(self.request(f"/jobs/{job_id}/basket"), job_id)
         self.assertEqual(detail.status_code, 303)
         self.assertEqual(basket.status_code, 303)
-        self.assertEqual(detail.headers["location"], f"/jobs/{job_id}/basket?view=advanced")
+        self.assertEqual(detail.headers["location"], f"/jobs/{job_id}/center")
         self.assertEqual(basket.headers["location"], f"/jobs/{job_id}/basket?view=advanced")
 
 

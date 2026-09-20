@@ -50,7 +50,7 @@ class CanonicalJobWorkflowBatch1Tests(unittest.TestCase):
     def test_legacy_job_urls_redirect_to_advanced(self):
         detail = legacy_app.job_detail(self.request(f"/jobs/{self.job_id}"), self.job_id)
         self.assertEqual(detail.status_code, 303)
-        self.assertEqual(detail.headers["location"], f"/jobs/{self.job_id}/basket?view=advanced")
+        self.assertEqual(detail.headers["location"], f"/jobs/{self.job_id}/center")
 
         basket = basket_page(self.request(f"/jobs/{self.job_id}/basket"), self.job_id)
         self.assertEqual(basket.status_code, 303)
@@ -80,7 +80,7 @@ class CanonicalJobWorkflowBatch1Tests(unittest.TestCase):
     def test_normal_links_target_canonical_command_center(self):
         jobs = (Path(__file__).parents[1] / "templates" / "jobs.html").read_text()
         quote = (Path(__file__).parents[1] / "templates" / "quote_documents.html").read_text()
-        self.assertIn('/jobs/{{ job.id }}/basket?view=advanced', jobs)
+        self.assertIn('/jobs/{{ job.id }}/center', jobs)
         self.assertIn('/jobs/{{ quote.job_id }}/basket?view=advanced', quote)
 
     def test_representative_post_redirects_use_canonical_page(self):
