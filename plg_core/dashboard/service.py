@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Any
 
 from plg_core.jobs.engine import JobEngine
@@ -49,6 +50,11 @@ def _money(value: Any) -> str:
     return f"${float(value or 0):,.2f}"
 
 
+def _today() -> date:
+    """Return today's date in the operator's local timezone."""
+    return datetime.now(ZoneInfo("America/New_York")).date()
+
+
 def _short_date(value: Any) -> str:
     text = str(value or "").strip()
     if not text:
@@ -68,7 +74,7 @@ def get_work_queue_data(
     limit: int = 500,
 ) -> dict[str, Any]:
     """Build the operator queue from authoritative PPS records without writes."""
-    report_date = today or date.today()
+    report_date = today or _today()
     valid_keys = {key for key, _label in WORK_QUEUE_CATEGORIES}
     selected_category = str(category or "ALL").strip().upper()
     if selected_category not in valid_keys | {"ALL", "FOLLOW_UP"}:
@@ -851,7 +857,7 @@ def get_financial_snapshot(
 ) -> sqlite3.Row:
     """Return cash received and outstanding invoice metrics."""
 
-    report_date = today or date.today()
+    report_date = today or _today()
     week_start = report_date - timedelta(
         days=report_date.weekday()
     )
@@ -917,7 +923,7 @@ def get_follow_up_data(
 ) -> dict[str, Any]:
     """Return records currently waiting on a customer, supplier, payment, or delivery."""
 
-    report_date = today or date.today()
+    report_date = today or _today()
     safe_limit = max(1, min(int(limit), 500))
 
     selected_view = str(view or "ALL").strip().upper()
@@ -1417,7 +1423,7 @@ def get_operator_dashboard_data(
     section_limit: int = 5,
 ) -> dict[str, Any]:
     """Build the read-only daily operator dashboard from existing PPS state."""
-    report_date = today or date.today()
+    report_date = today or _today()
     safe_limit = max(1, min(int(section_limit), 10))
 
     proposal_rows = connection.execute(
