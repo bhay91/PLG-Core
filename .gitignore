@@ -76,3 +76,15 @@ plg.db
 
 # Local working seed DB (regenerated from data/plg_core.db on demand)
 data/plg_core.db
+
+# Archived / dead code (untracked, kept on disk)
+PLG-Core-1.0-Alpha-1-Scaffold/
+PLG-Core-Basket-Foundation-Commit-0002.2-Fix/
+PLG-Commit-0010-Machine-Registry/
+PLG-Commit-0010-Machine-Registry.patch
+debug/
+debug_quote.txt
+preview.webp
+Screenshot 2026-08-02 at 14-22-18 Debugging - Runtime _ this-firefox.png
+PLG-Core.code-workspace
+static/basket.css
