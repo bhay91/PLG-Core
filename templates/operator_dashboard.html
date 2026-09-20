@@ -37,6 +37,13 @@
     <section class="erp-panel erp-action-panel">
       <header class="erp-panel-heading"><div><p class="erp-overline">PRIORITY FLOW</p><h2>Action Queue</h2></div><a href="/work-queue">View all</a></header>
       <div class="erp-panel-list">
+        {% for item in accounting_exceptions[:2] %}
+        <a class="erp-action-row" href="{{ item.url }}">
+          <span class="erp-status-dot erp-tone-danger"></span>
+          <span><small>Cost Exception · {{ item.job_number }}</small><strong>{{ item.customer }}</strong><em>{{ item.state }}</em></span>
+          <b>→</b>
+        </a>
+        {% endfor %}
         {% set action_groups = [('Payment',payments,'payment'),('Ordering',ordering,'ordering'),('Receiving',receiving,'receiving'),('Delivery',delivery,'delivery')] %}
         {% for label, rows, tone in action_groups %}{% for item in rows[:2] %}
         <a class="erp-action-row" href="{{ item.url }}">
@@ -45,7 +52,7 @@
           <b>→</b>
         </a>
         {% endfor %}{% endfor %}
-        {% if not payments and not ordering and not receiving and not delivery %}<p class="erp-empty">No payment or fulfillment work currently needs attention.</p>{% endif %}
+        {% if not payments and not ordering and not receiving and not delivery and not accounting_exceptions %}<p class="erp-empty">No payment or fulfillment work currently needs attention.</p>{% endif %}
       </div>
     </section>
 
