@@ -109,6 +109,8 @@ class Batch3B1Tests(unittest.TestCase):
         from starlette.responses import Response
         class _BytesFileResponse(Response):
             def __init__(self, path, **kwargs):
+                kwargs.pop("filename", None)
+                kwargs.pop("content_disposition_type", None)
                 super().__init__(content=Path(path).read_bytes(), **kwargs)
         patches = [patch.object(legacy_app, "FileResponse", _BytesFileResponse)]
         # The legacy router may have been imported into the application with
@@ -147,8 +149,8 @@ class Batch3B1Tests(unittest.TestCase):
 
     def _issue_with_temp_documents(self):
         from plg_core.documents import quote_pdf
-        patcher = patch.object(quote_pdf, "DOCUMENT_ROOT", Path(self.temp.name) / "documents")
-        env = patch.dict(os.environ, {"PPS_DOCUMENT_ROOT": str(Path(self.temp.name) / "documents")})
+        patcher = patch.object(quote_pdf, "DOCUMENT_ROOT", Path(self.temp.name) / "Customers")
+        env = patch.dict(os.environ, {"PPS_DOCUMENT_ROOT": str(Path(self.temp.name))})
         patcher.start(); env.start()
         self.addCleanup(patcher.stop); self.addCleanup(env.stop)
         self._generate()
