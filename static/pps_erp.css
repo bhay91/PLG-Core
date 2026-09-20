@@ -390,8 +390,27 @@
   .erp-table, .erp-table tbody, .erp-table tr, .erp-table td { display: block; width: 100%; }
   .erp-table tbody { display: grid; gap: 7px; padding: 8px; }
   .erp-table tr { display: grid; grid-template-columns: 1fr; padding: 10px; border: 1px solid var(--erp-border); border-radius: 8px; background: var(--erp-panel-2); }
-  .erp-table td { display: grid; grid-template-columns: 82px minmax(0,1fr); align-items: center; min-height: 29px; height: auto; max-width: none; padding: 3px 4px !important; border: 0 !important; }
-  .erp-table td::before { content: attr(data-label); color: var(--erp-muted); font-size: 8px; font-weight: 700; line-height: 1.25; letter-spacing: .03em; text-transform: uppercase; }
+  .erp-table td {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 2px;
+    min-height: 29px;
+    height: auto;
+    max-width: none;
+    padding: 5px 4px !important;
+    border: 0 !important;
+  }
+  .erp-table td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--erp-muted);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+  }
   .erp-table td:nth-child(3), .erp-table td:nth-child(6) { grid-column: auto; }
   .erp-action-row, .erp-need-row { padding: 9px 10px; }
 }
