@@ -72,3 +72,4 @@ plg.db
 
 # Local deployment safety copies
 *.pre-online-deploy
+.playwright-mcp/
