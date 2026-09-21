@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% from "_manufacturer_logo.html" import manufacturer_logo %}
+{% block title %}Quote Review · {{ quote.quote_number }}{% endblock %}
+
+{% block content %}
+<div class="quote-review-shell erp-commercial-detail">
+  <section class="quote-review-heading">
+    <div>
+      <p class="eyebrow">CUSTOMER QUOTE</p>
+      <div class="quote-review-title-row">
+        <h1>{{ quote.quote_number }}</h1>
+        <span class="quote-status-badge quote-status-{{ quote.status|lower }}">{{ quote.status or "DRAFT" }}</span>
+      </div>
+      <p class="quote-review-context">
+        <span>Job {{ quote.job_number }}</span>
+        {% if quote.manufacturer or quote.machine %}<span>{{ manufacturer_logo(quote.manufacturer, true) }} {{ quote.machine }}</span>{% endif %}
+        {% if quote.pin_serial %}<span>PIN / VIN / Serial {{ quote.pin_serial }}</span>{% endif %}
+      </p>
+      {% if quote.supersedes_quote_number %}<p class="quote-review-subtitle">Revision of {{ quote.supersedes_quote_number }}.</p>{% endif %}
+      {% if split_predecessor %}<p class="quote-review-subtitle">Split successor of {{ split_predecessor.quote_number }}.</p>{% endif %}
+    </div>
+    <div class="quote-review-heading-total">
+      <span>Customer Total</span>
+      <strong>${{ "%.2f"|format(quote.customer_total or 0) }}</strong>
+    </div>
+  </section>
+
+  <section class="panel quote-review-command">
+    <div class="quote-bill-to-summary">
+      <div>
+        <p class="eyebrow">BILL TO</p>
+        <strong>{{ quote.bill_to_name_snapshot or quote.customer or "Not provided" }}</strong>
+        {% if quote.bill_to_company_snapshot or quote.company %}<span>{{ quote.bill_to_company_snapshot or quote.company }}</span>{% endif %}
+        <span>{{ quote.bill_to_address_snapshot or quote.address or "Billing address not provided" }}</span>
+      </div>
+      {% if quote.status == 'DRAFT' %}
+      <details class="quote-bill-to-editor">
+        <summary class="button ghost small">Change Bill To</summary>
+        <form class="quote-decision-actions" method="post" action="/quotes/{{ quote.id }}/bill-to">
+          <label>Bill To<select name="bill_to_kind"><option value="CONTACT" {% if quote.bill_to_kind == 'CONTACT' %}selected{% endif %}>Contact</option><option value="COMPANY" {% if quote.bill_to_kind == 'COMPANY' %}selected{% endif %}>Company / account</option><option value="CUSTOM" {% if quote.bill_to_kind == 'CUSTOM' %}selected{% endif %}>Custom recipient</option></select></label>
+          <label>Recipient name<input name="bill_to_name" value="{{ quote.bill_to_name_snapshot or '' }}"></label>
+          <label>Company<input name="bill_to_company" value="{{ quote.bill_to_company_snapshot or '' }}"></label>
+          <label>Billing address<input name="bill_to_address" value="{{ quote.bill_to_address_snapshot or '' }}"></label>
+          <button class="button ghost" type="submit">Update Draft Bill To</button>
+        </form>
+      </details>
+      {% endif %}
+    </div>
+
+    <div class="quote-response-summary">
+      <div>
+        <p class="eyebrow">CUSTOMER RESPONSE</p>
+        {% if quote.status == "APPROVED" %}<strong>Customer approved</strong><span>Ready to create the invoice.</span>
+        {% elif quote.status == "REVISION_REQUIRED" %}<strong>Customer requested changes</strong><span>The issued quote remains preserved.</span>
+        {% elif quote.status == "REJECTED" %}<strong>Customer rejected this quote</strong><span>The decision remains preserved.</span>
+        {% elif quote.status == "SUPERSEDED" %}<strong>Historical superseded quote</strong><span>Open the Job for the current quote.</span>
+        {% elif quote.status == "DRAFT" %}<strong>Ready to send</strong><span>Review the items, total, and customer document.</span>
+        {% elif quote.status == "SENT" %}<strong>Awaiting customer response</strong><span>Record the response when received.</span>
+        {% else %}<strong>{{ quote.status|replace('_', ' ')|title }}</strong>{% endif %}
+      </div>
+      <div class="quote-primary-actions">
+        {% if invoice %}
+        <a class="button" href="/invoices/{{ invoice.id }}/documents">Open {{ invoice.invoice_number }}</a>
+        {% elif quote.status in ["APPROVED", "ACCEPTED", "CONFIRMED"] %}
+        <form method="post" action="/quotes/{{ quote.id }}/convert-to-invoice"><button class="button" type="submit">Create Invoice</button></form>
+        {% elif quote.status == "DRAFT" %}
+        <form method="post" action="/quotes/{{ quote.id }}/mark-sent"><button class="button" type="submit">Mark Quote as Sent</button></form>
+        {% elif quote.status == "SENT" %}
+        <form method="post" action="/quotes/{{ quote.id }}/decision"><input type="hidden" name="decision" value="APPROVED"><button class="button" type="submit">Record Customer Approval</button></form>
+        <form method="post" action="/quotes/{{ quote.id }}/decision"><input type="hidden" name="decision" value="REVISION_REQUIRED"><button class="button ghost" type="submit">Customer Requested Changes</button></form>
+        <form method="post" action="/quotes/{{ quote.id }}/decision"><input type="hidden" name="decision" value="REJECTED"><button class="button danger" type="submit">Reject Quote</button></form>
+        {% endif %}
+        <a class="button ghost" href="/jobs/{{ quote.job_id }}/basket?view=advanced">Back to Job</a>
+      </div>
+    </div>
+
+    {% if pending_revision and not invoice %}
+    <div class="quote-workflow-notice" role="status">
+      <strong>Changes are committed and ready for a revised quote.</strong>
+      <span>Generate the revised draft before recording a decision on this quote.</span>
+      <form method="post" action="/work-revisions/{{ pending_revision.id }}/generate-quote">
+        <input type="hidden" name="expected_version" value="{{ pending_revision.lock_version }}">
+        <button class="button" type="submit">Generate Revised Quote</button>
+      </form>
+      <details class="quote-workflow-override">
+        <summary>Override workflow lock</summary>
+        <p>Use only when the committed revision cannot be projected. This records an audit event and does not bypass invoice or accounting protections.</p>
+        <form method="post" action="/quotes/{{ quote.id }}/decision">
+          <label>Decision<select name="decision"><option value="APPROVED">Record Approval</option><option value="REVISION_REQUIRED">Request Changes</option><option value="REJECTED">Reject Quote</option></select></label>
+          <label>Reason<input name="override_reason" required placeholder="Why must this decision proceed now?"></label>
+          <button class="button ghost" type="submit">Record Override Decision</button>
+        </form>
+      </details>
+    </div>
+    {% endif %}
+
+    {% if not invoice and not pending_revision and quote.is_current and quote.status in ["DRAFT","SENT","REJECTED","REVISION_REQUIRED","APPROVED"] %}
+    <details class="quote-correction-details">
+      <summary>{% if quote.status == "DRAFT" %}Correct / Edit Draft{% else %}Revise Quote{% endif %}</summary>
+      <form method="post" action="/quotes/{{ quote.id }}/revise" onsubmit="return confirm('{% if quote.status == "DRAFT" %}Edit this unissued draft?{% else %}Create editable changes while preserving this quote?{% endif %}');">
+        <label>{% if quote.status == "DRAFT" %}Draft correction reason{% else %}Revision reason{% endif %}<input name="reason" required placeholder="What needs to change?"></label>
+        <button class="button ghost" type="submit">{% if quote.status == "DRAFT" %}Edit Draft{% else %}Revise Quote{% endif %}</button>
+      </form>
+    </details>
+    {% endif %}
+  </section>
+
+  {% if can_archive and not quote.is_archived %}<section class="quote-secondary-actions"><form method="post" action="/quotes/{{ quote.id }}/archive" data-archive-delete><button class="button danger-outline" type="submit">Delete</button></form></section>{% endif %}
+
+  <section class="panel quote-review-items">
+    <header class="quote-review-section-head"><div><p class="eyebrow">ITEMS QUOTED</p><h2>Parts included</h2></div><span class="quote-item-count">{{ items|length }} item{% if items|length != 1 %}s{% endif %}</span></header>
+    {% if items %}
+    <div class="quote-review-table-wrap">
+      <table class="quote-review-table">
+        <thead><tr><th>Qty</th><th>Item / Reference</th><th>Description</th><th>Customer Price</th><th>Line Total</th></tr></thead>
+        <tbody>
+          {% set ns = namespace(asset='') %}
+          {% for item in items %}
+          {% set asset_key = (item.asset_manufacturer_snapshot or '') ~ '|' ~ (item.asset_model_snapshot or '') ~ '|' ~ (item.asset_serial_snapshot or '') %}
+          {% if asset_key != ns.asset and (item.asset_manufacturer_snapshot or item.asset_model_snapshot or item.asset_serial_snapshot) %}
+          <tr class="quote-asset-group"><td colspan="5"><strong>{{ item.asset_year_snapshot }} {{ item.asset_manufacturer_snapshot }} {{ item.asset_model_snapshot }}</strong>{% if item.asset_serial_snapshot %}<small> · PIN / VIN / Serial: {{ item.asset_serial_snapshot }}</small>{% endif %}</td></tr>
+          {% set ns.asset = asset_key %}{% endif %}
+          <tr><td>{{ item.quantity }}</td><td><strong>{{ item.supplier_part_number or "—" }}</strong></td><td>{{ item.description }}</td><td>${{ "%.2f"|format(item.customer_unit_price or 0) }}</td><td><strong>${{ "%.2f"|format(item.customer_line_total or 0) }}</strong></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<div class="empty-state">No quote items were found.</div>{% endif %}
+  </section>
+
+  <section class="panel quote-review-total-card">
+    <div class="quote-total-breakdown">
+      <div><span>Parts</span><strong>${{ "%.2f"|format(quote.parts_subtotal or 0) }}</strong></div>
+      <div><span>Shipping</span><strong>${{ "%.2f"|format(quote.shipping_total or 0) }}</strong></div>
+      <div><span>Sourcing Fee</span><strong>${{ "%.2f"|format(quote.sourcing_fee or 0) }}</strong></div>
+      <div><span>Service Charge</span><strong>${{ "%.2f"|format(quote.service_charge or 0) }}</strong></div>
+    </div>
+    <div class="quote-total-main"><span>Customer Total</span><strong>${{ "%.2f"|format(quote.customer_total or 0) }}</strong></div>
+  </section>
+
+  <section class="panel quote-review-documents">
+    <header class="quote-review-section-head"><div><p class="eyebrow">DOCUMENTS</p><h2>Quote documents</h2></div></header>
+    <div class="quote-document-row quote-document-primary"><div><strong>Customer Quote</strong><p>The customer-facing copy with selling prices.</p></div><div class="quote-document-actions"><a class="button ghost" target="_blank" href="/quotes/{{ quote.id }}/customer/pdf">Open PDF</a><a class="button" href="/quotes/{{ quote.id }}/customer/pdf?download=1">Download</a></div></div>
+    <div class="quote-document-row quote-document-secondary"><div><strong>Internal Quote</strong><p>Supplier cost, pricing, and profit detail.</p></div><div class="quote-document-actions"><a class="button ghost" target="_blank" href="/quotes/{{ quote.id }}/internal/pdf">Open PDF</a><a class="button ghost" href="/quotes/{{ quote.id }}/internal/pdf?download=1">Download</a></div></div>
+  </section>
+
+  <details class="panel quote-review-history">
+    <summary>Quote History <span>{{ quote_events|length }} event{% if quote_events|length != 1 %}s{% endif %}</span></summary>
+    <div class="quote-history-content">
+      {% if quote_events %}{% for event in quote_events %}<div class="quote-document-row"><div><strong>{{ event.event_type|replace("_", " ")|title }}</strong><p>{{ event.notes or "Quote status updated." }}</p></div><div>{% if event.from_status or event.to_status %}<strong>{{ event.from_status or "—" }} → {{ event.to_status or "—" }}</strong>{% endif %}<p>{{ event.created_at or "" }}</p></div></div>{% endfor %}
+      {% else %}<p class="quote-compact-empty">No quote history yet.</p>{% endif %}
+    </div>
+  </details>
+
+  {% if not invoice and quote.status in ['SENT','REJECTED','REVISION_REQUIRED','APPROVED'] and quote.is_current and items|length > 1 %}
+  <details class="panel quote-review-advanced">
+    <summary>Advanced quote options</summary>
+    <div class="quote-history-content">
+      <h2>Split issued quote</h2><p>The original remains unchanged and becomes superseded.</p>
+      <form method="post" action="/quotes/{{ quote.id }}/split" onsubmit="return confirm('Create new numbered successor quotes and supersede this issued quote?');">
+        <label>Reason<input name="reason" required placeholder="Why is this quote being split?"></label>
+        <div class="quote-review-table-wrap"><table class="quote-review-table"><thead><tr><th>Part</th><th>Contact quote</th><th>Company quote</th></tr></thead><tbody>{% for item in items %}<tr><td>{{ item.description }}</td><td><input type="radio" name="line-{{ item.id }}" value="contact" onclick="this.form.querySelector('[data-contact=\'{{ item.id }}\']').disabled=false;this.form.querySelector('[data-company=\'{{ item.id }}\']').disabled=true" required><input type="hidden" data-contact="{{ item.id }}" name="contact_item_ids" value="{{ item.id }}" disabled></td><td><input type="radio" name="line-{{ item.id }}" value="company" onclick="this.form.querySelector('[data-company=\'{{ item.id }}\']').disabled=false;this.form.querySelector('[data-contact=\'{{ item.id }}\']').disabled=true"><input type="hidden" data-company="{{ item.id }}" name="company_item_ids" value="{{ item.id }}" disabled></td></tr>{% endfor %}</tbody></table></div>
+        <button class="button" type="submit">Create Split Successors</button>
+      </form>
+    </div>
+  </details>
+  {% endif %}
+
+  {% if split_successors %}<details class="panel quote-review-advanced"><summary>Successor quotes</summary><div class="quote-history-content">{% for successor in split_successors %}<div class="quote-document-row"><div><strong>{{ successor.quote_number }}</strong><p>{{ successor.bill_to_name_snapshot or successor.bill_to_company_snapshot }}</p></div><a class="button ghost small" href="/quotes/{{ successor.id }}/documents">Open · {{ successor.status }}</a></div>{% endfor %}</div></details>{% endif %}
+</div>
+<script>
+(() => {
+  const internalDocument = document.querySelector('.quote-document-secondary');
+  if (!internalDocument || !internalDocument.parentElement) return;
+  const disclosure = document.createElement('details');
+  disclosure.className = 'density-disclosure';
+  const summary = document.createElement('summary');
+  summary.innerHTML = '<span>Internal Financial Document</span><small>Cost and profitability detail</small>';
+  const body = document.createElement('div');
+  body.className = 'density-disclosure-body';
+  internalDocument.parentElement.insertBefore(disclosure, internalDocument);
+  disclosure.append(summary, body);
+  body.appendChild(internalDocument);
+})();
+</script>
+{% endblock %}

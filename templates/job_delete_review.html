@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Delete {{ job.job_number }} · Pinpoint Sourcing LLC{% endblock %}
+{% block content %}
+<section class="workspace-heading"><div><p class="eyebrow">JOB LIFECYCLE CONTROL</p><h1>Delete Job</h1><p>{{ job.job_number }} · {{ job.customer or "Customer not recorded" }}{% if job.manufacturer or job.machine %} · {{ job.manufacturer }} {{ job.machine }}{% endif %} · {{ job.status|replace('_',' ')|title }}</p></div><a class="button ghost" href="/jobs/{{ job.id }}/basket?view=advanced">Back to Job Command Center</a></section>
+
+<section class="panel erp-delete-review {% if not eligibility.can_permanently_delete %}is-protected{% endif %}">
+  {% if eligibility.can_permanently_delete %}
+  <p class="eyebrow">PERMANENT DELETE AVAILABLE</p>
+  <h2>This Job has no protected operational/accounting history</h2>
+  <p>Only this accidental empty Job shell will be permanently deleted. This action cannot be undone.</p>
+  <form class="erp-delete-confirmation" method="post" action="/jobs/{{ job.id }}/delete">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Deletion reason<input name="reason" required autocomplete="off"></label>
+    <label>Type <strong>{{ job.job_number }}</strong> to confirm<input name="confirmation" required autocomplete="off"></label>
+    <button class="button danger" type="submit">Permanently Delete Job</button>
+  </form>
+  {% else %}
+  <p class="eyebrow">PROTECTED PPS RECORD</p>
+  <h2>This Job cannot be permanently deleted</h2>
+  <p>Protected operational or accounting history must remain in PPS.</p>
+  <ul class="erp-delete-blockers">{% for blocker in eligibility.blockers %}<li>{{ blocker }}</li>{% endfor %}</ul>
+  <p>{{ eligibility.safe_alternative }}</p>
+  <div class="erp-delete-alternatives">
+    {% if not job.is_archived %}<form method="post" action="/jobs/{{ job.id }}/archive"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button" type="submit">Archive Job</button></form>{% endif %}
+    {% if job.status != 'CANCELLED' %}<form class="erp-delete-cancel" method="post" action="/jobs/{{ job.id }}/cancel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Cancellation reason<input name="reason" required></label><button class="button ghost" type="submit">Cancel Job</button></form>{% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

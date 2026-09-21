@@ -1,0 +1,10 @@
+{% macro manufacturer_logo(manufacturer, compact=false, show_text=true, logo_only=false) -%}
+  {% set brand = manufacturer_identity(manufacturer) %}
+  {% if logo_only %}
+    {% if brand.has_logo %}<img class="manufacturer-mark-image" src="{{ brand.logo_url }}" alt="{{ brand.canonical_name }} logo" loading="lazy">
+    {% else %}<span class="manufacturer-mark-fallback" aria-label="Manufacturer logo unavailable">◇</span>{% endif %}
+  {% elif manufacturer %}<span class="manufacturer-identity{% if compact %} is-compact{% endif %}">
+    <span class="manufacturer-logo-box">{% if brand.has_logo %}<img class="manufacturer-logo" src="{{ brand.logo_url }}" alt="{{ brand.canonical_name }} logo" loading="lazy">{% else %}<span class="manufacturer-mark-fallback" aria-label="Manufacturer logo unavailable">◇</span>{% endif %}</span>
+    {% if show_text %}<span class="manufacturer-name">{{ manufacturer }}</span>{% endif %}
+  </span>{% endif %}
+{%- endmacro %}

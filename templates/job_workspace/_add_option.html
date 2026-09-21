@@ -1,0 +1,13 @@
+<details id="add-option-{{ part.id }}"><summary>Add Option for {{ part.wording }}</summary>
+<form class="jcc-form" method="post" action="/jobs/{{ job.id }}/research-results/manual" data-jcc-form data-return="part-{{ part.id }}">
+{{ tokens() }}<input type="hidden" name="job_asset_id" value="{{ part.job_asset_id or '' }}"><input type="hidden" name="requested_need_id" value="{{ part.id }}">
+<label>Description<input name="description" value="{{ part.wording }}" required></label><label>Supplier<input name="supplier_name" autocomplete="organization"></label>
+<label>Part number<input name="supplier_part_number"></label><label>Cost ({{ basket.currency }})<input name="supplier_unit_cost" type="number" inputmode="decimal" min="0" step="0.01"></label>
+<label>Sell price<input name="customer_unit_price_override" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Optional exact price"></label><label>Availability<input name="availability" placeholder="In stock / Backorder / Unknown"></label>
+<label>Quantity<input name="quantity" type="number" inputmode="numeric" min="1" value="1" required></label>
+<input type="hidden" name="source_type" value="AFTERMARKET">
+<p class="jcc-muted">This is the offer quantity, not the customer's requested quantity. Saving does not select the option.</p>
+<details data-advanced><summary>Option Details / Research Details</summary><div class="jcc-form">
+<label>Part number<input name="manufacturer_part_number"></label><label>Supplier reference<input name="supplier_part_number"></label>
+<label>URL<input type="url" name="source_url" inputmode="url" placeholder="https://"></label><label>Evidence<textarea name="research_evidence"></textarea></label><label>Notes<textarea name="research_notes"></textarea></label>
+</div></details><button class="button" type="submit">Save Option</button></form></details>

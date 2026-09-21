@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% from "_manufacturer_logo.html" import manufacturer_logo %}
+{% block title %}Registry · Pinpoint Sourcing LLC{% endblock %}
+
+{% block content %}
+<div class="workspace-v2 erp-records-directory erp-assets-directory">
+
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">UNIVERSAL REGISTRY</p>
+      <h1>Registry</h1>
+      <p>Vehicles, machines, engines, marine equipment and components.</p>
+    </div>
+
+    <a class="button" href="/machines/new">
+      + Register Item
+    </a>
+  </section>
+
+  <section class="workspace-toolbar">
+    <label class="workspace-search">
+      <span aria-hidden="true">⌕</span>
+
+      <input
+        id="registry-search"
+        type="search"
+        placeholder="Search customer, machine, manufacturer, model or identifier..."
+      >
+    </label>
+
+    <nav class="workspace-tabs">
+      <a
+        class="{% if view == 'active' %}active{% endif %}"
+        href="/machines?view=active"
+      >
+        Active
+      </a>
+
+      <a
+        class="{% if view == 'inactive' %}active{% endif %}"
+        href="/machines?view=inactive"
+      >
+        Inactive
+      </a>
+
+      <a
+        class="{% if view == 'all' %}active{% endif %}"
+        href="/machines?view=all"
+      >
+        All
+      </a>
+    </nav>
+  </section>
+
+  {% if machines %}
+  <section class="workspace-row-list">
+
+    {% for machine in machines %}
+    {% set type = registry_types.get(
+      machine.registry_type or 'other',
+      registry_types['other']
+    ) %}
+
+    <article
+      class="workspace-row registry-workspace-row erp-directory-row"
+      data-search="
+        {{ machine.machine_number }}
+        {{ machine.name }}
+        {{ machine.manufacturer }}
+        {{ machine.model }}
+        {{ machine.year }}
+        {{ machine.vin_pin_serial }}
+        {{ machine.customer_name }}
+        {{ type.label }}
+      "
+    >
+      <div class="workspace-row-mark registry-mark">
+        {{ manufacturer_logo(machine.manufacturer, true, false, true) }}
+      </div>
+
+      <div class="workspace-row-identity">
+        <small>
+          {{ machine.machine_number }}
+          · {{ type.label }}
+        </small>
+
+        <h2>
+          {{ machine.name or machine.manufacturer ~ " " ~ machine.model }}
+        </h2>
+
+        <strong class="machine-identity-line">
+          <span>{{ machine.manufacturer }}</span>
+          <span>{{ machine.model }}</span>
+
+          {% if machine.year %}
+            <span>· {{ machine.year }}</span>
+          {% endif %}
+        </strong>
+
+        <p>
+          {% if machine.vin_pin_serial %}
+            {{ type.identifier_label }}:
+            {{ machine.vin_pin_serial }}
+          {% else %}
+            No identifier provided
+          {% endif %}
+        </p>
+      </div>
+
+      <div class="workspace-row-status">
+        <div class="workspace-owner-block">
+          <span>Customer</span>
+          <strong>{{ machine.customer_name }}</strong>
+        </div>
+
+        <div class="workspace-row-meta">
+          {{ machine.jobs_count or 0 }}
+          job{% if machine.jobs_count != 1 %}s{% endif %}
+        </div>
+      </div>
+
+      <div class="workspace-row-action workspace-action-panel erp-record-action">
+        <span>NEXT ACTION</span>
+        <strong>Open Registry Record</strong>
+
+        <a
+          class="workspace-btn workspace-btn-primary"
+          href="/machines/{{ machine.id }}"
+        >
+          Open Record
+        </a>
+
+        <div class="workspace-btn-row single-action">
+          <a
+            class="workspace-btn workspace-btn-secondary"
+            href="/machines/{{ machine.id }}/edit"
+          >
+            Edit Registry
+          </a>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+
+  </section>
+
+  <p id="no-registry-results" class="workspace-empty hidden">
+    No registry records match your search.
+  </p>
+  {% else %}
+  <div class="workspace-empty">
+    No registry records were found.
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+(() => {
+  const input = document.getElementById("registry-search");
+  const rows = [...document.querySelectorAll(".registry-workspace-row")];
+  const empty = document.getElementById("no-registry-results");
+
+  if (!input || !rows.length) return;
+
+  input.addEventListener("input", () => {
+    const query = input.value.trim().toLowerCase();
+    let visible = 0;
+
+    rows.forEach((row) => {
+      const match = row.dataset.search
+        .toLowerCase()
+        .includes(query);
+
+      row.hidden = !match;
+
+      if (match) visible += 1;
+    });
+
+    if (empty) {
+      empty.classList.toggle("hidden", visible !== 0);
+    }
+  });
+})();
+</script>
+{% endblock %}

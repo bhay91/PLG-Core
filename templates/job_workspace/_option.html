@@ -1,0 +1,42 @@
+<article class="jcc-option" data-option-id="{{ option.id }}">
+<h4>{{ option.supplier_name or 'Supplier not recorded' }}{% if option.selected %}<span class="jcc-badge">Selected</span>{% endif %}</h4>
+<p>{{ option.requested_description }}</p>{% if option.manufacturer_part_number or option.supplier_part_number %}<p class="jcc-reference">{{ option.manufacturer_part_number or option.supplier_part_number }}</p>{% endif %}
+{% if work_editable %}<form class="jcc-inline-price" method="post" action="/jobs/{{ job.id }}/basket/items/{{ option.id }}/update" data-jcc-form data-return="part-{{ part.id if part else 'other-items' }}">{{ tokens() }}
+<input type="hidden" name="markup_percent" value="{{ option.pricing.current_markup_percent }}"><input type="hidden" name="part_status" value="{{ option.part_status or '' }}">
+<label>Description<input name="requested_description" value="{{ option.requested_description or '' }}" readonly></label>
+<label>Supplier<input name="supplier_name" value="{{ option.supplier_name or '' }}" formaction=""></label>
+<label>Part #<input name="supplier_part_number" value="{{ option.supplier_part_number or option.manufacturer_part_number or '' }}"></label>
+<label>Cost<input name="supplier_unit_cost" type="number" inputmode="decimal" min="0" step="0.01" value="{{ option.supplier_unit_cost if option.supplier_unit_cost is not none else '' }}" required></label>
+<label>Sell<input name="customer_unit_price_override" type="number" inputmode="decimal" min="0" step="0.01" value="{{ option.pricing.current_unit_price }}" required></label>
+<label>Qty<input name="quantity" type="number" inputmode="numeric" min="1" step="1" value="{{ option.quantity }}" required></label>
+<label>Availability<input name="availability" value="{{ option.availability or '' }}"></label>
+<input type="hidden" name="manufacturer_part_number" value="{{ option.manufacturer_part_number or '' }}"><input type="hidden" name="alternate_part_number" value="{{ option.alternate_part_number or '' }}"><input type="hidden" name="confidence" value="{{ option.confidence if option.confidence is not none else '' }}"><button class="button" type="submit">Save</button></form>{% endif %}
+<dl class="jcc-metrics"><div><dt>Unit cost</dt><dd>{% if option.supplier_unit_cost is not none %}{{ option.currency }} {{ '%.2f'|format(option.supplier_unit_cost) }}{% else %}Not recorded{% endif %}</dd></div>
+<div><dt>Stock</dt><dd>{{ option.availability or 'Unknown' }}</dd></div>{% if option.lead_time %}<div><dt>Lead time</dt><dd>{{ option.lead_time }}</dd></div>{% endif %}
+<div><dt>Shipping</dt><dd>{% if option.source.shipping_total %}Shared charge: {{ option.currency }} {{ '%.2f'|format(option.source.shipping_total) }}{% else %}Shipping unknown{% endif %}</dd></div>
+<div><dt>Option quantity</dt><dd>{{ option.quantity }}</dd></div>{% if option.source_type %}<div><dt>Type</dt><dd>{{ option.source_type|replace('_',' ')|title }}</dd></div>{% endif %}</dl>
+{% if option.compatibility_warning %}<p class="jcc-warning">{{ option.compatibility_warning }}</p>{% endif %}
+{% if part %}{{ use_option(option, part) }}{% endif %}
+{% if work_editable and option.research_state == 'RESEARCH_RESULT' and not option.selected %}
+<details><summary>Edit Option</summary><form class="jcc-form" method="post" action="/jobs/{{ job.id }}/research-results/{{ option.id }}/supplier-quote" data-jcc-form data-return="{{ 'part-' ~ part.id if part else 'other-items' }}">
+{{ tokens() }}<input type="hidden" name="job_asset_id" value="{{ option.job_asset_id or '' }}">
+<label>Supplier<input name="supplier_name" value="{{ option.supplier_name or '' }}" required></label>
+<label>Unit cost ({{ option.currency }})<input type="number" name="supplier_unit_cost" inputmode="decimal" min="0" step="0.01" value="{{ option.supplier_unit_cost if option.supplier_unit_cost is not none else '' }}"></label>
+<label>Stock<input name="availability" value="{{ option.availability or '' }}"></label>
+<input type="hidden" name="supplier_part_number" value="{{ option.supplier_part_number or '' }}">
+<input type="hidden" name="source_url" value="{{ option.source_url or '' }}">
+<input type="hidden" name="evidence" value="{{ option.research_evidence or '' }}">
+<button class="button ghost" type="submit">Save Option</button></form></details>
+{% endif %}
+
+<details id="option-{{ part.id if part else 'other' }}-{{ option.id }}" data-advanced><summary>Option Details / Research Details</summary><div class="jcc-detail-body">
+{% if option.safe_url %}<a href="{{ option.safe_url }}" target="_blank" rel="noopener noreferrer">{{ option.safe_url }}</a>{% endif %}
+<p>Verification: {{ (option.verification_status or 'Not recorded')|replace('_',' ')|title }}</p>
+{% if option.verification_note %}<p class="jcc-notes">{{ option.verification_note }}</p>{% endif %}
+{% if option.research_evidence %}<p class="jcc-notes">Evidence: {{ option.research_evidence }}</p>{% endif %}
+{% if option.research_notes %}<p class="jcc-notes">{{ option.research_notes }}</p>{% endif %}
+{% if option.source %}<p>Source: {{ option.source.source_name }} · {{ option.source.trust_level }}</p>{% endif %}
+{% if option.research_session_id %}<p>Research reference {{ option.research_session_id }}</p>{% endif %}
+{% if option.shipping %}<p>Shipping provenance: {{ option.shipping.provenance or option.shipping.quality }}</p>{% endif %}
+<a class="button ghost" href="/jobs/{{ job.id }}/basket?view=advanced{% if option.job_asset_id %}&amp;asset_id={{ option.job_asset_id }}{% endif %}#{{ 'parts-ready' if option.selected else 'machine-workspace' }}">More tools</a>
+</div></details></article>

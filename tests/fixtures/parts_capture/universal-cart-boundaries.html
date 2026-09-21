@@ -1,0 +1,13 @@
+<!doctype html>
+<main aria-label="Shopping cart">
+  <h1>Your Cart</h1>
+  <div role="list" data-testid="cart-items">
+    <article class="cart-item" data-sku="ACTIVE-1"><a class="product-title" href="/product/active-1">Active Filter One</a><span class="price">$10.00</span><input aria-label="Quantity" value="2"></article>
+    <article class="cart-item" data-sku="ACTIVE-2"><a class="product-title" href="/product/active-2">Active Filter Two</a><span class="price">$20.00</span><select name="quantity"><option selected>3</option></select></article>
+  </div>
+</main>
+<section aria-label="Save for Later"><article class="cart-item" data-sku="SAVED-1"><a href="/product/saved">Saved Product</a><span class="price">$1.00</span></article></section>
+<section class="recommendations"><article class="cart-item" data-sku="REC-1"><a href="/product/rec">Recommended Product</a></article></section>
+<aside data-testid="sponsored-products"><article class="cart-item" data-sku="AD-1"><a href="/product/ad">Sponsored Product</a></article></aside>
+<section id="recently-viewed"><article class="cart-item" data-sku="RECENT-1"><a href="/product/recent">Recently Viewed Product</a></article></section>
+<section aria-label="Related products"><article class="cart-item" data-sku="RELATED-1"><a href="/product/related">Related Product</a></article></section>

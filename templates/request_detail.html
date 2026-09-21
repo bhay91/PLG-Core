@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}{{ record.request_number }} · Pinpoint Sourcing LLC{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/customer_requests.css">
+<link rel="stylesheet" href="/static/app_v2.css?v=visual-polish-v3">
+
+<section class="workspace-heading request-detail-heading">
+  <div>
+    <p class="eyebrow">CUSTOMER REQUEST</p>
+    <h1>{{ record.company_name or record.individual_name or record.phone or 'Waiting for contact information' }}</h1>
+    <p>{{ record.request_number }}</p>
+    <p>
+      <small>
+        Created: {{ record.created_at or '—' }}
+        · Last Updated: {{ record.updated_at or '—' }}
+      </small>
+    </p>
+  </div>
+  <div class="page-actions">
+    <a class="button ghost" href="/requests">Back to Inbox</a>
+    <a class="button" href="/requests/{{ record.id }}/edit">Edit Request</a>
+    <a class="button danger-outline erp-header-delete" href="/requests/{{ record.id }}/delete-review">Delete</a>
+  </div>
+</section>
+
+<section class="panel erp-intake-summary" aria-label="Request operator summary">
+  <div class="erp-identity-block"><span>Request</span><strong>{{ record.request_number }}</strong><small>{{ record.company_name or record.individual_name or record.phone or 'Customer identity requires review' }}</small></div>
+  <div><span>Requested Need</span><strong>{{ record.requested_parts or 'Requested Need not yet structured' }}</strong></div>
+  <div><span>Asset / Machine</span><strong>{% if machine %}{{ machine.year or '' }} {{ machine.manufacturer or '' }} {{ machine.model or machine.name or '' }}{% elif record.manufacturer or record.model %}{{ record.year or '' }} {{ record.manufacturer or '' }} {{ record.model or '' }}{% else %}No asset context recorded{% endif %}</strong><small>{{ (machine.vin_pin_serial if machine and machine.vin_pin_serial else record.identifier) or 'No identifier recorded' }}</small></div>
+  <div class="erp-review-state"><span>Review State</span><strong>{{ record.status }}</strong><small>{% if customer and machine %}Customer and Registry linked{% elif customer %}Customer linked · asset context pending or not required{% else %}Customer match requires operator review{% endif %}</small></div>
+  <div class="erp-next-action"><span>Next Action</span><strong>{% if job %}Open Job{% elif customer %}Review Registry and create Job{% else %}Review and link customer{% endif %}</strong><a class="button" href="{% if job %}/jobs/{{ job.id }}/basket?view=advanced{% else %}#next-steps{% endif %}">{% if job %}Open Job{% else %}Continue Review{% endif %}</a></div>
+</section>
+
+{% if not record.individual_name and not record.company_name or (machine or record.manufacturer or record.model) and not ((machine.vin_pin_serial if machine else '') or record.identifier) %}
+<section class="erp-missing-info" aria-label="Missing information"><strong>Information requiring review</strong><ul>{% if not record.individual_name and not record.company_name %}<li>Customer identity is not recorded.</li>{% endif %}{% if (machine or record.manufacturer or record.model) and not ((machine.vin_pin_serial if machine else '') or record.identifier) %}<li>Asset context exists, but no VIN / PIN / serial identifier is recorded.</li>{% endif %}</ul></section>
+{% endif %}
+
+<div class="request-detail-grid">
+  <section class="panel request-main-panel">
+    <div class="panel-heading request-panel-heading">
+      <div><p class="eyebrow">ORIGINAL REQUEST</p><h2>Original customer wording</h2><p class="muted-copy">Preserved exactly as received for comparison with the structured proposal.</p></div>
+      <span class="request-status status-{{ record.status|lower }}">{{ record.status }}</span>
+    </div>
+    <div class="request-message">{{ record.request_text or 'No message entered.' }}</div>
+  </section>
+
+  <section class="panel request-contact-panel">
+    <p class="eyebrow">CONTACT</p>
+    <h2>Quick Contact</h2>
+    <dl class="detail-list">
+      <dt>Individual</dt><dd>{{ record.individual_name or '—' }}</dd>
+      <dt>Company</dt><dd>{{ record.company_name or '—' }}</dd>
+      <dt>Phone</dt><dd>{{ record.phone or '—' }}</dd>
+      <dt>Email</dt><dd>{{ record.email or '—' }}</dd>
+      <dt>Location</dt><dd>{{ record.location or '—' }}</dd>
+      <dt>Reminder</dt><dd class="{% if record.reminder_date and record.reminder_date <= today and record.status != 'COMPLETED' %}reminder-due{% endif %}">{{ record.reminder_date or '—' }}</dd>
+    </dl>
+  </section>
+</div>
+
+<section class="panel request-files-panel">
+  <div class="panel-heading request-panel-heading">
+    <div><p class="eyebrow">FILES</p><h2>Photos / Screenshots</h2></div>
+    {% if attachments %}<span class="attachment-count">{{ attachments|length }} file{% if attachments|length != 1 %}s{% endif %}</span>{% endif %}
+  </div>
+  {% if attachments %}
+  <div class="attachment-list">
+    {% for file in attachments %}
+    <div class="attachment-row">
+      <a class="attachment-link" href="/requests/{{ record.id }}/attachments/{{ file.id }}">
+        <span class="attachment-icon" aria-hidden="true">▧</span><span>{{ file.original_filename }}</span>
+      </a>
+      {% if attachment_removable %}<form method="post" action="/requests/{{ record.id }}/attachments/{{ file.id }}/delete" onsubmit="return confirm('Delete this draft attachment?')">
+        <button class="link-button danger" type="submit">Delete</button>
+      </form>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}<p class="muted-copy">No files uploaded.</p>{% endif %}
+</section>
+
+<section class="panel job-ready-panel" id="next-steps">
+  <div class="panel-heading request-panel-heading">
+    <div><p class="eyebrow">NEXT STEPS</p><h2>Get Job Ready</h2><p class="muted-copy">Use the information once. PPS carries it through the customer, Registry, and Job.</p></div>
+  </div>
+
+  <form method="post" action="/requests/{{ record.id }}/prepare" class="job-ready-details">
+    <div class="two-column">
+      <label>What are we working on?
+        <select name="registry_type">
+          {% for value, label in registry_types.items() %}<option value="{{ value }}" {% if record.registry_type == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Year<input name="year" value="{{ record.year or '' }}"></label>
+    </div>
+    <div class="two-column">
+      <label>Manufacturer<input name="manufacturer" value="{{ record.manufacturer or '' }}" placeholder="CAT, Honda, Cummins..."></label>
+      <label>Model<input name="model" value="{{ record.model or '' }}" placeholder="420D, CR-V, N14..."></label>
+    </div>
+    <label>VIN / PIN / Serial<input name="identifier" value="{{ record.identifier or '' }}"></label>
+    <label>Parts Needed
+      <textarea name="requested_parts" rows="4" placeholder="Enter one requested part per line">{{ record.requested_parts or '' }}</textarea>
+    </label>
+    <div class="form-actions"><button class="button ghost" type="submit">Save Job Details</button></div>
+  </form>
+
+  <div class="job-ready-steps">
+    <article class="job-ready-step {% if customer %}complete{% endif %}">
+      <div class="step-number">1</div>
+      <div class="step-content">
+        <h3>Customer</h3>
+        {% if customer %}
+          <p class="step-success">✓ Linked: {{ customer.company or customer.name }}{% if customer.company and customer.name %} — {{ customer.name }}{% endif %}</p>
+          <a class="text-link" href="/customers/{{ customer.id }}">Open Customer</a>
+        {% else %}
+          <p>Create from the contact above, or link an existing customer.</p>
+          <div class="step-actions">
+            <form method="post" action="/requests/{{ record.id }}/customer/create"><button class="button" type="submit">Create Customer</button></form>
+            <form method="post" action="/requests/{{ record.id }}/customer/link" class="inline-link-form">
+              <select name="customer_id" required><option value="">Link existing...</option>{% for item in customers %}<option value="{{ item.id }}">{{ item.company or item.name }}{% if item.company and item.name %} — {{ item.name }}{% endif %}</option>{% endfor %}</select>
+              <button class="button ghost" type="submit">Link</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+    </article>
+
+    <article class="job-ready-step {% if machine %}complete{% endif %}">
+      <div class="step-number">2</div>
+      <div class="step-content">
+        <h3>Registry</h3>
+        {% if machine %}
+          <p class="step-success">✓ Linked: {{ machine.manufacturer }} {{ machine.model or machine.name }}{% if machine.vin_pin_serial %} — {{ machine.vin_pin_serial }}{% endif %}</p>
+          <a class="text-link" href="/machines/{{ machine.id }}">Open Registry Item</a>
+        {% elif not customer %}
+          <p class="step-muted">Create or link the customer first.</p>
+        {% else %}
+          <p>Register the item above, or link one already saved for this customer.</p>
+          <div class="step-actions">
+            <form method="post" action="/requests/{{ record.id }}/registry/create"><button class="button" type="submit">Register Item</button></form>
+            {% if machines %}
+            <form method="post" action="/requests/{{ record.id }}/registry/link" class="inline-link-form">
+              <select name="machine_id" required><option value="">Link existing...</option>{% for item in machines %}<option value="{{ item.id }}">{{ item.manufacturer }} {{ item.model or item.name }}{% if item.vin_pin_serial %} — {{ item.vin_pin_serial }}{% endif %}</option>{% endfor %}</select>
+              <button class="button ghost" type="submit">Link</button>
+            </form>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    </article>
+
+    <article class="job-ready-step {% if job %}complete{% endif %}">
+      <div class="step-number">3</div>
+      <div class="step-content">
+        <h3>Job</h3>
+        {% if job %}
+          <p class="step-success">✓ Created: {{ job.job_number }}</p>
+          <a class="button" href="/jobs/{{ job.id }}/basket?view=advanced">Open Job</a>
+        {% elif not customer %}
+          <p class="step-muted">Create or link the customer first.</p>
+        {% else %}
+          <p>When this request is ready for sourcing and fulfillment, create the Job.</p>
+          <form method="post" action="/requests/{{ record.id }}/job/create">
+            <button class="button" type="submit">Create Job</button>
+          </form>
+        {% endif %}
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="panel request-status-panel">
+  <div class="panel-heading request-panel-heading"><div><p class="eyebrow">STATUS</p><h2>Request Status</h2></div></div>
+  <form method="post" action="/requests/{{ record.id }}/status" class="status-actions">
+    <button name="status" value="NEW" class="status-action {% if record.status == 'NEW' %}active{% endif %}">New</button>
+    <button name="status" value="WAITING" class="status-action {% if record.status == 'WAITING' %}active{% endif %}">Waiting</button>
+    <button name="status" value="READY" class="status-action {% if record.status == 'READY' %}active{% endif %}">Ready</button>
+  </form>
+</section>
+
+<section class="danger-zone">
+  {% if record.is_cancelled %}<div class="lifecycle-warning"><strong>Request cancelled</strong><p>{{ record.cancellation_reason }}</p></div>{% else %}
+  <form class="lifecycle-reason-form" method="post" action="/requests/{{ record.id }}/cancel" onsubmit="return confirm('Cancel this request while retaining all history?')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Cancellation reason<input name="reason" required></label><button class="button danger" type="submit">Cancel Request</button></form>{% endif %}
+  {% if record.is_archived %}<form method="post" action="/requests/{{ record.id }}/restore"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button ghost" type="submit">Restore from Archive</button></form>{% else %}<form method="post" action="/requests/{{ record.id }}/archive" data-archive-delete><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button ghost" type="submit">Remove from Inbox</button></form>{% endif %}
+  <div class="lifecycle-delete-details"><a class="button ghost inbox-destructive-action" href="/requests/{{ record.id }}/delete-review">Delete / Remove Request</a><small>Permanently Delete is reviewed separately and is available only for an empty accidental item.</small></div>
+</section>
+{% endblock %}

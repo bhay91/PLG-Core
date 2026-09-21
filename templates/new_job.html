@@ -1,39 +1,16 @@
 {% extends "base.html" %}
-{% block title %}New Job · PartsLink Global{% endblock %}
+{% block title %}New Job · Pinpoint Sourcing LLC{% endblock %}
 {% block content %}
-<section class="page-heading">
-  <div><p class="eyebrow">NEW JOB</p><h1>Create a PartsLink job</h1><p>Enter the customer, machine, PIN, and requested parts. You can add more parts later.</p></div>
-</section>
-
-<form method="post" action="/jobs" class="panel form-grid">
-  <div class="form-section">
-    <h2>Customer</h2>
-    <label>Customer name *<input name="customer" required></label>
-    <label>Company<input name="company"></label>
-    <div class="two-column">
-      <label>Phone<input name="phone"></label>
-      <label>Email<input name="email" type="email"></label>
-    </div>
-  </div>
-
-  <div class="form-section">
-    <h2>Machine</h2>
-    <div class="two-column">
-      <label>Manufacturer<input name="manufacturer" placeholder="CAT"></label>
-      <label>Model / machine<input name="machine" placeholder="420D Backhoe Loader"></label>
-    </div>
-    <label>VIN / PIN / Serial<input name="pin_serial" placeholder="FDP15598"></label>
-  </div>
-
-  <div class="form-section full">
-    <h2>Parts requested</h2>
-    <label>One part per line<textarea name="requested_parts" rows="7" placeholder="Accelerator cable&#10;Loader lift cylinder seal kit&#10;Swing cylinder seal kit"></textarea></label>
-    <label>Internal notes<textarea name="notes" rows="4"></textarea></label>
-  </div>
-
-  <div class="form-actions full">
-    <a class="button ghost" href="/">Cancel</a>
-    <button class="button" type="submit">Create Job</button>
-  </div>
+<section class="workspace-heading"><div><p class="eyebrow">NEW JOB</p><h1>Create a Job</h1><p>Select an existing customer or create a new one.</p></div></section>
+<section class="new-job-flow"><span class="active">1. Job Information</span><span>2. Parts Basket</span><span>3. Checkout</span><span>4. Create Quote</span></section>
+<form method="post" action="/jobs" class="panel form-grid streamlined-job-form">
+<div class="form-section"><p class="eyebrow">CUSTOMER</p><h2>Customer Information</h2>
+<label>Existing Customer<select name="customer_id" id="customer-selector"><option value="">+ Create New Customer</option>{% for customer in customers %}<option value="{{ customer.id }}" data-name="{{ customer.name|e }}" data-company="{{ (customer.company or '')|e }}" data-phone="{{ (customer.phone or '')|e }}" data-email="{{ (customer.email or '')|e }}" data-address="{{ (customer.address or '')|e }}" {% if selected_customer_id == customer.id %}selected{% endif %}>{{ customer.name }}{% if customer.company %} · {{ customer.company }}{% endif %} ({{ customer.customer_number }})</option>{% endfor %}</select></label>
+<label>Customer Name *<input name="customer" id="customer-name" required autofocus></label><label>Company<input name="company" id="customer-company"></label><div class="two-column"><label>Phone<input name="phone" id="customer-phone"></label><label>Email<input name="email" type="email" id="customer-email"></label></div><label>Address<input name="address" id="customer-address"></label></div>
+<div class="form-section"><p class="eyebrow">EQUIPMENT</p><h2>Machine or Vehicle</h2>
+<label>Existing Machine<select name="machine_id" id="machine-selector"><option value="">+ Add New Machine</option>{% for item in machines %}<option value="{{ item.id }}" data-customer-id="{{ item.customer_id }}">{{ item.name }}{% if item.vin_pin_serial %} · {{ item.vin_pin_serial }}{% endif %}</option>{% endfor %}</select></label>
+<div id="new-machine-fields"><div class="two-column"><label>Manufacturer<input name="manufacturer" placeholder="CAT"></label><label>Model / Machine<input name="machine" placeholder="420D Backhoe Loader"></label></div><label>VIN / PIN / Serial<input name="pin_serial" placeholder="FDP15598"></label></div></div>
+<div class="form-actions full streamlined-job-actions"><a class="button ghost" href="/jobs">Cancel</a><button class="button" type="submit">Create Job &amp; Open Parts Basket →</button></div>
 </form>
+<script>(()=>{const c=document.getElementById('customer-selector');const ms=document.getElementById('machine-selector');const nf=document.getElementById('new-machine-fields');const m={name:document.getElementById('customer-name'),company:document.getElementById('customer-company'),phone:document.getElementById('customer-phone'),email:document.getElementById('customer-email'),address:document.getElementById('customer-address')};function filterMachines(){const customerId=c.value;for(const o of ms.options){if(!o.value){o.hidden=false;continue;}o.hidden=!customerId||o.dataset.customerId!==customerId;}if(ms.selectedOptions[0]?.hidden)ms.value='';nf.hidden=Boolean(ms.value);}function sync(){const o=c.options[c.selectedIndex];const e=Boolean(c.value);for(const [k,f] of Object.entries(m)){f.value=e?(o.dataset[k]||''):'';f.readOnly=e;}filterMachines();}c.addEventListener('change',sync);ms.addEventListener('change',()=>{nf.hidden=Boolean(ms.value);});sync();})();</script>
 {% endblock %}

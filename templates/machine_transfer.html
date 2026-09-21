@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Transfer {{ machine.name }} · Pinpoint Sourcing LLC{% endblock %}
+{% block content %}
+<section class="workspace-heading">
+<div>
+<p class="eyebrow">UNIVERSAL REGISTRY</p>
+<h1>Transfer Machine</h1>
+<p>Change the current owner without rewriting historical Jobs.</p>
+</div>
+<a class="button ghost" href="/machines/{{ machine.id }}">Cancel</a>
+</section>
+
+<section class="panel">
+<p class="eyebrow">MACHINE</p>
+<h2>{{ machine.machine_number }} · {{ machine.name }}</h2>
+<p>{{ machine.manufacturer }} {{ machine.model }} · {{ machine.vin_pin_serial or 'No identifier saved' }}</p>
+<p>Current owner: <strong>{{ machine.customer_name }}</strong></p>
+</section>
+
+<form method="post" action="/machines/{{ machine.id }}/transfer" class="panel form-grid">
+<div class="form-section full">
+<p class="eyebrow">NEW OWNER</p>
+<h2>Transfer Ownership</h2>
+<label>Customer *
+<select name="customer_id" required>
+<option value="">Select customer</option>
+{% for customer in customers %}
+{% if customer.id != machine.customer_id %}
+<option value="{{ customer.id }}" {% if selected_customer_id|string == customer.id|string %}selected{% endif %}>
+{{ customer.name }}{% if customer.company %} · {{ customer.company }}{% endif %}
+</option>
+{% endif %}
+{% endfor %}
+</select>
+</label>
+
+<label>Transfer Note
+<textarea name="transfer_note" rows="3" placeholder="Example: Vehicle sold to new owner"></textarea>
+</label>
+</div>
+
+<div class="form-actions full">
+<a class="button ghost" href="/machines/{{ machine.id }}">Cancel</a>
+<button class="button" type="submit">Confirm Transfer</button>
+</div>
+</form>
+{% endblock %}

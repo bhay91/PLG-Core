@@ -1,0 +1,2017 @@
+/* PPS ERP-1 proof — shell + Dashboard only. Loaded last by design. */
+
+/* 1. Theme tokens */
+:root,
+:root[data-theme="dark"] {
+  --erp-font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --erp-app: #08111f;
+  --erp-sidebar: #0b1627;
+  --erp-topbar: #101b2d;
+  --erp-panel: #132136;
+  --erp-panel-2: #17283f;
+  --erp-panel-3: #1a2d47;
+  --erp-border: #253850;
+  --erp-border-strong: #35506f;
+  --erp-text: #f4f7fb;
+  --erp-text-2: #c5cfdb;
+  --erp-muted: #98a6b8;
+  --erp-blue: #2f8cff;
+  --erp-green: #3ac58b;
+  --erp-amber: #e5a234;
+  --erp-red: #ef5d67;
+  --erp-purple: #9b78ec;
+  --erp-teal: #2db9b0;
+}
+:root[data-theme="light"] {
+  --erp-app: #eef2f7;
+  --erp-sidebar: #ffffff;
+  --erp-topbar: #ffffff;
+  --erp-panel: #ffffff;
+  --erp-panel-2: #f7f9fc;
+  --erp-panel-3: #edf2f7;
+  --erp-border: #d8e1eb;
+  --erp-border-strong: #c2cedd;
+  --erp-text: #102038;
+  --erp-text-2: #506178;
+  --erp-muted: #7b8a9e;
+}
+
+/* 2. Application shell */
+.erp-icon-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+.erp-app { background: var(--erp-app) !important; color: var(--erp-text) !important; }
+.erp-app,
+.erp-app *,
+.erp-app *::before,
+.erp-app *::after,
+.erp-app button,
+.erp-app input,
+.erp-app select,
+.erp-app textarea,
+.erp-app table,
+.erp-app .erp-sidebar,
+.erp-app .erp-topbar,
+.erp-app .erp-dashboard,
+.erp-app .erp-status,
+.erp-app a {
+  font-family: var(--erp-font) !important;
+  font-stretch: normal;
+}
+.erp-app { font-size: 12px; line-height: 1.4; }
+.erp-app button,
+.erp-app input,
+.erp-app select,
+.erp-app textarea { font-style: normal; line-height: 1.3; }
+.erp-app :is(.erp-metric-copy strong, .erp-flow-stats strong, .erp-table, .money, [class*="quantity"], [class*="total"]) {
+  font-variant-numeric: tabular-nums;
+}
+.erp-app .main-shell { margin-left: 228px !important; width: calc(100vw - 228px) !important; max-width: none !important; background: var(--erp-app) !important; }
+.erp-app .page { box-sizing: border-box; width: 100% !important; max-width: none !important; margin: 0 !important; padding: 22px clamp(24px, 1.8vw, 32px) 36px !important; }
+
+/* 3. Sidebar */
+.erp-sidebar {
+  width: 228px !important;
+  padding: 0 11px 14px !important;
+  background: var(--erp-sidebar) !important;
+  border-right: 1px solid var(--erp-border) !important;
+  box-shadow: none !important;
+}
+.erp-sidebar .brand {
+  display: flex !important; align-items: center; gap: 10px;
+  min-height: 64px !important; padding: 10px 8px !important;
+  border-bottom: 1px solid var(--erp-border) !important;
+  background: transparent !important; text-decoration: none;
+}
+.erp-brand-mark { width: 30px; height: 38px; flex: 0 0 auto; fill: none; stroke: var(--erp-blue); stroke-width: 2.5; }
+.erp-brand-copy { display: grid; gap: 2px; min-width: 0; }
+.erp-brand-copy strong { color: var(--erp-text) !important; font-size: 15px; font-weight: 700; letter-spacing: .04em; line-height: 1.2; }
+.erp-brand-copy small { color: var(--erp-muted) !important; font-size: 9px; letter-spacing: .1em; white-space: nowrap; }
+.erp-nav { gap: 1px !important; padding-top: 6px !important; overflow-y: auto; scrollbar-width: thin; }
+.erp-nav .nav-section-label { margin: 12px 10px 4px !important; color: var(--erp-muted) !important; font-size: 10px !important; font-weight: 700 !important; letter-spacing: .075em !important; line-height: 1.25; }
+.erp-sidebar .nav-link {
+  min-height: 40px !important; padding: 8px 10px !important; gap: 10px !important;
+  border: 1px solid transparent !important; border-radius: 7px !important;
+  color: var(--erp-text-2) !important; font-size: 13px !important; font-weight: 600 !important; letter-spacing: 0; line-height: 1.3;
+}
+.erp-sidebar .nav-link:hover { background: var(--erp-panel) !important; color: var(--erp-text) !important; }
+.erp-sidebar .nav-link.active { background: #173960 !important; border-color: #24578d !important; color: #fff !important; box-shadow: inset 3px 0 0 var(--erp-blue) !important; }
+.erp-sidebar .nav-icon { width: 18px !important; height: 18px !important; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.erp-sidebar .sidebar-footer { margin-top: 10px; padding: 10px 7px 0 !important; border-color: var(--erp-border) !important; }
+.erp-sidebar .support-card strong { color: var(--erp-text-2) !important; font-size: 10px; }
+.erp-sidebar .support-card span { color: var(--erp-muted) !important; font-size: 9px; }
+
+/* 4. Topbar */
+.erp-topbar {
+  min-height: 60px !important; padding: 9px 22px !important;
+  background: var(--erp-topbar) !important; border-bottom: 1px solid var(--erp-border) !important;
+  box-shadow: none !important; backdrop-filter: none !important;
+}
+.erp-topbar-context { min-width: 190px; }
+.erp-topbar-context strong { color: var(--erp-text) !important; font-size: 14px !important; font-weight: 700 !important; letter-spacing: 0 !important; line-height: 1.2; }
+.erp-topbar-context small { color: var(--erp-muted) !important; font-size: 10px !important; font-weight: 400; line-height: 1.35; }
+.erp-topbar .topbar-tools { justify-content: flex-end; }
+.erp-topbar .topbar-search { width: min(520px, 46vw); }
+.erp-topbar .topbar-search-input { height: 40px !important; font-size: 13px !important; background: var(--erp-panel) !important; border-color: var(--erp-border) !important; color: var(--erp-text) !important; }
+.erp-topbar .topbar-search-input,
+.erp-topbar .topbar-search .button,
+.erp-topbar .theme-toggle,
+.erp-topbar .mobile-nav-toggle { font-size: 12px !important; font-weight: 600 !important; letter-spacing: 0 !important; }
+.erp-topbar .mobile-nav-toggle { display:inline-flex; align-items:center; gap:7px; min-height:38px; padding:8px 12px; border:1px solid var(--erp-border-strong) !important; border-radius:7px; background:var(--erp-panel) !important; color:var(--erp-text) !important; box-shadow:none; }
+.erp-topbar .mobile-nav-toggle:hover { background:var(--erp-panel-2) !important; }
+.erp-topbar .mobile-nav-toggle:focus-visible, .erp-topbar .theme-toggle:focus-visible, .erp-topbar .button:focus-visible, .erp-app a:focus-visible, .erp-app button:focus-visible { outline:3px solid color-mix(in srgb,var(--erp-blue) 55%,transparent); outline-offset:2px; }
+.erp-topbar .topbar-search-input { font-size: 13px !important; font-weight: 400 !important; }
+.erp-topbar .theme-toggle, .erp-topbar .button.ghost {
+  min-height: 38px !important; background: var(--erp-panel) !important; border-color: var(--erp-border) !important; color: var(--erp-text-2) !important;
+}
+.erp-topbar .user-chip { border-color: var(--erp-border) !important; }
+.erp-topbar .user-chip strong { color: var(--erp-text) !important; }
+.erp-topbar .user-chip strong { font-size: 13px !important; font-weight: 700 !important; }
+.erp-topbar .user-chip small { font-size: 10px !important; }
+.erp-topbar .user-avatar { width: 34px !important; height: 34px !important; }
+
+/* 5. Shared ERP components */
+.erp-dashboard { display: grid; width: 100%; max-width: none; gap: 16px; color: var(--erp-text); }
+.erp-dashboard a { text-decoration: none; }
+.erp-dashboard-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
+.erp-dashboard-heading h1 { margin: 1px 0 2px; color: var(--erp-text); font-size: 29px !important; font-weight: 700 !important; line-height: 1.18; letter-spacing: -.02em; }
+.erp-dashboard-heading p { margin: 0; color: var(--erp-muted); font-size: 12px; font-weight: 400; line-height: 1.4; }
+.erp-overline { margin: 0 !important; color: var(--erp-blue) !important; font-size: 9px !important; font-weight: 700; letter-spacing: .09em; line-height: 1.25; }
+.erp-heading-actions { display: flex; gap: 7px; }
+.erp-button { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 8px 13px; border: 1px solid var(--erp-blue); border-radius: 7px; background: var(--erp-blue); color: #fff !important; font-size: 11.5px; font-weight: 600; letter-spacing: 0; line-height: 1.3; }
+.erp-button-secondary { border-color: var(--erp-border-strong); background: var(--erp-panel); color: var(--erp-text-2) !important; }
+.erp-panel { min-width: 0; overflow: hidden; border: 1px solid var(--erp-border); border-radius: 10px; background: var(--erp-panel); box-shadow: none; }
+.erp-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 11px 15px; border-bottom: 1px solid var(--erp-border); }
+.erp-panel-heading h2 { margin: 2px 0 0; color: var(--erp-text); font-size: 15px !important; font-weight: 700 !important; line-height: 1.2; letter-spacing: 0 !important; }
+.erp-panel-heading > a { color: var(--erp-blue); font-size: 10.5px; font-weight: 600; letter-spacing: 0; }
+.erp-empty { margin: 0; padding: 18px 13px; color: var(--erp-muted); font-size: 11px; }
+.erp-muted { color: var(--erp-muted); }
+
+/* 6. Metric cards */
+.erp-metric-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 9px; }
+.erp-metric { display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: center; min-height: 100px; padding: 15px; border: 1px solid var(--erp-border); border-radius: 10px; background: var(--erp-panel); color: var(--erp-text); }
+.erp-metric:hover { border-color: var(--erp-border-strong); background: var(--erp-panel-2); }
+.erp-metric-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 9px; background: var(--erp-panel-3); color: var(--erp-blue); }
+.erp-metric-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.erp-metric-copy { display: grid; grid-template-columns: 1fr auto; gap: 1px 7px; min-width: 0; }
+.erp-metric-copy small { align-self: end; color: var(--erp-text-2) !important; font-size: 12.5px !important; font-weight: 600 !important; letter-spacing: 0 !important; line-height: 1.25; }
+.erp-metric-copy strong { grid-column: 2; grid-row: 1 / 3; color: var(--erp-text) !important; font-size: 32px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.erp-metric-copy em { color: var(--erp-muted); font-size: 11px; font-weight: 400; font-style: normal; line-height: 1.35; }
+.erp-metric-payment .erp-metric-icon { color: var(--erp-purple); }
+.erp-metric-orders .erp-metric-icon { color: var(--erp-blue); }
+.erp-metric-receiving .erp-metric-icon { color: var(--erp-amber); }
+.erp-metric-delivery .erp-metric-icon { color: var(--erp-teal); }
+
+/* 7. Dashboard panels */
+.erp-dashboard-grid { display: grid; grid-template-columns: minmax(0,29fr) minmax(0,44fr) minmax(250px,27fr); gap: 12px; align-items: stretch; }
+.erp-panel-list { display: grid; }
+.erp-action-row, .erp-need-row { display: grid; align-items: center; min-width: 0; min-height: 48px; padding: 11px 14px; border-bottom: 1px solid var(--erp-border); color: var(--erp-text); }
+.erp-action-row:last-child, .erp-need-row:last-child { border-bottom: 0; }
+.erp-action-row:hover, .erp-need-row:hover { background: var(--erp-panel-2); }
+.erp-action-row { grid-template-columns: 7px minmax(0,1fr) auto; gap: 9px; }
+.erp-action-row > span:nth-child(2), .erp-need-row > span:first-child { display: grid; gap: 2px; min-width: 0; }
+.erp-action-row small, .erp-need-row small { color: var(--erp-muted) !important; font-size: 10.5px; font-weight: 600; line-height: 1.3; text-transform: uppercase; letter-spacing: .02em; }
+.erp-action-row strong, .erp-need-row strong { color: var(--erp-text) !important; font-size: 12.5px; font-weight: 600; line-height: 1.3; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.erp-action-row em, .erp-need-row em { color: var(--erp-text-2); font-size: 10.75px; font-weight: 400; font-style: normal; line-height: 1.4; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.erp-action-row b { color: var(--erp-blue); }
+.erp-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--erp-blue); }
+.erp-tone-payment, .erp-tone-danger { background: var(--erp-red) !important; }
+.erp-tone-ordering { background: var(--erp-blue) !important; }
+.erp-tone-receiving { background: var(--erp-amber) !important; }
+.erp-tone-delivery { background: var(--erp-teal) !important; }
+.erp-need-row { grid-template-columns: minmax(0,1fr) auto; gap: 9px; }
+.erp-status { display: inline-flex; align-items: center; min-height: 22px; max-width: 180px; padding: 3px 8px; border: 1px solid var(--erp-border); border-radius: 999px; color: var(--erp-text-2); background: var(--erp-panel-3); font-size: 10px; font-weight: 600; line-height: 1.25; letter-spacing: 0; white-space: nowrap; }
+.erp-status-purple { color: #c6b3f6; border-color: #57457d; background: #2d2545; }
+.erp-status-amber { color: #f2c777; border-color: #674d25; background: #382d20; }
+.erp-status-green { color: #8bddba; border-color: #2f654f; background: #1c3a30; }
+.erp-status-red { color: #ff9ba3; border-color: #6b3840; background: #3d252b; }
+:root[data-theme="light"] .erp-status-purple { color: #6e4db6; background: #f1ebff; border-color: #d8c9f4; }
+:root[data-theme="light"] .erp-status-amber { color: #8a5c11; background: #fff3d9; border-color: #ecd29e; }
+:root[data-theme="light"] .erp-status-green { color: #14744d; background: #e4f7ee; border-color: #a8ddc5; }
+:root[data-theme="light"] .erp-status-red { color: #a6333c; background: #ffeaec; border-color: #efb9be; }
+.erp-flow-stats { display: grid; grid-template-columns: 1fr 1fr; }
+.erp-flow-stats a { display: grid; grid-template-columns: 4px 1fr auto; gap: 7px; align-items: center; min-height: 46px; padding: 8px 11px; border-right: 1px solid var(--erp-border); border-bottom: 1px solid var(--erp-border); color: var(--erp-text); }
+.erp-flow-stats a:nth-child(2n) { border-right: 0; }
+.erp-flow-stats a > span { width: 4px; height: 24px; border-radius: 4px; }
+.erp-flow-stats small { color: var(--erp-text-2) !important; font-size: 11.5px; }
+.erp-flow-stats strong { color: var(--erp-text) !important; font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.erp-quick-actions { padding: 10px; }
+.erp-quick-actions h3 { margin: 0 0 6px; color: var(--erp-muted); font-size: 9.5px; text-transform: uppercase; letter-spacing: .07em; }
+.erp-quick-actions a { display: grid; grid-template-columns: 20px 1fr auto; gap: 8px; align-items: center; min-height: 36px; padding: 6px 8px; color: var(--erp-text-2); font-size: 11.5px; font-weight: 600; line-height: 1.3; border-radius: 6px; }
+.erp-quick-actions a:hover { background: var(--erp-panel-2); color: var(--erp-text); }
+.erp-quick-actions svg { width: 16px; height: 16px; fill: none; stroke: var(--erp-blue); stroke-width: 1.8; }
+.erp-quick-actions b { color: var(--erp-blue); }
+.erp-inbox-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); }
+.erp-inbox-grid > a { display: grid; gap: 3px; min-width: 0; min-height: 76px; padding: 12px 13px; border-right: 1px solid var(--erp-border); color: var(--erp-text); }
+.erp-inbox-grid > a:last-child { border-right: 0; }
+.erp-inbox-grid small { color: var(--erp-muted) !important; font-size: 10.5px !important; line-height: 1.35; }
+.erp-inbox-grid strong { color: var(--erp-text) !important; font-size: 12px; font-weight: 600; }
+.erp-inbox-grid span { overflow: hidden; color: var(--erp-text-2); font-size: 11px; line-height: 1.35; white-space: nowrap; text-overflow: ellipsis; }
+.erp-inbox-grid em { color: var(--erp-blue); font-size: 10px; font-style: normal; font-weight: 600; line-height: 1.3; }
+
+/* 8. ERP table */
+.erp-table-wrap { overflow-x: auto; }
+.erp-table { width: 100%; border: 0 !important; border-collapse: collapse; background: transparent !important; }
+.erp-table thead, .erp-table th { background: var(--erp-panel-2) !important; }
+.erp-table th { height: 36px; padding: 8px 13px !important; color: var(--erp-muted) !important; border-bottom: 1px solid var(--erp-border) !important; font-size: 10.5px !important; font-weight: 700 !important; line-height: 1.25; letter-spacing: .035em !important; text-align: left; }
+.erp-table td { height: 48px; max-width: 280px; padding: 9px 13px !important; color: var(--erp-text-2) !important; border-bottom: 1px solid var(--erp-border) !important; font-size: 12px !important; font-weight: 500; line-height: 1.3; letter-spacing: 0; }
+.erp-table tbody tr:last-child td { border-bottom: 0 !important; }
+.erp-table tbody tr:hover { background: var(--erp-panel-2) !important; }
+.erp-table td > strong { color: var(--erp-text) !important; }
+.erp-table-need { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.erp-next-action { color: var(--erp-blue) !important; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+
+/* 9. Responsive rules */
+@media (max-width: 1180px) {
+  .erp-metric-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .erp-dashboard-grid { grid-template-columns: 1fr 1fr; }
+  .erp-flow-panel { grid-column: 1 / -1; }
+  .erp-flow-panel { display: grid; grid-template-columns: 1fr 260px; }
+  .erp-flow-panel .erp-panel-heading { grid-column: 1 / -1; }
+}
+@media (max-width: 1100px) {
+  .erp-sidebar { position: fixed !important; z-index: 60; transform: translateX(-105%); }
+  .erp-sidebar.mobile-open { transform: translateX(0); }
+  .erp-app .main-shell { margin-left: 0 !important; width: 100% !important; }
+  .erp-topbar-context { display: none; }
+  .erp-topbar .mobile-nav-toggle { display: inline-flex !important; }
+}
+@media (max-width: 780px) {
+  .erp-app .page { padding: 14px 10px 28px !important; }
+  .erp-dashboard-heading { align-items: flex-start; flex-direction: column; }
+  .erp-dashboard-heading h1 { font-size: 24px; }
+  .erp-heading-actions { width: 100%; }
+  .erp-heading-actions .erp-button { flex: 1; }
+  .erp-metric-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
+  .erp-metric { min-height: 72px; padding: 9px; }
+  .erp-metric-copy strong { font-size: 23px; }
+  .erp-dashboard-grid { grid-template-columns: 1fr; }
+  .erp-flow-panel { grid-column: auto; display: block; }
+  .erp-inbox-grid { grid-template-columns: 1fr 1fr; }
+  .erp-inbox-grid > a { border-bottom: 1px solid var(--erp-border); }
+  .erp-inbox-grid > a:nth-child(2n) { border-right: 0; }
+  .erp-topbar { padding: 8px !important; }
+  .erp-topbar .topbar-search { min-width: 0; width: auto; flex: 1; }
+  .erp-topbar .theme-toggle-label, .erp-topbar .user-chip > span:last-child { display: none; }
+}
+
+/* 11. ERP-2 live-audit corrections: eliminate legacy light-surface leaks. */
+.erp-app .context-card,
+.erp-app .recent-customer-card,
+.erp-app .customer-profile-grid > div,
+.erp-app .density-compact-row,
+.erp-app .density-disclosure,
+.erp-app .density-disclosure-body,
+.erp-app .registry-type-card,
+.erp-app .smart-intake-message,
+.erp-app .request-file-upload,
+.erp-app .request-create-form > .request-create-section:nth-of-type(2) {
+  color: var(--erp-text); border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important; box-shadow: none !important;
+}
+.erp-app .context-card span,
+.erp-app .context-card small,
+.erp-app .recent-customer-card span,
+.erp-app .customer-profile-grid span { color: var(--erp-muted) !important; }
+.erp-app .context-card strong,
+.erp-app .recent-customer-card strong,
+.erp-app .customer-profile-grid strong { color: var(--erp-text) !important; }
+.erp-app .customer-management-main,
+.erp-app .registry-record-row,
+.erp-app .workspace-row-identity,
+.erp-app .workspace-row-status { color: var(--erp-text) !important; }
+.erp-app .customer-management-main strong,
+.erp-app .registry-record-main > strong,
+.erp-app .registry-record-owner > strong { color: var(--erp-text) !important; }
+.erp-app .customer-management-main span,
+.erp-app .registry-record-main > span,
+.erp-app .registry-record-owner > span { color: var(--erp-text-2) !important; }
+.erp-app .docs-row-actions .button,
+.erp-app .docs-history-actions .button,
+.erp-app .customer-row-actions .button,
+.erp-app .workspace-action-panel .workspace-btn-secondary {
+  color: var(--erp-text-2) !important; border-color: var(--erp-border-strong) !important;
+  background: var(--erp-panel-2) !important;
+}
+.erp-app .workspace-recent-card,
+.erp-app .workspace-metric-pair > div,
+.erp-app .workspace-search,
+.erp-app .smart-jobs-search {
+  color: var(--erp-text) !important;
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important;
+  box-shadow: none !important;
+}
+.erp-app .workspace-recent-card strong,
+.erp-app .workspace-metric-pair strong { color: var(--erp-text) !important; }
+.erp-app .workspace-recent-card span,
+.erp-app .workspace-metric-pair span { color: var(--erp-muted) !important; }
+.erp-app .docs-integrity-exception {
+  color: #ffd083 !important;
+  border-color: #6a5128 !important;
+  background: #3c301d !important;
+}
+:root[data-theme="light"] .erp-app .docs-integrity-exception {
+  color: #8a5c11 !important;
+  border-color: #ecd29e !important;
+  background: #fff3d9 !important;
+}
+
+/* Request Detail authority workflow */
+.erp-app .request-message,
+.erp-app .job-ready-details,
+.erp-app .job-ready-step {
+  color: var(--erp-text-2) !important;
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important;
+  box-shadow: none !important;
+}
+.erp-app .request-message { min-height: 92px; line-height: 1.5; }
+.erp-app .detail-list dt { color: var(--erp-muted) !important; }
+.erp-app .detail-list dd { color: var(--erp-text-2) !important; }
+.erp-app .job-ready-details label { color: var(--erp-text-2) !important; }
+.erp-app .step-content h3 { color: var(--erp-text) !important; }
+.erp-app .step-content p { color: var(--erp-text-2) !important; }
+.erp-app .job-ready-step.complete {
+  border-color: color-mix(in srgb,var(--erp-green) 45%,var(--erp-border)) !important;
+  background: color-mix(in srgb,var(--erp-green) 7%,var(--erp-panel-2)) !important;
+}
+.erp-app .danger-zone {
+  display: grid; justify-items: end; gap: 9px; width: 100%; padding: 12px 0 0;
+  border-top: 1px solid var(--erp-border);
+}
+.erp-app .danger-zone .lifecycle-reason-form {
+  display: flex; align-items: end; justify-content: end; flex-wrap: wrap; gap: 9px;
+  width: min(100%,620px); margin: 0 !important;
+}
+.erp-app .danger-zone .button.danger {
+  color: #ffadb3 !important; border-color: #6b3840 !important; background: #3d252b !important;
+}
+.erp-app .lifecycle-delete-details { max-width: 620px; color: var(--erp-muted); }
+.erp-app .erp-delete-review { display: grid; gap: 14px; max-width: 920px; }
+.erp-app .erp-delete-review.is-protected { border-left: 4px solid var(--erp-amber); }
+.erp-app .erp-delete-confirmation { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+.erp-app .erp-delete-review .button.danger { color: #ffb4ba !important; border: 1px solid #7a3d46 !important; background: #3d252b !important; box-shadow: none !important; }
+.erp-app .erp-delete-review .button.danger:hover { background: #4a2931 !important; }
+:root[data-theme="dark"] .erp-app .erp-delete-review .button.danger { color: #ffb4ba !important; border-color: #7a3d46 !important; background: #3d252b !important; }
+.erp-app .erp-delete-blockers { display: grid; gap: 7px; margin: 0; padding: 14px 14px 14px 34px; border-radius: 9px; background: color-mix(in srgb,var(--erp-amber) 9%,var(--erp-panel-2)); }
+.erp-app .erp-delete-alternatives { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.erp-app .erp-delete-cancel { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.erp-app .erp-header-delete { min-height: 36px; padding: 7px 12px; box-shadow: none !important; }
+.erp-app .job-command-header-actions { display: flex; align-items: center; gap: 9px; }
+@media (max-width: 640px) {
+  .erp-app .danger-zone { justify-items: stretch; }
+  .erp-app .danger-zone .lifecycle-reason-form { display: grid; grid-template-columns: 1fr; width: 100%; }
+  .erp-app .danger-zone .button,
+  .erp-app .danger-zone button { width: 100%; }
+  .erp-app .lifecycle-delete-details { max-width: none; }
+  .erp-app .erp-delete-confirmation { grid-template-columns: 1fr; }
+  .erp-app .erp-delete-alternatives,.erp-app .erp-delete-cancel { display: grid; width: 100%; }
+  .erp-app .erp-delete-alternatives .button,.erp-app .erp-delete-cancel .button { width: 100%; }
+  .erp-app .job-command-header-actions { align-items: stretch; flex-direction: column; }
+  .erp-app .job-command-header-actions .erp-header-delete { width: 100%; }
+  .erp-app .job-command-header-actions .erp-header-delete { margin-top: 10px; background: transparent !important; }
+}
+.erp-app .smart-intake-message textarea { color: var(--erp-text) !important; background: var(--erp-bg) !important; }
+.erp-app .smart-intake-image-tools,
+.erp-app .request-file-upload { overflow: hidden; }
+.erp-app .request-file-upload { display: grid; gap: 8px; width: 100%; max-width: 100%; padding: 12px; }
+.erp-app .request-file-upload input[type="file"] {
+  display: block; width: 100%; max-width: 100%; min-width: 0; overflow: hidden;
+  color: var(--erp-text-2); border: 0 !important; background: transparent !important;
+  font: 500 11px/1.35 var(--erp-font) !important;
+}
+.erp-app input[type="file"]::file-selector-button {
+  min-height: 32px; margin-right: 9px; padding: 6px 10px; color: var(--erp-text-2);
+  border: 1px solid var(--erp-border-strong); border-radius: 6px; background: var(--erp-panel);
+  font: 600 10px/1.2 var(--erp-font); cursor: pointer;
+}
+.erp-app .docs-disabled { color: var(--erp-muted); border-color: var(--erp-border); background: var(--erp-panel-2); }
+@media (max-width: 560px) {
+  .erp-table thead { display: none; }
+  .erp-table, .erp-table tbody, .erp-table tr, .erp-table td { display: block; width: 100%; }
+  .erp-table tbody { display: grid; gap: 7px; padding: 8px; }
+  .erp-table tr { display: grid; grid-template-columns: 1fr; padding: 10px; border: 1px solid var(--erp-border); border-radius: 8px; background: var(--erp-panel-2); }
+  .erp-table td {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 2px;
+    min-height: 29px;
+    height: auto;
+    max-width: none;
+    padding: 5px 4px !important;
+    border: 0 !important;
+  }
+  .erp-table td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--erp-muted);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+  }
+  .erp-table td:nth-child(3), .erp-table td:nth-child(6) { grid-column: auto; }
+  .erp-action-row, .erp-need-row { padding: 9px 10px; }
+}
+
+/* 10. ERP-2 shared operator workspace ------------------------------------ */
+.erp-app .workspace-v2,
+.erp-app .docs-shell,
+.erp-app .accounting-shell,
+.erp-app .customer-account-shell,
+.erp-app .request-page,
+.erp-app .smart-intake-shell,
+.erp-app .delivery-shell,
+.erp-app .cc-shell {
+  width: 100%; max-width: none; color: var(--erp-text);
+}
+.erp-app .workspace-heading,
+.erp-app .erp-page-header {
+  display: flex; align-items: end; justify-content: space-between; gap: 18px;
+  margin: 0 0 14px; padding: 0 0 13px; border-bottom: 1px solid var(--erp-border);
+}
+.erp-app .workspace-heading h1,
+.erp-app .erp-page-header h1 { margin: 2px 0 0; color: var(--erp-text); font-size: 27px; font-weight: 700; line-height: 1.15; }
+.erp-app .workspace-heading p:not(.eyebrow),
+.erp-app .erp-page-header p { max-width: 720px; margin: 4px 0 0; color: var(--erp-text-2); font-size: 11px; line-height: 1.4; }
+.erp-app .eyebrow,
+.erp-app .cc-label,
+.erp-app .docs-label { margin: 0; color: var(--erp-muted); font-size: 9.5px; font-weight: 700; letter-spacing: .07em; line-height: 1.25; text-transform: uppercase; }
+
+.erp-app .panel,
+.erp-app .cc-card,
+.erp-app .erp-panel,
+.erp-app .docs-card,
+.erp-app .request-card,
+.erp-app .smart-match-card {
+  color: var(--erp-text); border: 1px solid var(--erp-border) !important; border-radius: 10px !important;
+  background: var(--erp-panel) !important; box-shadow: none !important;
+}
+.erp-app .panel { padding: 15px; }
+.erp-app .panel + .panel { margin-top: 12px; }
+.erp-app .panel-heading,
+.erp-app .erp-panel-heading,
+.erp-app .job-ops-panel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 0 0 11px; padding: 0 0 10px; border-bottom: 1px solid var(--erp-border);
+}
+.erp-app .panel-heading h2,
+.erp-app .erp-panel-heading h2,
+.erp-app .job-ops-panel-head h2 { margin: 0; color: var(--erp-text); font-size: 14px; font-weight: 700; line-height: 1.25; }
+.erp-app .panel-heading p,
+.erp-app .job-ops-panel-head p { margin: 3px 0 0; color: var(--erp-muted); font-size: 10.5px; line-height: 1.35; }
+
+/* Toolbars, forms and controls */
+.erp-app .workspace-toolbar,
+.erp-app .smart-jobs-toolbar,
+.erp-app .purchase-filters,
+.erp-app .request-toolbar,
+.erp-app .docs-filters,
+.erp-app .erp-toolbar {
+  display: flex; align-items: end; flex-wrap: wrap; gap: 9px; margin: 0 0 12px; padding: 10px 12px;
+  border: 1px solid var(--erp-border); border-radius: 9px; background: var(--erp-panel);
+}
+.erp-app label { color: var(--erp-text-2); font-size: 11px; font-weight: 600; line-height: 1.35; }
+.erp-app input:not([type="checkbox"]):not([type="radio"]),
+.erp-app select,
+.erp-app textarea {
+  min-height: 38px; color: var(--erp-text); border: 1px solid var(--erp-border-strong) !important;
+  border-radius: 7px !important; background: var(--erp-panel-2) !important; box-shadow: none !important;
+  font: 500 12px/1.35 var(--erp-font) !important;
+}
+.erp-app textarea { min-height: 84px; }
+.erp-app .smart-intake-message textarea { height:220px; min-height:220px; }
+.erp-app input::placeholder,
+.erp-app textarea::placeholder { color: var(--erp-muted); opacity: 1; }
+.erp-app input:focus,
+.erp-app select:focus,
+.erp-app textarea:focus { border-color: var(--erp-blue) !important; outline: 2px solid color-mix(in srgb,var(--erp-blue) 25%,transparent); outline-offset: 1px; }
+.erp-app .button,
+.erp-app .workspace-btn,
+.erp-app button:not(.mobile-nav-toggle):not(.theme-toggle) {
+  min-height: 36px; padding: 8px 12px; border: 1px solid var(--erp-blue); border-radius: 7px;
+  background: var(--erp-blue); color: #fff; box-shadow: none; font: 600 11px/1.2 var(--erp-font); letter-spacing: 0;
+}
+.erp-app .button.ghost,
+.erp-app .workspace-btn-secondary { color: var(--erp-text-2); border-color: var(--erp-border-strong); background: var(--erp-panel-2); }
+.erp-app .button:hover,
+.erp-app .workspace-btn:hover { filter: brightness(1.08); transform: none; }
+.erp-app .button.small { min-height: 30px; padding: 6px 9px; font-size: 10px; }
+
+/* Directory, finance and operational row system */
+.erp-app .workspace-row-list,
+.erp-app .smart-job-row-list,
+.erp-app .purchase-order-list,
+.erp-app .customer-record-list,
+.erp-app .transaction-ledger,
+.erp-app .request-list,
+.erp-app .docs-list { overflow: hidden; border: 1px solid var(--erp-border); border-radius: 10px; background: var(--erp-panel); }
+.erp-app .workspace-row,
+.erp-app .smart-job-row,
+.erp-app .purchase-order-row,
+.erp-app .customer-record-row,
+.erp-app .transaction-row,
+.erp-app .request-card,
+.erp-app .docs-row {
+  margin: 0 !important; border: 0 !important; border-bottom: 1px solid var(--erp-border) !important;
+  border-radius: 0 !important; background: transparent !important; box-shadow: none !important;
+}
+.erp-app .workspace-row:last-child,
+.erp-app .smart-job-row:last-child,
+.erp-app .purchase-order-row:last-child,
+.erp-app .customer-record-row:last-child,
+.erp-app .transaction-row:last-child,
+.erp-app .request-card:last-child,
+.erp-app .docs-row:last-child { border-bottom: 0 !important; }
+.erp-app .workspace-row:hover,
+.erp-app .smart-job-row:hover,
+.erp-app .purchase-order-row:hover,
+.erp-app .customer-record-row:hover,
+.erp-app .request-card:hover,
+.erp-app .docs-row:hover { background: var(--erp-panel-2) !important; }
+.erp-app .workspace-row { min-height: 76px; padding: 11px 13px; }
+.erp-app .workspace-row h2,
+.erp-app .smart-job-row h2,
+.erp-app .request-card h2 { color: var(--erp-text); font-size: 13px; font-weight: 650; line-height: 1.3; }
+.erp-app .workspace-row p,
+.erp-app .workspace-row small,
+.erp-app .smart-job-row p,
+.erp-app .smart-job-row small { color: var(--erp-text-2); font-size: 10.5px; line-height: 1.35; }
+.erp-app .workspace-status-badge,
+.erp-app .status,
+.erp-app .request-status,
+.erp-app .job-ops-status,
+.erp-app .docs-integrity-badge,
+.erp-app .cc-badge {
+  display: inline-flex; align-items: center; min-height: 22px; padding: 3px 7px; color: var(--erp-text-2);
+  border: 1px solid var(--erp-border-strong); border-radius: 999px; background: var(--erp-panel-2);
+  font: 600 9.5px/1.2 var(--erp-font); letter-spacing: .02em;
+}
+.erp-app .workspace-status-paid,
+.erp-app .is-valid { color: #74deb3; border-color: #28604f; background: #17382f; }
+.erp-app .workspace-status-partial { color: #ffd083; border-color: #6a5128; background: #3c301d; }
+.erp-app .workspace-status-void,
+.erp-app .is-invalid,
+.erp-app .danger { color: #ff9ba3; border-color: #6b3840; background: #3d252b; }
+:root[data-theme="light"] .erp-app .workspace-status-paid,
+:root[data-theme="light"] .erp-app .is-valid { color: #14744d; border-color: #a8ddc5; background: #e4f7ee; }
+:root[data-theme="light"] .erp-app .workspace-status-partial { color: #8a5c11; border-color: #ecd29e; background: #fff3d9; }
+:root[data-theme="light"] .erp-app .workspace-status-void,
+:root[data-theme="light"] .erp-app .is-invalid,
+:root[data-theme="light"] .erp-app .danger { color: #a6333c; border-color: #efb9be; background: #ffeaec; }
+
+/* Job Command Center: command header, workflow and 2:1 working grid */
+.erp-app .cc-shell { display: grid; gap: 13px; }
+.erp-app .job-ops { display: grid; gap: 12px; }
+.erp-app .job-primary-summary {
+  display: grid; grid-template-columns: minmax(0,1fr); gap: 12px;
+  padding: 17px 18px !important; border-color: color-mix(in srgb,var(--erp-blue) 48%,var(--erp-border)) !important;
+}
+.erp-app .job-primary-identity h1 { margin: 0; color: var(--erp-text); font-size: 24px; line-height: 1.18; }
+.erp-app .job-primary-identity p { margin: 5px 0 0; color: var(--erp-text-2); font-size: 11px; }
+.erp-app .job-primary-status { display: flex; flex-wrap: wrap; gap: 6px; }
+.erp-app .job-primary-status strong { padding: 5px 8px; color: var(--erp-text-2); border: 1px solid var(--erp-border); border-radius: 6px; background: var(--erp-panel-2); font-size: 9.5px; }
+.erp-app .job-primary-next { grid-column: 1; grid-row: auto; align-self: stretch; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 10px; padding: 12px 0 0; border-top: 1px solid var(--erp-border); border-left: 0; }
+.erp-app .job-primary-next span { color: var(--erp-muted); font-size: 9px; font-weight: 700; letter-spacing: .07em; }
+.erp-app .job-primary-next strong { display: block; margin-top: 3px; color: var(--erp-text); font-size: 16px; line-height: 1.3; }
+.erp-app .job-progress-heading { display: flex; align-items: end; justify-content: space-between; gap: 15px; padding: 0 2px; }
+.erp-app .job-progress-heading h2 { margin: 2px 0 0; color: var(--erp-text); font-size: 14px; }
+.erp-app .job-progress-heading > p { margin: 0; color: var(--erp-muted); font-size: 10px; }
+.erp-app .job-ops-grid { display: grid; grid-template-columns: minmax(0,1fr); gap: 10px; align-items: start; }
+.erp-app .job-ops-grid > .fulfillment-panel,
+.erp-app .job-ops-grid > details { grid-column: 1; grid-row: auto; }
+.erp-app .job-ops-panel { padding: 14px !important; }
+.erp-app .job-ops-movement,
+.erp-app .job-ops-financial { gap: 1px; overflow: hidden; border: 1px solid var(--erp-border); border-radius: 8px; background: var(--erp-border); }
+.erp-app .job-ops-metric { padding: 10px; background: var(--erp-panel-2); }
+.erp-app .job-ops-metric span { color: var(--erp-muted); font-size: 9.5px; }
+.erp-app .job-ops-metric strong { color: var(--erp-text); font-size: 17px; font-variant-numeric: tabular-nums; }
+.erp-app .fulfillment-item,
+.erp-app .job-ops-order,
+.erp-app .job-ops-document,
+.erp-app .job-ops-event { border-color: var(--erp-border) !important; background: var(--erp-panel-2) !important; }
+.erp-app .job-disclosure,
+.erp-app .job-command-group,
+.erp-app .erp-disclosure { overflow: hidden; padding: 0 !important; }
+.erp-app .job-disclosure > summary,
+.erp-app .job-command-group > summary,
+.erp-app .erp-disclosure > summary,
+.erp-app details > summary { color: var(--erp-text-2); font-size: 11px; font-weight: 650; }
+.erp-app .job-disclosure > summary,
+.erp-app .job-command-group > summary { padding: 11px 13px; }
+.erp-app .job-disclosure-body,
+.erp-app .job-command-group-body { padding: 13px; border-top: 1px solid var(--erp-border); }
+.erp-app .job-command-groups { display: grid; gap: 10px; }
+
+/* Purchasing, receiving, delivery and document workspaces */
+.erp-app .purchase-order-row { padding: 0; }
+.erp-app .purchase-order-primary { min-height: 67px; padding: 11px 13px; }
+.erp-app .purchase-order-secondary { padding: 9px 13px; border-top: 1px solid var(--erp-border); background: color-mix(in srgb,var(--erp-panel-2) 65%,transparent); }
+.erp-app .purchase-order-metric span,
+.erp-app .docs-label { color: var(--erp-muted); font-size: 9.5px; }
+.erp-app .purchase-order-metric strong { color: var(--erp-text); font-size: 12px; font-variant-numeric: tabular-nums; }
+.erp-app .supplier-order-command,
+.erp-app .delivery-command,
+.erp-app .customer-account-header { border-color: color-mix(in srgb,var(--erp-blue) 45%,var(--erp-border)) !important; }
+.erp-app .receiving-line,
+.erp-app .receiving-exception-card,
+.erp-app .backorder-card,
+.erp-app .delivery-item,
+.erp-app .supplier-order-item { border-color: var(--erp-border) !important; background: var(--erp-panel-2) !important; box-shadow: none !important; }
+.erp-app .receiving-accepted,
+.erp-app [data-receiving-accepted] { border-color: color-mix(in srgb,var(--erp-blue) 55%,var(--erp-border)) !important; background: color-mix(in srgb,var(--erp-blue) 8%,var(--erp-panel-2)) !important; }
+.erp-app .docs-summary { gap: 9px; }
+.erp-app .docs-card { min-height: 86px; padding: 13px; }
+.erp-app .docs-card strong { color: var(--erp-text); font-size: 26px; font-variant-numeric: tabular-nums; }
+.erp-app .docs-card span { color: var(--erp-text-2); font-size: 11px; font-weight: 650; }
+.erp-app .docs-card small { color: var(--erp-muted); font-size: 9.5px; }
+.erp-app .docs-list-head { color: var(--erp-muted); border-color: var(--erp-border); background: var(--erp-panel-2); font-size: 9.5px; font-weight: 700; }
+.erp-app .docs-row { padding: 11px 13px; }
+.erp-app .docs-row strong { color: var(--erp-text); }
+.erp-app .docs-row small { color: var(--erp-muted); }
+
+/* Intake and research-style comparison surfaces */
+.erp-app .request-queue-panel { padding: 0; overflow: hidden; }
+.erp-app .request-toolbar { margin: 0; border: 0; border-bottom: 1px solid var(--erp-border); border-radius: 0; }
+.erp-app .request-card { min-height: 86px; padding: 12px 14px; }
+.erp-app .request-summary { color: var(--erp-text-2); font-size: 11px; }
+.erp-app .request-card-meta { color: var(--erp-muted); font-size: 10px; }
+.erp-app .smart-intake-panel,
+.erp-app .smart-intake-fields { max-width: none; }
+.erp-app .smart-match-card { padding: 13px; }
+.erp-app .research-card,
+.erp-app .candidate-card,
+.erp-app .source-card,
+.erp-app .basket-card { border-color: var(--erp-border) !important; background: var(--erp-panel) !important; box-shadow: none !important; }
+
+/* Generic tables retained by legacy templates */
+.erp-app table:not(.erp-table) { width: 100%; color: var(--erp-text-2); border-collapse: collapse; background: transparent; font-size: 11px; }
+.erp-app table:not(.erp-table) th { height: 34px; padding: 7px 10px; color: var(--erp-muted); border-bottom: 1px solid var(--erp-border); background: var(--erp-panel-2); font-size: 9.5px; font-weight: 700; letter-spacing: .035em; text-align: left; }
+.erp-app table:not(.erp-table) td { height: 44px; padding: 8px 10px; color: var(--erp-text-2); border-bottom: 1px solid var(--erp-border); font-variant-numeric: tabular-nums; }
+.erp-app table:not(.erp-table) tbody tr:hover { background: var(--erp-panel-2); }
+
+/* ERP-2 responsive workspaces */
+@media (max-width: 1100px) {
+  .erp-app .job-ops-grid { grid-template-columns: 1fr; }
+  .erp-app .job-ops-grid > .fulfillment-panel,
+  .erp-app .job-ops-grid > details { grid-column: 1; grid-row: auto; }
+}
+@media (max-width: 780px) {
+  .erp-app .workspace-heading,
+  .erp-app .erp-page-header { align-items: stretch; flex-direction: column; gap: 9px; }
+  .erp-app .workspace-heading h1,
+  .erp-app .erp-page-header h1 { font-size: 23px; }
+  .erp-app .workspace-heading-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+  .erp-app .workspace-toolbar,
+  .erp-app .smart-jobs-toolbar,
+  .erp-app .purchase-filters,
+  .erp-app .request-toolbar,
+  .erp-app .docs-filters { align-items: stretch; flex-direction: column; }
+  .erp-app .job-primary-summary { grid-template-columns: 1fr; padding: 14px !important; }
+  .erp-app .job-primary-next { grid-column: 1; grid-row: auto; border-top: 1px solid var(--erp-border); border-left: 0; padding: 12px 0 0; }
+  .erp-app .job-primary-next .button { width: 100%; }
+  .erp-app .job-progress-heading { align-items: start; flex-direction: column; }
+  .erp-app .job-progress-heading > p { display: none; }
+  .erp-app .workspace-row,
+  .erp-app .smart-job-row,
+  .erp-app .purchase-order-primary,
+  .erp-app .docs-row-main { grid-template-columns: 1fr !important; gap: 9px; }
+  .erp-app .purchase-order-secondary { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+  .erp-app .docs-summary { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .erp-app .docs-card { min-width: 0; padding: 10px; }
+  .erp-app .docs-card strong { font-size: 22px; }
+}
+@media (max-width: 480px) {
+  .erp-app .panel { padding: 12px; }
+  .erp-app .purchase-order-secondary,
+  .erp-app .docs-summary { grid-template-columns: 1fr !important; }
+  .erp-app .docs-card { min-height: 66px; }
+}
+
+/* ERP-2 containment: legacy workspaces must not widen the application canvas. */
+.erp-app .page > *,
+.erp-app .cc-shell *,
+.erp-app .request-create-page *,
+.erp-app .request-detail-grid *,
+.erp-app .job-ready-panel * { min-width: 0; }
+.erp-app .cc-shell,
+.erp-app .cc-grid,
+.erp-app .cc-section,
+.erp-app .cc-results,
+.erp-app .research-table,
+.erp-app .ready-table-wrap { max-width: 100%; }
+.erp-app .cc-result-table,
+.erp-app .cc-ready-table { width: 100%; }
+.erp-app .request-create-page,
+.erp-app .request-create-form,
+.erp-app .request-create-section,
+.erp-app .request-detail-grid,
+.erp-app .job-ready-details { width: 100%; max-width: 100%; }
+.erp-app .request-message,
+.erp-app .request-summary,
+.erp-app .detail-list dd,
+.erp-app .attachment-link,
+.erp-app .step-content { overflow-wrap: anywhere; }
+@media (max-width: 780px) {
+  .erp-app .request-create-grid.two,
+  .erp-app .request-detail-grid,
+  .erp-app .job-ready-details .two-column,
+  .erp-app .inline-link-form,
+  .erp-app .step-actions { grid-template-columns: minmax(0,1fr) !important; }
+  .erp-app .request-create-actions,
+  .erp-app .page-actions { flex-wrap: wrap; }
+}
+
+/* ERP-2 final cascade guard: these legacy surfaces define light colors late. */
+.erp-app .context-card,
+.erp-app .recent-customer-card,
+.erp-app .customer-profile-grid > div,
+.erp-app .customer-list-metrics > *,
+.erp-app .workspace-row-meta > *,
+.erp-app .density-compact-row,
+.erp-app .density-disclosure,
+.erp-app .density-disclosure-body,
+.erp-app .registry-type-card,
+.erp-app .smart-intake-message,
+.erp-app .request-file-upload,
+.erp-app .request-create-form > .request-create-section:nth-of-type(2) {
+  color: var(--erp-text) !important;
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important;
+  box-shadow: none !important;
+}
+.erp-app :is(.context-card,.recent-customer-card,.customer-profile-grid > div) strong { color: var(--erp-text) !important; }
+.erp-app :is(.context-card,.recent-customer-card,.customer-profile-grid > div) :is(span,small) { color: var(--erp-muted) !important; }
+/* ERP global working-type scale: preserve accepted geometry while improving readability. */
+.erp-app { font-size: 14px; }
+
+/* Shell */
+.erp-nav .nav-section-label { font-size: 11.5px !important; }
+.erp-sidebar .nav-link { font-size: 15px !important; }
+.erp-sidebar .support-card strong { font-size: 11px; }
+.erp-sidebar .support-card span,
+.erp-brand-copy small { font-size: 10.5px; }
+.erp-topbar-context strong { font-size: 16px !important; }
+.erp-topbar-context small { font-size: 12px !important; }
+.erp-topbar .topbar-search-input { font-size: 15px !important; }
+.erp-topbar .topbar-search .button,
+.erp-topbar .theme-toggle,
+.erp-topbar .mobile-nav-toggle { font-size: 14px !important; }
+.erp-topbar .user-chip strong { font-size: 15px !important; }
+.erp-topbar .user-chip small { font-size: 12px !important; }
+
+/* Dashboard working content; display headings and KPI values remain fixed. */
+.erp-dashboard-heading p { font-size: 14px; }
+.erp-overline { font-size: 11px !important; }
+.erp-button { font-size: 13.5px; }
+.erp-panel-heading h2 { font-size: 17px !important; }
+.erp-panel-heading > a { font-size: 12.5px; }
+.erp-empty { font-size: 13px; }
+.erp-metric-copy small { font-size: 14px !important; }
+.erp-metric-copy em { font-size: 13px; }
+.erp-action-row small,
+.erp-need-row small { font-size: 12.5px; }
+.erp-action-row strong,
+.erp-need-row strong { font-size: 14.5px; }
+.erp-action-row em,
+.erp-need-row em { font-size: 12.75px; }
+.erp-status { font-size: 11.75px; }
+.erp-flow-stats small { font-size: 13.5px !important; }
+.erp-quick-actions h3 { font-size: 11.5px; }
+.erp-quick-actions a { font-size: 13.5px; }
+
+/* Intake strip is intentionally the clearest secondary dashboard surface. */
+.erp-inbox-grid small { font-size: 12px !important; }
+.erp-inbox-grid strong { font-size: 14px; }
+.erp-inbox-grid span { font-size: 13px; }
+.erp-inbox-grid em { font-size: 12px; }
+
+/* Dashboard and shared tables. */
+.erp-table th { font-size: 12px !important; }
+.erp-table td { font-size: 14px !important; }
+.erp-next-action { font-size: 13.5px; }
+.erp-app table:not(.erp-table) { font-size: 13px; }
+.erp-app table:not(.erp-table) th { font-size: 11.5px; }
+
+/* Shared workspace headings, rows, metadata, controls and statuses. */
+.erp-app .erp-page-header p { font-size: 13px; }
+.erp-app .docs-label { font-size: 11.5px; }
+.erp-app .panel-heading h2,
+.erp-app .erp-panel-heading h2,
+.erp-app .job-ops-panel-head h2 { font-size: 16px; }
+.erp-app .panel-heading p,
+.erp-app .job-ops-panel-head p { font-size: 12.5px; }
+.erp-app label { font-size: 13px; }
+.erp-app input:not([type="checkbox"]):not([type="radio"]),
+.erp-app select,
+.erp-app textarea { font-size: 14px !important; }
+.erp-app .button,
+.erp-app .workspace-btn,
+.erp-app button:not(.mobile-nav-toggle):not(.theme-toggle) { font-size: 13px; }
+.erp-app .button.small { font-size: 12px; }
+.erp-app .workspace-row h2,
+.erp-app .smart-job-row h2,
+.erp-app .request-card h2 { font-size: 15px; }
+.erp-app .workspace-row p,
+.erp-app .workspace-row small,
+.erp-app .smart-job-row p,
+.erp-app .smart-job-row small { font-size: 12.5px; }
+.erp-app .workspace-status-badge,
+.erp-app .status,
+.erp-app .request-status,
+.erp-app .job-ops-status,
+.erp-app .docs-integrity-badge,
+.erp-app .cc-badge { font-size: 11.5px; }
+
+/* JCC and operational detail surfaces. */
+.erp-app .job-primary-identity p { font-size: 13px; }
+.erp-app .job-primary-status strong { font-size: 11.5px; }
+.erp-app .job-primary-next span { font-size: 11px; }
+.erp-app .job-primary-next strong { font-size: 18px; }
+.erp-app .job-progress-heading h2 { font-size: 16px; }
+.erp-app .job-progress-heading > p { font-size: 12px; }
+.erp-app .job-ops-metric span { font-size: 11.5px; }
+.erp-app details > summary { font-size: 13px; }
+.erp-app .purchase-order-metric span,
+.erp-app .docs-label { font-size: 11.5px; }
+.erp-app .purchase-order-metric strong { font-size: 14px; }
+.erp-app .docs-card span { font-size: 13px; }
+.erp-app .docs-card small,
+.erp-app .docs-list-head { font-size: 11.5px; }
+.erp-app .request-summary { font-size: 13px; }
+.erp-app .request-card-meta { font-size: 12px; }
+
+@media (max-width: 780px) {
+  .erp-app { font-size: 13px; }
+  .erp-sidebar .nav-link { font-size: 15px !important; }
+  .erp-metric-copy small { font-size: 12.5px !important; }
+  .erp-metric-copy em { font-size: 12px; }
+  .erp-panel-heading h2,
+  .erp-app .panel-heading h2,
+  .erp-app .job-ops-panel-head h2 { font-size: 15px !important; }
+  .erp-table td { font-size: 12px !important; }
+  .erp-table td::before { font-size: 10px; }
+}
+
+/* Keep shell controls on the ERP scale after the generic form-control cascade. */
+.erp-app .erp-topbar .topbar-search-input { font-size: 15px !important; }
+.erp-app .erp-topbar .topbar-search .button,
+.erp-app .erp-topbar .theme-toggle,
+.erp-app .erp-topbar .mobile-nav-toggle { font-size: 14px !important; }
+
+/* Complete dark-theme compatibility for legacy operator surfaces. */
+:root[data-theme="dark"] .erp-app { color-scheme: dark; }
+:root[data-theme="dark"] .erp-app :is(input,select,textarea,button) { color-scheme: dark; }
+:root[data-theme="dark"] .erp-app input[type="file"]::file-selector-button {
+  color: var(--erp-text-2); border: 1px solid var(--erp-border-strong); background: var(--erp-panel-3);
+}
+
+/* Shared legacy surfaces, tables, disclosures and empty states. */
+:root[data-theme="dark"] .erp-app :is(
+  .table-wrap,.search-empty,.follow-empty,.follow-row,.work-queue-row,
+  .job-workspace-nav,.new-job-flow,.part-workspace,.sources-section,
+  .job-asset-card,.part-editor-card,.actual-cost-card,.receiving-history-card,
+  .request-search,.workspace-owner-block,.accounting-card,.accounting-table-wrap,
+  .accounting-detail,.accounting-list,.accounting-section,.docs-empty,.docs-history,
+  .docs-secondary-grid,.docs-disabled
+) {
+  color: var(--erp-text-2) !important;
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel) !important;
+  box-shadow: none !important;
+}
+:root[data-theme="dark"] .erp-app :is(
+  .part-editor-metric,.pricing-emphasis,.density-disclosure-body,
+  .receiving-history-detail,.receiving-history-line,.supplier-order-history-content,
+  .accounting-card-secondary,.accounting-advanced-grid
+) {
+  color: var(--erp-text-2) !important;
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important;
+}
+:root[data-theme="dark"] .erp-app :is(.table-wrap,table,thead,tbody,tr,th,td) {
+  border-color: var(--erp-border) !important;
+}
+:root[data-theme="dark"] .erp-app :is(.table-wrap,table,tbody,tr,td) { background-color: transparent !important; }
+:root[data-theme="dark"] .erp-app :is(thead,th) { color: var(--erp-muted) !important; background: var(--erp-panel-2) !important; }
+:root[data-theme="dark"] .erp-app :is(details,.density-disclosure,.receiving-history-card) {
+  border-color: var(--erp-border) !important;
+}
+:root[data-theme="dark"] .erp-app :is(details,details > summary) { color: var(--erp-text-2); }
+
+/* Legacy navigation tabs and secondary buttons. */
+:root[data-theme="dark"] .erp-app :is(.work-queue-tabs,.follow-view-tabs) a,
+:root[data-theme="dark"] .erp-app :is(a,button).button.ghost {
+  color: var(--erp-text-2) !important;
+  border-color: var(--erp-border-strong) !important;
+  background: var(--erp-panel-2) !important;
+}
+:root[data-theme="dark"] .erp-app :is(.work-queue-tabs,.follow-view-tabs) a.active {
+  color: #fff !important; border-color: var(--erp-blue) !important; background: var(--erp-blue) !important;
+}
+:root[data-theme="dark"] .erp-app .work-queue-row:hover,
+:root[data-theme="dark"] .erp-app .follow-row:hover { background: var(--erp-panel-2) !important; }
+
+/* Research, sourcing, and job workspace content. */
+:root[data-theme="dark"] .erp-app :is(
+  .part-workspace,.part-workspace *, .sources-section,.sources-section *,
+  .job-asset-card,.job-asset-card *, .part-editor-card,.part-editor-card *
+) { border-color: var(--erp-border); }
+:root[data-theme="dark"] .erp-app :is(
+  .part-workspace h2,.part-workspace h3,.part-workspace strong,
+  .sources-section h2,.sources-section h3,.sources-section strong,
+  .job-asset-card strong,.part-editor-card strong
+) { color: var(--erp-text) !important; }
+:root[data-theme="dark"] .erp-app :is(
+  .part-workspace p,.part-workspace small,.part-workspace label,
+  .sources-section p,.sources-section small,.job-asset-card p,.job-asset-card small,
+  .part-editor-card p,.part-editor-card small
+) { color: var(--erp-text-2) !important; }
+
+/* Accounting and finance cards. */
+:root[data-theme="dark"] .erp-app .accounting-card :is(span,small,p) { color: var(--erp-muted) !important; }
+:root[data-theme="dark"] .erp-app .accounting-card :is(strong,h2,h3) { color: var(--erp-text) !important; }
+:root[data-theme="dark"] .erp-app .accounting-attention-card {
+  border-color: color-mix(in srgb,var(--erp-amber) 55%,var(--erp-border)) !important;
+  background: color-mix(in srgb,var(--erp-amber) 8%,var(--erp-panel)) !important;
+}
+
+/* Operational success/warning surfaces remain semantic without becoming bright. */
+:root[data-theme="dark"] .erp-app :is(.invoice-paid-state,.success-banner,.success-callout) {
+  color: #8bddba !important; border-color: #2f654f !important; background: #17382f !important;
+}
+:root[data-theme="dark"] .erp-app :is(.lifecycle-warning,.warning,.warning-box,.alert-warning) {
+  color: #f2c777 !important; border-color: #674d25 !important; background: #382d20 !important;
+}
+:root[data-theme="dark"] .erp-app .lifecycle-warning :is(strong,p) { color: inherit !important; }
+
+/* Inbox, document, and integrity badges. */
+:root[data-theme="dark"] .erp-app :is(.inbox-entry-type,.docs-type) {
+  color: #9fcaff !important; border-color: #315f91 !important; background: #17375a !important;
+}
+:root[data-theme="dark"] .erp-app :is(.inbox-status,.docs-audience) {
+  color: var(--erp-text-2) !important; border-color: var(--erp-border-strong) !important; background: var(--erp-panel-3) !important;
+}
+:root[data-theme="dark"] .erp-app .docs-version-badge {
+  color: #8bddba !important; border-color: #2f654f !important; background: #1c3a30 !important;
+}
+:root[data-theme="dark"] .erp-app .docs-version-badge.is-historical {
+  color: #f2c777 !important; border-color: #674d25 !important; background: #382d20 !important;
+}
+:root[data-theme="dark"] .erp-app .docs-integrity-badge.is-valid {
+  color: #8bddba !important; border-color: #2f654f !important; background: #1c3a30 !important;
+}
+:root[data-theme="dark"] .erp-app .docs-integrity-badge.is-invalid,
+:root[data-theme="dark"] .erp-app .docs-integrity-exception {
+  color: #ff9ba3 !important; border-color: #6b3840 !important; background: #3d252b !important;
+}
+
+/* Logos may remain white for source artwork; their surrounding records stay dark. */
+:root[data-theme="dark"] .erp-app .manufacturer-logo-box { border-color: var(--erp-border-strong); }
+
+/* Remaining legacy families discovered by the complete rendered route audit. */
+:root[data-theme="dark"] .erp-app :is(
+  .accounting-helper,.accounting-section-head,.accounting-operational-list article,
+  .source-option,.revenue-adjustment-card,.quote-revenue-review,
+  .quote-revenue-review-total,.workspace-empty
+) {
+  color: var(--erp-text-2) !important;
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel) !important;
+  box-shadow: none !important;
+}
+:root[data-theme="dark"] .erp-app :is(
+  .revenue-adjustments-actions,.cc-primary-number,.quote-revenue-review-total
+) { border-color: var(--erp-border) !important; background: var(--erp-panel-2) !important; }
+:root[data-theme="dark"] .erp-app .cc-primary-number:first-child {
+  background: color-mix(in srgb,var(--erp-blue) 9%,var(--erp-panel-2)) !important;
+}
+:root[data-theme="dark"] .erp-app .cc-primary-number:last-child {
+  background: color-mix(in srgb,var(--erp-green) 9%,var(--erp-panel-2)) !important;
+}
+:root[data-theme="dark"] .erp-app :is(
+  .accounting-helper,.accounting-section-head,.accounting-operational-list article,
+  .source-option,.revenue-adjustment-card,.quote-revenue-review
+) :is(h2,h3,strong) { color: var(--erp-text) !important; }
+:root[data-theme="dark"] .erp-app :is(
+  .accounting-helper,.accounting-section-head,.accounting-operational-list article,
+  .source-option,.revenue-adjustment-card,.quote-revenue-review
+) :is(p,small,span) { color: var(--erp-text-2); }
+:root[data-theme="dark"] .erp-app .source-option.selected {
+  border-color: color-mix(in srgb,var(--erp-amber) 60%,var(--erp-border)) !important;
+  background: color-mix(in srgb,var(--erp-amber) 8%,var(--erp-panel)) !important;
+}
+:root[data-theme="dark"] .erp-app .accounting-operational-state.has-variance {
+  color: #ff9ba3 !important; border-color: #6b3840 !important; background: #3d252b !important;
+}
+:root[data-theme="dark"] .erp-app .request-page-heading + .filter-tabs a,
+:root[data-theme="dark"] .erp-app .workspace-tabs a {
+  color: var(--erp-text-2) !important; border-color: var(--erp-border-strong) !important; background: var(--erp-panel-2) !important;
+}
+:root[data-theme="dark"] .erp-app .request-page-heading + .filter-tabs a.active,
+:root[data-theme="dark"] .erp-app .workspace-tabs a.active {
+  color: #fff !important; border-color: var(--erp-blue) !important; background: var(--erp-blue) !important;
+}
+
+/* Foreground contrast and segmented-control corrections from operator review. */
+:root[data-theme="dark"] .erp-app .detail-grid > .panel :is(h2,strong) { color: var(--erp-text) !important; }
+:root[data-theme="dark"] .erp-app .detail-grid > .panel p:not(.eyebrow):not(.muted) { color: var(--erp-text-2) !important; }
+:root[data-theme="dark"] .erp-app .detail-grid > .panel .muted { color: var(--erp-muted) !important; }
+
+:root[data-theme="dark"] .erp-app .inbox-card :is(.request-customer,h2) { color: var(--erp-text) !important; }
+:root[data-theme="dark"] .erp-app .inbox-card :is(.request-summary,.inbox-context) { color: var(--erp-text-2) !important; }
+:root[data-theme="dark"] .erp-app .inbox-card :is(.request-card-meta,.request-meta-item) { color: var(--erp-muted) !important; }
+:root[data-theme="dark"] .erp-app .inbox-secondary-actions > summary { color: var(--erp-text-2) !important; }
+.erp-app .inbox-card-main {
+  display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 20px; width: 100%;
+}
+.erp-app .inbox-card .request-card-open { justify-self: end; margin-left: auto; }
+
+:root[data-theme="dark"] .erp-app .work-queue-row :is(h2,.work-queue-need-label) { color: var(--erp-text) !important; }
+:root[data-theme="dark"] .erp-app .work-queue-row :is(.work-queue-action-detail,.work-queue-context-detail,.machine-identity-line) { color: var(--erp-text-2) !important; }
+:root[data-theme="dark"] .erp-app .work-queue-row :is(small,.work-queue-age,.work-queue-category) { color: var(--erp-muted) !important; }
+:root[data-theme="dark"] .erp-app .work-queue-row .workspace-primary-link { color: #72b5ff !important; }
+:root[data-theme="dark"] .erp-app .work-queue-stage {
+  color: var(--erp-text-2) !important; border-color: var(--erp-border-strong) !important; background: var(--erp-panel-3) !important;
+}
+:root[data-theme="dark"] .erp-app :is(.stage-customer-decision-follow-up,.stage-follow-ups) {
+  color: #d0bcff !important; border-color: #57457d !important; background: #2d2545 !important;
+}
+:root[data-theme="dark"] .erp-app :is(.stage-ready-to-quote,.stage-ready-to-invoice) {
+  color: #a9d2ff !important; border-color: #315f91 !important; background: #17375a !important;
+}
+:root[data-theme="dark"] .erp-app :is(.stage-ready-for-delivery,.stage-complete) {
+  color: #8bddba !important; border-color: #2f654f !important; background: #1c3a30 !important;
+}
+:root[data-theme="dark"] .erp-app :is(.stage-needs-research,.stage-waiting-supplier-pricing,.stage-waiting-for-parts) {
+  color: #f2c777 !important; border-color: #674d25 !important; background: #382d20 !important;
+}
+:root[data-theme="dark"] .erp-app :is(.stage-waiting-for-payment,.stage-needs-attention) {
+  color: #ff9ba3 !important; border-color: #6b3840 !important; background: #3d252b !important;
+}
+:root[data-theme="dark"] .erp-app .stage-ready-to-order {
+  color: #a9d2ff !important; border-color: #315f91 !important; background: #17375a !important;
+}
+
+:root[data-theme="dark"] .erp-app :is(
+  .smart-jobs-heading + .filter-tabs,
+  .request-page-heading + .filter-tabs,
+  .filter-tabs,
+  .workspace-tabs,
+  .work-queue-tabs,
+  .follow-view-tabs
+) a:not(.active) {
+  color: var(--erp-text-2) !important; border-color: var(--erp-border-strong) !important; background: var(--erp-panel-2) !important;
+  box-shadow: none !important;
+}
+:root[data-theme="dark"] .erp-app :is(
+  .smart-jobs-heading + .filter-tabs,
+  .request-page-heading + .filter-tabs,
+  .filter-tabs,
+  .workspace-tabs,
+  .work-queue-tabs,
+  .follow-view-tabs
+) a.active {
+  color: #fff !important; border-color: var(--erp-blue) !important; background: var(--erp-blue) !important;
+}
+
+@media (max-width: 1100px) {
+  .erp-app .inbox-card-main { grid-template-columns: 1fr; gap: 10px; }
+  .erp-app .inbox-card .request-card-open { justify-self: stretch; margin-left: 0; }
+}
+
+/* Route-wide foreground normalization for legacy ink variables on ERP surfaces. */
+:root[data-theme="dark"] .erp-app .user-chip > span:last-child,
+:root[data-theme="dark"] .erp-app .user-chip > span:last-child strong { color: var(--erp-text) !important; }
+:root[data-theme="dark"] .erp-app .user-chip > span:last-child small { color: var(--erp-muted) !important; }
+:root[data-theme="dark"] .erp-app :is(
+  .panel,.request-create-section,.request-detail-grid,.job-ready-panel,
+  .workspace-row,.smart-job-row,.purchase-order-row,.customer-record-row,
+  .transaction-row,.request-card,.docs-row,.table-wrap,.detail-grid,
+  .job-workspace-nav,.part-workspace,.sources-section,.source-option,
+  .accounting-shell,.job-ops-panel,.delivery-command,.supplier-order-command
+) :is(h1,h2,h3,h4,h5,h6,dt,legend) { color: var(--erp-text) !important; }
+:root[data-theme="dark"] .erp-app :is(
+  .workspace-row,.smart-job-row,.purchase-order-row,.customer-record-row,
+  .transaction-row,.request-card,.docs-row,.table-wrap,.part-workspace,
+  .sources-section,.source-option,.accounting-shell
+) strong { color: var(--erp-text) !important; }
+:root[data-theme="dark"] .erp-app :is(
+  .panel,.request-create-section,.request-detail-grid,.job-ready-panel,
+  .workspace-row,.smart-job-row,.purchase-order-row,.customer-record-row,
+  .transaction-row,.request-card,.docs-row,.part-workspace,.sources-section,
+  .source-option,.accounting-shell
+) p:not(.eyebrow):not([class*="status"]) { color: var(--erp-text-2) !important; }
+:root[data-theme="dark"] .erp-app :is(
+  .workspace-row,.smart-job-row,.purchase-order-row,.customer-record-row,
+  .transaction-row,.request-card,.docs-row,.part-workspace,.sources-section,
+  .source-option
+) :is(small,[class*="meta"],[class*="muted"]) { color: var(--erp-muted) !important; }
+:root[data-theme="dark"] .erp-app :is(.eyebrow,.text-link) { color: #72b5ff !important; }
+:root[data-theme="dark"] .erp-app .job-workspace-nav a:not(.active) { color: var(--erp-text-2) !important; }
+:root[data-theme="dark"] .erp-app :is(.job-disclosure,.job-command-group,.erp-disclosure,details) > summary {
+  color: var(--erp-text-2) !important;
+}
+:root[data-theme="dark"] .erp-app :is(.machine-identity-line,.workspace-owner-block strong) { color: var(--erp-text) !important; }
+:root[data-theme="dark"] .erp-app .docs-issue-note { color: #ffb7bd !important; }
+:root[data-theme="dark"] .erp-app .accounting-operational-state.needs-cost {
+  color: #f2c777 !important; border-color: #674d25 !important; background: #382d20 !important;
+}
+:root[data-theme="dark"] .erp-app :is(.smart-intake-panel,.request-create-section) :is(.helper-text,small) {
+  color: var(--erp-muted) !important;
+}
+
+/* Legacy research/detail typography that does not use shared row classes. */
+:root[data-theme="dark"] .erp-app .page :is(h1,h2,h3,h4,h5,h6) { color: var(--erp-text) !important; }
+:root[data-theme="dark"] .erp-app :is(.workspace-heading,.job-workspace-heading,.page-heading) p:not(.eyebrow) { color: var(--erp-text-2) !important; }
+:root[data-theme="dark"] .erp-app .verified-meta > span,
+:root[data-theme="dark"] .erp-app .source-main > span { color: var(--erp-text-2) !important; }
+:root[data-theme="dark"] .erp-app .verified-meta strong,
+:root[data-theme="dark"] .erp-app .source-main strong,
+:root[data-theme="dark"] .erp-app .part-number { color: var(--erp-text) !important; }
+:root[data-theme="dark"] .erp-app :is(.verified-links a,.source-main a) { color: #72b5ff !important; }
+:root[data-theme="dark"] .erp-app :is(.source-type,.selected-label) {
+  color: var(--erp-text-2) !important; border-color: var(--erp-border-strong) !important; background: var(--erp-panel-3) !important;
+}
+:root[data-theme="dark"] .erp-app .source-option.selected .selected-label {
+  color: #f2c777 !important; border-color: #674d25 !important; background: #382d20 !important;
+}
+:root[data-theme="dark"] .erp-app .smart-job-row :is(.smart-job-row-number,.smart-job-row-topline span,.smart-job-row-meta span) {
+  color: var(--erp-muted) !important;
+}
+
+/* Accessible dark-theme control blue; data accents retain the accepted brighter blue. */
+:root[data-theme="dark"] .erp-app :is(
+  .erp-button,.button:not(.ghost),.workspace-btn-primary,
+  button:not(.ghost):not(.theme-toggle):not(.mobile-nav-toggle),
+  .filter-tabs a.active,.workspace-tabs a.active,.work-queue-tabs a.active,.follow-view-tabs a.active
+) {
+  color: #fff !important; border-color: #176fc1 !important; background: #176fc1 !important;
+}
+:root[data-theme="dark"] .erp-app .request-filter:not(.active) {
+  color: var(--erp-text-2) !important; border-color: var(--erp-border-strong) !important; background: var(--erp-panel-2) !important;
+}
+
+/* Final foreground-contrast edge cases found by the rendered route audit. */
+:root[data-theme="dark"] .erp-app .user-avatar {
+  color: #fff !important;
+  background: #176fc1 !important;
+}
+:root[data-theme="dark"] .erp-app .verified-links a {
+  color: #8bc2ff !important;
+  border-color: var(--erp-border-strong) !important;
+  background: var(--erp-panel-3) !important;
+}
+:root[data-theme="dark"] .erp-app .smart-job-row :is(
+  .smart-job-row-description,
+  .smart-job-row-machine,
+  .smart-job-row-progress-meta span,
+  .smart-job-row-parts span,
+  .smart-job-row-updated
+) {
+  color: var(--erp-text-2) !important;
+}
+:root[data-theme="dark"] .erp-app .smart-intake-image-tools > span {
+  color: var(--erp-text-2) !important;
+}
+:root[data-theme="dark"] .erp-app .invoice-item-count {
+  color: var(--erp-text-2) !important;
+  border-color: var(--erp-border-strong) !important;
+  background: var(--erp-panel-3) !important;
+}
+:root[data-theme="dark"] .erp-app .smart-core-review-card .status-pill.review {
+  color: #e4c7ff !important;
+  border-color: #5d4776 !important;
+  background: #30263f !important;
+}
+:root[data-theme="dark"] .erp-app :is(.job-workspace-nav a.active,.new-job-flow span.active) {
+  color: #fff !important;
+  border-color: #176fc1 !important;
+  background: #176fc1 !important;
+}
+:root[data-theme="dark"] .erp-app .smart-job-row-machine span,
+:root[data-theme="dark"] .erp-app .smart-job-row-action > span {
+  color: var(--erp-text-2) !important;
+}
+:root[data-theme="dark"] .erp-app .job-command-available > span {
+  color: #a8d7c5 !important;
+}
+:root[data-theme="dark"] .erp-app .request-create-optional,
+:root[data-theme="dark"] .erp-app .request-create-optional > summary,
+:root[data-theme="dark"] .erp-app .request-create-optional-body {
+  color: var(--erp-text-2) !important;
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important;
+}
+:root[data-theme="dark"] .erp-app .request-create-optional > summary > span {
+  color: var(--erp-text-2) !important;
+  border-color: var(--erp-border-strong) !important;
+  background: var(--erp-panel-3) !important;
+}
+
+/* 12. ERP-3 core operator workflow ------------------------------------- */
+/* Shared command, quantity, current-work, history, and comparison language. */
+.erp-app .erp-command-summary {
+  display: grid;
+  grid-template-columns: minmax(220px,1.25fr) minmax(150px,.55fr) minmax(190px,.75fr) minmax(260px,1fr);
+  gap: 1px;
+  overflow: hidden;
+  padding: 0 !important;
+  border-color: color-mix(in srgb,var(--erp-blue) 48%,var(--erp-border)) !important;
+  background: var(--erp-border) !important;
+}
+.erp-app .erp-command-summary > div { display: grid; align-content: center; gap: 4px; min-width: 0; padding: 13px 15px; background: var(--erp-panel); }
+.erp-app .erp-command-summary span { color: var(--erp-muted); font-size: 11.5px; font-weight: 700; letter-spacing: .045em; text-transform: uppercase; }
+.erp-app .erp-command-summary strong { color: var(--erp-text); font-size: 15px; line-height: 1.3; overflow-wrap: anywhere; }
+.erp-app .erp-command-summary small { color: var(--erp-text-2); font-size: 12px; line-height: 1.35; }
+.erp-app .erp-command-summary .delivery-command-quantity { background: color-mix(in srgb,var(--erp-green) 10%,var(--erp-panel)); }
+.erp-app .erp-command-summary .delivery-command-quantity strong { color: #83dfbb; font-size: 25px; font-variant-numeric: tabular-nums; }
+.erp-app .erp-command-summary .delivery-command-action { border-left: 3px solid var(--erp-blue); background: var(--erp-panel-2); }
+.erp-app .erp-current-work { border-color: color-mix(in srgb,var(--erp-blue) 42%,var(--erp-border)) !important; }
+.erp-app .erp-history { opacity: .94; }
+
+/* JCC: retain the useful sticky rail while removing duplication and making
+   authoritative identity/current work easier to scan. */
+@media (min-width: 1101px) {
+  .erp-app .cc-shell { grid-template-columns: minmax(0,1.9fr) minmax(360px,.72fr); gap: 14px 16px; }
+  .erp-app .cc-shell > .job-ops { position: sticky; top: 74px; max-height: calc(100vh - 88px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+}
+.erp-app .job-command-header { overflow: hidden; }
+.erp-app .job-command-header :is(h1,h2,h3,h4,h5,h6,strong) { color: var(--erp-text) !important; }
+.erp-app .job-command-header .job-command-stage span,
+.erp-app .job-command-header .job-command-need > span,
+.erp-app .job-command-header .job-command-next > span,
+.erp-app .job-command-header .job-command-metrics span { color: var(--erp-muted) !important; }
+.erp-app .job-command-header .job-command-next > strong { color: var(--erp-text) !important; }
+.erp-app .job-command-header .job-command-next .button { color: #fff !important; }
+.erp-app .job-command-header .original-request-disclosure :is(summary,strong) { color: var(--erp-text) !important; }
+
+/* Advanced Command Center uses light cards inside the ERP shell. Keep their
+   foreground readable while leaving genuinely dark action surfaces intact. */
+:root[data-theme="dark"] .erp-app .cc-shell { --ink: #10213d; --ink-strong: #071a36; --muted: #68768d; }
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-header { color: var(--ink) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-header :is(h1,h2,h3,h4,h5,h6,strong) { color: var(--ink-strong) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-header :is(.job-command-stage span,.job-command-need > span,.job-command-next > span,.job-command-metrics span) { color: var(--muted) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell :is(.requested-need-primary,.requested-need-card,.job-workflow-strip,.job-ops-panel,.job-disclosure,.secondary-disclosure,.job-command-group,.job-command-group-body) { color: var(--ink) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell :is(.requested-need-primary,.requested-need-card,.job-workflow-strip,.job-ops-panel,.job-disclosure,.secondary-disclosure,.job-command-group) :is(h1,h2,h3,h4,h5,h6,strong,summary) { color: var(--ink-strong) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell :is(.cc-next,.job-command-next,.job-ops-next) { color: #fff !important; }
+:root[data-theme="dark"] .erp-app .cc-shell :is(.cc-next,.job-command-next,.job-ops-next) :is(h1,h2,h3,h4,h5,h6,strong,span,p,small) { color: #fff !important; }
+:root[data-theme="dark"] .erp-app .cc-shell :is(.cc-next,.job-command-next,.job-ops-next) .button { color: var(--ink-strong) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-identity p:not(.cc-kicker),
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-asset span { color: var(--ink) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-identity .cc-kicker { color: var(--accent-blue) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell .requested-need-card .requested-need-meta span { color: var(--text-primary) !important; border-color: var(--border) !important; }
+:root[data-theme="dark"] .erp-app .cc-shell #quote-history > summary { color: var(--text-primary) !important; }
+.erp-app .job-ops-movement .job-ops-metric span { font-size: 9px; overflow-wrap: normal; word-break: normal; }
+:root[data-theme="dark"] .erp-app .cc-shell .job-ops-panel-head p,
+:root[data-theme="dark"] .erp-app .cc-shell .job-ops-panel .job-ops-metric span,
+:root[data-theme="dark"] .erp-app .cc-shell .job-ops-panel .job-ops-empty,
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-group > summary small { color: var(--muted) !important; }
+.erp-app .job-command-identity { padding-block: 15px !important; }
+.erp-app .job-command-identity h1 { font-size: 27px !important; }
+.erp-app .job-command-asset { display: flex; flex-wrap: wrap; gap: 5px 8px; align-items: baseline; margin-top: 7px !important; }
+.erp-app .job-command-asset span { color: var(--erp-muted); font-size: 11px; font-weight: 700; letter-spacing: .045em; text-transform: uppercase; }
+.erp-app .job-command-asset strong { color: var(--erp-text-2); font-size: 13px; overflow-wrap: anywhere; }
+.erp-app .job-command-core { grid-template-columns: minmax(0,1.45fr) minmax(320px,.55fr); }
+.erp-app .job-command-need strong { font-size: 17px; line-height: 1.3; }
+.erp-app .job-command-next { background: color-mix(in srgb,var(--erp-blue) 9%,var(--erp-panel-2)) !important; }
+.erp-app .job-command-next > strong { color: var(--erp-text); font-size: 18px; line-height: 1.25; }
+.erp-app .job-command-next .button { min-height: 40px; }
+.erp-app .job-workflow-strip > div { min-height: 43px; }
+.erp-app .job-workflow-strip .is-current { background: color-mix(in srgb,var(--erp-blue) 10%,transparent); }
+.erp-app .job-workflow-strip .is-complete { background: color-mix(in srgb,var(--erp-green) 7%,transparent); }
+.erp-app .requested-need-primary { padding: 16px !important; }
+.erp-app .requested-need-card { padding: 12px 13px !important; }
+.erp-app .requested-need-card h3 { font-size: 16px !important; line-height: 1.35; }
+.erp-app .job-primary-summary { padding: 14px !important; }
+.erp-app .job-primary-identity h1 { font-size: 19px; }
+.erp-app .job-primary-need { color: var(--erp-text) !important; font-weight: 650; }
+.erp-app .job-primary-next { padding-top: 10px; }
+.erp-app .job-progress-heading { padding-top: 2px; }
+.erp-app .job-ops-grid { gap: 8px; }
+.erp-app .job-ops-grid > details:not([open]) > summary { min-height: 42px; }
+.erp-app .job-command-group-body { gap: 9px; }
+.erp-app .job-command-group-body > .cc-card,
+.erp-app .job-command-group-body > .panel { margin-top: 9px; }
+.erp-app #operational-activity,
+.erp-app #operational-documents,
+.erp-app #quote-history,
+.erp-app .supplier-order-history,
+.erp-app .delivery-history { opacity: .94; }
+
+/* Research: each closed row is a genuine comparison row; evidence and edit
+   forms remain secondary in the disclosure body. */
+.erp-app .research-result-list { gap: 8px; }
+.erp-app .research-result-card > summary {
+  grid-template-columns: minmax(220px,1.25fr) repeat(4,minmax(120px,.72fr)) minmax(150px,.85fr) !important;
+  gap: 10px !important;
+  min-height: 82px;
+  padding: 12px 46px 12px 13px !important;
+}
+.erp-app .part-summary-identity h3 { font-size: 14px !important; line-height: 1.3; }
+.erp-app .part-summary-identity small,
+.erp-app .part-summary-metric span { font-size: 11px !important; }
+.erp-app .part-summary-metric strong { font-size: 13px !important; line-height: 1.3; overflow-wrap: anywhere; }
+.erp-app .part-summary-metric small { color: var(--erp-muted); font-size: 11.5px; }
+.erp-app .erp-candidate-selected { justify-self: start; padding: 3px 7px; color: #83dfbb; border: 1px solid #28604f; border-radius: 999px; background: #17382f; font-size: 11px; font-weight: 700; }
+.erp-app .research-result-card:has(.erp-candidate-selected) { border-color: #28604f !important; }
+.erp-app .research-result-body { padding: 12px 13px 13px; }
+.erp-app .result-primary-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.erp-app .result-details { margin-top: 0; }
+
+/* Purchasing and supplier order: movement/current work wins over cost and
+   history, without suppressing any existing controls. */
+.erp-app .purchase-order-primary { grid-template-columns: minmax(220px,1.15fr) minmax(190px,.8fr) minmax(105px,.4fr) minmax(220px,1fr) auto; }
+.erp-app .purchase-order-next strong { color: #8bc2ff !important; font-size: 14px; }
+.erp-app .purchase-order-secondary { grid-template-columns: repeat(7,minmax(95px,1fr)); }
+.erp-app .purchase-order-secondary .purchase-order-metric:nth-last-child(-n+3) { background: color-mix(in srgb,var(--erp-blue) 6%,var(--erp-panel-2)); }
+.erp-app .purchase-ops-next { min-height: 76px; padding: 14px 16px !important; }
+.erp-app .purchase-ops-next h2 { font-size: 19px; }
+.erp-app .purchase-ops-grid { grid-template-columns: minmax(0,1.15fr) minmax(0,.85fr); gap: 10px; }
+.erp-app .purchase-ops-grid > .purchase-ops-panel:nth-child(2) { grid-column: 2; grid-row: 1; border-color: color-mix(in srgb,var(--erp-blue) 40%,var(--erp-border)) !important; }
+.erp-app .supplier-order-context { grid-template-columns: repeat(4,minmax(0,1fr)); }
+.erp-app .supplier-order-items,
+.erp-app .supplier-order-receiving,
+.erp-app .receiving-exceptions,
+.erp-app .supplier-backorders { border-color: color-mix(in srgb,var(--erp-blue) 28%,var(--erp-border)) !important; }
+.erp-app .supplier-order-history,
+.erp-app .actual-cost-history,
+.erp-app #operational-history { background: var(--erp-panel-2) !important; }
+
+/* Receiving: accepted is the primary usable quantity; exceptions are a
+   secondary disclosure and never visually compete with it. */
+.erp-app .receiving-entry { padding: 13px !important; border-color: var(--erp-border) !important; background: var(--erp-panel-2) !important; }
+.erp-app .receiving-entry > header { margin-bottom: 10px; }
+.erp-app .receiving-entry-state { gap: 6px; }
+.erp-app .receiving-entry-state > span { padding: 5px 8px; border: 1px solid var(--erp-border); border-radius: 6px; background: var(--erp-panel-3); }
+.erp-app .receiving-accepted { display: grid; grid-template-columns: minmax(180px,1fr) minmax(110px,180px); align-items: center; gap: 12px; padding: 12px 13px !important; border-width: 2px !important; }
+.erp-app .receiving-accepted > span { color: var(--erp-text); font-size: 15px; font-weight: 700; }
+.erp-app .receiving-accepted > span small { display: block; margin-top: 2px; color: #83dfbb; font-size: 12px; font-weight: 600; }
+.erp-app .receiving-accepted input { min-height: 44px; font-size: 17px !important; font-weight: 700 !important; text-align: center; }
+.erp-app .receiving-exception-inputs { margin-top: 9px; border: 1px solid var(--erp-border); border-radius: 8px; background: var(--erp-panel); }
+.erp-app .receiving-exception-inputs > summary { padding: 10px 12px; color: var(--erp-text-2); }
+.erp-app .receiving-exception-grid { padding: 0 10px 10px; }
+.erp-app .receiving-exception-grid fieldset { background: var(--erp-panel-2) !important; }
+.erp-app .receiving-exception-card { padding: 12px !important; }
+.erp-app .backorder-card:not(:has(.workspace-status-badge)) { padding-block: 9px !important; background: var(--erp-panel) !important; }
+
+/* Delivery: current availability and the next action are above history. */
+.erp-app .delivery-command { margin: 0 0 12px; }
+.erp-app .delivery-availability { border-color: color-mix(in srgb,var(--erp-green) 40%,var(--erp-border)) !important; }
+.erp-app .delivery-line:not(.delivery-line-head) { min-height: 54px; }
+.erp-app .delivery-line input[type="number"] { font-size: 16px !important; font-weight: 700 !important; text-align: center; }
+.erp-app .delivery-prepare-submit { min-height: 42px; }
+.erp-app .delivery-history { margin-top: 12px; }
+.erp-app .delivery-history-list { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.erp-app .delivery-history-card { border-color: var(--erp-border) !important; background: var(--erp-panel-2) !important; box-shadow: none !important; }
+.erp-app .delivery-history-card > summary,
+.erp-app .delivery-history-card[open] > summary { min-height: 56px; padding: 9px 11px !important; color: var(--erp-text-2) !important; background: var(--erp-panel-2) !important; }
+.erp-app .delivery-history-card > summary strong { color: var(--erp-text); }
+.erp-app .delivery-history-card > summary small { color: var(--erp-muted) !important; font-size: 11.5px; }
+.erp-app .delivery-history-detail { border-top-color: var(--erp-border) !important; background: var(--erp-panel) !important; }
+
+@media (max-width: 1180px) {
+  .erp-app .research-result-card > summary { grid-template-columns: minmax(200px,1.15fr) repeat(2,minmax(130px,.75fr)) !important; }
+  .erp-app .part-summary-metric:nth-last-child(-n+2) { grid-column: auto; }
+  .erp-app .erp-command-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .erp-app .purchase-ops-grid { grid-template-columns: 1fr; }
+  .erp-app .purchase-ops-grid > .purchase-ops-panel:nth-child(2) { grid-column: 1; grid-row: auto; }
+}
+@media (max-width: 780px) {
+  .erp-app .cc-shell > .job-command-header { order: 1; }
+  .erp-app .cc-shell > #customer-needs { order: 2; }
+  .erp-app .cc-shell > .job-command-groups { order: 3; }
+  .erp-app .cc-shell > .job-ops { order: 4; }
+  .erp-app .cc-shell > :not(.job-command-header):not(#customer-needs):not(.job-command-groups):not(.job-ops) { order: 5; }
+  .erp-app .cc-shell > .job-ops { max-height: none; overflow: visible; }
+  .erp-app .job-command-core,
+  .erp-app .erp-command-summary { grid-template-columns: 1fr; }
+  .erp-app .job-command-next { border-left: 0 !important; border-top: 1px solid var(--erp-border); }
+  .erp-app .job-command-header,
+  .erp-app .job-command-header * { min-width: 0; }
+  .erp-app .job-command-stage { justify-self: stretch; min-width: 0; }
+  .erp-app .job-command-next form { width: 100%; min-width: 0; }
+  .erp-app .research-result-card > summary { grid-template-columns: 1fr 1fr !important; min-height: 0; }
+  .erp-app .part-summary-identity { grid-column: 1 / -1; }
+  .erp-app .part-summary-metric:last-of-type { grid-column: 1 / -1; }
+  .erp-app .purchase-order-primary { grid-template-columns: 1fr !important; }
+  .erp-app .supplier-order-context { grid-template-columns: 1fr 1fr; }
+  .erp-app .receiving-accepted { grid-template-columns: 1fr; }
+  .erp-app .receiving-accepted input { width: 100%; }
+  .erp-app .delivery-history-list { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .erp-app .research-result-card > summary,
+  .erp-app .supplier-order-context { grid-template-columns: 1fr !important; }
+  .erp-app .part-summary-metric:last-of-type { grid-column: auto; }
+  .erp-app .job-command-header { padding-inline: 12px !important; }
+  .erp-app .job-command-identity,
+  .erp-app .job-command-core { padding-inline: 12px !important; }
+  .erp-app .job-command-metrics > div { min-width: 0; }
+  .erp-app .job-command-metrics strong { overflow-wrap: anywhere; }
+}
+
+/* 13. ERP-4 intake, job directory, and work-queue flow ----------------- */
+/* Shared identity, review, next-action, and authority-boundary language. */
+.erp-app .erp-intake-summary {
+  display: grid;
+  grid-template-columns: minmax(150px,.7fr) minmax(220px,1.25fr) minmax(190px,1fr) minmax(180px,.85fr) minmax(220px,1fr);
+  gap: 1px;
+  overflow: hidden;
+  padding: 0 !important;
+  border-color: color-mix(in srgb,var(--erp-blue) 42%,var(--erp-border)) !important;
+  background: var(--erp-border) !important;
+}
+.erp-app .erp-intake-summary > div:not(.panel-heading):not(.smart-core-review-grid),
+.erp-app .erp-intake-summary > .erp-identity-block {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 13px 14px;
+  background: var(--erp-panel);
+}
+.erp-app .erp-intake-summary > div > span,
+.erp-app .erp-intake-summary > .erp-identity-block > span {
+  color: var(--erp-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.erp-app .erp-intake-summary > div > strong,
+.erp-app .erp-intake-summary > .erp-identity-block > strong {
+  color: var(--erp-text);
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+.erp-app .erp-intake-summary > div > small,
+.erp-app .erp-intake-summary > .erp-identity-block > small {
+  color: var(--erp-text-2);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.erp-app .erp-intake-summary > .erp-next-action {
+  border-left: 3px solid var(--erp-blue);
+  background: color-mix(in srgb,var(--erp-blue) 8%,var(--erp-panel-2));
+}
+.erp-app .erp-intake-summary > .erp-next-action .button { justify-self: start; margin-top: 3px; }
+.erp-app .erp-missing-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  margin: 0 0 12px;
+  padding: 11px 14px;
+  color: var(--erp-text-2);
+  border: 1px solid color-mix(in srgb,var(--erp-amber) 48%,var(--erp-border));
+  border-radius: 9px;
+  background: color-mix(in srgb,var(--erp-amber) 8%,var(--erp-panel));
+}
+.erp-app .erp-missing-info strong { flex: 0 0 auto; color: #f1c879; font-size: 13px; }
+.erp-app .erp-missing-info ul { display: flex; flex-wrap: wrap; gap: 5px 24px; margin: 0; padding-left: 18px; font-size: 12.5px; }
+.erp-app .erp-original-wording { border-color: color-mix(in srgb,var(--erp-purple) 42%,var(--erp-border)) !important; }
+.erp-app .erp-intake-proposal { border-color: color-mix(in srgb,var(--erp-blue) 34%,var(--erp-border)) !important; }
+.erp-app .erp-intake-form .request-create-section-head,
+.erp-app .erp-intake-form .panel-heading { margin-bottom: 12px; }
+.erp-app .erp-intake-form .request-create-section { padding: 16px !important; }
+.erp-app .erp-intake-form .request-create-step { width: 30px; height: 30px; }
+:root[data-theme="dark"] .erp-app .smart-core-review-card {
+  color: var(--erp-text-2) !important;
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important;
+}
+:root[data-theme="dark"] .erp-app .smart-core-review-card :is(h3,strong) { color: var(--erp-text) !important; }
+:root[data-theme="dark"] .erp-app .smart-core-review-card p { color: var(--erp-text-2) !important; }
+:root[data-theme="dark"] .erp-app :is(.smart-existing-match,.smart-review-alert) {
+  color: var(--erp-text-2) !important;
+  border-color: var(--erp-border-strong) !important;
+  background: var(--erp-panel-3) !important;
+}
+:root[data-theme="dark"] .erp-app :is(.smart-existing-match,.smart-review-alert) :is(strong,h3) { color: var(--erp-text) !important; }
+
+/* Inbox rows use the full workspace: identity and need lead, review context
+   remains stable, and the authoritative next action lands at the right edge. */
+.erp-app .inbox-card-main {
+  grid-template-columns: minmax(0,1fr) minmax(140px,.22fr) minmax(190px,.28fr) !important;
+  gap: 14px !important;
+  align-items: stretch !important;
+}
+.erp-app .erp-intake-row { padding: 0 !important; }
+.erp-app .erp-intake-row .request-card-content { display: grid; grid-template-columns: minmax(170px,.6fr) minmax(260px,1.3fr); gap: 7px 18px; padding: 13px 15px; }
+.erp-app .erp-intake-row .request-card-topline { grid-column: 1 / -1; }
+.erp-app .erp-intake-identity,
+.erp-app .erp-intake-need { min-width: 0; }
+.erp-app .erp-intake-identity > span,
+.erp-app .erp-intake-need > span,
+.erp-app .erp-intake-review small,
+.erp-app .erp-intake-row .erp-next-action small {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--erp-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+}
+.erp-app .erp-intake-row .request-customer { margin: 0; font-size: 15px !important; }
+.erp-app .erp-intake-row .request-summary { margin: 0; color: var(--erp-text); font-size: 14px; font-weight: 600; line-height: 1.35; }
+.erp-app .erp-intake-row .request-card-meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 5px 20px; }
+.erp-app .erp-intake-row .request-card-meta strong { color: var(--erp-text-2); font-weight: 650; }
+.erp-app .erp-intake-review,
+.erp-app .erp-intake-row .erp-next-action { display: grid; align-content: center; min-width: 0; padding: 12px 14px; border-left: 1px solid var(--erp-border); }
+.erp-app .erp-intake-review strong { color: var(--erp-text-2); font-size: 13px; line-height: 1.35; }
+.erp-app .erp-intake-row .request-card-open { justify-self: stretch !important; margin: 0 !important; border-left: 3px solid var(--erp-blue); background: color-mix(in srgb,var(--erp-blue) 8%,var(--erp-panel-2)); }
+.erp-app .erp-intake-row .request-card-open span { color: #8bc2ff; font-size: 14px; font-weight: 700; line-height: 1.3; }
+.erp-app .erp-intake-row .request-card-open strong { color: #8bc2ff; font-size: 18px; }
+.erp-app .inbox-secondary-actions { margin: 0 15px 9px; }
+
+/* Jobs remain a directory: predictable identity, workflow, and action columns
+   without adopting the Work Queue's action-first visual treatment. */
+.erp-app .erp-job-row { grid-template-columns: minmax(330px,1.3fr) minmax(230px,.75fr) minmax(220px,.72fr) 28px !important; }
+.erp-app .erp-job-row .smart-job-row-action { border-left: 1px solid var(--erp-border); background: var(--erp-panel-2); }
+.erp-app .erp-job-row .smart-job-row-action strong { color: #8bc2ff !important; font-size: 14px; line-height: 1.35; }
+.erp-app .erp-job-row .smart-job-row-number { color: var(--erp-text-2) !important; font-size: 12px; }
+.erp-app .erp-job-row .smart-job-row-description { color: var(--erp-text) !important; font-size: 14px !important; }
+.erp-app .erp-job-row .smart-job-row-machine { overflow-wrap: anywhere; }
+
+/* Work Queue is intentionally more action-forward than the Jobs directory. */
+.erp-app .erp-queue-row { grid-template-columns: minmax(125px,.44fr) minmax(220px,.75fr) minmax(320px,1.35fr) minmax(230px,.72fr) !important; position: relative; overflow: hidden; }
+.erp-app .erp-queue-row::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--erp-border-strong); }
+.erp-app .erp-queue-row.erp-actionable-state::before { background: var(--erp-blue); }
+.erp-app .erp-queue-row.erp-waiting-state { background: color-mix(in srgb,var(--erp-panel-2) 72%,var(--erp-panel)) !important; }
+.erp-app .erp-queue-row.erp-waiting-state::before { background: var(--erp-amber); opacity: .7; }
+.erp-app .erp-queue-row .work-queue-action { display: grid; align-content: center; padding-left: 16px; border-left: 1px solid var(--erp-border); background: color-mix(in srgb,var(--erp-blue) 6%,var(--erp-panel-2)); }
+.erp-app .erp-queue-row .workspace-primary-link { font-size: 14px; line-height: 1.35; }
+.erp-app .erp-queue-row .work-queue-need-label { font-size: 14px; }
+.erp-app .erp-queue-row .work-queue-action-detail { font-size: 13px; }
+
+@media (max-width: 1180px) {
+  .erp-app .erp-intake-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .erp-app .erp-intake-summary > .erp-next-action { grid-column: 1 / -1; border-left: 0; border-top: 3px solid var(--erp-blue); }
+  .erp-app .inbox-card-main { grid-template-columns: minmax(0,1fr) minmax(170px,.3fr) !important; }
+  .erp-app .erp-intake-review { display: none; }
+  .erp-app .erp-job-row { grid-template-columns: minmax(280px,1.25fr) minmax(200px,.75fr) minmax(200px,.72fr) 24px !important; }
+  .erp-app .erp-queue-row { grid-template-columns: minmax(110px,.4fr) minmax(190px,.7fr) minmax(260px,1.25fr) minmax(210px,.75fr) !important; }
+}
+@media (max-width: 820px) {
+  .erp-app .inbox-card-main { grid-template-columns: 1fr !important; }
+  .erp-app .erp-intake-row .request-card-content { grid-template-columns: 1fr; }
+  .erp-app .erp-intake-row .request-card-topline,
+  .erp-app .erp-intake-row .request-card-meta { grid-column: auto; }
+  .erp-app .erp-intake-row .request-card-open { border-top: 1px solid var(--erp-border); border-left: 0; }
+  .erp-app .erp-job-row,
+  .erp-app .erp-queue-row { grid-template-columns: 1fr !important; }
+  .erp-app .erp-job-row .smart-job-row-rail,
+  .erp-app .erp-job-row .smart-job-row-open { display: none; }
+  .erp-app .erp-job-row .smart-job-row-workflow,
+  .erp-app .erp-job-row .smart-job-row-action,
+  .erp-app .erp-queue-row .work-queue-action { border-top: 1px solid var(--erp-border); border-left: 0; }
+  .erp-app .erp-queue-row .work-queue-action { padding: 12px 14px; }
+}
+@media (max-width: 540px) {
+  .erp-app .erp-intake-summary { grid-template-columns: 1fr; }
+  .erp-app .erp-intake-summary > .erp-next-action { grid-column: auto; }
+  .erp-app .erp-missing-info { display: block; }
+  .erp-app .erp-missing-info ul { display: block; margin-top: 7px; }
+}
+
+/* 14. ERP-5 commercial and records operator workflow ------------------ */
+/* Shared record language keeps commercial work current and directories
+   compact without introducing calculations or workflow semantics. */
+.erp-app :is(.erp-commercial-directory,.erp-records-directory,.erp-commercial-detail) {
+  width: 100%;
+  min-width: 0;
+}
+.erp-app :is(.erp-commercial-directory,.erp-records-directory) .workspace-heading {
+  margin-bottom: 2px;
+}
+.erp-app :is(.erp-commercial-directory,.erp-records-directory) .workspace-toolbar {
+  position: sticky;
+  top: 63px;
+  z-index: 8;
+  padding: 10px 12px !important;
+  border-color: var(--erp-border) !important;
+  background: color-mix(in srgb,var(--erp-panel) 94%,transparent) !important;
+  backdrop-filter: blur(12px);
+}
+.erp-app :is(.erp-commercial-row,.erp-directory-row) {
+  min-height: 112px;
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel) !important;
+}
+.erp-app :is(.erp-commercial-row,.erp-directory-row):hover {
+  border-color: var(--erp-border-strong) !important;
+  background: var(--erp-panel-2) !important;
+}
+.erp-app :is(.erp-commercial-row,.erp-directory-row) .workspace-row-identity h2 {
+  color: var(--erp-text) !important;
+  font-size: 15px !important;
+}
+.erp-app :is(.erp-commercial-row,.erp-directory-row) .workspace-row-identity > p,
+.erp-app :is(.erp-commercial-row,.erp-directory-row) .workspace-row-meta,
+.erp-app :is(.erp-commercial-row,.erp-directory-row) .workspace-row-identity > small {
+  color: var(--erp-text-2) !important;
+}
+.erp-app :is(.erp-commercial-row,.erp-directory-row) .workspace-status-line > strong,
+.erp-app :is(.erp-commercial-row,.erp-directory-row) .workspace-balance strong {
+  color: var(--erp-text) !important;
+  font-variant-numeric: tabular-nums;
+}
+.erp-app .erp-record-action {
+  border-left-color: var(--erp-border) !important;
+  background: color-mix(in srgb,var(--erp-blue) 6%,var(--erp-panel-2)) !important;
+}
+.erp-app .erp-record-action > span,
+.erp-app .erp-record-action > small {
+  color: var(--erp-muted) !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.erp-app .erp-record-action > strong { color: #8bc2ff !important; }
+
+/* Compact command summaries keep record identity, money, state, and the
+   existing advancing action in the first viewport. */
+.erp-app .erp-record-summary {
+  border: 1px solid color-mix(in srgb,var(--erp-blue) 40%,var(--erp-border)) !important;
+  border-radius: 11px !important;
+  background: var(--erp-panel) !important;
+  box-shadow: none !important;
+}
+.erp-app .erp-record-summary :is(h1,h2,strong) { color: var(--erp-text) !important; }
+.erp-app .erp-record-summary :is(p,span,small) { color: var(--erp-text-2); }
+.erp-app .erp-record-summary .eyebrow { color: #8bc2ff !important; }
+.erp-app .erp-commercial-total,
+.erp-app .erp-commercial-totals {
+  font-variant-numeric: tabular-nums;
+}
+.erp-app .erp-commercial-total > strong,
+.erp-app .erp-commercial-totals strong { color: var(--erp-text) !important; }
+.erp-app .erp-commercial-current {
+  border-color: color-mix(in srgb,var(--erp-blue) 30%,var(--erp-border)) !important;
+  background: var(--erp-panel) !important;
+}
+.erp-app .erp-commercial-supporting {
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important;
+}
+.erp-app .invoice-jmd-display {
+  display: grid;
+  grid-template-columns: minmax(220px, .8fr) minmax(360px, 1.2fr);
+  gap: 24px;
+  align-items: start;
+}
+.erp-app .invoice-jmd-display h2 { margin: 2px 0 6px; }
+.erp-app .invoice-jmd-display :is(p,small) { color: var(--erp-text-2); }
+.erp-app .invoice-jmd-form {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 12px 18px;
+  align-items: end;
+}
+.erp-app .invoice-jmd-form :is(.invoice-jmd-toggle,.invoice-jmd-preview) { grid-column: 1 / -1; }
+.erp-app .invoice-jmd-toggle { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+.erp-app .invoice-jmd-toggle input { width: auto; }
+.erp-app .invoice-jmd-rate { display: flex; align-items: center; gap: 8px; }
+.erp-app .invoice-jmd-rate input { width: 10rem; }
+.erp-app .invoice-jmd-preview {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--erp-border);
+  border-radius: 8px;
+  background: var(--erp-panel-3);
+  color: var(--erp-text-2);
+}
+.erp-app .invoice-jmd-preview strong { color: var(--erp-text); }
+.erp-app .erp-commercial-history,
+.erp-app .erp-commercial-history > details,
+.erp-app details.erp-commercial-history {
+  border-color: var(--erp-border) !important;
+  background: color-mix(in srgb,var(--erp-panel-2) 82%,var(--erp-panel)) !important;
+}
+.erp-app .erp-commercial-history summary { color: var(--erp-text-2) !important; }
+
+/* Quote and invoice line work remains dense, readable, and numerically aligned. */
+.erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) th {
+  color: var(--erp-muted) !important;
+  background: var(--erp-panel-2) !important;
+}
+.erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td {
+  color: var(--erp-text-2) !important;
+  background: var(--erp-panel) !important;
+}
+.erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td strong {
+  color: var(--erp-text) !important;
+}
+.erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) th:nth-last-child(-n+2),
+.erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td:nth-last-child(-n+2) {
+  text-align: right;
+}
+.erp-app .erp-commercial-detail :is(.quote-document-row,.invoice-document-row,.invoice-payment-record) {
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important;
+}
+.erp-app .erp-commercial-detail .quote-review-heading {
+  border-color: color-mix(in srgb,var(--erp-blue) 40%,var(--erp-border)) !important;
+  background: var(--erp-panel) !important;
+}
+.erp-app .erp-commercial-detail :is(.quote-review-command,.quote-review-items) {
+  border-color: color-mix(in srgb,var(--erp-blue) 30%,var(--erp-border)) !important;
+  background: var(--erp-panel) !important;
+}
+.erp-app .erp-commercial-detail .quote-review-documents { background: var(--erp-panel-2) !important; }
+.erp-app .erp-commercial-detail .quote-review-history { background: color-mix(in srgb,var(--erp-panel-2) 82%,var(--erp-panel)) !important; }
+:root[data-theme="dark"] .erp-app .erp-commercial-detail .quote-review-heading-total,
+:root[data-theme="dark"] .erp-app .erp-commercial-detail .invoice-desk-header-money > div,
+:root[data-theme="dark"] .erp-app .erp-commercial-detail .quote-total-breakdown,
+:root[data-theme="dark"] .erp-app .erp-commercial-detail .quote-total-breakdown > div,
+:root[data-theme="dark"] .erp-app .erp-commercial-detail .quote-total-main,
+:root[data-theme="dark"] .erp-app .erp-commercial-detail .invoice-desk-total,
+:root[data-theme="dark"] .erp-app .erp-commercial-detail .invoice-desk-balance {
+  color: var(--erp-text-2) !important;
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important;
+}
+:root[data-theme="dark"] .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) :is(thead,tbody,tr,th,td) {
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel) !important;
+}
+:root[data-theme="dark"] .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) th {
+  color: var(--erp-muted) !important;
+  background: var(--erp-panel-2) !important;
+}
+:root[data-theme="dark"] .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td {
+  color: var(--erp-text-2) !important;
+}
+:root[data-theme="dark"] .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td strong,
+:root[data-theme="dark"] .erp-app .erp-commercial-detail :is(.quote-review-heading-total,.quote-total-main,.invoice-desk-header-money,.invoice-desk-total,.invoice-desk-balance) strong {
+  color: var(--erp-text) !important;
+}
+:root[data-theme="dark"] .erp-app .erp-records-directory [data-archive-delete] button.workspace-btn.workspace-btn-secondary {
+  color: #ff9da4 !important;
+  border-color: color-mix(in srgb,var(--erp-red) 48%,var(--erp-border)) !important;
+  background: color-mix(in srgb,var(--erp-red) 8%,var(--erp-panel-2)) !important;
+}
+
+/* Customer and machine identity blocks lead linked commercial records. */
+.erp-app .erp-record-identity {
+  gap: 1px !important;
+  overflow: hidden;
+  border: 1px solid var(--erp-border);
+  border-radius: 11px;
+  background: var(--erp-border);
+}
+.erp-app .erp-record-identity > * {
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: var(--erp-panel) !important;
+  box-shadow: none !important;
+}
+.erp-app .erp-record-identity > * > span { color: var(--erp-muted) !important; }
+.erp-app .erp-record-identity > * > strong { color: var(--erp-text) !important; overflow-wrap: anywhere; }
+.erp-app .erp-record-profile { background: var(--erp-panel-2) !important; }
+.erp-app .erp-record-profile .customer-profile-grid > div {
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel) !important;
+}
+
+/* Document identity and integrity stay primary; technical evidence stays behind
+   the existing disclosure and uses the quieter evidence surface. */
+.erp-app .erp-documents-directory .docs-summary { gap: 10px; }
+.erp-app .erp-documents-directory .docs-card {
+  padding: 14px 16px !important;
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel) !important;
+  box-shadow: none !important;
+}
+.erp-app .erp-documents-directory .docs-card strong { color: var(--erp-text) !important; }
+.erp-app .erp-documents-directory .docs-card :is(span,small) { color: var(--erp-text-2) !important; }
+.erp-app .erp-document-list {
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel) !important;
+  box-shadow: none !important;
+}
+.erp-app .erp-document-list .docs-list-head { color: var(--erp-muted) !important; background: var(--erp-panel-2) !important; }
+.erp-app .erp-document-row { border-color: var(--erp-border) !important; background: var(--erp-panel) !important; }
+.erp-app .erp-document-row:hover { background: var(--erp-panel-2) !important; }
+.erp-app .erp-document-row .docs-identity strong,
+.erp-app .erp-document-row .docs-context strong,
+.erp-app .erp-document-row .docs-status strong { color: var(--erp-text) !important; }
+.erp-app .erp-document-row :is(small,.docs-muted) { color: var(--erp-muted) !important; }
+.erp-app .erp-document-row :is(.docs-secondary-details,.docs-history) {
+  border-color: var(--erp-border) !important;
+  background: var(--erp-panel-2) !important;
+}
+
+/* The shared next-action utility is intentionally single-line in queue rows;
+   Smart Intake applies it to a full authority panel, which must wrap. */
+.erp-app .smart-proposal-confirm.erp-next-action { min-width: 0; white-space: normal; }
+.erp-app .smart-proposal-confirm.erp-next-action :is(div,p) { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.erp-app .smart-raw-request pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (min-width: 1181px) {
+  .erp-app .erp-commercial-row { grid-template-columns: 72px minmax(320px,1.35fr) minmax(210px,.65fr) minmax(245px,.75fr) !important; }
+  .erp-app .erp-directory-row { grid-template-columns: 72px minmax(320px,1.35fr) minmax(240px,.7fr) minmax(230px,.7fr) !important; }
+}
+@media (max-width: 820px) {
+  .erp-app :is(.erp-commercial-directory,.erp-records-directory) .workspace-toolbar { position: static; }
+  .erp-app :is(.erp-commercial-row,.erp-directory-row) { grid-template-columns: 1fr !important; }
+  .erp-app :is(.erp-commercial-row,.erp-directory-row) .workspace-row-mark { display: none; }
+  .erp-app :is(.erp-commercial-row,.erp-directory-row) .erp-record-action { border-top: 1px solid var(--erp-border); border-left: 0 !important; }
+  .erp-app .erp-record-summary { border-radius: 10px !important; }
+  .erp-app .erp-commercial-detail :is(.quote-bill-to-summary,.quote-response-summary) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .erp-app .erp-commercial-detail .quote-bill-to-editor { width: 100%; min-width: 0; }
+  .erp-app .account-action-grid { grid-template-columns: 1fr !important; }
+  .erp-app :is(.invoice-jmd-display,.invoice-jmd-form) { grid-template-columns: 1fr; }
+  .erp-app .invoice-jmd-form :is(.invoice-jmd-toggle,.invoice-jmd-preview) { grid-column: auto; }
+  .erp-app .invoice-jmd-form .button { width: 100%; }
+  .erp-app .invoice-jmd-rate { flex-wrap: wrap; }
+}
+@media (max-width: 540px) {
+  .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) thead { display: none; }
+  .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) tr { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; padding: 12px; border-top: 1px solid var(--erp-border); }
+  .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td { padding: 0 !important; border: 0 !important; text-align: left !important; }
+  .erp-app .erp-commercial-detail :is(.quote-review-table,.invoice-center-table) td:nth-child(n+3) { grid-column: 1 / -1; }
+}
+
+/* Permanent deletion is a governed exception, never a primary workflow action. */
+:root[data-theme="dark"] body.erp-app .erp-delete-review form.erp-delete-confirmation button.button.danger {
+  color: #ffb4ba !important; border-color: #7a3d46 !important;
+  background: #3d252b !important; box-shadow: none !important;
+}
+body.erp-app a.button.danger-outline.erp-header-delete {
+  color: #a51f2d !important; border: 1px solid #d58c94 !important;
+  background: #fff1f2 !important; box-shadow: none !important;
+}
+body.erp-app a.button.danger-outline.erp-header-delete:hover {
+  color: #8d1724 !important; border-color: #c56f79 !important; background: #ffe4e7 !important;
+}
+:root[data-theme="dark"] body.erp-app a.button.danger-outline.erp-header-delete {
+  color: #ffb4ba !important; border-color: #7a3d46 !important; background: #3d252b !important;
+}
+:root[data-theme="dark"] body.erp-app a.button.danger-outline.erp-header-delete:hover { background: #4a2931 !important; }
+
+/* Supplier fulfillment and actual-cost work are parallel operator concerns. */
+.erp-app .purchase-ops-next h2 span {
+  display: block; margin-bottom: 3px; color: #c6d8f1;
+  font-size: 9px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase;
+}
+.erp-app .supplier-cost-next,
+.erp-app .job-supplier-cost-alert {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 13px 16px; border: 1px solid var(--erp-border); border-radius: 10px;
+  background: var(--erp-panel);
+}
+.erp-app .supplier-cost-next > div,
+.erp-app .job-supplier-cost-alert > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.erp-app .supplier-cost-next span,
+.erp-app .job-supplier-cost-alert span {
+  color: var(--erp-muted); font-size: 9px; font-weight: 900; letter-spacing: .1em;
+}
+.erp-app .supplier-cost-next small,
+.erp-app .job-supplier-cost-alert small { color: var(--erp-muted); }
+.erp-app .supplier-cost-next.needs-confirmation,
+.erp-app .job-supplier-cost-alert {
+  border-color: color-mix(in srgb,var(--erp-amber) 55%,var(--erp-border));
+  background: color-mix(in srgb,var(--erp-amber) 8%,var(--erp-panel));
+}
+.erp-app .supplier-cost-next.needs-confirmation > div > strong,
+.erp-app .purchase-order-cost-state,
+.erp-app .job-supplier-cost-alert strong { color: var(--erp-amber); }
+.erp-app .supplier-cost-next.is-confirmed > div > strong,
+.erp-app .job-cost-confirmed { color: var(--erp-green); }
+.erp-app .supplier-cost-next-amount { font-size: 18px; }
+.erp-app .purchase-order-cost-state { margin-top: 5px; font-size: 10px !important; letter-spacing: .02em; }
+.erp-app .purchase-order-next > a { width: max-content; font-size: 12px; font-weight: 850; }
+.erp-app .job-supplier-cost-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.erp-app .job-cost-confirmed { align-self: center; font-size: 11px; font-weight: 850; }
+@media (max-width: 680px) {
+  .erp-app .supplier-cost-next,
+  .erp-app .job-supplier-cost-alert { align-items: stretch; flex-direction: column; }
+  .erp-app .supplier-cost-next .button,
+  .erp-app .job-supplier-cost-links,
+  .erp-app .job-supplier-cost-links .button { width: 100%; }
+}
+
+/* Invoice workflow context remains available when an issued document fails closed. */
+.erp-app .invoice-desk-header-actions > span {
+  color: var(--erp-muted); font-size: 9px; font-weight: 900; letter-spacing: .1em;
+}
+.erp-app .invoice-desk-header-actions > strong { color: var(--erp-text); }
+.erp-app .invoice-integrity-block { display: grid; gap: 14px; }
+.erp-app .invoice-integrity-summary { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 18px; }
+.erp-app .invoice-integrity-summary h1 { margin: 3px 0; }
+.erp-app .invoice-integrity-state { display: grid; grid-template-columns: repeat(2,minmax(120px,1fr)); gap: 8px; }
+.erp-app .invoice-integrity-state > div { padding: 10px 12px; border: 1px solid var(--erp-border); border-radius: 8px; background: var(--erp-panel-2); }
+.erp-app .invoice-integrity-state span { display: block; color: var(--erp-muted); font-size: 9px; font-weight: 900; text-transform: uppercase; }
+.erp-app .invoice-integrity-state strong { display: block; margin-top: 4px; color: var(--erp-text); }
+.erp-app .invoice-integrity-message { display: grid; gap: 16px; border-color: color-mix(in srgb,var(--erp-red) 55%,var(--erp-border)) !important; }
+.erp-app .invoice-integrity-message h2 { color: var(--erp-red); }
+.erp-app .invoice-integrity-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.erp-app .invoice-integrity-message details { padding-top: 10px; border-top: 1px solid var(--erp-border); }
+@media (max-width: 680px) {
+  .erp-app .invoice-integrity-summary { grid-template-columns: 1fr; }
+  .erp-app .invoice-integrity-state { grid-template-columns: 1fr 1fr; }
+  .erp-app .invoice-integrity-actions { display: grid; grid-template-columns: 1fr; }
+  .erp-app .invoice-integrity-actions .button { width: 100%; }
+}
+
+/* Advanced Command Center: use the ERP navy palette consistently in dark mode. */
+:root[data-theme="dark"] .erp-app .cc-shell.jcc {
+  --surface-1: #111d30;
+  --surface-2: #15243a;
+  --surface-3: #1a2a42;
+  --surface: var(--surface-1);
+  --surface-soft: var(--surface-2);
+  --surface-muted: var(--surface-3);
+  --text-primary: #f2f6fc;
+  --text-secondary: #b5c0cf;
+  --text-muted: #8290a4;
+  --border: #26364d;
+  --border-strong: #344860;
+  --erp-panel: #111d30;
+  --erp-panel-2: #15243a;
+  --erp-panel-3: #1a2a42;
+  --erp-text: #f2f6fc;
+  --erp-text-2: #b5c0cf;
+  --erp-muted: #8290a4;
+  --jcc-line: #26364d;
+  --jcc-muted: #8290a4;
+}
+:root[data-theme="dark"] .erp-app .cc-shell {
+  color: var(--text-primary);
+}
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-header,
+:root[data-theme="dark"] .erp-app .cc-shell .requested-need-primary,
+:root[data-theme="dark"] .erp-app .cc-shell .job-ops-panel,
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-group,
+:root[data-theme="dark"] .erp-app .cc-shell .job-disclosure,
+:root[data-theme="dark"] .erp-app .cc-shell .secondary-disclosure {
+  background: var(--surface-1) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-core,
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-group-body,
+:root[data-theme="dark"] .erp-app .cc-shell .job-disclosure-body,
+:root[data-theme="dark"] .erp-app .cc-shell .secondary-disclosure-body {
+  background: var(--surface-2) !important;
+  color: var(--text-primary) !important;
+}
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-next,
+:root[data-theme="dark"] .erp-app .cc-shell .job-workflow-strip,
+:root[data-theme="dark"] .erp-app .cc-shell .job-ops-movement {
+  background: var(--surface-3) !important;
+  color: var(--text-primary) !important;
+}
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-metrics > div,
+:root[data-theme="dark"] .erp-app .cc-shell .job-ops-metric,
+:root[data-theme="dark"] .erp-app .cc-shell .job-ops-empty,
+:root[data-theme="dark"] .erp-app .cc-shell .requested-need-card {
+  background: var(--surface-2) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+:root[data-theme="dark"] .erp-app .cc-shell .requested-need-card.is-active {
+  background: var(--surface-3) !important;
+  color: var(--text-primary) !important;
+}
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-header :is(h1,h2,h3,h4,h5,h6,strong),
+:root[data-theme="dark"] .erp-app .cc-shell :is(.requested-need-primary,.requested-need-card,.job-ops-panel,.job-command-group,.job-disclosure,.secondary-disclosure) :is(h1,h2,h3,h4,h5,h6,strong),
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-group > summary,
+:root[data-theme="dark"] .erp-app .cc-shell .job-disclosure > summary {
+  color: var(--text-primary) !important;
+}
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-identity p:not(.cc-kicker),
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-asset span,
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-stage span,
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-need > span,
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-metrics span,
+:root[data-theme="dark"] .erp-app .cc-shell .requested-need-meta span,
+:root[data-theme="dark"] .erp-app .cc-shell .job-ops-panel-head p,
+:root[data-theme="dark"] .erp-app .cc-shell .job-ops-metric span,
+:root[data-theme="dark"] .erp-app .cc-shell .job-ops-empty,
+:root[data-theme="dark"] .erp-app .cc-shell .job-command-group > summary small {
+  color: var(--text-secondary) !important;
+}
+:root[data-theme="dark"] .erp-app .cc-shell :is(.job-command-next,.job-workflow-strip,.job-ops-movement) :is(h1,h2,h3,h4,h5,h6,strong,span,p,small) {
+  color: var(--text-primary) !important;
+}
+
+.erp-age.erp-age-warn { color: #d99700; font-weight: 600; }
+.erp-age.erp-age-critical { color: #e5484d; font-weight: 700; }

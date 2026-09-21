@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Delivery · {{ job.job_number }}{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="/static/job_workspace.css?v=9">
+<div class="delivery-desk jcc">
+  <section class="workspace-heading delivery-heading">
+    <div><p class="eyebrow">CUSTOMER DELIVERY</p><h1>{{ job.job_number }}</h1><p>{{ job.customer }}{% if job.company %} · {{ job.company }}{% endif %}</p></div>
+    <a class="button ghost" href="/jobs/{{ job.id }}/basket?view=advanced">Back to Job</a>
+  </section>
+
+  <section class="panel delivery-context">
+    <div><span>Customer</span><strong>{{ job.customer }}</strong></div>
+    <div><span>Invoice</span><strong>{{ job.invoice_number or "—" }}</strong></div>
+    {% if job.machine_context and job.machine_context != "Not assigned" %}<div><span>Asset / Equipment Context</span><strong>{{ job.machine_context }}</strong></div>{% endif %}
+    <div><span>Job Status</span><strong>{{ job.status }}</strong></div>
+  </section>
+
+  <section class="panel delivery-command erp-command-summary" aria-label="Delivery operational summary">
+    <div class="delivery-command-identity"><span>Job / Customer</span><strong>{{ job.job_number }} · {{ job.customer }}</strong><small>{{ job.machine_context if job.machine_context and job.machine_context != 'Not assigned' else 'No asset context required' }}</small></div>
+    <div class="delivery-command-quantity"><span>Available now</span><strong>{{ available_total }}</strong><small>Accepted, unreserved inventory</small></div>
+    <div class="delivery-command-state"><span>Delivery state</span><strong>{% if ready_delivery %}Ready for handoff{% elif has_available %}Ready to prepare{% else %}Awaiting available inventory{% endif %}</strong></div>
+    <div class="delivery-command-action"><span>Next Action</span><strong>{% if ready_delivery %}Complete or cancel prepared delivery{% elif has_available %}Select quantities for delivery{% else %}Return when accepted inventory is available{% endif %}</strong></div>
+  </section>
+
+  {% if action_delivery %}
+  <section class="panel delivery-result" aria-live="polite">
+    <strong>{{ action_delivery.delivery_number }}</strong>
+    {% if delivery_action == "prepared" %}<p>{{ action_delivery.quantity_total }} units reserved · {{ available_total }} units remain available</p>
+    {% elif delivery_action == "delivered" %}<p>Delivered {{ action_delivery.quantity_total }} units{% if available_total > 0 %} · {{ available_total }} units remain available for another delivery{% endif %}</p>
+    {% elif delivery_action == "cancelled" %}<p>Delivery cancelled. {{ available_total }} units are available again.</p>{% endif %}
+    <p>{{ action_delivery.customer }} · {{ action_delivery.job_number }} · {{ action_delivery.invoice_number or "No invoice" }}</p>
+  </section>
+  {% endif %}
+
+  {% if ready_delivery %}
+  <section class="panel delivery-ready">
+    <div class="invoice-center-section-heading"><div><p class="eyebrow">DELIVERY READY</p><h2>{{ ready_delivery.delivery_number }}</h2><p>Reserved for {{ ready_delivery.recipient }}</p></div><span class="workspace-status-badge workspace-status-ready">READY</span></div>
+    <div class="delivery-ready-lines">{% for item in ready_delivery["items"] %}<div><span><strong>{{ item.supplier_part_number or "—" }}</strong><small>{{ item.description }}</small></span><span>{{ item.po_number }}</span><strong>{{ item.quantity_delivered }}</strong></div>{% endfor %}</div>
+    {% if ready_delivery.notes %}<p><strong>Notes:</strong> {{ ready_delivery.notes }}</p>{% endif %}
+    <div class="delivery-ready-actions">
+      <form method="post" action="/deliveries/{{ ready_delivery.id }}/complete" onsubmit="return confirm('Confirm delivery of {{ ready_delivery.quantity_total }} units to {{ ready_delivery.recipient|e }}?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="button">Mark Delivered</button></form>
+      <form method="post" action="/deliveries/{{ ready_delivery.id }}/cancel" onsubmit="return confirm('Cancel {{ ready_delivery.delivery_number }} and release all reserved quantities?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="button ghost">Cancel Delivery</button></form>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="panel delivery-availability">
+    <div class="invoice-center-section-heading"><div><p class="eyebrow">AVAILABLE TO DELIVER</p><h2>Physically received inventory</h2><p>Items already delivered or reserved for another delivery are excluded.</p></div><span class="invoice-item-count">{{ available_total }} available</span></div>
+    {% if has_available and not ready_delivery %}<form method="post" action="/jobs/{{ job.id }}/delivery" class="delivery-prepare-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="idempotency_key" value="{{ delivery_idempotency_key }}">
+      <div class="delivery-lines"><div class="delivery-line delivery-line-head"><span>Item / Reference</span><span>Description</span><span>Available</span><span>Deliver Now</span></div>{% for item in items %}{% if item.available_to_deliver > 0 %}<div class="delivery-line"><div><span class="delivery-mobile-label">Item / Reference</span><strong>{{ item.supplier_part_number or "—" }}</strong><small>{{ item.supplier_name }} · {{ item.po_number }}</small></div><div><span class="delivery-mobile-label">Description</span>{{ item.description }}{% if item.asset_name or item.asset_model %}<small>{{ item.asset_manufacturer }} {{ item.asset_model or item.asset_name }}{% if item.asset_serial %} · {{ item.asset_serial }}{% endif %}</small>{% endif %}</div><div><span class="delivery-mobile-label">Available</span><strong>{{ item.available_to_deliver }}</strong></div><div><span class="delivery-mobile-label">Deliver Now</span><input type="number" name="qty_{{ item.id }}" value="0" min="0" max="{{ item.available_to_deliver }}" step="1"></div></div>{% endif %}{% endfor %}</div>
+      <div class="delivery-meta"><label><span>Recipient</span><input type="text" name="recipient" value="{{ job.customer }}" maxlength="200"></label><label><span>Delivery Notes</span><textarea name="notes" rows="3" maxlength="1000" placeholder="Shipping, pickup, tracking, or handoff notes"></textarea></label></div>
+      <button type="submit" class="button delivery-prepare-submit">Prepare Selected Items</button>
+    </form>{% elif ready_delivery %}<p>An existing READY delivery holds the selected inventory. Complete or cancel it before preparing another.</p>{% else %}<p>No physically received, unreserved items are currently available.</p>{% endif %}
+  </section>
+
+  {% if deliveries %}<section class="panel delivery-history"><div class="invoice-center-section-heading"><div><p class="eyebrow">DELIVERY HISTORY</p><h2>Customer deliveries</h2></div></div>
+    <div class="delivery-history-list">{% for delivery in deliveries %}<details class="delivery-history-card"><summary><span><strong>{{ delivery.delivery_number }}</strong><small>{{ delivery.delivery_date or delivery.created_at }} · {{ delivery.recipient }} · {{ delivery.quantity_total }} delivered</small></span><span class="workspace-status-badge workspace-status-{{ delivery.status|lower }}">{{ delivery.status }}</span></summary><div class="delivery-history-detail"><p>{{ delivery.invoice_number or "No invoice" }}{% if delivery.machine_context %} · {{ delivery.machine_context }}{% endif %}</p>{% if delivery.notes %}<p>{{ delivery.notes }}</p>{% endif %}<div class="delivery-history-lines">{% for item in delivery["items"] %}<div><span><strong>{{ item.supplier_part_number or "—" }}</strong><small>{{ item.description }}</small></span><span>{{ item.po_number }}</span><strong>{{ item.quantity_delivered }}</strong></div>{% endfor %}</div>{% if delivery.status == "DELIVERED" %}<a class="button ghost small" href="/deliveries/{{ delivery.id }}/delivery-note/pdf">Open Delivery Note</a>{% endif %}</div></details>{% endfor %}</div>
+  </section>{% endif %}
+</div>
+{% endblock %}

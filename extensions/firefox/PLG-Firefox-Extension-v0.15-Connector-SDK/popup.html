@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PPS Parts Capture</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>PPS Parts Capture</h1>
+
+  <details class="card inbox-settings">
+    <summary><strong>ChatGPT → PPS Inbox</strong></summary>
+    <p class="muted">Configure the dedicated DRAFT Inbox connection. Credentials remain in privileged Firefox extension storage.</p>
+    <label>PPS API base URL
+      <input id="ppsApiBase" type="url" autocomplete="off" spellcheck="false">
+    </label>
+    <label>PPS web base URL
+      <input id="ppsWebBase" type="url" autocomplete="off" spellcheck="false">
+    </label>
+    <label>Cloudflare Access client ID
+      <input id="cloudflareAccessClientId" type="text" autocomplete="off" spellcheck="false">
+    </label>
+    <label>Cloudflare Access client secret
+      <input id="cloudflareAccessClientSecret" type="password" autocomplete="off" spellcheck="false">
+    </label>
+    <label>PPS Firefox Inbox token
+      <input id="firefoxInboxToken" type="password" autocomplete="off" spellcheck="false">
+    </label>
+    <button id="saveFirefoxInboxSettings" type="button">Save Inbox connection</button>
+    <div id="firefoxInboxTokenStatus" class="muted"></div>
+    <div class="queue-heading"><strong>Automatic submission queue</strong><button id="refreshFirefoxInboxQueue" type="button" class="compact">Refresh</button></div>
+    <div id="firefoxInboxQueue" class="queue-list muted">No queued packages.</div>
+  </details>
+
+  <section class="card">
+    <strong id="detectedSite">Detecting source…</strong>
+    <span id="jobNumber"></span>
+    <span id="customer"></span>
+    <span id="machine"></span>
+    <span id="pin"></span>
+    <span id="need"></span>
+  </section>
+
+  <button id="refresh">Refresh Active Job</button>
+  <button id="readPage">Read Current Page</button>
+  <button id="readCart">Read Current Cart</button>
+
+  <section class="card results">
+    <strong id="count">No cart read yet</strong>
+    <div id="items"></div>
+
+    <div class="totals">
+      <div><span>Parts Subtotal</span><strong id="subtotal">—</strong></div>
+      <div><span>Shipping</span><strong id="shipping">—</strong></div>
+      <div><span>Supplier Total</span><strong id="supplierTotal">—</strong></div>
+    </div>
+  </section>
+
+  <button id="import" class="primary">Send Parts to PPS</button>
+  <div id="status"></div>
+</main>
+<script src="sdk.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>

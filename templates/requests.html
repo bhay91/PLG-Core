@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Inbox · Pinpoint Sourcing LLC{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/customer_requests.css">
+<section class="workspace-heading request-page-heading">
+  <div><p class="eyebrow">INCOMING CUSTOMER WORK</p><h1>Inbox</h1><p>Review incoming requests, confirm Smart Intake proposals, and open the resulting Job.</p></div>
+  <div class="workspace-heading-actions"><a class="button ghost" href="/requests/new">＋ New Request</a><a class="button" href="/requests/smart-intake">＋ Smart Intake</a></div>
+</section>
+<nav class="filter-tabs" aria-label="Inbox visibility"><a class="{% if view == 'active' %}active{% endif %}" href="/requests?view=active">Active</a><a class="{% if view == 'archived' %}active{% endif %}" href="/requests?view=archived">Archived</a><a class="{% if view == 'all' %}active{% endif %}" href="/requests?view=all">All Records</a></nav>
+<section class="panel request-queue-panel">
+  <form class="request-toolbar" method="get" action="/requests">
+    <input type="hidden" name="view" value="{{ view }}">
+    <label class="request-search"><span aria-hidden="true">⌕</span><input name="q" value="{{ q }}" placeholder="Search Inbox"></label>
+    <div class="request-filters" role="group" aria-label="Filter Inbox">
+      {% for value, label in [('ALL','All Statuses'),('NEW','New'),('WAITING','Waiting'),('READY','Ready'),('COMPLETED','Completed')] %}<button type="submit" name="status" value="{{ value }}" class="request-filter {% if status == value %}active{% endif %}">{{ label }}</button>{% endfor %}
+    </div>
+  </form>
+  {% if inbox_items %}<div class="request-list">
+    {% for item in inbox_items %}<article class="request-card inbox-card erp-intake-row">
+      <a class="inbox-card-main" href="{{ item.url }}">
+      <div class="request-card-content">
+        <div class="request-card-topline"><span class="inbox-entry-type">{{ item.entry_type }}</span><span class="request-status inbox-status">{{ item.review_label }}</span></div>
+        <div class="erp-intake-identity"><span>Customer / Request</span><h2 class="request-customer">{{ item.customer }}</h2></div>
+        <div class="erp-intake-need"><span>Request Preview</span><p class="request-summary">{{ item.preview[:180] }}{% if item.preview|length > 180 %}…{% endif %}</p></div>
+        <div class="request-card-meta">
+          <span class="request-meta-item"><strong>Received</strong> {{ item.created_at[:10] if item.created_at else 'Date unavailable' }}{% if item.age_days is not none %} · {{ item.age_days }} day{% if item.age_days != 1 %}s{% endif %} ago{% endif %}</span>
+          <span class="request-meta-item inbox-context"><strong>Machine / Asset</strong> {{ item.machine_need_summary|replace('\n',', ') if item.machine_need_summary else 'No asset context recorded' }}</span>
+        </div>
+      </div>
+      <div class="erp-intake-review"><small>Review State</small><strong>{{ item.review_label }}</strong></div>
+      <div class="request-card-open erp-next-action"><small>Next Action</small><span>{{ item.next_action }}</span><strong aria-hidden="true">→</strong></div></a>
+      {% if item.removable or item.disposable_eligible or item.delete_control_url %}<details class="inbox-secondary-actions">
+        <summary>More Actions</summary>
+        <div class="inbox-secondary-actions-body">
+          {% if item.removable %}<form class="inbox-remove-form" method="post" action="{{ item.remove_url }}" data-archive-delete>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {% if item.source == 'PROPOSAL' %}<input type="hidden" name="lock_version" value="{{ item.remove_version }}">{% else %}<input type="hidden" name="expected_updated_at" value="{{ item.remove_version }}">{% endif %}
+            <button class="button ghost inbox-destructive-action" type="submit">Remove from Inbox</button>
+          </form>{% endif %}
+          {% if item.delete_control_url %}<a class="button ghost inbox-destructive-action" href="{{ item.delete_control_url }}">Delete / Remove Request</a>{% endif %}
+          {% if item.disposable_eligible %}<div class="inbox-delete-disposable"><a class="button ghost inbox-destructive-action" href="{{ item.delete_disposable_url }}">Permanently Delete</a></div>{% endif %}
+        </div>
+      </details>{% endif %}
+    </article>{% endfor %}
+  </div>{% else %}<div class="empty-state request-empty-state"><div class="empty-state-icon" aria-hidden="true">▤</div><h2>No incoming work found</h2><p>Start with Smart Intake or record a manual customer request.</p></div>{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% from "_manufacturer_logo.html" import manufacturer_logo %}
+{% block title %}Invoices · Pinpoint Sourcing LLC{% endblock %}
+
+{% block content %}
+<div class="workspace-v2 erp-commercial-directory erp-invoices-directory">
+
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">PAYMENT WORKSPACE</p>
+      <h1>Invoices</h1>
+      <p>Find outstanding payments and continue fulfillment.</p>
+    </div>
+  </section>
+
+  <section class="workspace-toolbar">
+    <label class="workspace-search">
+      <span aria-hidden="true">⌕</span>
+      <input
+        id="invoice-search"
+        type="search"
+        placeholder="Search invoice, customer, machine, job or status..."
+      >
+    </label>
+
+    <nav class="workspace-tabs">
+      <a
+        class="{% if view == 'active' %}active{% endif %}"
+        href="/invoices?view=active"
+      >
+        Active
+      </a>
+
+      <a
+        class="{% if view == 'paid' %}active{% endif %}"
+        href="/invoices?view=paid"
+      >
+        Paid
+      </a>
+
+      <a
+        class="{% if view == 'void' %}active{% endif %}"
+        href="/invoices?view=void"
+      >
+        Void
+      </a>
+
+      <a
+        class="{% if view == 'all' %}active{% endif %}"
+        href="/invoices"
+      >
+        All
+      </a>
+    </nav>
+  </section>
+
+  {% if invoices %}
+  <section class="workspace-row-list">
+
+    {% for invoice in invoices %}
+    <article
+      class="workspace-row invoice-row erp-commercial-row"
+      data-search="
+        {{ invoice.invoice_number }}
+        {{ invoice.customer }}
+        {{ invoice.job_number }}
+        {{ invoice.manufacturer }}
+        {{ invoice.machine }}
+        {{ invoice.pin_serial }}
+        {{ invoice.item_descriptions }}
+        {{ invoice.status }}
+      "
+    >
+      <div class="workspace-row-mark invoice-mark">
+        {{ manufacturer_logo(invoice.manufacturer, true, false, true) }}
+      </div>
+
+      <div class="workspace-row-identity">
+        <small>
+          {{ invoice.invoice_number }}
+          · {{ invoice.invoice_date }}
+        </small>
+
+        <h2>{{ invoice.customer }}</h2>
+
+        <strong class="machine-identity-line">
+          {% if invoice.manufacturer or invoice.machine %}
+            <span>{{ invoice.manufacturer }}</span> <span>{{ invoice.machine }}</span>
+          {% else %}
+            No machine linked
+          {% endif %}
+
+          {% if invoice.pin_serial %}
+            <span>· {{ invoice.pin_serial }}</span>
+          {% endif %}
+        </strong>
+
+        <p>
+          {{ invoice.item_descriptions or "No item description available" }}
+        </p>
+      </div>
+
+      <div class="workspace-row-status">
+        <div class="workspace-status-line">
+          <span
+            class="workspace-status-badge
+                   workspace-status-{{ invoice.status|lower }}"
+          >
+            {{ invoice.status }}
+          </span>
+
+          <strong>
+            ${{ "%.2f"|format(invoice.customer_total or 0) }}
+          </strong>
+        </div>
+
+        <div class="workspace-balance">
+          <span>Balance Due</span>
+
+          <strong>
+            ${{ "%.2f"|format(invoice.balance_due or 0) }}
+          </strong>
+        </div>
+      </div>
+
+      <div class="workspace-row-action workspace-action-panel invoice-action-panel erp-record-action">
+        <span>NEXT ACTION</span>
+
+        {% if invoice.status == "PAID" %}
+          {% if invoice.supplier_order_count %}
+          <strong>Open Supplier Order{% if invoice.supplier_order_count != 1 %}s{% endif %}</strong>
+
+          <a class="workspace-btn workspace-btn-primary"
+           href="/purchasing?invoice_id={{ invoice.id }}">
+            Open Supplier Order{% if invoice.supplier_order_count != 1 %}s{% endif %}
+          </a>
+          {% else %}
+          <strong>Create Supplier Order</strong>
+
+          <a class="workspace-btn workspace-btn-primary"
+           href="/invoices/{{ invoice.id }}/documents">
+            Open &amp; Create Supplier Order
+          </a>
+          {% endif %}
+
+          <details class="workspace-secondary-actions invoice-secondary-actions">
+            <summary>More Actions</summary>
+            <div class="invoice-paid-grid">
+              <a class="workspace-btn workspace-btn-secondary"
+                 target="_blank"
+                 href="/invoices/{{ invoice.id }}/parts-order-sheet/pdf?v={{ invoice.status }}-{{ invoice.invoice_date }}">
+                Internal Parts Order Worksheet
+              </a>
+
+              <a class="workspace-btn workspace-btn-secondary"
+                 target="_blank"
+                 href="/invoices/{{ invoice.id }}/customer/paid-pdf?v={{ invoice.customer_document_version }}">
+                Customer PDF — Paid
+              </a>
+
+              {% if invoice.custom_invoice_exists %}
+              <a class="workspace-btn workspace-btn-secondary"
+                 href="/invoices/{{ invoice.id }}/custom">
+                Edit Custom Invoice
+              </a>
+              {% else %}
+              <a class="workspace-btn workspace-btn-secondary"
+                 href="/invoices/{{ invoice.id }}/custom">
+                Custom Invoice
+              </a>
+              {% endif %}
+
+              <a class="workspace-btn workspace-btn-secondary"
+                 target="_blank"
+                 href="/invoices/{{ invoice.id }}/internal/paid-pdf?v={{ invoice.internal_document_version }}">
+                Internal PDF — Current
+              </a>
+
+              {% if invoice.custom_invoice_exists %}
+              <a class="workspace-btn workspace-btn-secondary"
+                 target="_blank"
+                 href="/invoices/{{ invoice.id }}/custom/pdf">
+                Custom Invoice
+              </a>
+              {% endif %}
+            </div>
+          </details>
+        {% elif invoice.status == "VOID" %}
+          <strong>Invoice Closed</strong>
+
+          <a
+            class="workspace-btn workspace-btn-primary"
+            href="/invoices/{{ invoice.id }}/documents"
+          >
+            View Invoice
+          </a>
+        {% else %}
+          <strong>Record Payment</strong>
+
+          <a
+            class="workspace-btn workspace-btn-primary"
+            href="/invoices/{{ invoice.id }}/documents"
+          >
+            Open &amp; Record Payment
+          </a>
+        {% endif %}
+
+        
+      </div>
+    </div>
+    </article>
+    {% endfor %}
+
+  </section>
+
+  <p id="no-invoice-results" class="workspace-empty hidden">
+    No invoices match your search.
+  </p>
+  {% else %}
+  <div class="workspace-empty">
+    No invoices are available in this view.
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+(() => {
+  const input = document.getElementById("invoice-search");
+  const rows = [...document.querySelectorAll(".invoice-row")];
+  const empty = document.getElementById("no-invoice-results");
+
+  if (!input || !rows.length) return;
+
+  input.addEventListener("input", () => {
+    const query = input.value.trim().toLowerCase();
+    let visible = 0;
+
+    rows.forEach((row) => {
+      const matches = row.dataset.search
+        .toLowerCase()
+        .includes(query);
+
+      row.hidden = !matches;
+
+      if (matches) visible += 1;
+    });
+
+    if (empty) {
+      empty.classList.toggle("hidden", visible !== 0);
+    }
+  });
+})();
+</script>
+{% endblock %}

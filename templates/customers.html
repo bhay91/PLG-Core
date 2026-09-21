@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% block title %}Customers · Pinpoint Sourcing LLC{% endblock %}
+
+{% block content %}
+<div class="workspace-v2 erp-records-directory erp-customers-directory">
+
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">CUSTOMER WORKSPACE</p>
+      <h1>Customers</h1>
+      <p>Manage customer records, balances, jobs and history.</p>
+    </div>
+
+    <a class="button" href="/customers/new">
+      + New Customer
+    </a>
+  </section>
+
+  <section class="workspace-toolbar">
+    <label class="workspace-search">
+      <span aria-hidden="true">⌕</span>
+
+      <input
+        id="customer-search"
+        type="search"
+        placeholder="Search name, company, phone, email or customer number..."
+      >
+    </label>
+
+    <nav class="workspace-tabs">
+      <a
+        class="{% if view == 'active' %}active{% endif %}"
+        href="/customers?view=active"
+      >
+        Active
+      </a>
+
+      <a
+        class="{% if view == 'inactive' %}active{% endif %}"
+        href="/customers?view=inactive"
+      >
+        Inactive
+      </a>
+
+      <a
+        class="{% if view == 'all' %}active{% endif %}"
+        href="/customers?view=all"
+      >
+        All
+      </a>
+    </nav>
+  </section>
+
+  {% if recent_customers %}
+  <section class="workspace-compact-section">
+    <div class="workspace-section-heading">
+      <div>
+        <p class="eyebrow">RECENT</p>
+        <h2>Recently Opened</h2>
+      </div>
+    </div>
+
+    <div class="workspace-recent-grid">
+      {% for customer in recent_customers %}
+      <a
+        class="workspace-recent-card"
+        href="/customers/{{ customer.id }}"
+      >
+        <strong>{{ customer.name }}</strong>
+
+        <span>
+          {{ customer.customer_number }}
+          {% if customer.company %}
+            · {{ customer.company }}
+          {% endif %}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if customers %}
+  <section class="workspace-row-list">
+
+    {% for customer in customers %}
+    <article
+      class="workspace-row customer-workspace-row erp-directory-row"
+      data-search="
+        {{ customer.customer_number }}
+        {{ customer.name }}
+        {{ customer.company }}
+        {{ customer.phone }}
+        {{ customer.email }}
+        {{ customer.address }}
+      "
+    >
+      <div class="workspace-row-mark customer-mark">
+        {{ (customer.name or "C")[:2]|upper }}
+      </div>
+
+      <div class="workspace-row-identity">
+        <small>{{ customer.customer_number }}</small>
+
+        <h2>{{ customer.name }}</h2>
+
+        <strong>
+          {% if customer.company %}
+            {{ customer.company }}
+          {% else %}
+            Individual Customer
+          {% endif %}
+        </strong>
+
+        <p>
+          {% if customer.phone %}
+            {{ customer.phone }}
+          {% elif customer.email %}
+            {{ customer.email }}
+          {% else %}
+            No contact information
+          {% endif %}
+
+          {% if customer.address %}
+            · {{ customer.address }}
+          {% endif %}
+        </p>
+      </div>
+
+      <div class="workspace-row-status customer-metrics">
+        <div class="workspace-metric-pair">
+          <div>
+            <span>Jobs</span>
+            <strong>{{ customer.jobs_count or 0 }}</strong>
+          </div>
+
+          <div>
+            <span>Quotes</span>
+            <strong>{{ customer.quotes_count or 0 }}</strong>
+          </div>
+        </div>
+
+        {% if customer.outstanding_balance > 0 %}
+        <div class="workspace-balance">
+          <span>Outstanding</span>
+          <strong>
+            ${{ "%.2f"|format(customer.outstanding_balance) }}
+          </strong>
+        </div>
+        {% elif customer.available_credit > 0 %}
+        <div class="workspace-balance">
+          <span>Available Credit</span>
+          <strong>
+            ${{ "%.2f"|format(customer.available_credit) }}
+          </strong>
+        </div>
+        {% else %}
+        <div class="workspace-row-meta">
+          Account balanced
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="workspace-row-action workspace-action-panel erp-record-action">
+        <span>NEXT ACTION</span>
+
+        {% if customer.active %}
+          <strong>Open Customer Account</strong>
+        {% else %}
+          <strong>Review Inactive Customer</strong>
+        {% endif %}
+
+        <a
+          class="workspace-btn workspace-btn-primary"
+          href="/customers/{{ customer.id }}"
+        >
+          Open Customer
+        </a>
+
+        <div class="workspace-btn-row">
+          <a
+            class="workspace-btn workspace-btn-secondary"
+            href="/customers/{{ customer.id }}/edit"
+          >
+            Edit
+          </a>
+
+          {% if customer.active %}
+          <form
+            class="workspace-action-form"
+            method="post"
+            action="/customers/{{ customer.id }}/deactivate"
+            data-archive-delete
+          >
+            <button
+              class="workspace-btn workspace-btn-secondary"
+              type="submit"
+            >
+              Delete
+            </button>
+          </form>
+          {% else %}
+          <form
+            class="workspace-action-form"
+            method="post"
+            action="/customers/{{ customer.id }}/reactivate"
+          >
+            <button
+              class="workspace-btn workspace-btn-secondary"
+              type="submit"
+            >
+              Reactivate
+            </button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+
+  </section>
+
+  <p id="no-customer-results" class="workspace-empty hidden">
+    No customers match your search.
+  </p>
+  {% else %}
+  <div class="workspace-empty">
+    No customers are available in this view.
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+(() => {
+  const input = document.getElementById("customer-search");
+  const rows = [...document.querySelectorAll(".customer-workspace-row")];
+  const empty = document.getElementById("no-customer-results");
+
+  if (!input || !rows.length) return;
+
+  input.addEventListener("input", () => {
+    const query = input.value.trim().toLowerCase();
+    let visible = 0;
+
+    rows.forEach((row) => {
+      const match = row.dataset.search
+        .toLowerCase()
+        .includes(query);
+
+      row.hidden = !match;
+
+      if (match) visible += 1;
+    });
+
+    if (empty) {
+      empty.classList.toggle("hidden", visible !== 0);
+    }
+  });
+})();
+</script>
+{% endblock %}

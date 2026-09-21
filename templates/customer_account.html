@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}{{ customer.name }} · Customer Account{% endblock %}
+{% block content %}
+<section class="workspace-heading erp-record-summary">
+  <div>
+    <p class="eyebrow">CUSTOMER ACCOUNT</p>
+    <h1>{{ customer.name }}</h1>
+    <p>{{ customer.customer_number }}{% if customer.company %} · {{ customer.company }}{% endif %}</p>
+  </div>
+  <a class="button" href="/jobs/new?customer_id={{ customer.id }}">Create Job</a>
+</section>
+
+<section class="job-summary-grid customer-summary-grid erp-record-identity">
+  <article class="context-card">
+    <span>Available Credit</span>
+    <strong>${{ "%.2f"|format(account.available_credit) }}</strong>
+    <small>Unused customer funds</small>
+  </article>
+  <article class="context-card">
+    <span>Outstanding Balance</span>
+    <strong>${{ "%.2f"|format(account.outstanding_balance if account.outstanding_balance < -0.005 or account.outstanding_balance > 0.005 else 0) }}</strong>
+    <small>Amount customer owes</small>
+  </article>
+  <article class="context-card">
+    <span>Total Payments</span>
+    <strong>${{ "%.2f"|format(account.total_payments) }}</strong>
+    <small>Payments recorded</small>
+  </article>
+  <article class="context-card">
+    <span>Transactions</span>
+    <strong>{{ transactions|length }}</strong>
+    <small>Complete account history</small>
+  </article>
+</section>
+
+<section class="account-action-grid erp-commercial-current">
+  <form class="panel account-action-card" method="post" action="/customers/{{ customer.id }}/transactions/payment">
+    <p class="eyebrow">PAYMENT</p>
+    <h2>Record Payment</h2>
+    <label>Amount
+      <input name="amount" type="number" step="0.01" min="0.01" required>
+    </label>
+    <label>Payment Method
+      <select name="payment_method" required>
+        <option value="BANK TRANSFER">Bank Transfer</option>
+        <option value="ZELLE">Zelle</option>
+        <option value="CASH">Cash</option>
+        <option value="CARD">Credit Card</option>
+        <option value="CHECK">Check</option>
+        <option value="OTHER">Other</option>
+      </select>
+    </label>
+    <label>Reference
+      <input name="reference" placeholder="Bank reference or receipt number">
+    </label>
+    <button class="button" type="submit">Save Payment</button>
+  </form>
+
+  <form class="panel account-action-card" method="post" action="/customers/{{ customer.id }}/transactions/refund">
+    <p class="eyebrow">REFUND</p>
+    <h2>Record Refund</h2>
+    <label>Amount
+      <input name="amount" type="number" step="0.01" min="0.01" required>
+    </label>
+    <label>Reason
+      <input name="reason" required placeholder="Cancelled item or customer refund">
+    </label>
+    <label>Reference
+      <input name="reference" placeholder="Refund reference">
+    </label>
+    <button class="button ghost" type="submit">Save Refund</button>
+  </form>
+
+  <form class="panel account-action-card" method="post" action="/customers/{{ customer.id }}/transactions/adjustment">
+    <p class="eyebrow">ADJUSTMENT</p>
+    <h2>Record Adjustment</h2>
+    <label>Amount
+      <input name="amount" type="number" step="0.01" required placeholder="Use a negative amount to reduce credit">
+    </label>
+    <label>Reason
+      <input name="reason" required placeholder="Required explanation">
+    </label>
+    <label>Reference
+      <input name="reference" placeholder="Optional reference">
+    </label>
+    <button class="button ghost" type="submit">Save Adjustment</button>
+  </form>
+</section>
+
+<section class="panel customer-profile-panel erp-record-profile">
+  <div class="panel-heading">
+    <div><p class="eyebrow">CONTACT</p><h2>Customer Information</h2></div>
+  </div>
+  <div class="customer-profile-grid">
+    <div><span>Name</span><strong>{{ customer.name }}</strong></div>
+    <div><span>Company</span><strong>{{ customer.company or "—" }}</strong></div>
+    <div><span>Phone</span><strong>{{ customer.phone or "—" }}</strong></div>
+    <div><span>Email</span><strong>{{ customer.email or "—" }}</strong></div>
+    <div class="full"><span>Address</span><strong>{{ customer.address or "—" }}</strong></div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div><p class="eyebrow">MACHINES</p><h2>Customer Machines</h2></div>
+    <a class="button ghost" href="/machines/new?customer_id={{ customer.id }}">Add Machine</a>
+  </div>
+  {% if machines %}
+  <div class="customer-record-list">
+    {% for machine in machines %}
+    <a class="customer-record-row" href="/machines/{{ machine.id }}">
+      <div><strong>{{ machine.name }}</strong><span>{{ machine.manufacturer }} {{ machine.model }}{% if machine.vin_pin_serial %} · {{ machine.vin_pin_serial }}{% endif %}</span></div>
+      <div><strong>{{ machine.machine_number }}</strong><span>{{ "Active" if machine.active else "Inactive" }}</span></div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}<p>No machines saved for this customer.</p>{% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div><p class="eyebrow">ACCOUNT HISTORY</p><h2>Transactions</h2></div>
+  </div>
+  {% if transactions %}
+  <div class="transaction-ledger">
+    {% for tx in transactions %}
+    <div class="transaction-row">
+      <div>
+        <strong>{{ tx.transaction_type|replace("_", " ") }}</strong>
+        <span>{{ tx.transaction_date }}{% if tx.payment_method %} · {{ tx.payment_method }}{% endif %}</span>
+        {% if tx.reason %}<small>{{ tx.reason }}</small>{% endif %}
+        {% if tx.reference %}<small>Reference: {{ tx.reference }}</small>{% endif %}
+      </div>
+      <strong class="{% if tx.amount >= 0 %}transaction-positive{% else %}transaction-negative{% endif %}">
+        {% if tx.amount >= 0 %}+{% endif %}${{ "%.2f"|format(tx.amount) }}
+      </strong>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p>No financial transactions have been recorded.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-heading"><div><p class="eyebrow">JOBS</p><h2>Customer Jobs</h2></div></div>
+  {% if jobs %}
+  <div class="customer-record-list">
+    {% for job in jobs %}
+    <a class="customer-record-row" href="/jobs/{{ job.id }}/basket?view=advanced">
+      <div><strong>{{ job.job_number }}</strong><span>{{ job.manufacturer }} {{ job.machine }}</span></div>
+      <div><strong>{{ job.status }}</strong><span>{{ job.created_date }}</span></div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}<p>No jobs for this customer.</p>{% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-heading"><div><p class="eyebrow">QUOTES</p><h2>Customer Quotes</h2></div></div>
+  {% if quotes %}
+  <div class="customer-record-list">
+    {% for quote in quotes %}
+    <a class="customer-record-row" href="/quotes/{{ quote.id }}/documents">
+      <div><strong>{{ quote.quote_number }}</strong><span>{{ quote.quote_date }}</span></div>
+      <div><strong>${{ "%.2f"|format(quote.customer_total) }}</strong><span>{{ quote.status }}</span></div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}<p>No quotes for this customer.</p>{% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">INVOICES</p>
+      <h2>Customer Invoices</h2>
+    </div>
+  </div>
+
+  {% if invoices %}
+  <div class="customer-record-list">
+    {% for invoice in invoices %}
+    <a
+      class="customer-record-row"
+      href="/invoices/{{ invoice.id }}/documents"
+    >
+      <div>
+        <strong>{{ invoice.invoice_number }}</strong>
+        <span>{{ invoice.invoice_date }}</span>
+      </div>
+
+      <div>
+        <strong>
+          ${{ "%.2f"|format(invoice.customer_total) }}
+        </strong>
+        <span>{{ invoice.status }}</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p>No invoices for this customer.</p>
+  {% endif %}
+</section>
+
+<script>
+const customerDensityPanel = (heading, title, hint) => {
+  const panel = [...document.querySelectorAll("section.panel")]
+    .find((section) => section.querySelector("h2")?.textContent.trim() === heading);
+  if (panel) {
+    panel.dataset.densityCollapse = title;
+    panel.dataset.densityHint = hint;
+  }
+};
+const secondaryAccountActions = [...document.querySelectorAll(".account-action-card")].slice(1);
+secondaryAccountActions.forEach((panel) => {
+  panel.dataset.densityCollapse = panel.querySelector("h2")?.textContent.trim() || "Account Administration";
+  panel.dataset.densityHint = "Exception and administrative workflow";
+});
+customerDensityPanel("Customer Information", "Customer Details", "Contact and billing information");
+customerDensityPanel("Transactions", "Transaction History", "Complete payment, refund, and adjustment ledger");
+customerDensityPanel("Customer Quotes", "Quote Activity", "Customer quote history");
+customerDensityPanel("Customer Invoices", "Invoice Activity", "Customer invoice history");
+</script>
+{% endblock %}

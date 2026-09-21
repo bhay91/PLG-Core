@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}PPS Assistant · Upload Research{% endblock %}
+{% block content %}
+<section class="workspace-heading"><div><p class="eyebrow">PPS ASSISTANT</p><h1>Upload Research</h1><p>Upload a text PDF to create a provisional review. Nothing is added to PPS records until a future confirmation phase.</p></div></section>
+<section class="panel erp-intake-form"><form method="post" action="/requests/assistant/research/upload" enctype="multipart/form-data"><label>Research PDF<input name="research_pdf" type="file" accept=".pdf,application/pdf" required><small>Text PDFs are supported in Phase 1. Scanned PDFs are preserved but need OCR in Phase 2.</small></label><div class="form-actions"><a class="button ghost" href="/requests">Back to Requests</a><button class="button" type="submit">Parse &amp; Review</button></div></form></section>
+{% endblock %}

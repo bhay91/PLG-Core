@@ -1,26 +1,79 @@
 from __future__ import annotations
 
 from fastapi.responses import FileResponse
+from plg_core.documents.quote_pdf import generate_quote_pdfs, quote_paths, sanitize_path_name
 from fastapi import File, UploadFile
 
 import sqlite3
-import math
+import os
+import re
+import shutil
+import sys
+import tempfile
 from contextlib import closing
 from datetime import date
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from plg_core.jobs.engine import JobEngine
+from plg_core.dashboard.service import get_operator_dashboard_data, get_work_queue_data
+from plg_core.machines.identifiers import find_machine_by_identifier
+from plg_core.pricing import customer_unit_price as calculate_customer_unit_price
+from plg_core.sources.service import (
+    CONNECTOR_TYPES,
+    SOURCE_TYPES,
+    TRUST_LEVELS,
+    create_source,
+    update_source,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
-DB_PATH = DATA_DIR / "plg_core.db"
+PRODUCTION_DB_PATH = (DATA_DIR / "plg_core.db").resolve()
 
-app = FastAPI(title="PartsLink Global Core")
+
+def _is_automated_test_process() -> bool:
+    """Identify supported Python test runners without changing normal app startup."""
+    executable = Path(sys.argv[0]).name.lower()
+    command = " ".join(sys.argv).lower()
+    return (
+        executable in {"pytest", "py.test"}
+        or "unittest" in command
+        or (executable.startswith("test_") and executable.endswith(".py"))
+    )
+
+
+_TEST_DB_DIRECTORY: tempfile.TemporaryDirectory[str] | None = None
+configured_db_path = os.getenv("PPS_DB_PATH")
+if configured_db_path:
+    DB_PATH = Path(configured_db_path).resolve()
+elif _is_automated_test_process():
+    _TEST_DB_DIRECTORY = tempfile.TemporaryDirectory(prefix="pps-test-process-")
+    DB_PATH = (Path(_TEST_DB_DIRECTORY.name) / "plg_core.test.db").resolve()
+    if PRODUCTION_DB_PATH.exists():
+        shutil.copy2(PRODUCTION_DB_PATH, DB_PATH)
+else:
+    DB_PATH = PRODUCTION_DB_PATH
+DOCUMENTS_DIR = Path(
+    os.getenv("PPS_DOCUMENT_ROOT", str(BASE_DIR / "documents"))
+).resolve()
+UPLOADS_DIR = Path(
+    os.getenv("PPS_UPLOAD_ROOT", str(BASE_DIR / "uploads"))
+).resolve()
+
+from plg_core.documents.parts_order_pdf import (
+    generate_parts_order_sheet,
+    parts_order_sheet_path,
+)
+
+app = FastAPI(title="Pinpoint Sourcing Co. Core")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -37,6 +90,32 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
+def _is_operator_html_request(request: Request) -> bool:
+    path = request.url.path
+    machine_route_prefixes = ("/api", "/mcp", "/openapi", "/docs", "/redoc")
+    return (
+        request.method in {"GET", "HEAD"}
+        and "text/html" in request.headers.get("accept", "").lower()
+        and not any(path == prefix or path.startswith(f"{prefix}/") for prefix in machine_route_prefixes)
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def operator_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if (
+        exc.status_code == 404
+        and exc.detail == "Not Found"
+        and _is_operator_html_request(request)
+    ):
+        return templates.TemplateResponse(
+            request=request,
+            name="404.html",
+            context={"active_page": ""},
+            status_code=404,
+        )
+    return await http_exception_handler(request, exc)
+
+
 def get_connection() -> sqlite3.Connection:
     DATA_DIR.mkdir(exist_ok=True)
     connection = sqlite3.connect(DB_PATH)
@@ -45,9 +124,120 @@ def get_connection() -> sqlite3.Connection:
     return connection
 
 
+from plg_core.research.branding import manufacturer_identity
+templates.env.globals["manufacturer_identity"] = manufacturer_identity
+
+
 def column_names(connection: sqlite3.Connection, table: str) -> set[str]:
     rows = connection.execute(f"PRAGMA table_info({table})").fetchall()
     return {row["name"] for row in rows}
+
+
+def _next_business_number(
+    connection: sqlite3.Connection,
+    entity_type: str,
+    table: str,
+    column: str,
+    prefix: str,
+) -> str:
+    allowed = {
+        "CUSTOMER": ("customers", "customer_number", "PPS-C-"),
+        "MACHINE": ("machines", "machine_number", "PPS-M-"),
+        "REQUEST": ("customer_requests", "request_number", "PPS-R-"),
+        "JOB": ("jobs", "job_number", "PPS-J-"),
+        "QUOTE": ("quotes", "quote_number", "PPS-Q-"),
+    }
+
+    if allowed.get(entity_type) != (table, column, prefix):
+        raise ValueError("Unsupported business-number source")
+
+    rows = connection.execute(
+        f"""
+        SELECT {column}
+        FROM {table}
+        WHERE {column} LIKE ?
+        """,
+        (f"{prefix}%",),
+    ).fetchall()
+
+    highest = 0
+
+    for row in rows:
+        value = str(row[0] or "").strip()
+
+        if not value.startswith(prefix):
+            continue
+
+        sequence = value[len(prefix):]
+
+        if len(sequence) != 4 or not sequence.isdigit():
+            continue
+
+        highest = max(highest, int(sequence))
+
+    sequence_table_exists = connection.execute(
+        """
+        SELECT 1
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND name = 'pps_number_sequences'
+        """
+    ).fetchone() is not None
+
+    if not sequence_table_exists:
+        return f"{prefix}{highest + 1:04d}"
+
+    row = connection.execute(
+        """
+        INSERT INTO pps_number_sequences (
+            entity_type,
+            prefix,
+            last_number
+        )
+        VALUES (?, ?, ?)
+        ON CONFLICT(entity_type) DO UPDATE SET
+            prefix = excluded.prefix,
+            last_number = MAX(
+                pps_number_sequences.last_number + 1,
+                excluded.last_number
+            ),
+            updated_at = CURRENT_TIMESTAMP
+        RETURNING last_number
+        """,
+        (entity_type, prefix, highest + 1),
+    ).fetchone()
+
+    return f"{prefix}{int(row[0]):04d}"
+
+
+def next_customer_number(connection: sqlite3.Connection) -> str:
+    return _next_business_number(
+        connection,
+        "CUSTOMER",
+        "customers",
+        "customer_number",
+        "PPS-C-",
+    )
+
+
+def next_machine_number(connection: sqlite3.Connection) -> str:
+    return _next_business_number(
+        connection,
+        "MACHINE",
+        "machines",
+        "machine_number",
+        "PPS-M-",
+    )
+
+
+def next_request_number(connection: sqlite3.Connection) -> str:
+    return _next_business_number(
+        connection,
+        "REQUEST",
+        "customer_requests",
+        "request_number",
+        "PPS-R-",
+    )
 
 
 def initialize_database() -> None:
@@ -125,6 +315,21 @@ def initialize_database() -> None:
             );
             """
         )
+
+        supplier_columns = {row["name"] for row in connection.execute("PRAGMA table_info(suppliers)").fetchall()}
+        supplier_additions = {
+            "website": "ALTER TABLE suppliers ADD COLUMN website TEXT DEFAULT ''",
+            "phone": "ALTER TABLE suppliers ADD COLUMN phone TEXT DEFAULT ''",
+            "email": "ALTER TABLE suppliers ADD COLUMN email TEXT DEFAULT ''",
+            "contact_person": "ALTER TABLE suppliers ADD COLUMN contact_person TEXT DEFAULT ''",
+            "account_number": "ALTER TABLE suppliers ADD COLUMN account_number TEXT DEFAULT ''",
+            "rating": "ALTER TABLE suppliers ADD COLUMN rating INTEGER NOT NULL DEFAULT 3",
+            "status": "ALTER TABLE suppliers ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE'",
+            "preferred": "ALTER TABLE suppliers ADD COLUMN preferred INTEGER NOT NULL DEFAULT 0",
+        }
+        for column, sql in supplier_additions.items():
+            if column not in supplier_columns:
+                connection.execute(sql)
 
         existing = column_names(connection, "job_parts")
         migrations = {
@@ -208,10 +413,15 @@ def initialize_database() -> None:
 
         connection.execute(
             """
-            INSERT OR IGNORE INTO suppliers (name)
+            INSERT INTO suppliers (name)
             SELECT DISTINCT TRIM(supplier_name)
             FROM part_sources
             WHERE TRIM(COALESCE(supplier_name, '')) != ''
+              AND NOT EXISTS (
+                  SELECT 1 FROM suppliers
+                  WHERE LOWER(TRIM(suppliers.name)) =
+                        LOWER(TRIM(part_sources.supplier_name))
+              )
             """
         )
 
@@ -247,11 +457,17 @@ def initialize_database() -> None:
             """
         )
 
+        connector_columns = {row["name"] for row in connection.execute("PRAGMA table_info(connector_profiles)").fetchall()}
+        if "is_archived" not in connector_columns:
+            connection.execute("ALTER TABLE connector_profiles ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0")
+
         default_connectors = [
             ('cat_sis', 'CAT SIS', 'OEM', 'OEM_VERIFIED',
              'https://sis2.cat.com/#/cart', 'CART', 'cat_sis_cart', 1, 10),
             ('worldpac', 'Worldpac', 'Automotive', 'SUPPLIER_VERIFIED',
              'https://speeddial.worldpac.com/#/login', 'CART', 'worldpac_cart', 1, 20),
+            ('7zap', '7zap', 'Automotive Catalog', 'NEEDS_REVIEW',
+             'https://7zap.com/en/vin-decoder/', 'CATALOG', '7zap_catalog', 1, 25),
             ('ssf', 'SSF', 'Automotive', 'SUPPLIER_VERIFIED',
              'https://www.ssfautoparts.com/', 'CART', 'ssf_cart', 0, 30),
             ('rockauto', 'RockAuto', 'Automotive', 'SUPPLIER_VERIFIED',
@@ -261,25 +477,37 @@ def initialize_database() -> None:
         ]
 
         for row in default_connectors:
-            connection.execute(
-                """
-                INSERT INTO connector_profiles (
+            existing_connector = connection.execute(
+                "SELECT id FROM connector_profiles WHERE connector_key = ?",
+                (row[0],),
+            ).fetchone()
+            if existing_connector is None:
+                connection.execute(
+                    """
+                    INSERT INTO connector_profiles (
                     connector_key, display_name, category, trust_level,
                     launch_url, connector_type, parser_key,
                     is_enabled, sort_order
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    row,
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(connector_key) DO UPDATE SET
-                    display_name = excluded.display_name,
-                    category = excluded.category,
-                    trust_level = excluded.trust_level,
-                    launch_url = excluded.launch_url,
-                    connector_type = excluded.connector_type,
-                    parser_key = excluded.parser_key,
-                    sort_order = excluded.sort_order
-                """,
-                row,
-            )
+            else:
+                connection.execute(
+                    """
+                    UPDATE connector_profiles SET
+                    display_name = ?,
+                    category = ?,
+                    trust_level = ?,
+                    launch_url = ?,
+                    connector_type = ?,
+                    parser_key = ?,
+                    sort_order = ?
+                    WHERE id = ?
+                    """,
+                    (*row[1:7], row[8], existing_connector["id"]),
+                )
 
 
         connection.execute(
@@ -299,6 +527,57 @@ def initialize_database() -> None:
 
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS customers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_number TEXT UNIQUE,
+                name TEXT NOT NULL,
+                company TEXT DEFAULT '',
+                phone TEXT DEFAULT '',
+                email TEXT DEFAULT '',
+                address TEXT DEFAULT '',
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+        customer_columns={row["name"] for row in connection.execute("PRAGMA table_info(customers)").fetchall()}
+        if "last_viewed_at" not in customer_columns:
+            connection.execute("ALTER TABLE customers ADD COLUMN last_viewed_at TEXT")
+
+        job_columns={row["name"] for row in connection.execute("PRAGMA table_info(jobs)").fetchall()}
+        if "customer_id" not in job_columns:
+            connection.execute("ALTER TABLE jobs ADD COLUMN customer_id INTEGER")
+        if "address" not in job_columns:
+            connection.execute("ALTER TABLE jobs ADD COLUMN address TEXT DEFAULT ''")
+
+        for old_job in connection.execute(
+            "SELECT id, customer, company, phone, email, address "
+            "FROM jobs WHERE customer_id IS NULL ORDER BY id"
+        ).fetchall():
+            name=str(old_job["customer"] or "").strip()
+            if not name:
+                continue
+            row=connection.execute("""
+                SELECT id FROM customers
+                WHERE LOWER(TRIM(name))=LOWER(TRIM(?))
+                  AND LOWER(TRIM(COALESCE(company,'')))=LOWER(TRIM(COALESCE(?,'')))
+                ORDER BY id LIMIT 1
+            """,(name,old_job["company"] or "")).fetchone()
+            if row is None:
+                cur=connection.execute("INSERT INTO customers (name,company,phone,email,address) VALUES (?,?,?,?,?)",(name,old_job["company"] or "",old_job["phone"] or "",old_job["email"] or "",old_job["address"] or ""))
+                customer_id=cur.lastrowid
+                connection.execute(
+                    "UPDATE customers SET customer_number=? WHERE id=?",
+                    (next_customer_number(connection), customer_id),
+                )
+            else:
+                customer_id=row["id"]
+            connection.execute("UPDATE jobs SET customer_id=? WHERE id=?",(customer_id,old_job["id"]))
+
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS quotes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 quote_number TEXT UNIQUE NOT NULL,
@@ -315,6 +594,18 @@ def initialize_database() -> None:
             )
             """
         )
+
+        quote_columns = {row["name"] for row in connection.execute("PRAGMA table_info(quotes)").fetchall()}
+        if "is_archived" not in quote_columns:
+            connection.execute("ALTER TABLE quotes ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0")
+        if "service_charge" not in quote_columns:
+            connection.execute(
+                "ALTER TABLE quotes ADD COLUMN service_charge REAL NOT NULL DEFAULT 0"
+            )
+        if "sourcing_fee" not in quote_columns:
+            connection.execute(
+                "ALTER TABLE quotes ADD COLUMN sourcing_fee REAL NOT NULL DEFAULT 0"
+            )
 
         connection.execute(
             """
@@ -357,33 +648,101 @@ def initialize_database() -> None:
             """
         )
 
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS invoices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_number TEXT NOT NULL UNIQUE,
+                quote_id INTEGER NOT NULL UNIQUE,
+                job_id INTEGER NOT NULL,
+                invoice_date TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'UNPAID',
+                parts_subtotal REAL NOT NULL DEFAULT 0,
+                shipping_total REAL NOT NULL DEFAULT 0,
+                customer_total REAL NOT NULL DEFAULT 0,
+                supplier_total REAL NOT NULL DEFAULT 0,
+                profit_total REAL NOT NULL DEFAULT 0,
+                credit_applied REAL NOT NULL DEFAULT 0,
+                balance_due REAL NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (quote_id) REFERENCES quotes(id),
+                FOREIGN KEY (job_id) REFERENCES jobs(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS invoice_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_id INTEGER NOT NULL,
+                quote_item_id INTEGER,
+                part_id INTEGER,
+                source_id INTEGER,
+                quantity INTEGER NOT NULL DEFAULT 1,
+                description TEXT NOT NULL,
+                supplier_name TEXT DEFAULT '',
+                source_type TEXT DEFAULT '',
+                brand TEXT DEFAULT '',
+                supplier_part_number TEXT DEFAULT '',
+                supplier_unit_cost REAL NOT NULL DEFAULT 0,
+                customer_unit_price REAL NOT NULL DEFAULT 0,
+                supplier_line_total REAL NOT NULL DEFAULT 0,
+                customer_line_total REAL NOT NULL DEFAULT 0,
+                line_profit REAL NOT NULL DEFAULT 0,
+                FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+                FOREIGN KEY (quote_item_id) REFERENCES quote_items(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_invoices_quote_id ON invoices(quote_id);
+            CREATE INDEX IF NOT EXISTS idx_invoices_job_id ON invoices(job_id);
+            CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON invoice_items(invoice_id);
+            """
+        )
+
+        invoice_columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(invoices)"
+            ).fetchall()
+        }
+        if "service_charge" not in invoice_columns:
+            connection.execute(
+                "ALTER TABLE invoices ADD COLUMN service_charge REAL NOT NULL DEFAULT 0"
+            )
+        if "sourcing_fee" not in invoice_columns:
+            connection.execute(
+                "ALTER TABLE invoices ADD COLUMN sourcing_fee REAL NOT NULL DEFAULT 0"
+            )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS customer_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_id INTEGER NOT NULL,
+                transaction_date TEXT NOT NULL,
+                transaction_type TEXT NOT NULL,
+                amount REAL NOT NULL,
+                payment_method TEXT DEFAULT '',
+                reference TEXT DEFAULT '',
+                reason TEXT DEFAULT '',
+                job_id INTEGER,
+                quote_id INTEGER,
+                invoice_id INTEGER,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (customer_id) REFERENCES customers(id)
+            )
+            """
+        )
+
         connection.commit()
 
 
 def next_job_number(connection: sqlite3.Connection) -> str:
-    current_year = date.today().year
-    prefix = f"PLG-J-{current_year}-"
-
-    row = connection.execute(
-        """
-        SELECT job_number
-        FROM jobs
-        WHERE job_number LIKE ?
-        ORDER BY id DESC
-        LIMIT 1
-        """,
-        (f"{prefix}%",),
-    ).fetchone()
-
-    if row is None:
-        sequence = 1
-    else:
-        try:
-            sequence = int(row["job_number"].split("-")[-1]) + 1
-        except (ValueError, IndexError):
-            sequence = 1
-
-    return f"{prefix}{sequence:03d}"
+    return _next_business_number(
+        connection,
+        "JOB",
+        "jobs",
+        "job_number",
+        "PPS-J-",
+    )
 
 
 @app.on_event("startup")
@@ -391,144 +750,933 @@ def startup() -> None:
     initialize_database()
 
 
-@app.get("/", response_class=HTMLResponse)
-def dashboard(request: Request):
+@app.get("/work-queue", response_class=HTMLResponse)
+def work_queue(request: Request, queue: str = "ALL"):
     with closing(get_connection()) as connection:
-        recent_jobs = connection.execute(
-            """
-            SELECT
-                jobs.*,
-                COUNT(job_parts.id) AS parts_count,
-                SUM(CASE WHEN job_parts.verification_status = 'VERIFIED' THEN 1 ELSE 0 END)
-                    AS verified_parts
-            FROM jobs
-            LEFT JOIN job_parts ON job_parts.job_id = jobs.id
-            GROUP BY jobs.id
-            ORDER BY jobs.id DESC
-            LIMIT 10
-            """
-        ).fetchall()
-
-        totals = connection.execute(
-            """
-            SELECT
-                COUNT(*) AS jobs_total,
-                SUM(CASE WHEN status = 'REQUESTED' THEN 1 ELSE 0 END) AS requested,
-                SUM(CASE WHEN status = 'RESEARCHING' THEN 1 ELSE 0 END) AS researching,
-                SUM(CASE WHEN status = 'VERIFIED' THEN 1 ELSE 0 END) AS verified
-            FROM jobs
-            """
-        ).fetchone()
+        work_queue = get_work_queue_data(connection, category=queue)
 
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
         context={
-            "recent_jobs": recent_jobs,
-            "totals": totals,
-            "active_page": "dashboard",
+            **work_queue,
+            "active_page": "work_queue",
         },
     )
 
 
-@app.get("/jobs/new", response_class=HTMLResponse)
-def new_job_form(request: Request):
+@app.get("/", response_class=HTMLResponse, name="dashboard")
+def operator_dashboard(request: Request):
+    from plg_core.admin.service import accounting_snapshot
+
+    accounting = accounting_snapshot()
+    with closing(get_connection()) as connection:
+        dashboard_data = get_operator_dashboard_data(
+            connection,
+            accounting_rows=accounting["invoice_reconciliation"],
+        )
     return templates.TemplateResponse(
         request=request,
-        name="new_job.html",
-        context={"active_page": "jobs"},
+        name="operator_dashboard.html",
+        context={**dashboard_data, "active_page": "dashboard"},
     )
+
+
+@app.get("/dashboard", name="dashboard_alias")
+def dashboard_alias(request: Request):
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.get("/jobs/new", response_class=HTMLResponse)
+def new_job_form(request: Request, customer_id: int | None = None):
+    with closing(get_connection()) as connection:
+        customers=connection.execute("SELECT * FROM customers WHERE active=1 ORDER BY name COLLATE NOCASE, company COLLATE NOCASE").fetchall()
+        machines=connection.execute("SELECT * FROM machines WHERE active=1 ORDER BY customer_id, name COLLATE NOCASE").fetchall()
+    return templates.TemplateResponse(request=request,name="new_job.html",context={"customers":customers,"machines":machines,"selected_customer_id":customer_id,"active_page":"jobs"})
+
 
 
 @app.post("/jobs")
 def create_job(
     customer: Annotated[str, Form()],
+    customer_id: Annotated[int | None, Form()] = None,
+    machine_id: Annotated[int | None, Form()] = None,
     company: Annotated[str, Form()] = "",
     phone: Annotated[str, Form()] = "",
     email: Annotated[str, Form()] = "",
+    address: Annotated[str, Form()] = "",
     manufacturer: Annotated[str, Form()] = "",
     machine: Annotated[str, Form()] = "",
     pin_serial: Annotated[str, Form()] = "",
     requested_parts: Annotated[str, Form()] = "",
     notes: Annotated[str, Form()] = "",
 ):
-    customer = customer.strip()
-    if not customer:
-        raise HTTPException(status_code=400, detail="Customer is required.")
+    with closing(get_connection()) as connection:
+        if customer_id:
+            customer_row=connection.execute("SELECT * FROM customers WHERE id=? AND active=1",(customer_id,)).fetchone()
+            if customer_row is None:
+                raise HTTPException(status_code=400,detail="Selected customer not found.")
+        else:
+            name=customer.strip()
+            if not name:
+                raise HTTPException(status_code=400,detail="Customer is required.")
+            cur=connection.execute("INSERT INTO customers (name,company,phone,email,address) VALUES (?,?,?,?,?)",(name,company.strip(),phone.strip(),email.strip(),address.strip()))
+            customer_id=cur.lastrowid
+            connection.execute(
+                "UPDATE customers SET customer_number=? WHERE id=?",
+                (next_customer_number(connection), customer_id),
+            )
+            customer_row=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
+        selected_machine = None
+        if machine_id:
+            selected_machine = connection.execute(
+                "SELECT * FROM machines WHERE id=? AND customer_id=? AND active=1",
+                (machine_id, customer_row["id"]),
+            ).fetchone()
+            if selected_machine is None:
+                raise HTTPException(status_code=400, detail="Selected machine not found for this customer.")
+            manufacturer = selected_machine["manufacturer"] or ""
+            machine = selected_machine["model"] or selected_machine["name"] or ""
+            pin_serial = selected_machine["vin_pin_serial"] or ""
+        elif any((manufacturer.strip(), machine.strip(), pin_serial.strip())):
+            existing_machine = find_machine_by_identifier(
+                connection,
+                pin_serial.strip(),
+            )
 
-    part_lines = [
-        line.strip(" -•\t")
-        for line in requested_parts.splitlines()
-        if line.strip(" -•\t")
-    ]
+            if existing_machine is not None:
+                if existing_machine["customer_id"] != customer_row["id"]:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"VIN/PIN/serial already belongs to "
+                            f"{existing_machine['machine_number']} "
+                            f"({existing_machine['customer_name']}). "
+                            "Transfer the machine before creating this Job."
+                        ),
+                    )
+                machine_id = existing_machine["id"]
+                manufacturer = existing_machine["manufacturer"] or manufacturer
+                machine = existing_machine["model"] or existing_machine["name"] or machine
+                pin_serial = existing_machine["vin_pin_serial"] or pin_serial
+            else:
+                display_name = " ".join(
+                    part for part in (manufacturer.strip(), machine.strip()) if part
+                ).strip() or pin_serial.strip()
+                machine_cursor = connection.execute(
+                    "INSERT INTO machines (customer_id,name,manufacturer,model,vin_pin_serial) VALUES (?,?,?,?,?)",
+                    (customer_row["id"], display_name, manufacturer.strip(), machine.strip(), pin_serial.strip()),
+                )
+                machine_id = machine_cursor.lastrowid
+                connection.execute(
+                    "UPDATE machines SET machine_number=? WHERE id=?",
+                    (next_machine_number(connection), machine_id),
+                )
+        job_number=next_job_number(connection)
+        cur=connection.execute("""
+            INSERT INTO jobs (job_number,created_date,customer_id,machine_id,customer,company,phone,email,address,manufacturer,machine,pin_serial,status,notes)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'REQUESTED',?)
+        """,(job_number,date.today().isoformat(),customer_row["id"],machine_id,customer_row["name"],customer_row["company"] or "",customer_row["phone"] or "",customer_row["email"] or "",customer_row["address"] or "",manufacturer.strip(),machine.strip(),pin_serial.strip(),notes.strip()))
+        job_id=cur.lastrowid
+        job_asset_id = None
+        if machine_id or any((manufacturer.strip(), machine.strip(), pin_serial.strip())):
+            asset_cursor = connection.execute(
+                """
+                INSERT INTO job_assets (
+                    job_id,machine_id,customer_id,asset_type,name,manufacturer,
+                    model,year,vin_pin_serial,is_primary
+                ) VALUES (?,?,?,?,?,?,?,?,?,1)
+                """,
+                (
+                    job_id,machine_id,customer_row["id"],
+                    (selected_machine["registry_type"] if selected_machine else "") or "",
+                    (selected_machine["name"] if selected_machine else "") or
+                    " ".join(v for v in (manufacturer.strip(),machine.strip()) if v),
+                    manufacturer.strip(),machine.strip(),
+                    (selected_machine["year"] if selected_machine else "") or "",
+                    pin_serial.strip(),
+                ),
+            )
+            job_asset_id = int(asset_cursor.lastrowid)
+        for wording in (
+            line.strip(" -•\t") for line in str(requested_parts or "").splitlines()
+        ):
+            if wording:
+                connection.execute(
+                    "INSERT INTO requested_needs(job_id,job_asset_id,wording) VALUES (?,?,?)",
+                    (job_id, job_asset_id, wording),
+                )
+        connection.commit()
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced",status_code=303)
+
+
+
+@app.get(
+    "/search",
+    response_class=HTMLResponse,
+)
+def global_search_page(
+    request: Request,
+    q: str = "",
+):
+    from plg_core.crm.routes import search_records
+
+    result = search_records(
+        q=q,
+        limit=10,
+    )
+
+    grouped = {}
+
+    for item in result["items"]:
+        grouped.setdefault(
+            item["record_type"],
+            [],
+        ).append(item)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="search.html",
+        context={
+            "query": result["query"],
+            "groups": grouped,
+            "result_count": len(result["items"]),
+            "active_page": "search",
+        },
+    )
+
+
+@app.get(
+    "/follow-up",
+    response_class=HTMLResponse,
+)
+def follow_up_center(
+    request: Request,
+    view: str = "MY_FOLLOW_UPS",
+):
+    from plg_core.dashboard.service import (
+        get_follow_up_data,
+    )
 
     with closing(get_connection()) as connection:
-        job_number = next_job_number(connection)
-        cursor = connection.execute(
-            """
-            INSERT INTO jobs (
-                job_number, created_date, customer, company, phone, email,
-                manufacturer, machine, pin_serial, status, notes
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'REQUESTED', ?)
-            """,
-            (
-                job_number,
-                date.today().isoformat(),
-                customer,
-                company.strip(),
-                phone.strip(),
-                email.strip(),
-                manufacturer.strip(),
-                machine.strip(),
-                pin_serial.strip(),
-                notes.strip(),
-            ),
+        follow_up = get_follow_up_data(
+            connection,
+            view=view,
         )
-        job_id = cursor.lastrowid
 
-        for part in part_lines:
-            connection.execute(
-                """
-                INSERT INTO job_parts (
-                    job_id, requested_description, quantity, verification_status
-                )
-                VALUES (?, ?, 1, 'PENDING')
-                """,
-                (job_id, part),
-            )
+    return templates.TemplateResponse(
+        request=request,
+        name="follow_up.html",
+        context={
+            **follow_up,
+            "active_page": "follow_up",
+        },
+    )
 
+
+@app.get(
+    "/accounting",
+    response_class=HTMLResponse,
+)
+def accounting_center(
+    request: Request,
+):
+    from plg_core.admin.service import (
+        accounting_snapshot,
+    )
+
+    data = accounting_snapshot()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="accounting.html",
+        context={
+            **data,
+            "active_page": "accounting",
+        },
+    )
+
+
+@app.get(
+    "/documents",
+    response_class=HTMLResponse,
+)
+def document_center(
+    request: Request,
+    q: str = "",
+    document_type: str = "",
+    audience: str = "",
+    version_scope: str = "current",
+    status: str = "",
+    customer: str = "",
+):
+    from plg_core.documents.library import (
+        query_authoritative_documents,
+    )
+
+    with closing(get_connection()) as connection:
+        data = query_authoritative_documents(
+            connection,
+            DOCUMENTS_DIR,
+            q=q,
+            document_type=document_type,
+            audience=audience,
+            version_scope=version_scope,
+            status=status,
+            customer=customer,
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="documents.html",
+        context={
+            **data,
+            "active_page": "documents",
+        },
+    )
+
+
+@app.get("/documents/file")
+def open_pps_document(
+    path: str,
+):
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Raw filesystem document links are no longer authoritative. "
+            "Open the document from the PPS Document Center."
+        ),
+    )
+
+
+@app.get("/documents/manifest/{family}/{manifest_id}")
+def open_manifest_document(
+    family: str,
+    manifest_id: int,
+    download: int = 0,
+):
+    from plg_core.documents.library import resolve_manifest_document
+    with closing(get_connection()) as connection:
+        document, _manifest = resolve_manifest_document(
+            connection, DOCUMENTS_DIR, family, manifest_id
+        )
+    return FileResponse(
+        path=document,
+        media_type="application/pdf",
+        filename=document.name,
+        content_disposition_type=("attachment" if download else "inline"),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@app.get("/customers", response_class=HTMLResponse)
+def list_customers(request: Request, view: str = "active"):
+    if view not in {"active", "inactive", "all"}: view = "active"
+    where = "" if view == "all" else ("WHERE customers.active=1" if view == "active" else "WHERE customers.active=0")
+    with closing(get_connection()) as connection:
+        rows=connection.execute(f"""
+            SELECT customers.*, COUNT(DISTINCT jobs.id) AS jobs_count,
+                   COUNT(DISTINCT quotes.id) AS quotes_count,
+                   COALESCE(SUM(customer_transactions.amount),0) AS net_balance
+            FROM customers
+            LEFT JOIN jobs ON jobs.customer_id=customers.id
+            LEFT JOIN quotes ON quotes.job_id=jobs.id
+            LEFT JOIN customer_transactions ON customer_transactions.customer_id=customers.id
+            {where}
+            GROUP BY customers.id
+            ORDER BY customers.name COLLATE NOCASE
+        """).fetchall()
+        customers=[]
+        for row in rows:
+            item=dict(row); net=float(item.get("net_balance") or 0)
+            item["available_credit"]=max(net,0); item["outstanding_balance"]=max(-net,0); customers.append(item)
+        recent_customers=connection.execute("SELECT * FROM customers WHERE active=1 AND last_viewed_at IS NOT NULL ORDER BY last_viewed_at DESC LIMIT 8").fetchall()
+    return templates.TemplateResponse(request=request,name="customers.html",context={"customers":customers,"recent_customers":recent_customers,"view":view,"active_page":"customers"})
+
+@app.get("/customers/new", response_class=HTMLResponse)
+def new_customer_form(request: Request):
+    return templates.TemplateResponse(request=request,name="customer_form.html",context={"title":"New Customer","subtitle":"Create a customer without creating a job.","form_action":"/customers/new","cancel_url":"/customers","submit_label":"Save Customer","duplicate":None,"form":{"name":"","company":"","phone":"","email":"","address":""},"active_page":"customers"})
+
+@app.post("/customers/new")
+def create_customer(request: Request,name: Annotated[str,Form()],company: Annotated[str,Form()]="",phone: Annotated[str,Form()]="",email: Annotated[str,Form()]="",address: Annotated[str,Form()]="",create_anyway: Annotated[int,Form()]=0):
+    name,company,phone,email,address=[v.strip() for v in (name,company,phone,email,address)]
+    if not name: raise HTTPException(status_code=400,detail="Customer name is required.")
+    with closing(get_connection()) as connection:
+        duplicate=connection.execute("""SELECT * FROM customers WHERE LOWER(TRIM(name))=LOWER(TRIM(?)) OR (?!='' AND TRIM(phone)=TRIM(?)) OR (?!='' AND LOWER(TRIM(email))=LOWER(TRIM(?))) ORDER BY active DESC,id LIMIT 1""",(name,phone,phone,email,email)).fetchone()
+        if duplicate is not None and not create_anyway:
+            return templates.TemplateResponse(request=request,name="customer_form.html",context={"title":"New Customer","subtitle":"Review the possible duplicate.","form_action":"/customers/new","cancel_url":"/customers","submit_label":"Save Customer","duplicate":duplicate,"form":{"name":name,"company":company,"phone":phone,"email":email,"address":address},"active_page":"customers"})
+        cur=connection.execute("INSERT INTO customers (name,company,phone,email,address,active) VALUES (?,?,?,?,?,1)",(name,company,phone,email,address))
+        customer_id=cur.lastrowid
+        connection.execute(
+            "UPDATE customers SET customer_number=? WHERE id=?",
+            (next_customer_number(connection), customer_id),
+        )
         connection.commit()
+    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
 
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+@app.get("/customers/{customer_id}/edit", response_class=HTMLResponse)
+def edit_customer_form(request: Request,customer_id: int):
+    with closing(get_connection()) as connection: customer=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
+    if customer is None: raise HTTPException(status_code=404,detail="Customer not found.")
+    return templates.TemplateResponse(request=request,name="customer_form.html",context={"title":"Edit Customer","subtitle":customer["customer_number"],"form_action":f"/customers/{customer_id}/edit","cancel_url":f"/customers/{customer_id}","submit_label":"Save Changes","duplicate":None,"form":customer,"active_page":"customers"})
+
+@app.post("/customers/{customer_id}/edit")
+def update_customer(customer_id: int,name: Annotated[str,Form()],company: Annotated[str,Form()]="",phone: Annotated[str,Form()]="",email: Annotated[str,Form()]="",address: Annotated[str,Form()]=""):
+    name=name.strip()
+    if not name: raise HTTPException(status_code=400,detail="Customer name is required.")
+    with closing(get_connection()) as connection:
+        customer = connection.execute(
+            "SELECT * FROM customers WHERE id=?", (customer_id,)
+        ).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Customer not found.")
+        connection.execute("UPDATE customers SET name=?,company=?,phone=?,email=?,address=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(name,company.strip(),phone.strip(),email.strip(),address.strip(),customer_id))
+        active_jobs = connection.execute(
+            """
+            SELECT jobs.id, jobs.job_number
+            FROM jobs
+            WHERE jobs.customer_id=?
+              AND UPPER(COALESCE(jobs.status, '')) != 'CANCELLED'
+              AND NOT EXISTS (SELECT 1 FROM quotes WHERE quotes.job_id=jobs.id)
+              AND NOT EXISTS (SELECT 1 FROM invoices WHERE invoices.job_id=jobs.id)
+              AND NOT EXISTS (SELECT 1 FROM customer_transactions WHERE customer_transactions.job_id=jobs.id)
+              AND NOT EXISTS (SELECT 1 FROM supplier_orders WHERE supplier_orders.job_id=jobs.id)
+              AND NOT EXISTS (SELECT 1 FROM deliveries WHERE deliveries.job_id=jobs.id)
+            """,
+            (customer_id,),
+        ).fetchall()
+        from plg_core.audit import write_audit
+        from plg_core.timeline import log_job_event
+        for job in active_jobs:
+            connection.execute(
+                "UPDATE jobs SET customer=?,company=?,phone=?,email=?,address=? WHERE id=?",
+                (name,company.strip(),phone.strip(),email.strip(),address.strip(),job["id"]),
+            )
+            message = f"Active Job {job['job_number']} synchronized from customer master edit"
+            write_audit(connection, action="JOB_CUSTOMER_SNAPSHOT_SYNCED", entity_type="JOB",
+                        entity_id=job["id"], summary=message,
+                        metadata={"customer_id": customer_id})
+            log_job_event(connection, job_id=int(job["id"]),
+                          event_type="JOB_CUSTOMER_SNAPSHOT_SYNCED", icon="▤", message=message)
+        write_audit(connection, action="CUSTOMER_EDITED", entity_type="CUSTOMER",
+                    entity_id=customer_id, summary=f"Customer {customer['customer_number']} updated",
+                    metadata={"active_jobs_synchronized": [int(job["id"]) for job in active_jobs]})
+        connection.commit()
+    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
+
+@app.post("/customers/{customer_id}/deactivate")
+def deactivate_customer(customer_id: int):
+    with closing(get_connection()) as connection:
+        customer=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
+        if customer is None: raise HTTPException(status_code=404,detail="Customer not found.")
+        connection.execute("UPDATE customers SET active=0,updated_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,))
+        from plg_core.audit import write_audit
+        write_audit(connection,action="CUSTOMER_DEACTIVATED",entity_type="CUSTOMER",entity_id=customer_id,summary=f"Customer {customer['customer_number']} removed from active views; history preserved")
+        connection.commit()
+    return RedirectResponse(url="/customers?view=active",status_code=303)
+
+@app.post("/customers/{customer_id}/reactivate")
+def reactivate_customer(customer_id: int):
+    with closing(get_connection()) as connection: connection.execute("UPDATE customers SET active=1,updated_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,)); connection.commit()
+    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
+
+@app.get("/customers/{customer_id}", response_class=HTMLResponse)
+def customer_account(request: Request, customer_id: int):
+    with closing(get_connection()) as connection:
+        customer=connection.execute("SELECT * FROM customers WHERE id=?",(customer_id,)).fetchone()
+        if customer is None: raise HTTPException(status_code=404,detail="Customer not found.")
+        connection.execute("UPDATE customers SET last_viewed_at=CURRENT_TIMESTAMP WHERE id=?",(customer_id,))
+        jobs=connection.execute("SELECT * FROM jobs WHERE customer_id=? ORDER BY id DESC",(customer_id,)).fetchall()
+        machines=connection.execute("SELECT * FROM machines WHERE customer_id=? ORDER BY active DESC, name COLLATE NOCASE",(customer_id,)).fetchall()
+        quotes=connection.execute("SELECT quotes.* FROM quotes JOIN jobs ON jobs.id=quotes.job_id WHERE jobs.customer_id=? ORDER BY quotes.id DESC",(customer_id,)).fetchall()
+        invoices=connection.execute("SELECT invoices.* FROM invoices JOIN jobs ON jobs.id=invoices.job_id WHERE jobs.customer_id=? ORDER BY invoices.id DESC",(customer_id,)).fetchall()
+        transactions=connection.execute("SELECT * FROM customer_transactions WHERE customer_id=? ORDER BY transaction_date DESC,id DESC",(customer_id,)).fetchall()
+        summary=connection.execute("SELECT COALESCE(SUM(amount),0) AS net_balance,COALESCE(SUM(CASE WHEN transaction_type='PAYMENT' THEN amount ELSE 0 END),0) AS total_payments FROM customer_transactions WHERE customer_id=?",(customer_id,)).fetchone(); connection.commit()
+        net=float(summary["net_balance"] or 0); account={"available_credit":max(net,0),"outstanding_balance":max(-net,0),"total_payments":float(summary["total_payments"] or 0)}
+    return templates.TemplateResponse(request=request,name="customer_account.html",context={"customer":customer,"machines":machines,"jobs":jobs,"quotes":quotes,"invoices":invoices,"transactions":transactions,"account":account,"active_page":"customers"})
+
+@app.post("/customers/{customer_id}/transactions/payment")
+def record_customer_payment(customer_id: int,amount: Annotated[float,Form()],payment_method: Annotated[str,Form()],reference: Annotated[str,Form()]=""):
+    if amount<=0: raise HTTPException(status_code=400,detail="Payment amount must be greater than zero.")
+    with closing(get_connection()) as connection: connection.execute("INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,payment_method,reference) VALUES (?,?,'PAYMENT',?,?,?)",(customer_id,date.today().isoformat(),round(float(amount),2),payment_method.strip().upper(),reference.strip())); connection.commit()
+    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
+
+@app.post("/customers/{customer_id}/transactions/refund")
+def record_customer_refund(customer_id: int,amount: Annotated[float,Form()],reason: Annotated[str,Form()],reference: Annotated[str,Form()]=""):
+    if amount<=0: raise HTTPException(status_code=400,detail="Refund amount must be greater than zero.")
+    with closing(get_connection()) as connection: connection.execute("INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,reference,reason) VALUES (?,?,'REFUND',?,?,?)",(customer_id,date.today().isoformat(),-round(float(amount),2),reference.strip(),reason.strip())); connection.commit()
+    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
+
+@app.post("/customers/{customer_id}/transactions/adjustment")
+def record_customer_adjustment(customer_id: int,amount: Annotated[float,Form()],reason: Annotated[str,Form()],reference: Annotated[str,Form()]=""):
+    if amount==0: raise HTTPException(status_code=400,detail="Adjustment amount cannot be zero.")
+    with closing(get_connection()) as connection: connection.execute("INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,reference,reason) VALUES (?,?,'ADJUSTMENT',?,?,?)",(customer_id,date.today().isoformat(),round(float(amount),2),reference.strip(),reason.strip())); connection.commit()
+    return RedirectResponse(url=f"/customers/{customer_id}",status_code=303)
 
 
 @app.get("/jobs", response_class=HTMLResponse)
-def list_jobs(request: Request):
+def list_jobs(request: Request, view: str = "active"):
+    from plg_core.jobs.service import get_job_operational_snapshot
+
+    if view not in {"active", "archived", "all"}:
+        view = "active"
+    jobs_visibility = {
+        "active": "WHERE COALESCE(jobs.is_archived, 0)=0",
+        "archived": "WHERE COALESCE(jobs.is_archived, 0)=1",
+    }.get(view, "")
     with closing(get_connection()) as connection:
-        jobs = connection.execute(
-            """
+        rows = connection.execute(
+            f"""
             SELECT
                 jobs.*,
-                COUNT(job_parts.id) AS parts_count,
-                SUM(CASE WHEN job_parts.verification_status = 'VERIFIED' THEN 1 ELSE 0 END)
-                    AS verified_parts
+
+                (
+                    SELECT COUNT(*)
+                    FROM job_parts
+                    WHERE job_parts.job_id = jobs.id
+                ) AS parts_count,
+
+                (
+                    SELECT COUNT(*)
+                    FROM job_parts
+                    WHERE job_parts.job_id = jobs.id
+                      AND job_parts.verification_status = 'VERIFIED'
+                ) AS verified_parts,
+
+                (
+                    SELECT baskets.status
+                    FROM baskets
+                    WHERE baskets.job_id = jobs.id
+                    ORDER BY baskets.id DESC
+                    LIMIT 1
+                ) AS basket_status,
+
+                (
+                    SELECT COUNT(*)
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                ) AS selected_items,
+
+                (
+                    SELECT COUNT(*)
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                      AND COALESCE(
+                            basket_items.part_status,
+                            'RESEARCH'
+                          ) = 'RESEARCH'
+                ) AS research_items,
+
+                (
+                    SELECT COUNT(*)
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                      AND basket_items.part_status = 'QUOTED'
+                ) AS quoted_items,
+
+                (
+                    SELECT COUNT(*)
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                      AND basket_items.part_status = 'ORDERED'
+                ) AS ordered_items,
+
+                (
+                    SELECT COUNT(*)
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                      AND basket_items.part_status = 'RECEIVED'
+                ) AS received_items,
+
+                (
+                    SELECT customer_requests.id
+                    FROM customer_requests
+                    WHERE customer_requests.job_id = jobs.id
+                    ORDER BY customer_requests.id DESC
+                    LIMIT 1
+                ) AS customer_request_id,
+
+                (
+                    SELECT COALESCE(
+                        NULLIF(TRIM(customer_requests.requested_parts), ''),
+                        NULLIF(TRIM(customer_requests.request_text), '')
+                    )
+                    FROM customer_requests
+                    WHERE customer_requests.job_id = jobs.id
+                    ORDER BY customer_requests.id DESC
+                    LIMIT 1
+                ) AS request_description,
+
+                (
+                    SELECT requested_needs.wording
+                    FROM requested_needs
+                    WHERE requested_needs.job_id = jobs.id
+                      AND requested_needs.state = 'OPEN'
+                    ORDER BY requested_needs.id
+                    LIMIT 1
+                ) AS requested_need_wording,
+
+                (
+                    SELECT COUNT(*)
+                    FROM requested_needs
+                    WHERE requested_needs.job_id = jobs.id
+                      AND requested_needs.state = 'OPEN'
+                ) AS open_requested_need_count,
+
+                (
+                    SELECT GROUP_CONCAT(
+                        basket_items.requested_description,
+                        ', '
+                    )
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                ) AS selected_part_descriptions,
+
+                (
+                    SELECT quotes.id
+                    FROM quotes
+                    WHERE quotes.job_id = jobs.id
+                      AND COALESCE(quotes.is_archived, 0) = 0
+                    ORDER BY quotes.id DESC
+                    LIMIT 1
+                ) AS quote_id,
+
+                (
+                    SELECT quotes.status
+                    FROM quotes
+                    WHERE quotes.job_id = jobs.id
+                      AND COALESCE(quotes.is_archived, 0) = 0
+                    ORDER BY quotes.id DESC
+                    LIMIT 1
+                ) AS quote_status,
+
+                (
+                    SELECT invoices.id
+                    FROM invoices
+                    WHERE invoices.job_id = jobs.id
+                    ORDER BY invoices.id DESC
+                    LIMIT 1
+                ) AS invoice_id,
+
+                (
+                    SELECT invoices.status
+                    FROM invoices
+                    WHERE invoices.job_id = jobs.id
+                    ORDER BY invoices.id DESC
+                    LIMIT 1
+                ) AS invoice_status,
+
+                (
+                    SELECT MAX(job_timeline.created_at)
+                    FROM job_timeline
+                    WHERE job_timeline.job_id = jobs.id
+                ) AS last_activity,
+
+                (
+                    SELECT GROUP_CONCAT(
+                        basket_items.requested_description,
+                        '||'
+                    )
+                    FROM basket_items
+                    JOIN baskets
+                      ON baskets.id = basket_items.basket_id
+                    WHERE baskets.job_id = jobs.id
+                      AND basket_items.selected = 1
+                      AND COALESCE(
+                            basket_items.part_status,
+                            'RESEARCH'
+                          ) != 'RECEIVED'
+                ) AS outstanding_part_descriptions
+
             FROM jobs
-            LEFT JOIN job_parts ON job_parts.job_id = jobs.id
-            GROUP BY jobs.id
+            {jobs_visibility}
             ORDER BY jobs.id DESC
             """
         ).fetchall()
+        jobs = []
+
+        manufacturer_codes = {
+            "CATERPILLAR": "CAT",
+            "CAT": "CAT",
+            "CUMMINS": "CUM",
+            "DETROIT DIESEL": "DD",
+            "DETROIT": "DD",
+            "JOHN DEERE": "JD",
+            "JCB": "JCB",
+            "TOYOTA": "TOY",
+            "HONDA": "HON",
+            "BMW": "BMW",
+            "AUDI": "AUD",
+            "FREIGHTLINER": "FTL",
+            "MACK": "MACK",
+            "INTERNATIONAL": "INT",
+            "ISUZU": "ISU",
+            "YANMAR": "YAN",
+        }
+
+        paid_statuses = {
+            "PAID",
+            "PAYMENT RECEIVED",
+            "PAYMENT_RECEIVED",
+        }
+
+        completed_statuses = {
+            "COMPLETE",
+            "COMPLETED",
+            "DELIVERED",
+            "CLOSED",
+        }
+
+        approved_statuses = {
+            "APPROVED",
+            "ACCEPTED",
+            "CONFIRMED",
+        }
+
+        for row in rows:
+            item = dict(row)
+
+            outstanding_parts = [
+                part.strip()
+                for part in str(
+                    item.get("outstanding_part_descriptions") or ""
+                ).split("||")
+                if part.strip()
+            ]
+
+            intelligence = JobEngine.evaluate(
+                item,
+                selected_items=item.get("selected_items", 0),
+                research_items=item.get("research_items", 0),
+                quoted_items=item.get("quoted_items", 0),
+                ordered_items=item.get("ordered_items", 0),
+                received_items=item.get("received_items", 0),
+                open_requested_needs=item.get("open_requested_need_count", 0),
+                outstanding_parts=outstanding_parts,
+                basket_status=item.get("basket_status") or "OPEN",
+            ).to_dict()
+
+            # The directory must describe the same durable operator state as
+            # the Job Command Center.  The engine remains useful for health,
+            # progress, and research counts; the operational snapshot owns the
+            # visible stage and forward action once commercial/supply evidence
+            # exists.
+            workflow = get_job_operational_snapshot(
+                int(item["id"]), connection=connection,
+            )["workflow"]
+            intelligence.update({
+                "workflow_label": workflow["stage"],
+                "next_action": workflow["next_action"],
+                "action_url": workflow["next_url"],
+                "action_method": workflow["action_method"],
+            })
+
+            item["intelligence"] = intelligence
+
+            description = (
+                item.get("request_description")
+                or item.get("selected_part_descriptions")
+                or "No job description entered"
+            )
+
+            item["job_description"] = " ".join(
+                str(description).split()
+            )
+
+            manufacturer = (
+                item.get("manufacturer") or ""
+            ).strip()
+
+            item["manufacturer_code"] = manufacturer_codes.get(
+                manufacturer.upper(),
+                manufacturer[:3].upper() or "PLG",
+            )
+
+            job_status = (
+                item.get("status") or ""
+            ).strip().upper()
+
+            quote_status = (
+                item.get("quote_status") or ""
+            ).strip().upper()
+
+            invoice_status = (
+                item.get("invoice_status") or ""
+            ).strip().upper()
+
+            health_label = (
+                intelligence.get("health_label") or ""
+            ).strip().lower()
+
+            selected_items = int(
+                item.get("selected_items") or 0
+            )
+
+            research_items = int(
+                item.get("research_items") or 0
+            )
+
+            received_items = int(
+                item.get("received_items") or 0
+            )
+
+            if job_status in completed_statuses:
+                stage_key = "COMPLETED"
+                stage_label = "Completed"
+                stage_icon = "✅"
+                progress = 100
+                priority_rank = 70
+
+            elif job_status == "RECEIVED":
+                stage_key = "READY"
+                stage_label = "Ready for Delivery"
+                stage_icon = "📦"
+                progress = 95
+                priority_rank = 25
+
+            elif job_status == "ORDERED":
+                stage_key = "WAITING"
+                stage_label = "Waiting for Supplier"
+                stage_icon = "🚚"
+                progress = 88
+                priority_rank = 40
+
+            elif invoice_status in paid_statuses:
+                stage_key = "PAID"
+                stage_label = "Paid"
+                stage_icon = "💰"
+                progress = 78
+                priority_rank = 60
+
+            elif quote_status in approved_statuses:
+                stage_key = "APPROVED"
+                stage_label = "Customer Approved"
+                stage_icon = "👍"
+                progress = 75
+                priority_rank = 50
+
+            elif item.get("quote_id"):
+                stage_key = "WAITING"
+                stage_label = "Waiting for Customer"
+                stage_icon = "⏳"
+                progress = 63
+                priority_rank = 40
+
+            elif selected_items > 0 and research_items == 0:
+                stage_key = "READY"
+                stage_label = "Ready to Quote"
+                stage_icon = "📝"
+                progress = 50
+                priority_rank = 30
+
+            elif selected_items > 0:
+                stage_key = "RESEARCH"
+                stage_label = "Research"
+                stage_icon = "🔍"
+                progress = 42
+                priority_rank = 20
+
+            else:
+                stage_key = "RESEARCH"
+                stage_label = "Research Required"
+                stage_icon = "🔍"
+                progress = 30
+                priority_rank = 20
+
+            if (
+                "attention" in health_label
+                or "action required" in health_label
+                or "overdue" in health_label
+            ):
+                stage_key = "URGENT"
+                stage_label = "Needs Attention"
+                stage_icon = "🔥"
+                priority_rank = 10
+
+            item["stage_key"] = stage_key
+            item["stage_label"] = stage_label
+            item["stage_icon"] = stage_icon
+            item["progress_percent"] = progress
+            item["priority_rank"] = priority_rank
+
+            item["parts_progress"] = {
+                "research": research_items,
+                "quoted": int(item.get("quoted_items") or 0),
+                "ordered": int(item.get("ordered_items") or 0),
+                "received": received_items,
+                "total": selected_items,
+            }
+            item["payment_label"] = (
+                "Paid" if invoice_status in paid_statuses else
+                "Awaiting Payment" if item.get("invoice_id") else
+                "Not Invoiced"
+            )
+            item["requested_need_display"] = (
+                item.get("requested_need_wording")
+                or item["job_description"]
+            )
+
+            item["last_activity_display"] = (
+                item.get("last_activity")
+                or item.get("created_date")
+                or "No activity recorded"
+            )
+
+            jobs.append(item)
+
+        jobs.sort(
+            key=lambda job: (
+                job["priority_rank"],
+                job.get("last_activity_display") or "",
+                job.get("id") or 0,
+            )
+        )
 
     return templates.TemplateResponse(
         request=request,
         name="jobs.html",
-        context={"jobs": jobs, "active_page": "jobs"},
+        context={
+            "jobs": jobs,
+            "view": view,
+            "active_page": "jobs",
+        },
     )
 
 
 @app.get("/jobs/{job_id}", response_class=HTMLResponse)
 def job_detail(request: Request, job_id: int):
+    return RedirectResponse(
+        url=f"/jobs/{job_id}/center",
+        status_code=303,
+    )
+
+
+def _legacy_job_detail(request: Request, job_id: int):
+    from plg_core.jobs.service import get_job_operational_snapshot
+    from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
+
     with closing(get_connection()) as connection:
         job = connection.execute(
             "SELECT * FROM jobs WHERE id = ?",
@@ -578,6 +1726,17 @@ def job_detail(request: Request, job_id: int):
             if any(source["selected_for_quote"] for source in sources_by_part.get(part["id"], []))
         )
         ready_for_quote = bool(parts) and selected_count == len(parts)
+        operational_snapshot = get_job_operational_snapshot(
+            job_id,
+            connection=connection,
+        )
+        from plg_core.lifecycle import get_job_delete_eligibility
+        delete_eligibility = get_job_delete_eligibility(job_id, connection=connection)
+        workflow = operational_snapshot["workflow"]
+        quote_is_next_action = (
+            workflow["action_method"] == "POST"
+            and workflow["next_url"] == f"/jobs/{job_id}/generate-quote"
+        )
 
         active = connection.execute(
             """
@@ -619,7 +1778,8 @@ def job_detail(request: Request, job_id: int):
             (job_id,),
         ).fetchall()
 
-    return templates.TemplateResponse(
+    csrf_token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(
         request=request,
         name="job_detail.html",
         context={
@@ -630,12 +1790,24 @@ def job_detail(request: Request, job_id: int):
             "brand_names": brand_names,
             "selected_count": selected_count,
             "ready_for_quote": ready_for_quote,
+            "quote_is_next_action": quote_is_next_action,
+            "operational_snapshot": operational_snapshot,
+            "delete_eligibility": delete_eligibility,
+            "csrf_token": csrf_token,
             "active_part_id": active["part_id"] if active else None,
             "connectors": connectors,
             "source_imports": source_imports,
             "active_page": "jobs",
         },
     )
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        csrf_token,
+        httponly=True,
+        samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
 
 
 @app.get("/jobs/{job_id}/edit", response_class=HTMLResponse)
@@ -645,42 +1817,97 @@ def edit_job_form(request: Request, job_id: int):
             "SELECT * FROM jobs WHERE id = ?",
             (job_id,),
         ).fetchone()
+        customers = connection.execute(
+            "SELECT * FROM customers WHERE active=1 OR id=? ORDER BY name COLLATE NOCASE",
+            (job["customer_id"] if job else -1,),
+        ).fetchall()
+        machines = connection.execute(
+            "SELECT * FROM machines WHERE active=1 OR id=? ORDER BY customer_id,name COLLATE NOCASE",
+            (job["machine_id"] if job else -1,),
+        ).fetchall()
+        if job:
+            from plg_core.lifecycle import job_has_durable_history
+            has_history = job_has_durable_history(connection, job_id)
+        else:
+            has_history = False
 
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found.")
 
-    return templates.TemplateResponse(
+    from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
+    csrf_token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(
         request=request,
         name="edit_job.html",
-        context={"job": job, "active_page": "jobs"},
+        context={"job": job, "customers": customers, "machines": machines,
+                 "has_history": has_history, "active_page": "jobs", "csrf_token": csrf_token},
     )
+    response.set_cookie(
+        CSRF_COOKIE_NAME, csrf_token, httponly=True, samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
 
 
 @app.post("/jobs/{job_id}/edit")
 def update_job(
     job_id: int,
-    customer: Annotated[str, Form()],
-    company: Annotated[str, Form()] = "",
-    phone: Annotated[str, Form()] = "",
-    email: Annotated[str, Form()] = "",
-    manufacturer: Annotated[str, Form()] = "",
-    machine: Annotated[str, Form()] = "",
-    pin_serial: Annotated[str, Form()] = "",
+    customer_id: Annotated[int | None, Form()] = None,
+    machine_id: Annotated[int | None, Form()] = None,
     notes: Annotated[str, Form()] = "",
 ):
-    customer = customer.strip()
-    if not customer:
-        raise HTTPException(status_code=400, detail="Customer is required.")
-
     with closing(get_connection()) as connection:
+        from plg_core.audit import write_audit
+        from plg_core.timeline import log_job_event
+        job = connection.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found.")
+        from plg_core.lifecycle import job_has_durable_history
+        has_history = job_has_durable_history(connection, job_id)
+        if has_history and (
+            customer_id != job["customer_id"] or machine_id != job["machine_id"]
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Customer and machine identity are locked because this Job has an issued quote. Governed historical corrections are deferred to Lifecycle Batch 2.",
+            )
+        if has_history:
+            connection.execute("UPDATE jobs SET notes=? WHERE id=?", (notes.strip(), job_id))
+            message = f"Job {job['job_number']} internal notes updated; historical identity retained"
+            write_audit(connection, action="JOB_EDITED", entity_type="JOB", entity_id=job_id,
+                        summary=message, metadata={"notes_changed": str(job["notes"] or "") != notes.strip(),
+                                                   "historical_identity_retained": True})
+            log_job_event(connection, job_id=job_id, event_type="JOB_EDITED", icon="✎", message=message)
+            connection.commit()
+            return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced", status_code=303)
+        customer_row = connection.execute(
+            "SELECT * FROM customers WHERE id=? AND (active=1 OR id=?)",
+            (customer_id, job["customer_id"] if has_history else -1),
+        ).fetchone() if customer_id else None
+        if customer_row is None:
+            raise HTTPException(status_code=400, detail="Select an active customer.")
+        machine_row = None
+        if machine_id:
+            machine_row = connection.execute(
+                "SELECT * FROM machines WHERE id=? AND customer_id=? AND active=1",
+                (machine_id, customer_id),
+            ).fetchone()
+            if machine_row is None:
+                raise HTTPException(status_code=409, detail="Selected machine does not belong to the selected customer.")
+        manufacturer = machine_row["manufacturer"] if machine_row else ""
+        machine_name = ((machine_row["model"] or machine_row["name"]) if machine_row else "")
+        serial = machine_row["vin_pin_serial"] if machine_row else ""
         result = connection.execute(
             """
             UPDATE jobs
             SET
+                customer_id = ?,
+                machine_id = ?,
                 customer = ?,
                 company = ?,
                 phone = ?,
                 email = ?,
+                address = ?,
                 manufacturer = ?,
                 machine = ?,
                 pin_serial = ?,
@@ -688,13 +1915,16 @@ def update_job(
             WHERE id = ?
             """,
             (
-                customer,
-                company.strip(),
-                phone.strip(),
-                email.strip(),
-                manufacturer.strip(),
-                machine.strip(),
-                pin_serial.strip(),
+                customer_id,
+                machine_id,
+                customer_row["name"],
+                customer_row["company"] or "",
+                customer_row["phone"] or "",
+                customer_row["email"] or "",
+                customer_row["address"] or "",
+                manufacturer or "",
+                machine_name or "",
+                serial or "",
                 notes.strip(),
                 job_id,
             ),
@@ -703,9 +1933,47 @@ def update_job(
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Job not found.")
 
+        primary_asset = connection.execute(
+            "SELECT id FROM job_assets WHERE job_id=? AND is_primary=1 AND state='ACTIVE'",
+            (job_id,),
+        ).fetchone()
+        if machine_row:
+            if primary_asset:
+                connection.execute(
+                    """
+                    UPDATE job_assets SET machine_id=?,customer_id=?,name=?,manufacturer=?,
+                        model=?,year=?,vin_pin_serial=?,asset_type=?,updated_at=CURRENT_TIMESTAMP
+                    WHERE id=?
+                    """,
+                    (
+                        machine_id,customer_id,machine_row["name"] or machine_name,
+                        manufacturer or "",machine_name or "",machine_row["year"] or "",
+                        serial or "",machine_row["registry_type"] or "",primary_asset["id"],
+                    ),
+                )
+            else:
+                connection.execute(
+                    "INSERT INTO job_assets(job_id,machine_id,customer_id,name,manufacturer,model,year,vin_pin_serial,asset_type,is_primary) VALUES (?,?,?,?,?,?,?,?,?,1)",
+                    (job_id,machine_id,customer_id,machine_row["name"] or machine_name,manufacturer or "",machine_name or "",machine_row["year"] or "",serial or "",machine_row["registry_type"] or ""),
+                )
+        elif primary_asset:
+            connection.execute(
+                "UPDATE job_assets SET state='ARCHIVED',is_primary=0,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (primary_asset["id"],),
+            )
+
+        changes = {
+            "customer_id": [job["customer_id"], customer_id],
+            "machine_id": [job["machine_id"], machine_id],
+            "notes_changed": str(job["notes"] or "") != notes.strip(),
+        }
+        message = f"Job {job['job_number']} information updated"
+        write_audit(connection, action="JOB_EDITED", entity_type="JOB", entity_id=job_id,
+                    summary=message, metadata=changes)
+        log_job_event(connection, job_id=job_id, event_type="JOB_EDITED", icon="✎", message=message)
         connection.commit()
 
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced", status_code=303)
 
 
 @app.post("/jobs/{job_id}/parts")
@@ -713,6 +1981,7 @@ def add_job_part(
     job_id: int,
     requested_description: Annotated[str, Form()],
     quantity: Annotated[int, Form()] = 1,
+    job_asset_id: Annotated[int | None, Form()] = None,
 ):
     description = requested_description.strip()
     if not description:
@@ -721,6 +1990,8 @@ def add_job_part(
     quantity = max(1, quantity)
 
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_job_pre_document_work
+        ensure_job_pre_document_work(connection, job_id, "add parts")
         job = connection.execute(
             "SELECT id FROM jobs WHERE id = ?",
             (job_id,),
@@ -728,36 +1999,33 @@ def add_job_part(
 
         if job is None:
             raise HTTPException(status_code=404, detail="Job not found.")
+        if job_asset_id is not None and connection.execute(
+            "SELECT 1 FROM job_assets WHERE id=? AND job_id=? AND state='ACTIVE'",
+            (job_asset_id, job_id),
+        ).fetchone() is None:
+            raise HTTPException(status_code=409, detail="Select an active asset from this Job.")
 
         connection.execute(
             """
             INSERT INTO job_parts (
-                job_id, requested_description, quantity, verification_status
+                job_id, job_asset_id, requested_description, quantity, verification_status
             )
-            VALUES (?, ?, ?, 'PENDING')
+            VALUES (?, ?, ?, ?, 'PENDING')
             """,
-            (job_id, description, quantity),
+            (job_id, job_asset_id, description, quantity),
         )
         connection.commit()
 
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced", status_code=303)
 
 
 
 @app.post("/parts/{part_id}/delete")
 def delete_job_part(part_id: int):
     with closing(get_connection()) as connection:
-        part = connection.execute(
-            """
-            SELECT id, job_id, requested_description
-            FROM job_parts
-            WHERE id = ?
-            """,
-            (part_id,),
-        ).fetchone()
-
-        if part is None:
-            raise HTTPException(status_code=404, detail="Part not found.")
+        from plg_core.lifecycle import ensure_part_mutable
+        from plg_core.audit import write_audit
+        part = ensure_part_mutable(connection, part_id)
 
         # Clear any active verification connected to this part.
         connection.execute(
@@ -788,6 +2056,19 @@ def delete_job_part(part_id: int):
         connection.execute(
             "DELETE FROM job_parts WHERE id = ?",
             (part_id,),
+        )
+        write_audit(
+            connection,
+            action="JOB_PART_DELETED",
+            entity_type="JOB_PART",
+            entity_id=part_id,
+            summary=f"Pre-document part deleted: {part['requested_description']}",
+            metadata={"job_id": int(part["job_id"])},
+        )
+        from plg_core.timeline import log_job_event
+        log_job_event(
+            connection, job_id=int(part["job_id"]), event_type="JOB_PART_DELETED",
+            icon="🗑️", message=f"Pre-document part deleted: {part['requested_description']}",
         )
 
         remaining = connection.execute(
@@ -824,100 +2105,208 @@ def delete_job_part(part_id: int):
         connection.commit()
 
     return RedirectResponse(
-        url=f"/jobs/{part['job_id']}",
+        url=f"/jobs/{part['job_id']}/basket?view=advanced",
         status_code=303,
     )
 
 
 
 def next_quote_number(connection: sqlite3.Connection) -> str:
-    current_year = date.today().year
-    prefix = f"PLG-Q-{current_year}-"
-
-    row = connection.execute(
-        """
-        SELECT quote_number
-        FROM quotes
-        WHERE quote_number LIKE ?
-        ORDER BY id DESC
-        LIMIT 1
-        """,
-        (f"{prefix}%",),
-    ).fetchone()
-
-    if row is None:
-        sequence = 1
-    else:
-        try:
-            sequence = int(row["quote_number"].split("-")[-1]) + 1
-        except (ValueError, IndexError):
-            sequence = 1
-
-    return f"{prefix}{sequence:03d}"
-
-
-def calculate_customer_unit_price(cost: float) -> float:
-    if cost <= 50:
-        markup = 0.40
-    elif cost <= 200:
-        markup = 0.30
-    elif cost <= 500:
-        markup = 0.25
-    else:
-        markup = 0.20
-
-    return float(math.ceil(cost * (1 + markup)))
+    return _next_business_number(
+        connection,
+        "QUOTE",
+        "quotes",
+        "quote_number",
+        "PPS-Q-",
+    )
 
 
 @app.post("/jobs/{job_id}/generate-quote")
 def generate_quote(job_id: int):
+    # A Job may have only one active quote at a time.
+    # Repeated Generate Quote submissions must reopen the
+    # existing quote instead of issuing another quote number.
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_job_allows_new_business
+        ensure_job_allows_new_business(connection, job_id, "create a quote")
+        existing_quote = connection.execute(
+            """
+            SELECT id
+            FROM quotes
+            WHERE job_id = ?
+              AND COALESCE(is_current, 1) = 1
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (job_id,),
+        ).fetchone()
+
+    if existing_quote is not None:
+        return RedirectResponse(
+            url=f"/quotes/{existing_quote['id']}/documents",
+            status_code=303,
+        )
+
+    # The basket commit is an internal step. The user should not
+    # have to click Review Quote before generating the quote.
+    from plg_core.basket.service import commit_basket
+    from plg_core.revisions.service import validate_selected_items_for_quote
+
+    with closing(get_connection()) as connection:
+        basket = connection.execute(
+            "SELECT id FROM baskets WHERE job_id=? ORDER BY id DESC LIMIT 1", (job_id,)
+        ).fetchone()
+        if basket is not None:
+            validate_selected_items_for_quote(connection, int(basket["id"]))
+
+    commit_basket(job_id)
+
+    with closing(get_connection()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        from plg_core.lifecycle import ensure_job_allows_new_business
+        ensure_job_allows_new_business(connection, job_id, "create a quote")
+        winning_quote = connection.execute(
+            "SELECT id FROM quotes WHERE job_id=? AND is_current=1 ORDER BY id DESC LIMIT 1",
+            (job_id,),
+        ).fetchone()
+        if winning_quote is not None:
+            return RedirectResponse(
+                url=f"/quotes/{winning_quote['id']}/documents",
+                status_code=303,
+            )
         job = connection.execute(
             "SELECT * FROM jobs WHERE id = ?",
             (job_id,),
         ).fetchone()
 
         if job is None:
-            raise HTTPException(status_code=404, detail="Job not found.")
+            raise HTTPException(
+                status_code=404,
+                detail="Job not found.",
+            )
+        from plg_core.revisions.service import ensure_initial_revision_currency_snapshot
+        active_revision = connection.execute(
+            "SELECT id FROM work_revisions WHERE id=(SELECT active_work_revision_id FROM jobs WHERE id=?)",
+            (job_id,),
+        ).fetchone()
+        basket_for_fx = connection.execute(
+            "SELECT id FROM baskets WHERE job_id=? ORDER BY id DESC LIMIT 1", (job_id,)
+        ).fetchone()
+        if active_revision is None or basket_for_fx is None:
+            raise HTTPException(status_code=409, detail="Quote preparation state is incomplete.")
+        ensure_initial_revision_currency_snapshot(
+            connection, int(active_revision["id"]), basket_id=int(basket_for_fx["id"]),
+        )
+        active_fx_revision = connection.execute(
+            "SELECT display_currency_mode,fx_rate,fx_rate_source "
+            "FROM work_revisions WHERE id=?", (active_revision["id"],)
+        ).fetchone()
 
         selected = connection.execute(
             """
             SELECT
                 job_parts.id AS part_id,
+                job_parts.job_asset_id,
+                job_parts.primary_requested_need_id,
                 job_parts.requested_description,
+                job_parts.internal_part_number,
                 job_parts.oem_description,
                 job_parts.quantity,
+                job_parts.customer_unit_price,
+                job_parts.work_revision_id,
+                work_revision_items.pricing_mode,
+                work_revision_items.customer_unit_price_override,
+                work_revision_items.recommended_markup_percent,
                 part_sources.id AS source_id,
                 part_sources.supplier_name,
                 part_sources.source_type,
                 part_sources.brand,
                 part_sources.supplier_part_number,
-                part_sources.supplier_cost
+                part_sources.supplier_cost,
+                work_revision_items.id AS origin_work_revision_item_id,
+                COALESCE(job_assets.name,'') AS asset_name_snapshot,
+                COALESCE(job_assets.asset_type,'') AS asset_type_snapshot,
+                COALESCE(job_assets.manufacturer,'') AS asset_manufacturer_snapshot,
+                COALESCE(job_assets.model,'') AS asset_model_snapshot,
+                COALESCE(job_assets.year,'') AS asset_year_snapshot,
+                COALESCE(job_assets.vin_pin_serial,'') AS asset_serial_snapshot
             FROM job_parts
             JOIN part_sources
-                ON part_sources.part_id = job_parts.id
-               AND part_sources.selected_for_quote = 1
+              ON part_sources.part_id = job_parts.id
+             AND part_sources.selected_for_quote = 1
+            LEFT JOIN work_revision_items
+              ON work_revision_items.id = job_parts.work_revision_item_id
+            LEFT JOIN job_assets ON job_assets.id=job_parts.job_asset_id
             WHERE job_parts.job_id = ?
+              AND job_parts.work_revision_id = (
+                  SELECT active_work_revision_id FROM jobs WHERE id=?
+              )
             ORDER BY job_parts.id
             """,
-            (job_id,),
+            (job_id, job_id),
         ).fetchall()
 
+        # Count only quote-ready parts that have supplier-source
+        # records. Smart Intake request placeholders are excluded.
         total_parts = connection.execute(
-            "SELECT COUNT(*) AS count FROM job_parts WHERE job_id = ?",
-            (job_id,),
+            """
+            SELECT COUNT(DISTINCT job_parts.id) AS count
+            FROM job_parts
+            JOIN part_sources
+              ON part_sources.part_id = job_parts.id
+            WHERE job_parts.job_id = ?
+              AND job_parts.work_revision_id = (
+                  SELECT active_work_revision_id FROM jobs WHERE id=?
+              )
+            """,
+            (job_id, job_id),
         ).fetchone()["count"]
 
         if total_parts == 0:
             raise HTTPException(
                 status_code=400,
-                detail="Add at least one part before generating a quote.",
+                detail=(
+                    "Select at least one priced supplier part "
+                    "before generating the quote."
+                ),
             )
 
         if len(selected) != total_parts:
+            missing = connection.execute(
+                """
+                SELECT DISTINCT
+                    job_parts.requested_description
+                FROM job_parts
+                JOIN part_sources
+                  ON part_sources.part_id = job_parts.id
+                WHERE job_parts.job_id = ?
+                  AND job_parts.work_revision_id = (
+                      SELECT active_work_revision_id FROM jobs WHERE id=?
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM part_sources selected_source
+                      WHERE selected_source.part_id = job_parts.id
+                        AND selected_source.selected_for_quote = 1
+                  )
+                ORDER BY job_parts.id
+                """,
+                (job_id, job_id),
+            ).fetchall()
+
+            missing_names = [
+                str(row["requested_description"] or "Part").strip()
+                for row in missing
+            ]
+
+            detail = "Choose one supplier for every quoted part."
+
+            if missing_names:
+                detail += " Missing: " + ", ".join(missing_names)
+
             raise HTTPException(
                 status_code=400,
-                detail="Select one supplier source for every part first.",
+                detail=detail,
             )
 
         quote_number = next_quote_number(connection)
@@ -955,17 +2344,36 @@ def generate_quote(job_id: int):
 
         for row in selected:
             quantity = max(1, int(row["quantity"] or 1))
-            supplier_unit_cost = float(row["supplier_cost"] or 0)
-            customer_unit_price = calculate_customer_unit_price(
-                supplier_unit_cost
+            supplier_unit_cost = float(
+                row["supplier_cost"] or 0
             )
-            supplier_line_total = supplier_unit_cost * quantity
-            customer_line_total = customer_unit_price * quantity
-            line_profit = customer_line_total - supplier_line_total
+
+            stored_customer_unit_price = row["customer_unit_price"]
+            customer_unit_price = (
+                float(stored_customer_unit_price)
+                if stored_customer_unit_price is not None
+                else calculate_customer_unit_price(
+                    supplier_unit_cost
+                )
+            )
+
+            supplier_line_total = (
+                supplier_unit_cost * quantity
+            )
+            customer_line_total = (
+                customer_unit_price * quantity
+            )
+            line_profit = (
+                customer_line_total - supplier_line_total
+            )
 
             description = (
-                str(row["requested_description"] or "").strip()
-                or str(row["oem_description"] or "").strip()
+                str(
+                    row["requested_description"] or ""
+                ).strip()
+                or str(
+                    row["oem_description"] or ""
+                ).strip()
                 or "Part"
             )
 
@@ -976,8 +2384,12 @@ def generate_quote(job_id: int):
                 (
                     row["part_id"],
                     row["source_id"],
+                    row["job_asset_id"],
+                    row["origin_work_revision_item_id"],
+                    row["primary_requested_need_id"],
                     quantity,
                     description,
+                    row["internal_part_number"] or "",
                     row["supplier_name"],
                     row["source_type"],
                     row["brand"] or "",
@@ -987,40 +2399,113 @@ def generate_quote(job_id: int):
                     supplier_line_total,
                     customer_line_total,
                     line_profit,
+                    row["pricing_mode"] or "LEGACY_FIXED",
+                    row["customer_unit_price_override"],
+                    row["recommended_markup_percent"],
+                    row["asset_name_snapshot"],
+                    row["asset_type_snapshot"],
+                    row["asset_manufacturer_snapshot"],
+                    row["asset_model_snapshot"],
+                    row["asset_year_snapshot"],
+                    row["asset_serial_snapshot"],
                 )
             )
 
-        customer_total = parts_subtotal + shipping_total
-        supplier_total = supplier_parts_total + shipping_total
+        service_charge = float(job["service_charge"] or 0)
+        sourcing_fee = float(job["sourcing_fee"] or 0)
+
+        customer_total = (
+            parts_subtotal
+            + shipping_total
+            + service_charge
+            + sourcing_fee
+        )
+        supplier_total = (
+            supplier_parts_total + shipping_total
+        )
         profit_total = customer_total - supplier_total
 
-        cursor = connection.execute(
-            """
-            INSERT INTO quotes (
+        try:
+            cursor = connection.execute(
+                """
+                INSERT INTO quotes (
                 quote_number,
                 job_id,
                 quote_date,
                 status,
                 parts_subtotal,
                 shipping_total,
+                service_charge,
+                sourcing_fee,
                 customer_total,
                 supplier_total,
-                profit_total
+                profit_total,
+                work_revision_id,
+                customer_name_snapshot,
+                company_snapshot,
+                phone_snapshot,
+                email_snapshot,
+                address_snapshot,
+                manufacturer_snapshot,
+                machine_snapshot,
+                pin_serial_snapshot,currency_code,display_currency_mode,fx_rate,fx_rate_source,fx_locked_at
+                ,bill_to_kind,bill_to_name_snapshot,bill_to_company_snapshot,
+                bill_to_address_snapshot,bill_to_phone_snapshot,bill_to_email_snapshot
             )
-            VALUES (?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?)
-            """,
-            (
+            VALUES (
+                ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, CURRENT_TIMESTAMP, 'CONTACT',?,?,?,?,?
+            )
+                """,
+                (
                 quote_number,
                 job_id,
                 quote_date,
                 parts_subtotal,
                 shipping_total,
+                service_charge,
+                sourcing_fee,
                 customer_total,
                 supplier_total,
                 profit_total,
-            ),
-        )
+                job["active_work_revision_id"],
+                job["customer"],
+                job["company"],
+                job["phone"],
+                job["email"],
+                job["address"],
+                job["manufacturer"],
+                job["machine"],
+                job["pin_serial"], "USD", active_fx_revision["display_currency_mode"],
+                active_fx_revision["fx_rate"], active_fx_revision["fx_rate_source"],
+                job["customer"],job["company"] or "",job["address"] or "",
+                job["phone"] or "",job["email"] or "",
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            connection.rollback()
+            winning_quote = connection.execute(
+                "SELECT id FROM quotes WHERE job_id=? AND is_current=1 ORDER BY id DESC LIMIT 1",
+                (job_id,),
+            ).fetchone()
+            if winning_quote is not None:
+                return RedirectResponse(
+                    url=f"/quotes/{winning_quote['id']}/documents",
+                    status_code=303,
+                )
+            raise HTTPException(
+                status_code=409,
+                detail="Quote generation conflicted with another request. Refresh and try again.",
+            ) from error
+
         quote_id = cursor.lastrowid
+        track_id = connection.execute(
+            "INSERT INTO quote_tracks(job_id,root_quote_id,purpose) VALUES (?,?, 'INDEPENDENT')",
+            (job_id, quote_id),
+        ).lastrowid
+        connection.execute(
+            "UPDATE quotes SET quote_track_id=? WHERE id=?", (track_id, quote_id)
+        )
 
         for item in item_rows:
             connection.execute(
@@ -1029,8 +2514,12 @@ def generate_quote(job_id: int):
                     quote_id,
                     part_id,
                     source_id,
+                    job_asset_id,
+                    origin_work_revision_item_id,
+                    primary_requested_need_id,
                     quantity,
                     description,
+                    internal_part_number,
                     supplier_name,
                     source_type,
                     brand,
@@ -1039,21 +2528,55 @@ def generate_quote(job_id: int):
                     customer_unit_price,
                     supplier_line_total,
                     customer_line_total,
-                    line_profit
+                    line_profit,
+                    pricing_mode,
+                    customer_unit_price_override,
+                    recommended_markup_percent
+                    ,asset_name_snapshot,asset_type_snapshot,
+                    asset_manufacturer_snapshot,asset_model_snapshot,
+                    asset_year_snapshot,asset_serial_snapshot
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
                 """,
                 (quote_id, *item),
             )
 
         connection.execute(
-            "UPDATE jobs SET status = 'QUOTED' WHERE id = ?",
+            """
+            UPDATE jobs
+            SET status = 'QUOTED'
+            WHERE id = ?
+            """,
             (job_id,),
         )
+
+        from plg_core.timeline import log_job_event
+
+        log_job_event(
+            connection,
+            job_id=job_id,
+            event_type="QUOTE_GENERATED",
+            icon="📝",
+            message=f"Quote {quote_number} generated",
+        )
+
+        from plg_core.requests.service import archive_originating_requests_for_quote
+        archive_originating_requests_for_quote(
+            connection, job_id=job_id, quote_id=int(quote_id)
+        )
+
         connection.commit()
 
+        quote, pdf_items = load_quote(
+            connection,
+            quote_id,
+        )
+        generate_quote_pdfs(quote, pdf_items)
+
     return RedirectResponse(
-        url=f"/quotes/{quote_id}/customer",
+        url=f"/quotes/{quote_id}/documents",
         status_code=303,
     )
 
@@ -1064,15 +2587,19 @@ def load_quote(connection: sqlite3.Connection, quote_id: int):
         SELECT
             quotes.*,
             jobs.job_number,
-            jobs.customer,
-            jobs.company,
-            jobs.phone,
-            jobs.email,
-            jobs.manufacturer,
-            jobs.machine,
-            jobs.pin_serial
+            COALESCE(NULLIF(quotes.customer_name_snapshot,''),jobs.customer) AS customer,
+            COALESCE(NULLIF(quotes.company_snapshot,''),jobs.company) AS company,
+            COALESCE(NULLIF(quotes.phone_snapshot,''),jobs.phone) AS phone,
+            COALESCE(NULLIF(quotes.email_snapshot,''),jobs.email) AS email,
+            COALESCE(NULLIF(quotes.address_snapshot,''),jobs.address) AS address,
+            COALESCE(NULLIF(quotes.manufacturer_snapshot,''),jobs.manufacturer) AS manufacturer,
+            COALESCE(NULLIF(quotes.machine_snapshot,''),jobs.machine) AS machine,
+            COALESCE(NULLIF(quotes.pin_serial_snapshot,''),jobs.pin_serial) AS pin_serial,
+            predecessor.quote_number AS supersedes_quote_number
         FROM quotes
         JOIN jobs ON jobs.id = quotes.job_id
+        LEFT JOIN quotes predecessor
+          ON predecessor.id=quotes.supersedes_quote_id
         WHERE quotes.id = ?
         """,
         (quote_id,),
@@ -1094,10 +2621,2372 @@ def load_quote(connection: sqlite3.Connection, quote_id: int):
     return quote, items
 
 
+
+def invoice_number_from_quote(quote_number: str) -> str:
+    quote_number = str(quote_number or "").strip()
+    prefix = "PPS-Q-"
+
+    if not quote_number.startswith(prefix):
+        raise HTTPException(
+            status_code=409,
+            detail="Quote number is not a valid PPS quote number.",
+        )
+
+    sequence = quote_number[len(prefix):]
+
+    if len(sequence) != 4 or not sequence.isdigit():
+        raise HTTPException(
+            status_code=409,
+            detail="Quote number is not a valid PPS quote number.",
+        )
+
+    return f"PPS-INV-{sequence}"
+
+
+def load_invoice(
+    connection: sqlite3.Connection,
+    invoice_id: int,
+):
+    invoice = connection.execute(
+        """
+        SELECT
+            invoices.*,
+            jobs.customer_id,
+            jobs.job_number,
+            COALESCE(NULLIF(invoices.bill_to_name_snapshot,''),jobs.customer) AS customer,
+            COALESCE(NULLIF(invoices.bill_to_company_snapshot,''),jobs.company) AS company,
+            COALESCE(NULLIF(invoices.bill_to_phone_snapshot,''),jobs.phone) AS phone,
+            COALESCE(NULLIF(invoices.bill_to_email_snapshot,''),jobs.email) AS email,
+            COALESCE(NULLIF(invoices.bill_to_address_snapshot,''),jobs.address) AS address,
+            jobs.manufacturer,
+            jobs.machine,
+            jobs.pin_serial,
+
+            (
+                SELECT customer_transactions.transaction_date
+                FROM customer_transactions
+                WHERE customer_transactions.invoice_id = invoices.id
+                  AND customer_transactions.transaction_type = 'PAYMENT'
+                ORDER BY customer_transactions.transaction_date DESC,
+                         customer_transactions.id DESC
+                LIMIT 1
+            ) AS paid_date,
+
+            (
+                SELECT customer_transactions.payment_method
+                FROM customer_transactions
+                WHERE customer_transactions.invoice_id = invoices.id
+                  AND customer_transactions.transaction_type = 'PAYMENT'
+                ORDER BY customer_transactions.transaction_date DESC,
+                         customer_transactions.id DESC
+                LIMIT 1
+            ) AS payment_method,
+
+            (
+                SELECT customer_transactions.reference
+                FROM customer_transactions
+                WHERE customer_transactions.invoice_id = invoices.id
+                  AND customer_transactions.transaction_type = 'PAYMENT'
+                ORDER BY customer_transactions.transaction_date DESC,
+                         customer_transactions.id DESC
+                LIMIT 1
+            ) AS payment_reference
+
+        FROM invoices
+        JOIN jobs
+          ON jobs.id = invoices.job_id
+        WHERE invoices.id = ?
+        """,
+        (invoice_id,),
+    ).fetchone()
+
+    if invoice is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Invoice not found.",
+        )
+
+    items = connection.execute(
+        """
+        SELECT *
+        FROM invoice_items
+        WHERE invoice_id = ?
+        ORDER BY id
+        """,
+        (invoice_id,),
+    ).fetchall()
+
+    return invoice, items
+
+
+def get_or_create_custom_invoice(
+    connection: sqlite3.Connection,
+    invoice_id: int,
+):
+    invoice, items = load_invoice(connection, invoice_id)
+
+    if str(invoice["status"] or "").upper() != "PAID":
+        raise HTTPException(
+            status_code=400,
+            detail="Custom Invoice is only available for paid invoices.",
+        )
+
+    custom_invoice = connection.execute(
+        """
+        SELECT *
+        FROM custom_invoices
+        WHERE invoice_id = ?
+        """,
+        (invoice_id,),
+    ).fetchone()
+
+    if custom_invoice is None:
+        custom_number = f"{invoice['invoice_number']}C"
+
+        cursor = connection.execute(
+            """
+            INSERT INTO custom_invoices (
+                invoice_id,
+                custom_invoice_number,
+                adjustment_mode,
+                custom_total
+            )
+            VALUES (?, ?, 'MANUAL', ?)
+            """,
+            (
+                invoice_id,
+                custom_number,
+                float(invoice["customer_total"] or 0),
+            ),
+        )
+        custom_invoice_id = cursor.lastrowid
+
+        for item in items:
+            quantity = int(item["quantity"] or 1)
+            unit_price = float(item["customer_unit_price"] or 0)
+            line_total = round(quantity * unit_price, 2)
+
+            connection.execute(
+                """
+                INSERT INTO custom_invoice_items (
+                    custom_invoice_id,
+                    invoice_item_id,
+                    quantity,
+                    custom_unit_price,
+                    custom_line_total
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    custom_invoice_id,
+                    item["id"],
+                    quantity,
+                    unit_price,
+                    line_total,
+                ),
+            )
+
+        connection.commit()
+
+        custom_invoice = connection.execute(
+            """
+            SELECT *
+            FROM custom_invoices
+            WHERE id = ?
+            """,
+            (custom_invoice_id,),
+        ).fetchone()
+
+    custom_items = connection.execute(
+        """
+        SELECT
+            custom_invoice_items.*,
+            invoice_items.description,
+            invoice_items.brand,
+            invoice_items.supplier_part_number
+        FROM custom_invoice_items
+        JOIN invoice_items
+          ON invoice_items.id = custom_invoice_items.invoice_item_id
+        WHERE custom_invoice_items.custom_invoice_id = ?
+        ORDER BY custom_invoice_items.id
+        """,
+        (custom_invoice["id"],),
+    ).fetchall()
+
+    return invoice, custom_invoice, custom_items
+
+
+
+@app.get(
+    "/invoices/{invoice_id}/custom",
+    response_class=HTMLResponse,
+)
+def custom_invoice_editor(
+    request: Request,
+    invoice_id: int,
+):
+    with closing(get_connection()) as connection:
+        invoice, custom_invoice, custom_items = (
+            get_or_create_custom_invoice(
+                connection,
+                invoice_id,
+            )
+        )
+
+        from plg_core.documents.custom_invoice import custom_invoice_presentation
+        presentation = custom_invoice_presentation(
+            invoice, custom_invoice, custom_items
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="custom_invoice.html",
+        context={
+            "invoice": invoice,
+            "custom_invoice": custom_invoice,
+            "items": custom_items,
+            "presentation": presentation,
+            "active_page": "invoices",
+        },
+    )
+
+
+@app.post("/invoices/{invoice_id}/custom/save")
+async def save_custom_invoice(
+    request: Request,
+    invoice_id: int,
+):
+    form = await request.form()
+
+    with closing(get_connection()) as connection:
+        invoice, custom_invoice, custom_items = (
+            get_or_create_custom_invoice(
+                connection,
+                invoice_id,
+            )
+        )
+
+        mode = str(
+            form.get("adjustment_mode") or "MANUAL"
+        ).upper()
+
+        try:
+            adjustment_value = float(
+                form.get("adjustment_value") or 0
+            )
+        except (TypeError, ValueError):
+            adjustment_value = 0.0
+
+        original_items = connection.execute(
+            """
+            SELECT *
+            FROM invoice_items
+            WHERE invoice_id = ?
+            ORDER BY id
+            """,
+            (invoice_id,),
+        ).fetchall()
+
+        original_by_id = {
+            row["id"]: row
+            for row in original_items
+        }
+
+        visible_item_ids = {
+            int(value)
+            for value in form.getlist("visible_item_ids")
+            if str(value).isdigit()
+        }
+
+        from plg_core.documents.custom_invoice import save_custom_invoice_visibility
+        save_custom_invoice_visibility(
+            connection,
+            custom_invoice["id"],
+            custom_items,
+            visible_item_ids,
+            bool(form.get("include_freight")),
+        )
+
+        updates = []
+
+        if mode == "PERCENTAGE":
+            factor = max(0.0, 1.0 - adjustment_value / 100.0)
+
+            for item in custom_items:
+                original = original_by_id[item["invoice_item_id"]]
+                qty = int(item["quantity"] or 1)
+                unit_price = round(
+                    float(original["customer_unit_price"] or 0) * factor,
+                    2,
+                )
+                line_total = round(qty * unit_price, 2)
+
+                updates.append(
+                    (item["id"], unit_price, line_total)
+                )
+
+        elif mode == "TARGET_TOTAL":
+            target_total = max(0.0, round(adjustment_value, 2))
+
+            base_total = sum(
+                float(row["customer_line_total"] or 0)
+                for row in original_items
+            )
+
+            running_total = 0.0
+
+            for index, item in enumerate(custom_items):
+                original = original_by_id[item["invoice_item_id"]]
+                qty = int(item["quantity"] or 1)
+
+                if index == len(custom_items) - 1:
+                    line_total = round(
+                        target_total - running_total,
+                        2,
+                    )
+                elif base_total > 0:
+                    share = (
+                        float(original["customer_line_total"] or 0)
+                        / base_total
+                    )
+                    line_total = round(target_total * share, 2)
+                    running_total += line_total
+                else:
+                    line_total = 0.0
+
+                unit_price = (
+                    round(line_total / qty, 4)
+                    if qty
+                    else 0.0
+                )
+
+                updates.append(
+                    (item["id"], unit_price, line_total)
+                )
+
+        else:
+            mode = "MANUAL"
+            adjustment_value = None
+
+            for item in custom_items:
+                qty = int(item["quantity"] or 1)
+
+                try:
+                    unit_price = float(
+                        form.get(f"unit_price_{item['id']}") or 0
+                    )
+                except (TypeError, ValueError):
+                    unit_price = 0.0
+
+                unit_price = max(0.0, round(unit_price, 2))
+                line_total = round(qty * unit_price, 2)
+
+                updates.append(
+                    (item["id"], unit_price, line_total)
+                )
+
+        for item_id, unit_price, line_total in updates:
+            connection.execute(
+                """
+                UPDATE custom_invoice_items
+                SET custom_unit_price = ?,
+                    custom_line_total = ?
+                WHERE id = ?
+                """,
+                (
+                    unit_price,
+                    line_total,
+                    item_id,
+                ),
+            )
+
+        previous_item_total = sum(
+            float(item["custom_line_total"] or 0)
+            for item in custom_items
+        )
+        updated_item_total = sum(row[2] for row in updates)
+        if mode == "TARGET_TOTAL":
+            custom_total = round(max(0.0, adjustment_value), 2)
+        else:
+            # Keep non-itemized amounts in the presentation baseline while
+            # applying only the operator's change to item values.
+            custom_total = max(
+                0.0,
+                round(
+                    float(custom_invoice["custom_total"] or 0)
+                    + updated_item_total
+                    - previous_item_total,
+                    2,
+                ),
+            )
+
+        connection.execute(
+            """
+            UPDATE custom_invoices
+            SET adjustment_mode = ?,
+                adjustment_value = ?,
+                custom_total = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                mode,
+                adjustment_value,
+                custom_total,
+                custom_invoice["id"],
+            ),
+        )
+
+        connection.commit()
+
+        invoice, custom_invoice, custom_items = (
+            get_or_create_custom_invoice(
+                connection,
+                invoice_id,
+            )
+        )
+
+        from plg_core.documents.integrity import issue_custom_invoice_document
+        issue_custom_invoice_document(
+            connection, invoice, custom_invoice, custom_items
+        )
+        connection.commit()
+
+    return RedirectResponse(
+        url="/invoices",
+        status_code=303,
+    )
+
+
+@app.post("/invoices/{invoice_id}/custom/revert")
+def revert_custom_invoice(invoice_id: int):
+    with closing(get_connection()) as connection:
+        invoice, custom_invoice, custom_items = get_or_create_custom_invoice(
+            connection, invoice_id
+        )
+        from plg_core.documents.custom_invoice import revert_custom_invoice_presentation
+        revert_custom_invoice_presentation(
+            connection, invoice, custom_invoice, custom_items
+        )
+        connection.commit()
+        invoice, custom_invoice, custom_items = get_or_create_custom_invoice(
+            connection, invoice_id
+        )
+        from plg_core.documents.integrity import issue_custom_invoice_document
+        issue_custom_invoice_document(
+            connection, invoice, custom_invoice, custom_items
+        )
+        connection.commit()
+
+    return RedirectResponse(
+        url=f"/invoices/{invoice_id}/custom",
+        status_code=303,
+    )
+
+
+@app.get("/invoices/{invoice_id}/custom/pdf")
+def custom_invoice_pdf(
+    invoice_id: int,
+    download: int = 0,
+):
+    with closing(get_connection()) as connection:
+        invoice, custom_invoice, _custom_items = (
+            get_or_create_custom_invoice(
+                connection,
+                invoice_id,
+            )
+        )
+        from plg_core.documents.integrity import verified_invoice_document
+        path = verified_invoice_document(
+            connection, invoice_id, "CUSTOM_INVOICE", "CUSTOMER"
+        )
+
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=path.name if download else None,
+    )
+
+@app.get(
+    "/purchasing",
+    response_class=HTMLResponse,
+)
+def purchasing_center(
+    request: Request,
+    invoice_id: int | None = None,
+    supplier: str = "",
+    status: str = "",
+    customer: str = "",
+    job: str = "",
+):
+    from plg_core.supply.service import list_purchasing_operational_snapshots
+
+    result = list_purchasing_operational_snapshots(
+        supplier=supplier, status=status, customer=customer, job=job,
+        invoice_id=invoice_id, limit=500,
+    )
+    orders = result["orders"]
+    filtered_invoice_number = None
+
+    if invoice_id is not None:
+        filtered_invoice_number = next(
+            (
+                str(order["identity"]["invoice_number"] or "").strip()
+                for order in orders
+                if str(order["identity"]["invoice_number"] or "").strip()
+            ),
+            None,
+        )
+        if filtered_invoice_number is None:
+            with closing(get_connection()) as connection:
+                invoice = connection.execute(
+                    "SELECT invoice_number FROM invoices WHERE id=?",
+                    (invoice_id,),
+                ).fetchone()
+            if invoice is not None:
+                filtered_invoice_number = str(
+                    invoice["invoice_number"] or ""
+                ).strip() or None
+
+    return templates.TemplateResponse(
+        request=request,
+        name="supplier_orders.html",
+        context={
+            "orders": orders,
+            "filter_options": result["options"],
+            "filters": {"supplier": supplier, "status": status, "customer": customer, "job": job},
+            "invoice_id": invoice_id,
+            "filtered_invoice_number": filtered_invoice_number,
+            "active_page": "purchasing",
+        },
+    )
+
+
+@app.get(
+    "/purchasing/orders/{order_id}",
+    response_class=HTMLResponse,
+)
+def purchasing_order_detail(
+    request: Request,
+    order_id: int,
+    receipt_id: int | None = None,
+    view: str = "",
+):
+    from plg_core.supply.service import get_order, get_receipt, get_purchasing_operational_snapshot
+
+    order = get_order(order_id)
+    operational_snapshot = get_purchasing_operational_snapshot(order_id)
+
+    from plg_core.web_security import (
+        CSRF_COOKIE_NAME,
+        csrf_token_for_request,
+        new_idempotency_key,
+        request_actor,
+    )
+    csrf_token = csrf_token_for_request(request)
+    actor = request_actor(request)
+    if actor == "system":
+        actor = "web.operator"
+    for item in order["items"]:
+        item["actual_request_id"] = new_idempotency_key()
+    receipt_result = None
+    if receipt_id is not None:
+        receipt_result = get_receipt(receipt_id)
+        if int(receipt_result["order_id"]) != order_id:
+            raise HTTPException(status_code=404, detail="Receipt not found for order.")
+
+    response = templates.TemplateResponse(
+        request=request,
+        name="supplier_order_detail.html" if view == "legacy" else "supplier_order_simple.html",
+        context={
+            "order": order,
+            "operational_snapshot": operational_snapshot,
+            "items": order["items"],
+            "csrf_token": csrf_token,
+            "receipt_idempotency_key": new_idempotency_key(),
+            "exception_action_key": new_idempotency_key(),
+            "backorder_action_key": new_idempotency_key(),
+            "actual_cost_request_id": new_idempotency_key(),
+            "receiver_default": "" if actor == "system" else actor,
+            "receipt_result": receipt_result,
+            "active_page": "purchasing",
+        },
+    )
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        csrf_token,
+        httponly=True,
+        samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
+
+
+@app.get("/purchasing/orders/{order_id}/receive", response_class=HTMLResponse)
+def purchasing_order_receive_simple(request: Request, order_id: int):
+    """Render the job-scoped receiving form while reusing the authoritative POST."""
+    from plg_core.supply.service import get_order
+    from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request, new_idempotency_key, request_actor
+
+    order = get_order(order_id)
+    csrf_token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(
+        request=request,
+        name="supplier_order_receive_simple.html",
+        context={
+            "order": order,
+            "items": order["items"],
+            "csrf_token": csrf_token,
+            "idempotency_key": new_idempotency_key(),
+            "receiver_default": (request_actor(request) if request_actor(request) != "system" else "web.operator"),
+            "active_page": "purchasing",
+        },
+    )
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        csrf_token,
+        httponly=True,
+        samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
+
+
+@app.get("/purchasing/orders/{order_id}/purchase-order/pdf")
+def supplier_purchase_order_pdf(
+    order_id: int,
+    download: int = 0,
+):
+    from plg_core.documents.integrity import (
+        preview_supplier_order_document,
+        verified_supplier_order_document,
+    )
+
+    with closing(get_connection()) as connection:
+        order = connection.execute(
+            "SELECT status FROM supplier_orders WHERE id=?",
+            (order_id,),
+        ).fetchone()
+        if order is None:
+            raise HTTPException(status_code=404, detail="Supplier order not found.")
+        if str(order["status"] or "").upper() == "DRAFT":
+            path = Path(preview_supplier_order_document(connection, order_id))
+        else:
+            path = verified_supplier_order_document(connection, order_id)
+
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type=("attachment" if download else "inline"),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@app.post(
+    "/invoices/{invoice_id}/supplier-orders"
+)
+def create_supplier_orders_web(
+    invoice_id: int,
+):
+    from plg_core.supply.service import (
+        create_orders_from_paid_invoice,
+    )
+
+    create_orders_from_paid_invoice(invoice_id)
+
+    return RedirectResponse(
+        url=f"/purchasing?invoice_id={invoice_id}",
+        status_code=303,
+    )
+
+
+@app.post(
+    "/purchasing/orders/{order_id}/items/{item_id}/cost"
+)
+def update_supplier_order_item_cost_web(
+    request: Request,
+    order_id: int,
+    item_id: int,
+    unit_cost: Annotated[float, Form()],
+    csrf_token: Annotated[str, Form()] = "",
+):
+    from plg_core.supply.service import (
+        update_order_item_cost,
+    )
+
+    from plg_core.web_security import require_valid_csrf
+    require_valid_csrf(request, csrf_token)
+    update_order_item_cost(
+        order_id=order_id,
+        item_id=item_id,
+        unit_cost=unit_cost,
+    )
+
+    return RedirectResponse(
+        url=f"/purchasing/orders/{order_id}",
+        status_code=303,
+    )
+
+
+@app.post(
+    "/purchasing/orders/{order_id}/update"
+)
+def update_supplier_order_web(
+    request: Request,
+    order_id: int,
+    shipping_total: Annotated[float, Form()] = 0,
+    expected_at: Annotated[str, Form()] = "",
+    notes: Annotated[str, Form()] = "",
+    csrf_token: Annotated[str, Form()] = "",
+):
+    from plg_core.supply.service import update_order
+    from plg_core.web_security import require_valid_csrf
+
+    require_valid_csrf(request, csrf_token)
+
+    update_order(
+        order_id=order_id,
+        shipping_total=shipping_total,
+        expected_at=expected_at,
+        notes=notes,
+    )
+
+    return RedirectResponse(
+        url=f"/purchasing/orders/{order_id}",
+        status_code=303,
+    )
+
+
+@app.post("/purchasing/orders/{order_id}/actual-cost")
+def record_actual_cost_web(
+    request: Request,
+    order_id: int,
+    cost_kind: Annotated[str, Form()],
+    new_amount: Annotated[float, Form()],
+    reason: Annotated[str, Form()],
+    request_id_value: Annotated[str, Form()],
+    csrf_token: Annotated[str, Form()],
+    supplier_order_item_id: Annotated[int | None, Form()] = None,
+    supplier_reference: Annotated[str, Form()] = "",
+    actor_name: Annotated[str, Form()] = "",
+):
+    from plg_core.supply.service import record_actual_cost_adjustment
+    from plg_core.web_security import request_actor, require_valid_csrf
+
+    require_valid_csrf(request, csrf_token)
+    actor = request_actor(request)
+    if actor == "system":
+        actor = "web.operator"
+    record_actual_cost_adjustment(
+        order_id,
+        cost_kind=cost_kind,
+        new_amount=new_amount,
+        supplier_order_item_id=supplier_order_item_id,
+        reason=reason,
+        actor=actor,
+        request_id=request_id_value,
+        supplier_reference=supplier_reference,
+    )
+    return RedirectResponse(
+        url=f"/purchasing/orders/{order_id}#actual-cost",
+        status_code=303,
+    )
+
+@app.post(
+    "/purchasing/orders/{order_id}/place"
+)
+def place_supplier_order_web(
+    request: Request,
+    order_id: int,
+    csrf_token: Annotated[str, Form()] = "",
+):
+    from plg_core.supply.service import place_order
+    from plg_core.web_security import (
+        request_actor,
+        request_id,
+        require_valid_csrf,
+    )
+
+    require_valid_csrf(request, csrf_token)
+    place_order(
+        order_id,
+        actor=request_actor(request),
+        request_id=request_id(request),
+        source_path=str(request.url.path),
+    )
+
+    return RedirectResponse(
+        url=f"/purchasing/orders/{order_id}",
+        status_code=303,
+    )
+
+
+@app.post(
+    "/purchasing/orders/{order_id}/receive"
+)
+async def receive_supplier_order_web(
+    request: Request,
+    order_id: int,
+):
+    from pydantic import ValidationError
+    from plg_core.supply.models import (
+        ReceiptCreate,
+        ReceiptExceptionItem,
+        ReceiptItem,
+    )
+    from plg_core.supply.service import (
+        get_order,
+        record_receipt,
+    )
+    from plg_core.web_security import request_actor, request_id, require_valid_csrf
+
+    order = get_order(order_id)
+    form = await request.form()
+    require_valid_csrf(request, str(form.get("csrf_token", "") or ""))
+    notes = str(form.get("notes", "") or "").strip()
+    receiver = str(form.get("receiver", "") or "").strip()
+    idempotency_key = str(form.get("idempotency_key", "") or "").strip()
+    if not idempotency_key:
+        raise HTTPException(status_code=400, detail="Receipt idempotency key is required. Reload and retry.")
+
+    receipt_items = []
+    receipt_exceptions = []
+    dispositions = ("DAMAGED", "WRONG_ITEM", "QUARANTINED", "REJECTED", "SHORT")
+
+    for item in order["items"]:
+        item_id = int(item["id"])
+        field_name = f"qty_{item_id}"
+        raw_value = str(
+            form.get(field_name, "0") or "0"
+        ).strip()
+
+        try:
+            quantity = int(raw_value)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Received quantities must be "
+                    "whole numbers."
+                ),
+            )
+
+        if quantity < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Received quantity cannot be negative."
+                ),
+            )
+
+        if quantity > 0:
+            receipt_items.append(
+                ReceiptItem(
+                    order_item_id=item_id,
+                    quantity_received=quantity,
+                )
+            )
+        for disposition in dispositions:
+            prefix = f"exception_{item_id}_{disposition.lower()}"
+            raw_exception = str(form.get(f"{prefix}_quantity", "0") or "0").strip()
+            try:
+                exception_quantity = int(raw_exception)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Exception quantities must be whole numbers.")
+            if exception_quantity < 0:
+                raise HTTPException(status_code=400, detail="Exception quantity cannot be negative.")
+            if exception_quantity:
+                exception_reason = str(form.get(f"{prefix}_reason", "") or "").strip()
+                if not exception_reason:
+                    raise HTTPException(status_code=400, detail=f"A reason is required for {disposition.lower().replace('_', ' ')} quantity.")
+                try:
+                    receipt_exceptions.append(ReceiptExceptionItem(
+                        order_item_id=item_id,
+                        disposition=disposition,
+                        quantity=exception_quantity,
+                        reason=exception_reason,
+                        supplier_reference=str(form.get(f"{prefix}_supplier_reference", "") or "").strip(),
+                    ))
+                except ValidationError as exc:
+                    raise HTTPException(status_code=400, detail="Invalid receiving exception input.") from exc
+
+    if not receipt_items and not receipt_exceptions:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Enter an accepted or exception quantity for at least one item."
+            ),
+        )
+
+    try:
+        payload = ReceiptCreate(
+            items=receipt_items,
+            exceptions=receipt_exceptions,
+            notes=notes,
+            receiver=receiver,
+            idempotency_key=idempotency_key,
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail="Invalid receiving submission.") from exc
+    receipt = record_receipt(
+        order_id, payload,
+        actor=request_actor(request),
+        request_id=request_id(request),
+        source_path=str(request.url.path),
+    )
+
+    return RedirectResponse(
+        url=f"/purchasing/orders/{order_id}?receipt_id={receipt['id']}",
+        status_code=303,
+    )
+
+
+@app.post("/purchasing/exceptions/{exception_id}/resolve")
+async def resolve_receiving_exception_web(request: Request, exception_id: int):
+    from pydantic import ValidationError
+    from plg_core.supply.models import ReceivingExceptionResolutionCreate
+    from plg_core.supply.service import resolve_receiving_exception
+    from plg_core.web_security import request_actor, request_id, require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, str(form.get("csrf_token", "") or ""))
+    related = str(form.get("related_receipt_id", "") or "").strip()
+    try:
+        payload = ReceivingExceptionResolutionCreate(
+            quantity=int(str(form.get("quantity", "0") or "0")),
+            resolution=str(form.get("resolution", "") or "").strip().upper(),
+            related_receipt_id=int(related) if related else None,
+            reason=str(form.get("reason", "") or "").strip(),
+            notes=str(form.get("notes", "") or "").strip(),
+            supplier_reference=str(form.get("supplier_reference", "") or "").strip(),
+            idempotency_key=str(form.get("idempotency_key", "") or "").strip(),
+        )
+    except (ValidationError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid receiving-exception action.") from exc
+    result = resolve_receiving_exception(
+        exception_id, payload,
+        actor=request_actor(request), request_id=request_id(request),
+    )
+    return RedirectResponse(url=f"/purchasing/orders/{result['order_id']}#receiving-exceptions", status_code=303)
+
+
+@app.post("/purchasing/exceptions/{exception_id}/clear")
+async def clear_receiving_exception_web(request: Request, exception_id: int):
+    from plg_core.supply.service import clear_quarantined_exception
+    from plg_core.web_security import request_actor, request_id, require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, str(form.get("csrf_token", "") or ""))
+    try:
+        quantity = int(str(form.get("quantity", "0") or "0"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid quarantine-clearance quantity or order reference.") from exc
+    result = clear_quarantined_exception(
+        exception_id,
+        quantity=quantity,
+        reason=str(form.get("reason", "") or "").strip(),
+        receiver=str(form.get("receiver", "") or "").strip(),
+        notes=str(form.get("notes", "") or "").strip(),
+        idempotency_key=str(form.get("idempotency_key", "") or "").strip(),
+        actor=request_actor(request), request_id=request_id(request),
+    )
+    return RedirectResponse(url=f"/purchasing/orders/{result['order_id']}#receiving-exceptions", status_code=303)
+
+
+@app.post("/purchasing/order-items/{item_id}/backorder")
+async def supplier_backorder_web(request: Request, item_id: int):
+    from pydantic import ValidationError
+    from plg_core.supply.models import BackorderEventCreate
+    from plg_core.supply.service import record_backorder_event
+    from plg_core.web_security import request_actor, request_id, require_valid_csrf
+    form = await request.form()
+    require_valid_csrf(request, str(form.get("csrf_token", "") or ""))
+    related = str(form.get("related_receipt_id", "") or "").strip()
+    event_kind = str(form.get("event_kind", "") or "").strip().upper()
+    try:
+        payload = BackorderEventCreate(
+            event_kind=event_kind,
+            backordered_quantity=(0 if event_kind == "RESOLVED" else int(str(form.get("backordered_quantity", "0") or "0"))),
+            reason=str(form.get("reason", "") or "").strip(),
+            supplier_reference=str(form.get("supplier_reference", "") or "").strip(),
+            related_receipt_id=int(related) if related else None,
+            idempotency_key=str(form.get("idempotency_key", "") or "").strip(),
+        )
+    except (ValidationError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid supplier backorder action.") from exc
+    result = record_backorder_event(
+        item_id, payload,
+        actor=request_actor(request), request_id=request_id(request),
+    )
+    return RedirectResponse(url=f"/purchasing/orders/{result['order_id']}#backorders", status_code=303)
+
+
+@app.get("/purchasing/receipts/{receipt_id}/summary/pdf")
+def receiving_summary_pdf(receipt_id: int, download: int = 0):
+    from plg_core.documents.integrity import verified_receiving_document
+
+    with closing(get_connection()) as connection:
+        path = verified_receiving_document(connection, receipt_id)
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type=("attachment" if download else "inline"),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get(
+    "/jobs/{job_id}/delivery",
+    response_class=HTMLResponse,
+)
+def job_delivery_workspace(
+    request: Request,
+    job_id: int,
+    delivery_id: int | None = None,
+    action: str = "",
+):
+    from plg_core.supply.service import (
+        get_delivery_workspace,
+    )
+
+    workspace = get_delivery_workspace(job_id)
+    from plg_core.supply.service import get_delivery
+    from plg_core.web_security import (
+        CSRF_COOKIE_NAME, csrf_token_for_request, new_idempotency_key,
+    )
+    csrf_token = csrf_token_for_request(request)
+    action_delivery = None
+    if delivery_id is not None:
+        action_delivery = get_delivery(delivery_id)
+        if int(action_delivery["job_id"]) != job_id:
+            raise HTTPException(status_code=404, detail="Delivery not found for Job.")
+
+    response = templates.TemplateResponse(
+        request=request,
+        name="job_delivery.html",
+        context={
+            **workspace,
+            "csrf_token": csrf_token,
+            "delivery_idempotency_key": new_idempotency_key(),
+            "action_delivery": action_delivery,
+            "delivery_action": action,
+            "active_page": "jobs",
+        },
+    )
+    response.set_cookie(
+        CSRF_COOKIE_NAME, csrf_token, httponly=True, samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
+
+
+@app.post("/jobs/{job_id}/delivery")
+async def create_job_delivery(request: Request, job_id: int):
+    from plg_core.supply.models import DeliveryCreate, DeliveryItemCreate
+    from plg_core.supply.service import create_delivery, get_delivery_workspace
+    from plg_core.web_security import request_actor, request_id, require_valid_csrf
+
+    form = await request.form()
+    require_valid_csrf(request, str(form.get("csrf_token", "") or ""))
+    workspace = get_delivery_workspace(job_id)
+    selected = []
+    for item in workspace["items"]:
+        raw = str(form.get(f"qty_{item['id']}", "0") or "0").strip()
+        try:
+            quantity = int(raw)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Delivery quantities must be whole numbers.")
+        if quantity < 0:
+            raise HTTPException(status_code=400, detail="Delivery quantity cannot be negative.")
+        if quantity > 0:
+            selected.append(DeliveryItemCreate(order_item_id=int(item["id"]), quantity=quantity))
+
+    result = create_delivery(
+        job_id,
+        DeliveryCreate(
+            items=selected,
+            recipient=str(form.get("recipient", "") or ""),
+            notes=str(form.get("notes", "") or ""),
+            idempotency_key=str(form.get("idempotency_key", "") or ""),
+        ),
+        actor=request_actor(request), request_id=request_id(request),
+        source_path=str(request.url.path),
+    )
+
+    return RedirectResponse(
+        url=f"/jobs/{job_id}/delivery?delivery_id={result['id']}&action=prepared",
+        status_code=303,
+    )
+
+
+@app.post("/deliveries/{delivery_id}/complete")
+def complete_job_delivery(
+    request: Request,
+    delivery_id: int,
+    csrf_token: Annotated[str, Form()] = "",
+):
+    from plg_core.supply.service import (
+        complete_delivery,
+    )
+
+    from plg_core.web_security import request_actor, request_id, require_valid_csrf
+    require_valid_csrf(request, csrf_token)
+    result = complete_delivery(
+        delivery_id, actor=request_actor(request), request_id=request_id(request),
+        source_path=str(request.url.path),
+    )
+
+    return RedirectResponse(
+        url=f"/jobs/{result['job_id']}/delivery?delivery_id={delivery_id}&action=delivered",
+        status_code=303,
+    )
+
+
+@app.post("/deliveries/{delivery_id}/cancel")
+def cancel_job_delivery(
+    request: Request,
+    delivery_id: int,
+    csrf_token: Annotated[str, Form()] = "",
+):
+    from plg_core.supply.service import cancel_delivery
+    from plg_core.web_security import request_actor, request_id, require_valid_csrf
+    require_valid_csrf(request, csrf_token)
+    result = cancel_delivery(
+        delivery_id, actor=request_actor(request), request_id=request_id(request),
+        source_path=str(request.url.path),
+    )
+    return RedirectResponse(
+        url=f"/jobs/{result['job_id']}/delivery?delivery_id={delivery_id}&action=cancelled",
+        status_code=303,
+    )
+
+
+@app.get("/deliveries/{delivery_id}/delivery-note/pdf")
+def delivery_note_pdf(delivery_id: int, download: int = 0):
+    from plg_core.documents.integrity import verified_delivery_document
+    with closing(get_connection()) as connection:
+        path = verified_delivery_document(connection, delivery_id)
+    return FileResponse(
+        path=path, media_type="application/pdf", filename=path.name,
+        content_disposition_type=("attachment" if download else "inline"),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/invoices", response_class=HTMLResponse)
+def list_invoices(request: Request, view: str = "all"):
+    if view not in {"active", "paid", "void", "all"}:
+        view = "all"
+
+    where = {
+        "active": "WHERE invoices.status IN ('UNPAID', 'PARTIAL')",
+        "paid": "WHERE invoices.status = 'PAID'",
+        "void": "WHERE invoices.status = 'VOID'",
+    }.get(view, "")
+
+    with closing(get_connection()) as connection:
+        rows = connection.execute(
+            f"""
+            SELECT
+                invoices.*,
+                jobs.customer_id,
+                jobs.customer,
+                jobs.job_number,
+                jobs.manufacturer,
+                jobs.machine,
+                jobs.pin_serial,
+
+                (
+                    SELECT COUNT(*)
+                    FROM invoice_items
+                    WHERE invoice_items.invoice_id = invoices.id
+                ) AS item_count,
+
+                (
+                    SELECT GROUP_CONCAT(
+                        invoice_items.description,
+                        ', '
+                    )
+                    FROM invoice_items
+                    WHERE invoice_items.invoice_id = invoices.id
+                ) AS item_descriptions,
+
+                EXISTS (
+                    SELECT 1
+                    FROM custom_invoices
+                    WHERE custom_invoices.invoice_id = invoices.id
+                ) AS custom_invoice_exists,
+
+                (
+                    SELECT COUNT(*)
+                    FROM supplier_orders
+                    WHERE supplier_orders.invoice_id = invoices.id
+                ) AS supplier_order_count
+
+            FROM invoices
+            JOIN jobs
+              ON jobs.id = invoices.job_id
+            {where}
+            ORDER BY invoices.id DESC
+            """
+        ).fetchall()
+        from plg_core.documents.integrity import current_invoice_document_versions
+        rows = [
+            {
+                **dict(row),
+                **current_invoice_document_versions(
+                    connection, int(row["id"]), row["status"]
+                ),
+            }
+            for row in rows
+        ]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="invoices.html",
+        context={
+            "invoices": rows,
+            "view": view,
+            "active_page": "invoices",
+        },
+    )
+
+
+@app.post("/quotes/{quote_id}/convert-to-invoice")
+def convert_quote_to_invoice(quote_id: int):
+    from plg_core.audit import write_audit
+    from plg_core.currency.service import is_legacy_quote_currency_snapshot, validate_quote_currency_snapshot
+
+    with closing(get_connection()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        quote, quote_items = load_quote(connection, quote_id)
+        try:
+            currency_snapshot = validate_quote_currency_snapshot(quote)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail="Quote currency snapshot is invalid or incomplete.") from error
+        existing = connection.execute("SELECT id FROM invoices WHERE quote_id=?",(quote_id,)).fetchone()
+        if existing is not None:
+            return RedirectResponse(url=f"/invoices/{existing['id']}/documents",status_code=303)
+        if connection.execute(
+            """
+            SELECT 1 FROM work_revisions wr
+            WHERE wr.based_on_quote_id=?
+              AND (
+                wr.state='EDITABLE'
+                OR (
+                  wr.state='COMMITTED'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM quotes generated
+                    WHERE generated.work_revision_id=wr.id
+                  )
+                )
+              )
+            LIMIT 1
+            """,
+            (quote_id,),
+        ).fetchone():
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "This quote has changes in progress. Finish or cancel "
+                    "the revision before creating an invoice."
+                ),
+            )
+
+        quote_status = str(quote["status"] or "").strip().upper()
+        if quote_status not in {"APPROVED", "ACCEPTED", "CONFIRMED"}:
+            raise HTTPException(
+                status_code=409,
+                detail="Quote must be approved before conversion to invoice.",
+            )
+
+        job = connection.execute("SELECT * FROM jobs WHERE id=?",(quote["job_id"],)).fetchone()
+        from plg_core.lifecycle import ensure_job_allows_new_business
+        ensure_job_allows_new_business(connection, int(quote["job_id"]), "create an invoice")
+        invoice_number = invoice_number_from_quote(quote["quote_number"])
+        invoice_date = date.today().isoformat()
+        customer_total = float(quote["customer_total"] or 0)
+        available_credit = 0.0
+        if job["customer_id"]:
+            balance = connection.execute("SELECT COALESCE(SUM(amount),0) AS net_balance FROM customer_transactions WHERE customer_id=?",(job["customer_id"],)).fetchone()
+            available_credit = max(float(balance["net_balance"] or 0),0.0)
+        credit_applied = min(available_credit,customer_total)
+        balance_due = max(customer_total-credit_applied,0.0)
+        status = "PAID" if balance_due == 0 else ("PARTIAL" if credit_applied > 0 else "UNPAID")
+        modern_invoice_values = currency_snapshot or {}
+        invoice_fx_locked_at = connection.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0] if currency_snapshot else None
+        cur = connection.execute("""INSERT INTO invoices (invoice_number,quote_id,job_id,invoice_date,status,parts_subtotal,shipping_total,service_charge,sourcing_fee,customer_total,supplier_total,profit_total,credit_applied,balance_due,bill_to_kind,bill_to_name_snapshot,bill_to_company_snapshot,bill_to_address_snapshot,bill_to_phone_snapshot,bill_to_email_snapshot,currency_code,display_currency_mode,fx_rate,fx_rate_source,fx_locked_at,show_jmd_total,jmd_exchange_rate) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_number,quote_id,quote["job_id"],invoice_date,status,float(quote["parts_subtotal"] or 0),float(quote["shipping_total"] or 0),float(quote["service_charge"] or 0),float(quote["sourcing_fee"] or 0),customer_total,float(quote["supplier_total"] or 0),float(quote["profit_total"] or 0),credit_applied,balance_due,quote["bill_to_kind"],quote["bill_to_name_snapshot"],quote["bill_to_company_snapshot"],quote["bill_to_address_snapshot"],quote["bill_to_phone_snapshot"],quote["bill_to_email_snapshot"],modern_invoice_values.get("currency_code"),modern_invoice_values.get("display_currency_mode"),modern_invoice_values.get("fx_rate"),modern_invoice_values.get("fx_rate_source"),invoice_fx_locked_at,int(modern_invoice_values.get("display_currency_mode") in {"JMD","USD_JMD"}),modern_invoice_values.get("fx_rate")))
+        invoice_id = cur.lastrowid
+        for item in quote_items:
+            connection.execute("""INSERT INTO invoice_items (invoice_id,quote_item_id,part_id,source_id,job_asset_id,primary_requested_need_id,quantity,description,internal_part_number,supplier_name,source_type,brand,supplier_part_number,supplier_unit_cost,customer_unit_price,supplier_line_total,customer_line_total,line_profit,asset_name_snapshot,asset_type_snapshot,asset_manufacturer_snapshot,asset_model_snapshot,asset_year_snapshot,asset_serial_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(invoice_id,item["id"],item["part_id"],item["source_id"],item["job_asset_id"],item["primary_requested_need_id"],item["quantity"],item["description"],item["internal_part_number"] or "",item["supplier_name"],item["source_type"],item["brand"],item["supplier_part_number"],item["supplier_unit_cost"],item["customer_unit_price"],item["supplier_line_total"],item["customer_line_total"],item["line_profit"],item["asset_name_snapshot"],item["asset_type_snapshot"],item["asset_manufacturer_snapshot"],item["asset_model_snapshot"],item["asset_year_snapshot"],item["asset_serial_snapshot"]))
+        if job["customer_id"]:
+            connection.execute("""INSERT INTO customer_transactions (customer_id,transaction_date,transaction_type,amount,reference,reason,job_id,quote_id,invoice_id) VALUES (?,?,'INVOICE',?,?,?,?,?,?)""",(job["customer_id"],invoice_date,-customer_total,invoice_number,f"Invoice created from {quote['quote_number']}",quote["job_id"],quote_id,invoice_id))
+        previous_quote_status = str(quote["status"] or "").strip().upper()
+
+        connection.execute(
+            "UPDATE quotes SET is_archived=1,status='CONVERTED' WHERE id=?",
+            (quote_id,),
+        )
+        connection.execute(
+            "UPDATE jobs SET status='CONFIRMED' WHERE id=?",
+            (quote["job_id"],),
+        )
+
+        connection.execute(
+            """
+            INSERT INTO quote_events (
+                quote_id,
+                event_type,
+                from_status,
+                to_status,
+                notes
+            )
+            VALUES (?, 'QUOTE_CONVERTED', ?, 'CONVERTED', ?)
+            """,
+            (
+                quote_id,
+                previous_quote_status,
+                f"Converted to invoice {invoice_number}",
+            ),
+        )
+
+        connection.execute(
+            """
+            INSERT INTO invoice_events (
+                invoice_id,
+                event_type,
+                from_status,
+                to_status,
+                notes
+            )
+            VALUES (?, 'INVOICE_CREATED', '', ?, ?)
+            """,
+            (
+                invoice_id,
+                status,
+                f"Invoice {invoice_number} created from {quote['quote_number']}",
+            ),
+        )
+
+        write_audit(
+            connection,
+            action="QUOTE_CONVERTED",
+            entity_type="QUOTE",
+            entity_id=quote_id,
+            summary=f"{quote['quote_number']} converted to {invoice_number}",
+            metadata={
+                "invoice_id": int(invoice_id),
+                "invoice_number": invoice_number,
+                "invoice_status": status,
+                "job_id": int(quote["job_id"]),
+            },
+        )
+
+        connection.commit()
+        invoice, items = load_invoice(connection, invoice_id)
+        from plg_core.documents.integrity import issue_invoice_documents
+        issue_invoice_documents(connection, invoice, items, variant="ISSUED")
+        connection.commit()
+    return RedirectResponse(url=f"/invoices/{invoice_id}/documents",status_code=303)
+
+
+@app.get(
+    "/invoices/{invoice_id}/documents",
+    response_class=HTMLResponse,
+)
+def invoice_documents(request: Request, invoice_id: int):
+    with closing(get_connection()) as connection:
+        invoice, items = load_invoice(connection, invoice_id)
+        from plg_core.documents.integrity import current_invoice_document_versions
+        document_versions = current_invoice_document_versions(
+            connection, invoice_id, invoice["status"]
+        )
+
+        payments = connection.execute(
+            """
+            SELECT
+                p.*,
+                COALESCE((
+                    SELECT -SUM(r.amount)
+                    FROM customer_transactions r
+                    WHERE r.invoice_id=p.invoice_id
+                      AND r.transaction_type='PAYMENT_REVERSAL'
+                      AND r.reference='PAYMENT_REVERSAL:' || p.id
+                ), 0) AS reversed_amount,
+                ROUND(
+                    p.amount - COALESCE((
+                        SELECT -SUM(r.amount)
+                        FROM customer_transactions r
+                        WHERE r.invoice_id=p.invoice_id
+                          AND r.transaction_type='PAYMENT_REVERSAL'
+                          AND r.reference='PAYMENT_REVERSAL:' || p.id
+                    ), 0),
+                    2
+                ) AS reversible_amount
+            FROM customer_transactions p
+            WHERE p.invoice_id = ?
+              AND p.transaction_type = 'PAYMENT'
+            ORDER BY p.transaction_date DESC, p.id DESC
+            """,
+            (invoice_id,),
+        ).fetchall()
+
+        invoice_events = connection.execute(
+            """
+            SELECT event_type, from_status, to_status, notes, created_at
+            FROM invoice_events
+            WHERE invoice_id = ?
+            ORDER BY id DESC
+            """,
+            (invoice_id,),
+        ).fetchall()
+
+        payment_total = sum(
+            float(payment["amount"] or 0)
+            - float(payment["reversed_amount"] or 0)
+            for payment in payments
+        )
+
+        custom_invoice_exists = connection.execute(
+            """
+            SELECT 1
+            FROM custom_invoices
+            WHERE invoice_id = ?
+            """,
+            (invoice_id,),
+        ).fetchone() is not None
+
+        supplier_orders = connection.execute(
+            """
+            SELECT
+                id,
+                po_number,
+                supplier_name,
+                status,
+                order_total
+            FROM supplier_orders
+            WHERE invoice_id = ?
+            ORDER BY id
+            """,
+            (invoice_id,),
+        ).fetchall()
+
+        has_supplier_orders = bool(supplier_orders)
+
+        has_purchased_parts = connection.execute(
+            """
+            SELECT 1
+            FROM basket_items
+            JOIN baskets
+              ON baskets.id = basket_items.basket_id
+            WHERE baskets.job_id = ?
+              AND UPPER(COALESCE(basket_items.part_status, ''))
+                  IN ('ORDERED', 'RECEIVED')
+            LIMIT 1
+            """,
+            (invoice["job_id"],),
+        ).fetchone() is not None
+
+        invoice_status = str(
+            invoice["status"] or ""
+        ).strip().upper()
+
+        can_void_invoice = (
+            invoice_status != "VOID"
+            and payment_total <= 0.005
+            and not has_supplier_orders
+            and not has_purchased_parts
+        )
+
+        void_block_reason = ""
+
+        if invoice_status != "VOID" and not can_void_invoice:
+            if payment_total > 0.005:
+                void_block_reason = (
+                    "Void unavailable while customer payment value "
+                    "remains on this invoice. Reverse or refund the "
+                    "payment first."
+                )
+            else:
+                void_block_reason = (
+                    "Void unavailable because purchasing has "
+                    "already started for this invoice."
+                )
+
+    from plg_core.documents.invoice_pdf import (
+        paid_invoice_paths,
+    )
+
+    paid_paths = paid_invoice_paths(
+        invoice["customer"],
+        invoice["invoice_number"],
+    )
+
+    from plg_core.documents.integrity import verified_invoice_document
+    integrity_error = None
+    affected_document = None
+    with closing(get_connection()) as connection:
+        for document_kind, audience, label in (
+            ("CUSTOMER_INVOICE", "CUSTOMER", "Customer Invoice"),
+            ("INTERNAL_INVOICE", "INTERNAL", "Internal Invoice"),
+        ):
+            try:
+                verified_invoice_document(
+                    connection, invoice_id, document_kind, audience
+                )
+            except HTTPException as exc:
+                if exc.status_code != 409:
+                    raise
+                integrity_error = str(exc.detail)
+                affected_document = label
+                break
+
+    if integrity_error:
+        return templates.TemplateResponse(
+            request=request,
+            name="invoice_integrity_error.html",
+            context={
+                "invoice": invoice,
+                "supplier_orders": supplier_orders,
+                "affected_document": affected_document,
+                "integrity_error": integrity_error,
+                "active_page": "invoices",
+            },
+            status_code=409,
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="invoice_documents.html" if request.query_params.get("view") == "legacy" else "invoice_documents_simple.html",
+        context={
+            "invoice": invoice,
+            "items": items,
+            "payments": payments,
+            "invoice_events": invoice_events,
+            "payment_total": payment_total,
+            "paid_customer_invoice_exists": (
+                paid_paths["customer"].exists()
+            ),
+            "paid_internal_invoice_exists": (
+                paid_paths["internal"].exists()
+            ),
+            "today": date.today().isoformat(),
+            "parts_order_sheet_exists": parts_order_sheet_path(
+                invoice
+            ).exists(),
+            "custom_invoice_exists": custom_invoice_exists,
+            "supplier_orders": supplier_orders,
+            "can_void_invoice": can_void_invoice,
+            "void_block_reason": void_block_reason,
+            "active_page": "invoices",
+            **document_versions,
+        },
+    )
+
+
+@app.post("/invoices/{invoice_id}/payments")
+def receive_invoice_payment(
+    invoice_id: int,
+    amount: Annotated[float, Form()],
+    payment_method: Annotated[str, Form()],
+    reference: Annotated[str, Form()] = "",
+    payment_date: Annotated[str, Form()] = "",
+):
+    from plg_core.sales.service import record_invoice_payment
+
+    record_invoice_payment(
+        invoice_id=invoice_id,
+        amount=amount,
+        payment_method=payment_method,
+        reference=reference,
+        payment_date=payment_date,
+    )
+
+    return RedirectResponse(
+        url=f"/invoices/{invoice_id}/documents",
+        status_code=303,
+    )
+
+
+@app.post("/invoices/{invoice_id}/jmd-display")
+def save_invoice_jmd_display(
+    invoice_id: int,
+    show_jmd_total: Annotated[str | None, Form()] = None,
+    jmd_exchange_rate: Annotated[str, Form()] = "",
+):
+    """Save a presentation-only JMD rate snapshot and version customer PDF."""
+    from decimal import Decimal, InvalidOperation
+
+    enabled = show_jmd_total == "1"
+    raw_rate = str(jmd_exchange_rate or "").strip()
+    rate = None
+    if raw_rate:
+        try:
+            rate = Decimal(raw_rate)
+        except InvalidOperation:
+            raise HTTPException(
+                status_code=400, detail="JMD exchange rate must be a valid number."
+            ) from None
+        if not rate.is_finite() or rate <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="JMD exchange rate must be greater than zero.",
+            )
+    if enabled and rate is None:
+        raise HTTPException(
+            status_code=400,
+            detail="A positive JMD exchange rate is required when JMD display is enabled.",
+        )
+    rate_snapshot = format(rate.normalize(), "f") if rate is not None else None
+
+    with closing(get_connection()) as connection:
+        invoice, items = load_invoice(connection, invoice_id)
+        previous = {
+            "show_jmd_total": int(invoice["show_jmd_total"] or 0),
+            "jmd_exchange_rate": invoice["jmd_exchange_rate"],
+        }
+        updated = {
+            "show_jmd_total": int(enabled),
+            "jmd_exchange_rate": rate_snapshot,
+        }
+        if previous != updated:
+            connection.execute(
+                """UPDATE invoices
+                   SET show_jmd_total=?,jmd_exchange_rate=?,
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE id=?""",
+                (int(enabled), rate_snapshot, invoice_id),
+            )
+            from plg_core.audit import write_audit
+            write_audit(
+                connection,
+                action="INVOICE_JMD_DISPLAY_UPDATED",
+                entity_type="INVOICE",
+                entity_id=invoice_id,
+                summary=(
+                    f"JMD customer display {'enabled' if enabled else 'disabled'} "
+                    f"for {invoice['invoice_number']}"
+                ),
+                metadata={"invoice_number": invoice["invoice_number"],
+                          "previous": previous, "new": updated},
+            )
+            updated_invoice, updated_items = load_invoice(connection, invoice_id)
+            from plg_core.documents.integrity import (
+                current_invoice_document,
+                issue_current_customer_invoice_document,
+            )
+            status = str(updated_invoice["status"] or "").strip().upper()
+            kind = (
+                "CUSTOMER_INVOICE_PAID" if status == "PAID"
+                else "CUSTOMER_INVOICE_VOID" if status == "VOID"
+                else "CUSTOMER_INVOICE"
+            )
+            if current_invoice_document(connection, invoice_id, kind, "CUSTOMER"):
+                issue_current_customer_invoice_document(
+                    connection, updated_invoice, updated_items
+                )
+            connection.commit()
+
+    return RedirectResponse(
+        url=f"/invoices/{invoice_id}/documents",
+        status_code=303,
+    )
+
+
+@app.post(
+    "/invoices/{invoice_id}/payments/{payment_id}/reverse"
+)
+def reverse_invoice_payment_web(
+    invoice_id: int,
+    payment_id: int,
+    amount: Annotated[float, Form()],
+    reason: Annotated[str, Form()],
+    reversal_date: Annotated[str, Form()] = "",
+):
+    from plg_core.sales.service import (
+        reverse_invoice_payment,
+    )
+
+    reverse_invoice_payment(
+        invoice_id=invoice_id,
+        payment_id=payment_id,
+        amount=amount,
+        reason=reason,
+        reversal_date=reversal_date,
+    )
+
+    return RedirectResponse(
+        url=f"/invoices/{invoice_id}/documents",
+        status_code=303,
+    )
+
+
+@app.post("/invoices/{invoice_id}/void")
+def void_invoice_web(
+    invoice_id: int,
+    reason: Annotated[str, Form()],
+):
+    from plg_core.sales.service import void_invoice
+
+    void_invoice(invoice_id, reason)
+
+    return RedirectResponse(
+        url=f"/invoices/{invoice_id}/documents",
+        status_code=303,
+    )
+
+
+@app.get("/invoices/{invoice_id}/customer/paid-pdf")
+def paid_customer_invoice_pdf(
+    invoice_id: int,
+    download: int = 0,
+):
+    with closing(get_connection()) as connection:
+        invoice, _items = load_invoice(connection, invoice_id)
+
+    if str(invoice["status"] or "").upper() != "PAID":
+        raise HTTPException(
+            status_code=400,
+            detail="The invoice has not been paid.",
+        )
+
+    from plg_core.documents.integrity import verified_invoice_document
+    with closing(get_connection()) as connection:
+        path = verified_invoice_document(
+            connection, invoice_id, "CUSTOMER_INVOICE_PAID", "CUSTOMER"
+        )
+
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type=(
+            "attachment" if download else "inline"
+        ),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@app.get("/invoices/{invoice_id}/internal/paid-pdf")
+def paid_internal_invoice_pdf(
+    invoice_id: int,
+    download: int = 0,
+):
+    with closing(get_connection()) as connection:
+        invoice, _items = load_invoice(connection, invoice_id)
+
+    if str(invoice["status"] or "").upper() != "PAID":
+        raise HTTPException(
+            status_code=400,
+            detail="The invoice has not been paid.",
+        )
+
+    from plg_core.documents.integrity import verified_invoice_document
+    with closing(get_connection()) as connection:
+        path = verified_invoice_document(
+            connection, invoice_id, "INTERNAL_INVOICE_PAID", "INTERNAL"
+        )
+
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type=(
+            "attachment" if download else "inline"
+        ),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@app.post("/invoices/{invoice_id}/parts-order-sheet")
+def create_parts_order_sheet(invoice_id: int):
+    with closing(get_connection()) as connection:
+        invoice, items = load_invoice(connection, invoice_id)
+
+        if str(invoice["status"] or "").upper() != "PAID":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "The invoice must be paid before creating "
+                    "a Parts Order Sheet."
+                ),
+            )
+
+        supplier_rows = connection.execute(
+            """
+            SELECT
+                name,
+                contact_person,
+                phone,
+                email,
+                website,
+                account_number
+            FROM suppliers
+            """
+        ).fetchall()
+
+        supplier_details = {
+            str(row["name"] or "").strip().lower(): dict(row)
+            for row in supplier_rows
+        }
+
+    generated_path = generate_parts_order_sheet(
+        invoice,
+        items,
+        supplier_details,
+    )
+
+    return FileResponse(
+        path=generated_path,
+        media_type="application/pdf",
+        filename=Path(generated_path).name,
+        content_disposition_type="inline",
+        headers={
+            "Cache-Control": (
+                "no-store, no-cache, must-revalidate, max-age=0"
+            ),
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@app.get("/invoices/{invoice_id}/parts-order-sheet/pdf")
+def open_parts_order_sheet(invoice_id: int, download: int = 0):
+    with closing(get_connection()) as connection:
+        invoice, items = load_invoice(connection, invoice_id)
+
+        supplier_rows = connection.execute(
+            """
+            SELECT
+                name,
+                contact_person,
+                phone,
+                email,
+                website,
+                account_number
+            FROM suppliers
+            """
+        ).fetchall()
+
+        supplier_details = {
+            str(row["name"] or "").strip().lower(): dict(row)
+            for row in supplier_rows
+        }
+
+    path = parts_order_sheet_path(invoice)
+
+    if not path.exists():
+        if str(invoice["status"] or "").upper() != "PAID":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "The invoice must be paid before creating "
+                    "a Parts Order Sheet."
+                ),
+            )
+
+        generate_parts_order_sheet(
+            invoice,
+            items,
+            supplier_details,
+        )
+
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type=(
+            "attachment" if download else "inline"
+        ),
+        headers={
+            "Cache-Control": (
+                "no-store, no-cache, must-revalidate, max-age=0"
+            ),
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@app.get("/invoices/{invoice_id}/customer/pdf")
+def customer_invoice_pdf(invoice_id: int, download: int = 0):
+    with closing(get_connection()) as connection:
+        load_invoice(connection, invoice_id)
+        from plg_core.documents.integrity import verified_invoice_document
+        path = verified_invoice_document(
+            connection, invoice_id, "CUSTOMER_INVOICE", "CUSTOMER"
+        )
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type=(
+            "attachment" if download else "inline"
+        ),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@app.get("/invoices/{invoice_id}/internal/pdf")
+def internal_invoice_pdf(invoice_id: int, download: int = 0):
+    with closing(get_connection()) as connection:
+        load_invoice(connection, invoice_id)
+        from plg_core.documents.integrity import verified_invoice_document
+        path = verified_invoice_document(
+            connection, invoice_id, "INTERNAL_INVOICE", "INTERNAL"
+        )
+    return FileResponse(
+        path=path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type=(
+            "attachment" if download else "inline"
+        ),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@app.get("/suppliers", response_class=HTMLResponse)
+def list_suppliers(request: Request, view: str = "active"):
+    if view not in {"active","inactive","do_not_use","all"}: view="active"
+    where={"active":"WHERE suppliers.status='ACTIVE'","inactive":"WHERE suppliers.status='INACTIVE'","do_not_use":"WHERE suppliers.status='DO_NOT_USE'"}.get(view,"")
+    with closing(get_connection()) as connection:
+        rows=connection.execute(f"""SELECT suppliers.*, EXISTS(SELECT 1 FROM part_sources WHERE LOWER(TRIM(part_sources.supplier_name))=LOWER(TRIM(suppliers.name))) AS has_history FROM suppliers {where} ORDER BY suppliers.preferred DESC,suppliers.name COLLATE NOCASE""").fetchall()
+        suppliers=[]
+        for row in rows:
+            item=dict(row); item["rating"]=max(1,min(5,int(item.get("rating") or 3))); item["can_delete"]=not bool(item["has_history"]); suppliers.append(item)
+    return templates.TemplateResponse(request=request,name="suppliers.html",context={"suppliers":suppliers,"view":view,"active_page":"suppliers"})
+
+@app.get("/suppliers/new", response_class=HTMLResponse)
+def new_supplier_form(request: Request):
+    return templates.TemplateResponse(request=request,name="supplier_form.html",context={"title":"New Supplier","subtitle":"Add a supplier for sourcing.","form_action":"/suppliers/new","submit_label":"Save Supplier","supplier":{"name":"","website":"","phone":"","email":"","contact_person":"","account_number":"","rating":3,"status":"ACTIVE","preferred":0},"active_page":"suppliers"})
+
+@app.post("/suppliers/new")
+def create_supplier(name: Annotated[str, Form()], website: Annotated[str, Form()] = "", phone: Annotated[str, Form()] = "", email: Annotated[str, Form()] = "", contact_person: Annotated[str, Form()] = "", account_number: Annotated[str, Form()] = "", rating: Annotated[int, Form()] = 3, status: Annotated[str, Form()] = "ACTIVE", preferred: Annotated[int, Form()] = 0):
+    with closing(get_connection()) as connection:
+        cur=connection.execute("INSERT INTO suppliers (name,website,phone,email,contact_person,account_number,rating,status,preferred) VALUES (?,?,?,?,?,?,?,?,?)",(name.strip(),website.strip(),phone.strip(),email.strip(),contact_person.strip(),account_number.strip(),max(1,min(5,int(rating))),status,1 if preferred else 0)); connection.commit()
+    return RedirectResponse(url=f"/suppliers/{cur.lastrowid}/edit",status_code=303)
+
+@app.get("/suppliers/{supplier_id}/edit", response_class=HTMLResponse)
+def edit_supplier_form(request: Request, supplier_id: int):
+    with closing(get_connection()) as connection: s=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+    if s is None: raise HTTPException(status_code=404,detail="Supplier not found.")
+    return templates.TemplateResponse(request=request,name="supplier_form.html",context={"title":"Edit Supplier","subtitle":s["name"],"form_action":f"/suppliers/{supplier_id}/edit","submit_label":"Save Changes","supplier":s,"active_page":"suppliers"})
+
+@app.post("/suppliers/{supplier_id}/edit")
+def update_supplier(supplier_id: int, name: Annotated[str, Form()], website: Annotated[str, Form()] = "", phone: Annotated[str, Form()] = "", email: Annotated[str, Form()] = "", contact_person: Annotated[str, Form()] = "", account_number: Annotated[str, Form()] = "", rating: Annotated[int, Form()] = 3, status: Annotated[str, Form()] = "ACTIVE", preferred: Annotated[int, Form()] = 0):
+    with closing(get_connection()) as connection:
+        old=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+        connection.execute("UPDATE suppliers SET name=?,website=?,phone=?,email=?,contact_person=?,account_number=?,rating=?,status=?,preferred=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(name.strip(),website.strip(),phone.strip(),email.strip(),contact_person.strip(),account_number.strip(),max(1,min(5,int(rating))),status,1 if preferred else 0,supplier_id))
+        if old and old["name"].lower()!=name.strip().lower(): connection.execute("UPDATE part_sources SET supplier_name=? WHERE LOWER(TRIM(supplier_name))=LOWER(TRIM(?))",(name.strip(),old["name"]))
+        connection.commit()
+    return RedirectResponse(url="/suppliers",status_code=303)
+
+@app.post("/suppliers/{supplier_id}/status")
+def supplier_status(supplier_id: int, status: Annotated[str, Form()]):
+    with closing(get_connection()) as connection:
+        supplier=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+        if supplier is None: raise HTTPException(status_code=404,detail="Supplier not found.")
+        normalized=status.strip().upper()
+        if normalized not in {"ACTIVE","INACTIVE","DO_NOT_USE"}: raise HTTPException(status_code=400,detail="Invalid supplier status.")
+        connection.execute("UPDATE suppliers SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(normalized,supplier_id))
+        if normalized=="INACTIVE":
+            from plg_core.audit import write_audit
+            write_audit(connection,action="SUPPLIER_DEACTIVATED",entity_type="SUPPLIER",entity_id=supplier_id,summary=f"Supplier {supplier['name']} removed from active views; history preserved")
+        connection.commit()
+    return RedirectResponse(url="/suppliers",status_code=303)
+
+@app.post("/suppliers/{supplier_id}/delete")
+def supplier_delete(supplier_id: int):
+    with closing(get_connection()) as connection:
+        s=connection.execute("SELECT * FROM suppliers WHERE id=?",(supplier_id,)).fetchone()
+        used=connection.execute("SELECT 1 FROM part_sources WHERE LOWER(TRIM(supplier_name))=LOWER(TRIM(?)) LIMIT 1",(s["name"],)).fetchone()
+        if used:
+            connection.execute("UPDATE suppliers SET status='INACTIVE',updated_at=CURRENT_TIMESTAMP WHERE id=?",(supplier_id,))
+            from plg_core.audit import write_audit
+            write_audit(connection,action="SUPPLIER_DEACTIVATED",entity_type="SUPPLIER",entity_id=supplier_id,summary=f"Supplier {s['name']} removed from active views; history preserved")
+            connection.commit()
+            return RedirectResponse(url="/suppliers?view=inactive",status_code=303)
+        connection.execute("DELETE FROM suppliers WHERE id=?",(supplier_id,)); connection.commit()
+    return RedirectResponse(url="/suppliers",status_code=303)
+
+
+@app.get("/quotes", response_class=HTMLResponse)
+def list_quotes(request: Request, view: str = "active"):
+    if view not in {"active", "archived", "all"}:
+        view = "active"
+
+    where = {
+        "active": (
+            "WHERE COALESCE(quotes.is_archived, 0) = 0 "
+            "AND COALESCE(quotes.is_current, 1) = 1"
+        ),
+        "archived": "WHERE COALESCE(quotes.is_archived, 0) = 1",
+    }.get(view, "")
+
+    with closing(get_connection()) as connection:
+        rows = connection.execute(
+            f"""
+            SELECT
+                quotes.*,
+                jobs.customer_id,
+                jobs.customer,
+                jobs.job_number,
+                jobs.manufacturer,
+                jobs.machine,
+                jobs.pin_serial,
+
+                (
+                    SELECT COUNT(*)
+                    FROM quote_items
+                    WHERE quote_items.quote_id = quotes.id
+                ) AS item_count,
+
+                (
+                    SELECT GROUP_CONCAT(
+                        quote_items.description,
+                        ', '
+                    )
+                    FROM quote_items
+                    WHERE quote_items.quote_id = quotes.id
+                ) AS item_descriptions,
+
+                (
+                    SELECT invoices.id
+                    FROM invoices
+                    WHERE invoices.quote_id = quotes.id
+                    ORDER BY invoices.id DESC
+                    LIMIT 1
+                ) AS invoice_id,
+
+                (
+                    SELECT invoices.invoice_number
+                    FROM invoices
+                    WHERE invoices.quote_id = quotes.id
+                    ORDER BY invoices.id DESC
+                    LIMIT 1
+                ) AS invoice_number,
+
+                (
+                    SELECT invoices.status
+                    FROM invoices
+                    WHERE invoices.quote_id = quotes.id
+                    ORDER BY invoices.id DESC
+                    LIMIT 1
+                ) AS invoice_status
+                ,CASE
+                    WHEN UPPER(COALESCE(quotes.status,'')) IN ('REJECTED','CONVERTED') THEN 1
+                    WHEN UPPER(COALESCE(quotes.status,''))='DRAFT'
+                     AND COALESCE(jobs.is_archived,0)=1
+                     AND jobs.cancelled_at IS NOT NULL
+                     AND quotes.issued_at IS NULL
+                     AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.quote_id=quotes.id)
+                     AND NOT EXISTS (
+                         SELECT 1 FROM quote_documents_manifest d
+                         WHERE d.quote_id=quotes.id AND COALESCE(d.is_issued,0)=1
+                     ) THEN 1
+                    ELSE 0
+                 END AS can_archive
+
+            FROM quotes
+            JOIN jobs
+              ON jobs.id = quotes.job_id
+            {where}
+            ORDER BY quotes.id DESC
+            """
+        ).fetchall()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="quotes.html",
+        context={
+            "quotes": rows,
+            "view": view,
+            "active_page": "quotes",
+        },
+    )
+
+
+@app.post("/quotes/{quote_id}/archive")
+def archive_quote(quote_id: int):
+    with closing(get_connection()) as connection:
+        quote = connection.execute(
+            """SELECT q.*,j.is_archived AS job_is_archived,j.cancelled_at AS job_cancelled_at,
+                      EXISTS(SELECT 1 FROM invoices i WHERE i.quote_id=q.id) AS has_invoice,
+                      EXISTS(SELECT 1 FROM quote_documents_manifest d WHERE d.quote_id=q.id AND COALESCE(d.is_issued,0)=1) AS has_issued_document
+               FROM quotes q JOIN jobs j ON j.id=q.job_id WHERE q.id=?""", (quote_id,)
+        ).fetchone()
+        if quote is None:
+            raise HTTPException(status_code=404, detail="Quote not found.")
+        status = str(quote["status"] or "").upper()
+        cancelled_draft = (
+            status == "DRAFT" and int(quote["job_is_archived"] or 0) == 1
+            and bool(quote["job_cancelled_at"]) and not bool(quote["issued_at"])
+            and not bool(quote["has_invoice"]) and not bool(quote["has_issued_document"])
+        )
+        if status not in {"REJECTED", "CONVERTED"} and not cancelled_draft:
+            raise HTTPException(status_code=409, detail="Only rejected, converted, or unissued drafts on archived/cancelled Jobs can be archived.")
+        connection.execute("UPDATE quotes SET is_archived=1 WHERE id=?",(quote_id,))
+        from plg_core.audit import write_audit
+        write_audit(connection, action="QUOTE_ARCHIVED", entity_type="QUOTE", entity_id=quote_id,
+                    summary=f"Quote {quote['quote_number']} archived")
+        connection.commit()
+    return RedirectResponse(url="/quotes",status_code=303)
+
+@app.post("/quotes/{quote_id}/restore")
+def restore_quote(quote_id: int):
+    with closing(get_connection()) as connection:
+        quote = connection.execute("SELECT * FROM quotes WHERE id=?", (quote_id,)).fetchone()
+        if quote is None:
+            raise HTTPException(status_code=404, detail="Quote not found.")
+        if connection.execute(
+            "SELECT 1 FROM quotes WHERE job_id=? AND id!=? AND COALESCE(is_archived,0)=0 LIMIT 1",
+            (quote["job_id"], quote_id),
+        ).fetchone():
+            raise HTTPException(status_code=409, detail="This Job already has an active quote. Restore is blocked.")
+        try:
+            connection.execute("UPDATE quotes SET is_archived=0 WHERE id=?",(quote_id,))
+        except sqlite3.IntegrityError as error:
+            raise HTTPException(
+                status_code=409,
+                detail="Another active quote already exists for this Job. Restore is blocked.",
+            ) from error
+        from plg_core.audit import write_audit
+        write_audit(connection, action="QUOTE_RESTORED", entity_type="QUOTE", entity_id=quote_id,
+                    summary=f"Quote {quote['quote_number']} restored")
+        connection.commit()
+    return RedirectResponse(url="/quotes?view=archived",status_code=303)
+
+
+@app.post("/quotes/{quote_id}/mark-sent")
+def mark_quote_sent(quote_id: int):
+    from plg_core.sales.service import update_quote_status
+    from plg_core.documents.integrity import issue_quote_documents
+
+    update_quote_status(quote_id, "SENT")
+    with closing(get_connection()) as connection:
+        connection.execute(
+            "UPDATE quotes SET issued_at=COALESCE(issued_at,CURRENT_TIMESTAMP) "
+            "WHERE id=?",
+            (quote_id,),
+        )
+        connection.commit()
+        quote, items = load_quote(connection, quote_id)
+        issue_quote_documents(connection, quote, items)
+        connection.commit()
+
+    return RedirectResponse(
+        url=f"/quotes/{quote_id}/documents",
+        status_code=303,
+    )
+
+
+@app.post("/quotes/{quote_id}/revise")
+def revise_quote_web(
+    quote_id: int,
+    reason: Annotated[str, Form()],
+):
+    from plg_core.revisions import start_quote_revision
+    revision = start_quote_revision(quote_id, reason)
+    return RedirectResponse(
+        url=f"/jobs/{revision['job_id']}/basket?view=advanced&revision_started=1",
+        status_code=303,
+    )
+
+
+@app.post("/work-revisions/{revision_id}/generate-quote")
+def generate_revised_quote_web(
+    revision_id: int,
+    expected_version: Annotated[int, Form()],
+):
+    from plg_core.revisions import generate_quote_from_revision
+    quote = generate_quote_from_revision(
+        revision_id, expected_version=expected_version
+    )
+    return RedirectResponse(
+        url=f"/quotes/{quote['id']}/documents",
+        status_code=303,
+    )
+
+
+@app.post("/work-revisions/{revision_id}/cancel")
+def cancel_quote_revision_web(
+    revision_id: int,
+    reason: Annotated[str, Form()],
+    expected_version: Annotated[int, Form()],
+):
+    from plg_core.revisions import cancel_quote_revision
+    with closing(get_connection()) as connection:
+        revision = connection.execute(
+            "SELECT based_on_quote_id,job_id FROM work_revisions WHERE id=?",
+            (revision_id,),
+        ).fetchone()
+    if revision is None:
+        raise HTTPException(status_code=404, detail="Work Revision not found.")
+    cancel_quote_revision(
+        revision_id, reason=reason, expected_version=expected_version
+    )
+    target = (
+        f"/quotes/{revision['based_on_quote_id']}/documents"
+        if revision["based_on_quote_id"]
+        else f"/jobs/{revision['job_id']}/basket?view=advanced"
+    )
+    return RedirectResponse(url=target, status_code=303)
+
+
+@app.post("/quotes/{quote_id}/decision")
+def update_quote_decision(
+    quote_id: int,
+    decision: str = Form(...),
+    override_reason: str = Form(""),
+):
+    valid_decisions = {
+        "APPROVED",
+        "REVISION_REQUIRED",
+        "REJECTED",
+    }
+
+    normalized = decision.strip().upper()
+
+    if normalized not in valid_decisions:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid quote decision.",
+        )
+
+    from plg_core.lifecycle import transition_quote
+    transition_quote(quote_id, normalized, override_reason=override_reason)
+
+    return RedirectResponse(
+        url=f"/quotes/{quote_id}/documents",
+        status_code=303,
+    )
+
+
+@app.get("/quotes/{quote_id}/documents", response_class=HTMLResponse)
+def quote_documents(request: Request, quote_id: int):
+    with closing(get_connection()) as connection:
+        quote, items = load_quote(connection, quote_id)
+        invoice = connection.execute("SELECT id,invoice_number FROM invoices WHERE quote_id=?",(quote_id,)).fetchone()
+        job_state = connection.execute("SELECT is_archived,cancelled_at FROM jobs WHERE id=?", (quote["job_id"],)).fetchone()
+        has_issued_document = connection.execute(
+            "SELECT 1 FROM quote_documents_manifest WHERE quote_id=? AND COALESCE(is_issued,0)=1 LIMIT 1", (quote_id,)
+        ).fetchone() is not None
+        can_archive = str(quote["status"] or "").upper() in {"REJECTED", "CONVERTED"} or (
+            str(quote["status"] or "").upper() == "DRAFT" and int(job_state["is_archived"] or 0) == 1
+            and bool(job_state["cancelled_at"]) and invoice is None and not bool(quote["issued_at"])
+            and not has_issued_document
+        )
+        quote_events = connection.execute(
+            """
+            SELECT event_type, from_status, to_status, notes, created_at
+            FROM quote_events
+            WHERE quote_id = ?
+            ORDER BY id DESC
+            """,
+            (quote_id,),
+        ).fetchall()
+        split_predecessor = connection.execute(
+            "SELECT q.id,q.quote_number FROM quotes q WHERE q.id=?",
+            (quote["split_from_quote_id"] or 0,),
+        ).fetchone()
+        split_successors = connection.execute(
+            """
+            SELECT q.id,q.quote_number,q.status,q.bill_to_name_snapshot,
+                   q.bill_to_company_snapshot
+            FROM quote_split_successors successor
+            JOIN quotes q ON q.id=successor.successor_quote_id
+            JOIN quote_splits split ON split.id=successor.split_id
+            WHERE split.source_quote_id=? ORDER BY successor.successor_quote_id
+            """,
+            (quote_id,),
+        ).fetchall()
+        pending_revision = connection.execute(
+            """
+            SELECT wr.id, wr.lock_version, wr.revision_number
+            FROM work_revisions wr
+            WHERE wr.job_id=? AND wr.based_on_quote_id=? AND wr.state='COMMITTED'
+              AND NOT EXISTS (SELECT 1 FROM quotes generated WHERE generated.work_revision_id=wr.id)
+            ORDER BY wr.id DESC LIMIT 1
+            """,
+            (quote["job_id"], quote_id),
+        ).fetchone()
+    if str(quote["status"] or "").upper() in {
+        "SENT", "APPROVED", "REJECTED", "REVISION_REQUIRED",
+        "SUPERSEDED", "CONVERTED",
+    }:
+        from plg_core.documents.integrity import verified_quote_document
+        with closing(get_connection()) as connection:
+            verified_quote_document(connection, quote_id, "CUSTOMER")
+            verified_quote_document(connection, quote_id, "INTERNAL")
+    else:
+        paths = quote_paths(quote["customer"], quote["quote_number"])
+        if not paths["customer"].exists() or not paths["internal"].exists():
+            generate_quote_pdfs(quote, items)
+    customer_path = Path("documents")/"Customers"/sanitize_path_name(quote["customer"])/"Quotes"
+    return templates.TemplateResponse(request=request,name="quote_documents.html",context={"quote":quote,"items":items,"invoice":invoice,"quote_events":quote_events,"split_predecessor":split_predecessor,"split_successors":split_successors,"pending_revision":dict(pending_revision) if pending_revision else None,"customer_path":str(customer_path),"can_archive":can_archive,"active_page":"quotes"})
+
+
+@app.get("/quotes/{quote_id}/customer/pdf")
+def customer_quote_pdf(quote_id: int, download: int = 0):
+    with closing(get_connection()) as connection:
+        quote, items = load_quote(connection, quote_id)
+        if str(quote["status"] or "").upper() in {
+            "SENT", "APPROVED", "REJECTED", "REVISION_REQUIRED",
+            "SUPERSEDED", "CONVERTED",
+        }:
+            from plg_core.documents.integrity import verified_quote_document
+            path = verified_quote_document(connection, quote_id, "CUSTOMER")
+        else:
+            path = quote_paths(quote["customer"], quote["quote_number"])["customer"]
+    if not path.exists():
+        generate_quote_pdfs(quote, items)
+    headers = {"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"} if str(quote["status"] or "").upper() == "DRAFT" else None
+    return FileResponse(path=path, media_type="application/pdf", filename=path.name, content_disposition_type="attachment" if download else "inline", headers=headers)
+
+@app.get("/quotes/{quote_id}/internal/pdf")
+def internal_quote_pdf(quote_id: int, download: int = 0):
+    with closing(get_connection()) as connection:
+        quote, items = load_quote(connection, quote_id)
+        if str(quote["status"] or "").upper() in {
+            "SENT", "APPROVED", "REJECTED", "REVISION_REQUIRED",
+            "SUPERSEDED", "CONVERTED",
+        }:
+            from plg_core.documents.integrity import verified_quote_document
+            path = verified_quote_document(connection, quote_id, "INTERNAL")
+        else:
+            path = quote_paths(quote["customer"], quote["quote_number"])["internal"]
+    if not path.exists():
+        generate_quote_pdfs(quote, items)
+    headers = {"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"} if str(quote["status"] or "").upper() == "DRAFT" else None
+    return FileResponse(path=path, media_type="application/pdf", filename=path.name, content_disposition_type="attachment" if download else "inline", headers=headers)
+
 @app.get("/quotes/{quote_id}/customer", response_class=HTMLResponse)
 def customer_quote(request: Request, quote_id: int):
     with closing(get_connection()) as connection:
         quote, items = load_quote(connection, quote_id)
+    from plg_core.documents.quote_pdf import _valid_until
 
     return templates.TemplateResponse(
         request=request,
@@ -1105,6 +4994,7 @@ def customer_quote(request: Request, quote_id: int):
         context={
             "quote": quote,
             "items": items,
+            "valid_until": _valid_until(quote["quote_date"]),
             "active_page": "quotes",
         },
     )
@@ -1114,6 +5004,7 @@ def customer_quote(request: Request, quote_id: int):
 def internal_quote(request: Request, quote_id: int):
     with closing(get_connection()) as connection:
         quote, items = load_quote(connection, quote_id)
+    from plg_core.documents.quote_pdf import _valid_until
 
     return templates.TemplateResponse(
         request=request,
@@ -1121,6 +5012,7 @@ def internal_quote(request: Request, quote_id: int):
         context={
             "quote": quote,
             "items": items,
+            "valid_until": _valid_until(quote["quote_date"]),
             "active_page": "quotes",
         },
     )
@@ -1132,22 +5024,83 @@ def update_job_status(
     job_id: int,
     status: Annotated[str, Form()],
 ):
-    allowed = {
-        "REQUESTED", "RESEARCHING", "VERIFIED", "QUOTED", "CONFIRMED",
-        "ORDERED", "RECEIVED", "DELIVERED", "VOID",
-    }
+    raise HTTPException(
+        status_code=409,
+        detail="Job status is controlled by lifecycle actions and downstream records. Use Cancel, Reopen, purchasing, receiving, or delivery controls.",
+    )
 
-    if status not in allowed:
-        raise HTTPException(status_code=400, detail="Invalid status.")
 
+@app.post("/jobs/{job_id}/cancel")
+def cancel_job_web(job_id: int, reason: Annotated[str, Form()]):
+    from plg_core.lifecycle import cancel_job
+    cancel_job(job_id, reason)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced", status_code=303)
+
+
+@app.post("/jobs/{job_id}/archive")
+def archive_job_web(job_id: int):
+    from plg_core.lifecycle import archive_job
+    archive_job(job_id)
+    return RedirectResponse(url="/jobs", status_code=303)
+
+
+@app.post("/jobs/{job_id}/restore")
+def restore_job_web(job_id: int):
+    from plg_core.lifecycle import restore_job
+    restore_job(job_id)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced", status_code=303)
+
+
+@app.post("/jobs/{job_id}/reopen")
+def reopen_job_web(job_id: int, reason: Annotated[str, Form()]):
+    from plg_core.lifecycle import job_has_durable_history, reopen_job
     with closing(get_connection()) as connection:
-        connection.execute(
-            "UPDATE jobs SET status = ? WHERE id = ?",
-            (status, job_id),
-        )
-        connection.commit()
+        durable = job_has_durable_history(connection, job_id)
+    if durable:
+        from plg_core.revisions import reopen_job_for_revision
+        reopen_job_for_revision(job_id, reason)
+    else:
+        reopen_job(job_id, reason)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced", status_code=303)
 
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+
+@app.post("/jobs/{job_id}/delete")
+def delete_job_web(
+    request: Request,
+    job_id: int,
+    reason: Annotated[str, Form()],
+    confirmation: Annotated[str, Form()],
+    csrf_token: Annotated[str, Form()] = "",
+):
+    from plg_core.lifecycle import delete_job_safely
+    from plg_core.web_security import require_valid_csrf, request_actor, request_id
+    require_valid_csrf(request, csrf_token)
+    delete_job_safely(
+        job_id, reason, confirmation, actor=request_actor(request),
+        request_id=request_id(request),
+    )
+    return RedirectResponse(url="/jobs?deleted=1", status_code=303)
+
+
+@app.get("/jobs/{job_id}/delete-review", response_class=HTMLResponse)
+def job_delete_review(request: Request, job_id: int):
+    from plg_core.lifecycle import get_job_delete_eligibility
+    from plg_core.web_security import CSRF_COOKIE_NAME, csrf_token_for_request
+    eligibility = get_job_delete_eligibility(job_id)
+    csrf_token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(
+        request=request,
+        name="job_delete_review.html",
+        context={
+            "active_page": "jobs", "eligibility": eligibility,
+            "job": eligibility["job"], "csrf_token": csrf_token,
+        },
+    )
+    response.set_cookie(
+        CSRF_COOKIE_NAME, csrf_token, httponly=True, samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+    return response
 
 
 @app.post("/parts/{part_id}/verify")
@@ -1161,13 +5114,8 @@ def verify_part(
     verification_notes: Annotated[str, Form()] = "",
 ):
     with closing(get_connection()) as connection:
-        part = connection.execute(
-            "SELECT id, job_id FROM job_parts WHERE id = ?",
-            (part_id,),
-        ).fetchone()
-
-        if part is None:
-            raise HTTPException(status_code=404, detail="Part not found.")
+        from plg_core.lifecycle import ensure_part_mutable
+        part = ensure_part_mutable(connection, part_id)
 
         status = "VERIFIED" if oem_part_number.strip() else "PENDING"
 
@@ -1226,7 +5174,7 @@ def verify_part(
 
         connection.commit()
 
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+    return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced", status_code=303)
 
 
 @app.post("/parts/{part_id}/supplier")
@@ -1237,13 +5185,8 @@ def update_supplier(
     availability: Annotated[str, Form()] = "",
 ):
     with closing(get_connection()) as connection:
-        part = connection.execute(
-            "SELECT job_id, oem_part_number FROM job_parts WHERE id = ?",
-            (part_id,),
-        ).fetchone()
-
-        if part is None:
-            raise HTTPException(status_code=404, detail="Part not found.")
+        from plg_core.lifecycle import ensure_part_mutable
+        part = ensure_part_mutable(connection, part_id)
 
         connection.execute(
             """
@@ -1255,7 +5198,7 @@ def update_supplier(
         )
         connection.commit()
 
-    return RedirectResponse(url=f"/jobs/{part['job_id']}", status_code=303)
+        return RedirectResponse(url=f"/jobs/{part['job_id']}/basket?view=advanced", status_code=303)
 
 
 @app.post("/parts/{part_id}/sources")
@@ -1269,6 +5212,10 @@ def add_part_source(
     availability: Annotated[str, Form()] = "",
     lead_time: Annotated[str, Form()] = "",
     quote_reference: Annotated[str, Form()] = "",
+    source_url: Annotated[str, Form()] = "",
+    confidence: Annotated[float | None, Form()] = None,
+    verification_status: Annotated[str, Form()] = "UNVERIFIED",
+    verification_note: Annotated[str, Form()] = "",
 ):
     supplier_name = supplier_name.strip()
     if not supplier_name:
@@ -1278,13 +5225,34 @@ def add_part_source(
     if source_type not in {"OEM", "AFTERMARKET", "USED", "REMAN"}:
         raise HTTPException(status_code=400, detail="Invalid source type.")
 
+    verification_status = verification_status.strip().upper() or "UNVERIFIED"
+    if verification_status not in {
+        "UNVERIFIED",
+        "VERIFIED",
+        "REJECTED",
+        "OVERRIDE",
+    }:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid verification status.",
+        )
+
+    if confidence is not None and not 0.0 <= confidence <= 1.0:
+        raise HTTPException(
+            status_code=400,
+            detail="Confidence must be between 0.0 and 1.0.",
+        )
+
+    verification_note = verification_note.strip()
+    if verification_status == "OVERRIDE" and not verification_note:
+        raise HTTPException(
+            status_code=400,
+            detail="Manual Override requires a verification note.",
+        )
+
     with closing(get_connection()) as connection:
-        part = connection.execute(
-            "SELECT job_id, oem_part_number FROM job_parts WHERE id = ?",
-            (part_id,),
-        ).fetchone()
-        if part is None:
-            raise HTTPException(status_code=404, detail="Part not found.")
+        from plg_core.lifecycle import ensure_part_mutable
+        part = ensure_part_mutable(connection, part_id)
 
         final_supplier_part_number = supplier_part_number.strip() or (part["oem_part_number"] or "")
 
@@ -1298,9 +5266,11 @@ def add_part_source(
             INSERT INTO part_sources (
                 part_id, supplier_name, source_type, brand,
                 supplier_part_number, supplier_cost, availability,
-                lead_time, quote_reference, trust_level
+                lead_time, quote_reference, trust_level,
+                verification_status, verification_note, source_url,
+                confidence
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'MANUAL')
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'MANUAL', ?, ?, ?, ?)
             """,
             (
                 part_id,
@@ -1312,22 +5282,22 @@ def add_part_source(
                 availability.strip(),
                 lead_time.strip(),
                 quote_reference.strip(),
+                verification_status,
+                verification_note,
+                source_url.strip(),
+                confidence,
             ),
         )
         connection.commit()
 
-    return RedirectResponse(url=f"/jobs/{part['job_id']}#part-{part_id}", status_code=303)
+        return RedirectResponse(url=f"/jobs/{part['job_id']}/basket?view=advanced#part-{part_id}", status_code=303)
 
 
 @app.post("/parts/{part_id}/sources/{source_id}/select")
 def select_part_source(part_id: int, source_id: int):
     with closing(get_connection()) as connection:
-        part = connection.execute(
-            "SELECT job_id FROM job_parts WHERE id = ?",
-            (part_id,),
-        ).fetchone()
-        if part is None:
-            raise HTTPException(status_code=404, detail="Part not found.")
+        from plg_core.lifecycle import ensure_part_mutable
+        part = ensure_part_mutable(connection, part_id)
 
         source = connection.execute(
             "SELECT * FROM part_sources WHERE id = ? AND part_id = ?",
@@ -1335,6 +5305,51 @@ def select_part_source(part_id: int, source_id: int):
         ).fetchone()
         if source is None:
             raise HTTPException(status_code=404, detail="Supplier source not found.")
+
+        verification_status = (
+            source["verification_status"] or "UNVERIFIED"
+        ).strip().upper()
+
+        verification_note = (
+            source["verification_note"] or ""
+        ).strip()
+
+        if (
+            verification_status not in {"VERIFIED", "OVERRIDE"}
+            or (
+                verification_status == "OVERRIDE"
+                and not verification_note
+            )
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Only verified candidates or documented manual "
+                    "overrides can be selected for quote."
+                ),
+            )
+
+        compatibility_status = (
+            source["compatibility_status"] or "UNCHECKED"
+        ).strip().upper()
+        compatibility_note = (
+            source["compatibility_note"] or ""
+        ).strip()
+
+        if compatibility_status == "INCOMPATIBLE":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This candidate is marked incompatible with the linked "
+                    "machine and cannot be selected for quote."
+                ),
+            )
+
+        if compatibility_status == "OVERRIDE" and not compatibility_note:
+            raise HTTPException(
+                status_code=400,
+                detail="Compatibility override requires a note.",
+            )
 
         connection.execute(
             "UPDATE part_sources SET selected_for_quote = 0, updated_at = CURRENT_TIMESTAMP WHERE part_id = ?",
@@ -1359,18 +5374,342 @@ def select_part_source(part_id: int, source_id: int):
         )
         connection.commit()
 
-    return RedirectResponse(url=f"/jobs/{part['job_id']}#part-{part_id}", status_code=303)
+        return RedirectResponse(url=f"/jobs/{part['job_id']}/basket?view=advanced#part-{part_id}", status_code=303)
+
+
+@app.post("/parts/{part_id}/sources/{source_id}/verification")
+def update_part_source_verification(
+    part_id: int,
+    source_id: int,
+    verification_status: Annotated[str, Form()],
+    verification_note: Annotated[str, Form()] = "",
+):
+    from plg_core.timeline import log_job_event
+
+    valid_statuses = {
+        "UNVERIFIED",
+        "VERIFIED",
+        "REJECTED",
+        "OVERRIDE",
+    }
+
+    normalized_status = (
+        verification_status.strip().upper() or "UNVERIFIED"
+    )
+    if normalized_status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid verification status.",
+        )
+
+    normalized_note = verification_note.strip()
+    if normalized_status == "OVERRIDE" and not normalized_note:
+        raise HTTPException(
+            status_code=400,
+            detail="Manual Override requires a verification note.",
+        )
+
+    with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_part_mutable
+        ensure_part_mutable(connection, part_id)
+        source = connection.execute(
+            """
+            SELECT
+                part_sources.*,
+                job_parts.job_id,
+                job_parts.requested_description
+            FROM part_sources
+            JOIN job_parts
+              ON job_parts.id = part_sources.part_id
+            WHERE part_sources.id = ?
+              AND part_sources.part_id = ?
+            """,
+            (source_id, part_id),
+        ).fetchone()
+
+        if source is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Supplier source not found.",
+            )
+
+        old_status = (
+            source["verification_status"] or "UNVERIFIED"
+        ).strip().upper()
+        old_note = (
+            source["verification_note"] or ""
+        ).strip()
+
+        connection.execute(
+            """
+            UPDATE part_sources
+            SET verification_status = ?,
+                verification_note = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                normalized_status,
+                normalized_note,
+                source_id,
+            ),
+        )
+
+        removed_from_quote = False
+        if (
+            source["selected_for_quote"]
+            and normalized_status not in {"VERIFIED", "OVERRIDE"}
+        ):
+            connection.execute(
+                """
+                UPDATE part_sources
+                SET selected_for_quote = 0,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (source_id,),
+            )
+            connection.execute(
+                """
+                UPDATE job_parts
+                SET supplier = '',
+                    supplier_cost = NULL,
+                    availability = ''
+                WHERE id = ?
+                """,
+                (part_id,),
+            )
+            removed_from_quote = True
+
+        if (
+            old_status != normalized_status
+            or old_note != normalized_note
+        ):
+            labels = {
+                "UNVERIFIED": "Unverified",
+                "VERIFIED": "Verified",
+                "REJECTED": "Rejected",
+                "OVERRIDE": "Manual Override",
+            }
+
+            part_label = (
+                source["requested_description"] or "Part"
+            ).strip()
+            supplier_label = (
+                source["supplier_name"] or "Unknown supplier"
+            ).strip()
+
+            if old_status != normalized_status:
+                message = (
+                    f"{part_label} candidate from {supplier_label} "
+                    f"verification changed from "
+                    f"{labels.get(old_status, old_status.title())} "
+                    f"to {labels[normalized_status]}"
+                )
+            else:
+                message = (
+                    f"{part_label} candidate from {supplier_label} "
+                    f"verification note updated"
+                )
+
+            if normalized_note:
+                message += f" — Note: {normalized_note}"
+
+            if removed_from_quote:
+                message += " — Removed from quote selection"
+
+            log_job_event(
+                connection,
+                job_id=int(source["job_id"]),
+                event_type="PART_SOURCE_VERIFICATION_CHANGED",
+                icon="✓",
+                message=message,
+            )
+
+        connection.commit()
+
+    return RedirectResponse(
+        url=f"/jobs/{source['job_id']}/basket?view=advanced#part-{part_id}",
+        status_code=303,
+    )
+
+
+
+@app.post("/parts/{part_id}/sources/{source_id}/compatibility")
+def update_part_source_compatibility(
+    part_id: int,
+    source_id: int,
+    compatibility_status: Annotated[str, Form()],
+    compatibility_note: Annotated[str, Form()] = "",
+):
+    from plg_core.timeline import log_job_event
+
+    valid_statuses = {
+        "UNCHECKED",
+        "COMPATIBLE",
+        "INCOMPATIBLE",
+        "OVERRIDE",
+    }
+
+    normalized_status = (
+        compatibility_status.strip().upper() or "UNCHECKED"
+    )
+    if normalized_status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid compatibility status.",
+        )
+
+    normalized_note = compatibility_note.strip()
+    if normalized_status == "OVERRIDE" and not normalized_note:
+        raise HTTPException(
+            status_code=400,
+            detail="Compatibility override requires a note.",
+        )
+
+    with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_part_mutable
+        ensure_part_mutable(connection, part_id)
+        source = connection.execute(
+            """
+            SELECT
+                part_sources.*,
+                job_parts.job_id,
+                job_parts.requested_description,
+                jobs.pin_serial,
+                machines.engine_serial
+            FROM part_sources
+            JOIN job_parts
+              ON job_parts.id = part_sources.part_id
+            JOIN jobs
+              ON jobs.id = job_parts.job_id
+            LEFT JOIN machines
+              ON machines.id = jobs.machine_id
+            WHERE part_sources.id = ?
+              AND part_sources.part_id = ?
+            """,
+            (source_id, part_id),
+        ).fetchone()
+
+        if source is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Supplier source not found.",
+            )
+
+        old_status = (
+            source["compatibility_status"] or "UNCHECKED"
+        ).strip().upper()
+        old_note = (
+            source["compatibility_note"] or ""
+        ).strip()
+
+        connection.execute(
+            """
+            UPDATE part_sources
+            SET compatibility_status = ?,
+                compatibility_note = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                normalized_status,
+                normalized_note,
+                source_id,
+            ),
+        )
+
+        removed_from_quote = False
+        if (
+            source["selected_for_quote"]
+            and normalized_status == "INCOMPATIBLE"
+        ):
+            connection.execute(
+                """
+                UPDATE part_sources
+                SET selected_for_quote = 0,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (source_id,),
+            )
+            connection.execute(
+                """
+                UPDATE job_parts
+                SET supplier = '',
+                    supplier_cost = NULL,
+                    availability = ''
+                WHERE id = ?
+                """,
+                (part_id,),
+            )
+            removed_from_quote = True
+
+        if (
+            old_status != normalized_status
+            or old_note != normalized_note
+        ):
+            labels = {
+                "UNCHECKED": "Unchecked",
+                "COMPATIBLE": "Compatible",
+                "INCOMPATIBLE": "Incompatible",
+                "OVERRIDE": "Manual Override",
+            }
+
+            part_label = (
+                source["requested_description"] or "Part"
+            ).strip()
+            supplier_label = (
+                source["supplier_name"] or "Unknown supplier"
+            ).strip()
+
+            if old_status != normalized_status:
+                message = (
+                    f"{part_label} candidate from {supplier_label} "
+                    f"compatibility changed from "
+                    f"{labels.get(old_status, old_status.title())} "
+                    f"to {labels[normalized_status]}"
+                )
+            else:
+                message = (
+                    f"{part_label} candidate from {supplier_label} "
+                    f"compatibility note updated"
+                )
+
+            identity = (source["pin_serial"] or "").strip()
+            engine_serial = (source["engine_serial"] or "").strip()
+
+            if identity:
+                message += f" — VIN/PIN/Serial: {identity}"
+            if engine_serial:
+                message += f" — Engine Serial: {engine_serial}"
+            if normalized_note:
+                message += f" — Note: {normalized_note}"
+            if removed_from_quote:
+                message += " — Removed from quote selection"
+
+            log_job_event(
+                connection,
+                job_id=int(source["job_id"]),
+                event_type="PART_SOURCE_COMPATIBILITY_CHANGED",
+                icon="🔎",
+                message=message,
+            )
+
+        connection.commit()
+
+    return RedirectResponse(
+        url=f"/jobs/{source['job_id']}/basket?view=advanced#part-{part_id}",
+        status_code=303,
+    )
+
 
 
 @app.post("/parts/{part_id}/sources/{source_id}/delete")
 def delete_part_source(part_id: int, source_id: int):
     with closing(get_connection()) as connection:
-        part = connection.execute(
-            "SELECT job_id FROM job_parts WHERE id = ?",
-            (part_id,),
-        ).fetchone()
-        if part is None:
-            raise HTTPException(status_code=404, detail="Part not found.")
+        from plg_core.lifecycle import ensure_part_mutable
+        part = ensure_part_mutable(connection, part_id)
 
         source = connection.execute(
             "SELECT selected_for_quote FROM part_sources WHERE id = ? AND part_id = ?",
@@ -1387,7 +5726,7 @@ def delete_part_source(part_id: int, source_id: int):
             )
         connection.commit()
 
-    return RedirectResponse(url=f"/jobs/{part['job_id']}#part-{part_id}", status_code=303)
+        return RedirectResponse(url=f"/jobs/{part['job_id']}/basket?view=advanced#part-{part_id}", status_code=303)
 
 
 @app.post("/parts/{part_id}/quick-capture")
@@ -1426,6 +5765,8 @@ def quick_capture_part(
         )
 
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_part_mutable
+        ensure_part_mutable(connection, part_id)
         part = connection.execute(
             "SELECT id, job_id FROM job_parts WHERE id = ?",
             (part_id,),
@@ -1465,7 +5806,7 @@ def quick_capture_part(
         connection.commit()
 
     return RedirectResponse(
-        url=f"/jobs/{part['job_id']}#part-{part_id}",
+        url=f"/jobs/{part['job_id']}/basket?view=advanced#part-{part_id}",
         status_code=303,
     )
 
@@ -1474,6 +5815,8 @@ def quick_capture_part(
 @app.post("/jobs/{job_id}/start-sis-cart-import")
 def start_sis_cart_import(job_id: int):
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_job_pre_document_work
+        ensure_job_pre_document_work(connection, job_id, "start a parts import")
         job = connection.execute(
             "SELECT id, manufacturer FROM jobs WHERE id = ?",
             (job_id,),
@@ -1544,6 +5887,8 @@ async def api_import_source_cart(request: Request):
     imported = []
 
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_job_pre_document_work
+        ensure_job_pre_document_work(connection, int(job_id), "import supplier parts")
         job = connection.execute(
             "SELECT id FROM jobs WHERE id = ?",
             (job_id,),
@@ -1585,6 +5930,19 @@ async def api_import_source_cart(request: Request):
             except (TypeError, ValueError):
                 supplier_cost = None
 
+            try:
+                raw_confidence = raw.get("confidence")
+                confidence = (
+                    float(raw_confidence)
+                    if raw_confidence not in (None, "")
+                    else None
+                )
+            except (TypeError, ValueError):
+                confidence = None
+
+            if confidence is not None and not 0.0 <= confidence <= 1.0:
+                confidence = None
+
             if not supplier_part_number:
                 continue
 
@@ -1625,12 +5983,14 @@ async def api_import_source_cart(request: Request):
                     UPDATE part_sources
                     SET brand = ?, supplier_cost = ?, availability = ?,
                         lead_time = ?, quote_reference = ?, trust_level = ?,
-                        source_url = ?, updated_at = CURRENT_TIMESTAMP
+                        source_url = ?, confidence = ?,
+                        updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                     """,
                     (
                         brand, supplier_cost, availability, lead_time,
-                        reference, trust_level, source_url, existing["id"],
+                        reference, trust_level, source_url, confidence,
+                        existing["id"],
                     ),
                 )
             else:
@@ -1642,7 +6002,7 @@ async def api_import_source_cart(request: Request):
                         verification_status, verification_source,
                         source_url, captured_at
                     )
-                    VALUES (?, ?, ?, ?, ?, 'VERIFIED', ?, ?, CURRENT_TIMESTAMP)
+                    VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, CURRENT_TIMESTAMP)
                     """,
                     (
                         job_id, description, quantity,
@@ -1658,14 +6018,15 @@ async def api_import_source_cart(request: Request):
                     INSERT INTO part_sources (
                         part_id, supplier_name, source_type, brand,
                         supplier_part_number, supplier_cost, availability,
-                        lead_time, quote_reference, trust_level, source_url
+                        lead_time, quote_reference, trust_level, source_url,
+                        confidence
                     )
-                    VALUES (?, ?, 'AFTERMARKET', ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, 'AFTERMARKET', ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         part_id, source_name, brand, supplier_part_number,
                         supplier_cost, availability, lead_time,
-                        reference, trust_level, source_url,
+                        reference, trust_level, source_url, confidence,
                     ),
                 )
 
@@ -1718,6 +6079,8 @@ async def api_import_sis_cart(request: Request):
 
     imported = []
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_job_pre_document_work
+        ensure_job_pre_document_work(connection, int(job_id), "import SIS parts")
         job = connection.execute("SELECT id FROM jobs WHERE id = ?", (job_id,)).fetchone()
         if job is None:
             raise HTTPException(status_code=404, detail="Job not found.")
@@ -1806,8 +6169,10 @@ async def api_import_sis_cart(request: Request):
                     """
                     UPDATE part_sources
                     SET supplier_name = 'CAT SIS', brand = 'CAT', supplier_cost = ?,
-                        availability = ?, trust_level = 'OEM_VERIFIED', source_url = ?,
-                        updated_at = CURRENT_TIMESTAMP
+                        availability = ?, trust_level = 'OEM_VERIFIED',
+                        verification_status = 'VERIFIED',
+                        verification_note = 'Verified via CAT SIS',
+                        source_url = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                     """,
                     (price, availability, source_url, source["id"]),
@@ -1818,8 +6183,12 @@ async def api_import_sis_cart(request: Request):
                     INSERT INTO part_sources (
                         part_id, supplier_name, source_type, brand,
                         supplier_part_number, supplier_cost, availability,
-                        trust_level, source_url
-                    ) VALUES (?, 'CAT SIS', 'OEM', 'CAT', ?, ?, ?, 'OEM_VERIFIED', ?)
+                        trust_level, verification_status,
+                        verification_note, source_url
+                    ) VALUES (
+                        ?, 'CAT SIS', 'OEM', 'CAT', ?, ?, ?,
+                        'OEM_VERIFIED', 'VERIFIED', 'Verified via CAT SIS', ?
+                    )
                     """,
                     (part_id, part_number, price, availability, source_url),
                 )
@@ -1843,6 +6212,8 @@ async def api_import_sis_cart(request: Request):
 @app.post("/parts/{part_id}/start-cat-verification")
 def start_cat_verification(part_id: int):
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_part_mutable
+        ensure_part_mutable(connection, part_id)
         part = connection.execute(
             """
             SELECT
@@ -1907,8 +6278,20 @@ SOURCE_PROFILES = {
 
 
 @app.post("/jobs/{job_id}/start-source-import")
-def start_source_import(job_id: int, source_key: str = Form(...)):
+def start_source_import(
+    job_id: int,
+    source_key: str = Form(...),
+    expected_revision_id: int | None = Form(None),
+    expected_version: int | None = Form(None),
+):
     with closing(get_connection()) as connection:
+        from plg_core.basket.service import get_or_create_basket, ensure_basket_mutable
+        basket = get_or_create_basket(connection, job_id)
+        ensure_basket_mutable(
+            basket, connection,
+            expected_revision_id=expected_revision_id,
+            expected_version=expected_version,
+        )
         job = connection.execute(
             "SELECT id FROM jobs WHERE id = ?",
             (job_id,),
@@ -1944,7 +6327,7 @@ def start_source_import(job_id: int, source_key: str = Form(...)):
         connection.commit()
 
     if profile["connector_type"] == "UPLOAD":
-        return RedirectResponse(url=f"/jobs/{job_id}#quote-upload", status_code=303)
+        return RedirectResponse(url=f"/jobs/{job_id}/basket?view=advanced#quote-upload", status_code=303)
 
     return RedirectResponse(url=profile["launch_url"], status_code=303)
 
@@ -1986,6 +6369,38 @@ def admin_home(request: Request):
             "active_page": "admin",
         },
     )
+
+
+@app.get("/admin/currency", response_class=HTMLResponse)
+def admin_currency(request: Request, message: str = ""):
+    from plg_core.currency.service import get_currency_settings
+    from plg_core.web_security import csrf_token_for_request, CSRF_COOKIE_NAME
+    with closing(get_connection()) as connection:
+        settings = get_currency_settings(connection)
+    token = csrf_token_for_request(request)
+    response = templates.TemplateResponse(request=request, name="admin_currency.html", context={
+        "settings": settings, "csrf_token": token, "message": message, "active_page": "admin",
+    })
+    response.set_cookie(CSRF_COOKIE_NAME, token, httponly=True, samesite="strict", secure=request.url.scheme == "https")
+    return response
+
+
+@app.post("/admin/currency")
+async def save_admin_currency(request: Request):
+    from urllib.parse import quote_plus
+    from plg_core.currency.service import update_currency_settings
+    from plg_core.web_security import require_valid_csrf, request_actor
+    form = await request.form()
+    require_valid_csrf(request, str(form.get("csrf_token", "")))
+    try:
+        update_currency_settings(
+            jmd_working_rate=str(form.get("jmd_working_rate", "")),
+            default_display_mode=str(form.get("default_display_mode", "")),
+            actor=request_actor(request),
+        )
+    except (ValueError, RuntimeError) as error:
+        return RedirectResponse(f"/admin/currency?message={quote_plus(str(error))}", status_code=303)
+    return RedirectResponse("/admin/currency?message=Currency+settings+saved", status_code=303)
 
 
 @app.get("/admin/document-templates", response_class=HTMLResponse)
@@ -2174,86 +6589,67 @@ def preview_document_template(template_id: int):
 
 
 @app.get("/connectors", response_class=HTMLResponse)
-def connector_manager(request: Request):
+def connector_manager(request: Request, view: str = "active"):
+    if view not in {"active","archived","all"}: view="active"
+    where={"active":"WHERE connector_profiles.is_archived=0","archived":"WHERE connector_profiles.is_archived=1"}.get(view,"")
     with closing(get_connection()) as connection:
-        connectors = connection.execute(
-            "SELECT * FROM connector_profiles ORDER BY sort_order, display_name"
-        ).fetchall()
+        rows=connection.execute(f"""SELECT connector_profiles.*, EXISTS(SELECT 1 FROM source_cart_imports WHERE source_key=connector_profiles.connector_key) AS has_history FROM connector_profiles {where} ORDER BY is_default DESC,source_priority DESC,sort_order,display_name""").fetchall()
+        connectors=[]
+        for row in rows:
+            item=dict(row); item["can_delete"]=bool(item["is_archived"]) and not bool(item["has_history"]); connectors.append(item)
+    return templates.TemplateResponse(request=request,name="connectors.html",context={"connectors":connectors,"view":view,"active_page":"connectors"})
 
-    return templates.TemplateResponse(
-        request=request,
-        name="connectors.html",
-        context={"connectors": connectors, "active_page": "connectors"},
-    )
+@app.get("/connectors/new", response_class=HTMLResponse)
+def new_connector_form(request: Request):
+    return templates.TemplateResponse(request=request,name="connector_form.html",context={"title":"New Source","subtitle":"Add one master source for Admin and Job Research.","form_action":"/connectors/new","submit_label":"Save Source","connector":{"display_name":"","launch_url":"","category":"Supplier","source_type":"SUPPLIER","trust_level":"NEEDS_REVIEW","connector_type":"CATALOG","manufacturer_applicability":"","asset_category_applicability":"","market_applicability":"GLOBAL","notes":"","source_priority":50,"is_default":0,"is_enabled":1,"is_archived":0},"source_types":SOURCE_TYPES,"connector_types":CONNECTOR_TYPES,"trust_levels":TRUST_LEVELS,"active_page":"connectors"})
 
+@app.post("/connectors/new")
+def add_connector(display_name: Annotated[str, Form()], launch_url: Annotated[str, Form()] = "", category: Annotated[str, Form()] = "Supplier", source_type: Annotated[str, Form()] = "SUPPLIER", trust_level: Annotated[str, Form()] = "NEEDS_REVIEW", connector_type: Annotated[str, Form()] = "CATALOG", manufacturer_applicability: Annotated[str, Form()] = "", asset_category_applicability: Annotated[str, Form()] = "", market_applicability: Annotated[str, Form()] = "GLOBAL", notes: Annotated[str, Form()] = "", source_priority: Annotated[int, Form()] = 50, is_default: Annotated[str, Form()] = "", is_enabled: Annotated[str, Form()] = "1"):
+    with closing(get_connection()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        create_source(connection,display_name=display_name,launch_url=launch_url,category=category,source_type=source_type,trust_level=trust_level,connector_type=connector_type,manufacturer_applicability=manufacturer_applicability,asset_category_applicability=asset_category_applicability,market_applicability=market_applicability,notes=notes,source_priority=source_priority,is_default=bool(is_default),is_enabled=bool(is_enabled),provenance="ADMIN_DIRECTORY")
+        connection.commit()
+    return RedirectResponse(url="/connectors",status_code=303)
+
+@app.get("/connectors/{connector_id}/edit", response_class=HTMLResponse)
+def edit_connector_form(request: Request, connector_id: int):
+    with closing(get_connection()) as connection: c=connection.execute("SELECT * FROM connector_profiles WHERE id=?",(connector_id,)).fetchone()
+    if c is None: raise HTTPException(status_code=404,detail="Source not found.")
+    return templates.TemplateResponse(request=request,name="connector_form.html",context={"title":"Edit Source","subtitle":c["display_name"],"form_action":f"/connectors/{connector_id}/edit","submit_label":"Save Changes","connector":c,"source_types":SOURCE_TYPES,"connector_types":CONNECTOR_TYPES,"trust_levels":TRUST_LEVELS,"active_page":"connectors"})
+
+@app.post("/connectors/{connector_id}/edit")
+def update_connector(connector_id: int, display_name: Annotated[str, Form()], launch_url: Annotated[str, Form()] = "", category: Annotated[str, Form()] = "Supplier", source_type: Annotated[str, Form()] = "SUPPLIER", trust_level: Annotated[str, Form()] = "NEEDS_REVIEW", connector_type: Annotated[str, Form()] = "CATALOG", manufacturer_applicability: Annotated[str, Form()] = "", asset_category_applicability: Annotated[str, Form()] = "", market_applicability: Annotated[str, Form()] = "GLOBAL", notes: Annotated[str, Form()] = "", source_priority: Annotated[int, Form()] = 50, is_default: Annotated[str, Form()] = "", is_enabled: Annotated[str, Form()] = "", is_archived: Annotated[str, Form()] = ""):
+    with closing(get_connection()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        update_source(connection,connector_id,display_name=display_name,launch_url=launch_url,category=category,source_type=source_type,trust_level=trust_level,connector_type=connector_type,manufacturer_applicability=manufacturer_applicability,asset_category_applicability=asset_category_applicability,market_applicability=market_applicability,notes=notes,source_priority=source_priority,is_default=bool(is_default),is_enabled=bool(is_enabled),is_archived=bool(is_archived))
+        connection.commit()
+    return RedirectResponse(url="/connectors",status_code=303)
 
 @app.post("/connectors/{connector_id}/toggle")
 def toggle_connector(connector_id: int):
     with closing(get_connection()) as connection:
-        row = connection.execute(
-            "SELECT is_enabled FROM connector_profiles WHERE id = ?",
-            (connector_id,),
-        ).fetchone()
-        if row is None:
-            raise HTTPException(status_code=404, detail="Connector not found.")
+        c=connection.execute("SELECT is_enabled FROM connector_profiles WHERE id=?",(connector_id,)).fetchone()
+        connection.execute("UPDATE connector_profiles SET is_enabled=? WHERE id=?",(0 if c["is_enabled"] else 1,connector_id)); connection.commit()
+    return RedirectResponse(url="/connectors",status_code=303)
 
-        connection.execute(
-            """
-            UPDATE connector_profiles
-            SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            (0 if row["is_enabled"] else 1, connector_id),
-        )
-        connection.commit()
+@app.post("/connectors/{connector_id}/archive")
+def archive_connector(connector_id: int):
+    with closing(get_connection()) as connection: connection.execute("UPDATE connector_profiles SET is_archived=1,is_enabled=0 WHERE id=?",(connector_id,)); connection.commit()
+    return RedirectResponse(url="/connectors",status_code=303)
 
-    return RedirectResponse(url="/connectors", status_code=303)
+@app.post("/connectors/{connector_id}/restore")
+def restore_connector(connector_id: int):
+    with closing(get_connection()) as connection: connection.execute("UPDATE connector_profiles SET is_archived=0 WHERE id=?",(connector_id,)); connection.commit()
+    return RedirectResponse(url="/connectors?view=archived",status_code=303)
 
-
-@app.post("/connectors")
-def add_connector(
-    display_name: str = Form(...),
-    launch_url: str = Form(""),
-    category: str = Form("Supplier"),
-    trust_level: str = Form("SUPPLIER_VERIFIED"),
-    connector_type: str = Form("CART"),
-):
-    name = display_name.strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="Connector name is required.")
-
-    connector_key = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
-    if not connector_key:
-        raise HTTPException(status_code=400, detail="Invalid connector name.")
-
+@app.post("/connectors/{connector_id}/delete")
+def delete_connector(connector_id: int):
     with closing(get_connection()) as connection:
-        connection.execute(
-            """
-            INSERT INTO connector_profiles (
-                connector_key, display_name, category, trust_level,
-                launch_url, connector_type, parser_key, is_enabled, sort_order
-            )
-            VALUES (?, ?, ?, ?, ?, ?, '', 1, 100)
-            ON CONFLICT(connector_key) DO UPDATE SET
-                display_name = excluded.display_name,
-                category = excluded.category,
-                trust_level = excluded.trust_level,
-                launch_url = excluded.launch_url,
-                connector_type = excluded.connector_type,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (
-                connector_key,
-                name,
-                category.strip() or "Supplier",
-                trust_level.strip() or "SUPPLIER_VERIFIED",
-                launch_url.strip(),
-                connector_type.strip() or "CART",
-            ),
-        )
-        connection.commit()
-
-    return RedirectResponse(url="/connectors", status_code=303)
+        c=connection.execute("SELECT * FROM connector_profiles WHERE id=?",(connector_id,)).fetchone()
+        used=connection.execute("SELECT 1 FROM source_cart_imports WHERE source_key=? LIMIT 1",(c["connector_key"],)).fetchone()
+        if used: raise HTTPException(status_code=400,detail="Connector has import history.")
+        connection.execute("DELETE FROM connector_profiles WHERE id=?",(connector_id,)); connection.commit()
+    return RedirectResponse(url="/connectors?view=archived",status_code=303)
 
 
 @app.get("/api/active-source-import")
@@ -2263,16 +6659,32 @@ def api_active_source_import():
             """
             SELECT
                 active_source_import.job_id,
+                active_source_import.job_asset_id,
+                active_source_import.basket_item_id,
+                active_source_import.job_part_id,
+                active_source_import.requested_need_id,
+                active_source_import.verification_session_id,
                 active_source_import.source_key,
                 active_source_import.source_name,
                 active_source_import.activated_at,
+                verification_sessions.connector_profile_id,
+                verification_sessions.source_url_snapshot,
+                verification_sessions.source_type_snapshot,
+                work_revisions.id AS expected_revision_id,
+                work_revisions.lock_version AS expected_version,
                 jobs.job_number,
                 jobs.customer,
-                jobs.manufacturer,
-                jobs.machine,
-                jobs.pin_serial
+                COALESCE(job_assets.manufacturer,jobs.manufacturer,'') AS manufacturer,
+                COALESCE(job_assets.model,job_assets.name,jobs.machine,'') AS machine,
+                COALESCE(job_assets.vin_pin_serial,jobs.pin_serial,'') AS pin_serial,
+                COALESCE(requested_needs.wording,'') AS requested_need
             FROM active_source_import
             JOIN jobs ON jobs.id = active_source_import.job_id
+            LEFT JOIN verification_sessions
+                ON verification_sessions.id = active_source_import.verification_session_id
+            LEFT JOIN job_assets ON job_assets.id = active_source_import.job_asset_id
+            LEFT JOIN requested_needs ON requested_needs.id = active_source_import.requested_need_id
+            LEFT JOIN work_revisions ON work_revisions.id = jobs.active_work_revision_id
             WHERE active_source_import.id = 1
             """
         ).fetchone()
@@ -2346,6 +6758,8 @@ async def api_capture_part(request: Request):
         raise HTTPException(status_code=400, detail="OEM part number is required.")
 
     with closing(get_connection()) as connection:
+        from plg_core.lifecycle import ensure_part_mutable
+        ensure_part_mutable(connection, int(part_id))
         part = connection.execute(
             "SELECT id, job_id FROM job_parts WHERE id = ?",
             (part_id,),

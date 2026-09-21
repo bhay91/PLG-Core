@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+{% from "_manufacturer_logo.html" import manufacturer_logo %}
+{% block title %}Review Smart Intake · Pinpoint Sourcing LLC{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/customer_requests.css?v=smart-attachments-2">
+{% set summary = proposal.review_summary %}
+{% set core = summary.core_reviews %}
+{% set analysis = proposal.document_analysis or {} %}
+{% set ready_to_create = (not analysis or analysis.confirm_allowed) and summary.core_review_count == 0 and (not proposal.research_import or (proposal.research_import.target_mode == 'NEW_JOB' and not proposal.research_import.package.target_proposal_id)) %}
+<style>
+.smart-review-gate{border:2px solid #d6a328;background:#fffaf0}.smart-review-gate.ready{border-color:var(--success);background:var(--success-soft)}.smart-review-gate h2{margin:3px 0}.smart-core-review-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}.smart-core-review-card{padding:15px;border:1px solid var(--line);border-radius:12px;background:#fff;display:grid;gap:10px}.smart-core-review-card header{display:flex;justify-content:space-between;gap:10px;align-items:center}.smart-core-review-card h3{margin:0}.smart-core-review-card .button{justify-self:start}.smart-section-review{display:flex;align-items:center;gap:10px}.smart-need-row .status-pill{align-self:center}@media(max-width:760px){.smart-core-review-grid{grid-template-columns:1fr}.smart-core-review-card header{align-items:flex-start}.smart-section-review{align-items:flex-start;flex-direction:column}}
+</style>
+<section class="workspace-heading smart-proposal-heading">
+  <div>
+    <p class="eyebrow">SMART INTAKE · OPERATOR REVIEW</p>
+    <h1>Confirm what PPS understood</h1>
+    <p>Correct anything uncertain. No Job or quoteable item exists until you confirm.</p>
+  </div>
+  <div class="workspace-heading-actions"><a class="button ghost" href="/requests">Back to Inbox</a><span class="status-pill {{ proposal.review_state|lower }}">{{ proposal.review_state }}</span></div>
+</section>
+
+{% set update = proposal.research_update %}
+{% if update and update.action in ('UPDATE_DRAFT', 'ADD_ITEM', 'AMBIGUOUS', 'BLOCKED_CONFIRMED') %}
+<section class="panel" id="research-draft-update">
+  <p class="eyebrow">DRAFT TARGET REVIEW</p>
+  <h2>{% if update.action == 'UPDATE_DRAFT' %}UPDATE EXISTING DRAFT{% elif update.action == 'ADD_ITEM' %}ADD ITEM TO EXISTING DRAFT{% elif update.action == 'BLOCKED_CONFIRMED' %}EXISTING DRAFT ALREADY CONFIRMED{% else %}AMBIGUOUS — REVIEW REQUIRED{% endif %}</h2>
+  {% if update.target %}<p>Target proposal #{{ update.target.id }}. Existing values remain unchanged until explicitly applied.</p>{% endif %}
+  {% if update.updates %}<h3>Changed</h3><ul>{% for change in update.updates %}<li><strong>{{ change.reference }}</strong>: {{ change.current.original_wording }} → {{ change.proposed.original_wording }}</li>{% endfor %}</ul>{% endif %}
+  {% if update.adds %}<h3>Added</h3><ul>{% for need in update.adds %}<li><strong>{{ need.reference }}</strong>: {{ need.original_wording }} · Qty {{ need.quantity }}</li>{% endfor %}</ul>{% endif %}
+  {% if update.warnings %}<div class="smart-review-alert"><ul>{% for warning in update.warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>{% endif %}
+  {% if update.action in ('UPDATE_DRAFT', 'ADD_ITEM') %}<form method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/research-update/apply"><input type="hidden" name="target_lock_version" value="{{ update.target.lock_version }}"><button class="button" type="submit">{% if update.action == 'ADD_ITEM' %}Add Item to Draft{% else %}Apply Update{% endif %}</button></form>{% endif %}
+</section>
+{% endif %}
+{% if proposal.research_import %}
+{% set ri = proposal.research_import %}
+{% set pkg = ri.package %}
+<section class="panel research-import-review" id="research-import-review">
+  <div class="panel-heading"><div><p class="eyebrow">RESEARCH IMPORT PACKAGE · CANDIDATE DATA</p><h2>Review before any Job update</h2><p>Imported research, costs, and freight are unconfirmed. This step does not create or update a Job.</p></div><span class="status-pill review">REVIEW ONLY</span></div>
+  <div class="research-import-provenance"><strong>Package:</strong> {{ ri.package_id }} · <strong>PDF:</strong> {{ ri.pdf_filename }} <a class="button ghost compact" href="/requests/smart-intake/proposals/{{ proposal.id }}/attachments/{{ proposal.attachments[0].id if proposal.attachments else '' }}" target="_blank" rel="noopener">Open source PDF</a><details class="research-import-details"><summary>Package details</summary><p><strong>SHA-256:</strong> <code>{{ ri.pdf_sha256 }}</code></p></details></div>
+  <div class="research-import-target-grid">
+    <article class="research-import-card"><p class="eyebrow">{% if ri.target_mode == 'NEW_JOB' %}TARGET MODE{% else %}TARGET PPS JOB{% endif %}</p>{% if ri.target_mode == 'NEW_JOB' %}<h3>NEW JOB PROPOSED</h3><p class="status-text success">No Job exists yet — normal Confirm &amp; Create is required.</p><p>PPS matching will still check existing customer and machine records before confirmation.</p>{% else %}<h3>{{ ri.target_job_number }}</h3>{% if ri.target_found %}<p class="status-text success">✓ Found — exact Job number match</p><dl><dt>Customer</dt><dd>{{ ri.target_job.customer or '—' }}{% if ri.target_job.company %} · {{ ri.target_job.company }}{% endif %}</dd><dt>Machine / asset</dt><dd>{{ ri.target_job.machine_manufacturer or ri.target_job.manufacturer or '—' }} {{ ri.target_job.machine_model or ri.target_job.machine or ri.target_job.machine_name or '' }}</dd><dt>Identifier</dt><dd>{{ ri.target_job.machine_identifier or ri.target_job.pin_serial or '—' }}</dd></dl>{% if ri.target_job.identifiers %}<ul>{% for identifier in ri.target_job.identifiers %}<li>{{ identifier.identifier_type|replace('_',' ')|title }}: {{ identifier.identifier_value }}</li>{% endfor %}</ul>{% endif %}{% else %}<p class="status-text danger">✕ Target Job not found</p><p>No Job will be selected automatically. Existing-Job update remains blocked until the operator resolves this.</p>{% endif %}{% endif %}</article>
+    <article class="research-import-card"><p class="eyebrow">IMPORTED IDENTITY · UNCONFIRMED</p><h3>{{ pkg.customer.name or '—' }}{% if pkg.customer.company %} · {{ pkg.customer.company }}{% endif %}</h3><dl><dt>Machine / asset</dt><dd>{{ pkg.machine.manufacturer }} {{ pkg.machine.model }}</dd><dt>Identifier</dt><dd>{% for identifier in pkg.machine.identifiers %}{{ identifier.type|replace('_',' ')|title }}: {{ identifier.value }}{% if not loop.last %}; {% endif %}{% else %}—{% endfor %}</dd><dt>Asset type</dt><dd>{{ pkg.machine.asset_type|title }}</dd></dl></article>
+  </div>
+  {% if ri.target_found and (pkg.customer.company != ri.target_job.company or pkg.machine.model != (ri.target_job.machine_model or ri.target_job.machine)) %}<div class="smart-review-alert"><strong>Identity mismatch requires operator review.</strong><p>The imported customer or machine does not exactly match the target Job context.</p></div>{% endif %}
+  <div class="research-import-needs"><p class="eyebrow">REQUESTED NEEDS · CANDIDATE</p><h3>Original wording and quantities</h3><ul>{% for need in pkg.requested_needs %}<li><strong>{{ need.original_wording }}</strong> · Qty {{ need.quantity }}{% if need.machine_reference %} · Asset {{ need.machine_reference }}{% endif %}</li>{% endfor %}</ul></div>
+  {% if pkg.research_options %}<div class="research-import-options"><p class="eyebrow">RESEARCH OPTIONS · CANDIDATE / UNCONFIRMED</p>{% for option in pkg.research_options %}<article class="research-import-option"><div class="panel-heading"><div><h3>{{ option.description }}</h3><p>{{ option.manufacturer }}{% if option.oem_part_number %} · OEM P/N {{ option.oem_part_number }}{% endif %}</p></div><span class="status-pill review">{{ option.verification_status|replace('_', ' ')|title }} · {{ option.confidence|title }}</span></div><dl class="research-import-option-summary"><dt>Quantity</dt><dd>{{ option.quantity }}</dd><dt>Supplier</dt><dd>{{ option.supplier or '—' }}</dd><dt>Research price</dt><dd>{{ option.currency }} {{ option.supplier_base_unit_price or '—' }} / unit · candidate / unconfirmed</dd></dl><details class="research-import-details"><summary>Evidence &amp; details</summary><dl><dt>Cross-reference P/Ns</dt><dd>{{ option.cross_reference_part_numbers|join(', ') or '—' }}</dd><dt>Supplier source</dt><dd>{% if option.supplier_url %}<a href="{{ option.supplier_url }}" target="_blank" rel="noopener noreferrer">Open supplier URL</a>{% else %}—{% endif %}</dd><dt>Tax</dt><dd>{{ option.tax_rate_percent or '—' }}{% if option.tax_amount %} · amount {{ option.tax_amount }}{% endif %}</dd><dt>Tax-inclusive acquisition cost</dt><dd>{{ option.currency }} {{ option.tax_inclusive_unit_cost or '—' }} / unit · extended {{ option.tax_inclusive_extended_cost or '—' }}</dd><dt>Fitment evidence</dt><dd>{{ option.fitment_evidence or '—' }}</dd><dt>Part-number evidence</dt><dd>{{ option.part_number_evidence or '—' }}</dd><dt>Notes</dt><dd>{{ option.notes or '—' }}</dd></dl>{% if option.source_evidence.source_urls %}<p><strong>Source URLs:</strong> {% for url in option.source_evidence.source_urls %}<a href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ url }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}</details></article>{% endfor %}</div>{% endif %}
+  {% if pkg.estimated_inbound_freight %}<div class="research-import-freight"><p class="eyebrow">ESTIMATED INBOUND FREIGHT · CANDIDATE / UNCONFIRMED</p><strong>{{ pkg.estimated_inbound_freight.currency }} {{ pkg.estimated_inbound_freight.amount }}</strong><span>{{ pkg.estimated_inbound_freight.status|title }}</span><p>{{ pkg.estimated_inbound_freight.evidence or 'Package-level estimate; not confirmed supplier freight.' }}</p></div>{% endif %}
+  {% if ri.target_mode == 'EXISTING_JOB' %}<div class="smart-review-alert"><strong>No update action is available yet.</strong><p>This Existing-Job Research Import Package is staged for review only. It cannot update the target Job, carry research into the basket, or apply pricing.</p></div>{% else %}<div class="smart-review-alert"><strong>NEW JOB PROPOSED — review before Confirm &amp; Create.</strong><p>Upload created only this DRAFT proposal. The normal governed Confirm &amp; Create boundary is required before any Job exists.</p></div>{% endif %}
+</section>
+<style>.research-import-review{display:grid;gap:16px}.research-import-provenance{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.research-import-provenance code{overflow-wrap:anywhere}.research-import-target-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.research-import-card,.research-import-option,.research-import-freight{padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface-soft)}.research-import-card h3,.research-import-option h3{margin:3px 0}.research-import-card dl,.research-import-option dl{display:grid;grid-template-columns:minmax(150px,.4fr) minmax(0,1fr);gap:6px 14px;margin:12px 0}.research-import-card dt,.research-import-option dt{font-weight:800;color:var(--muted)}.research-import-option dd{margin:0;overflow-wrap:anywhere}.research-import-option .panel-heading{margin-bottom:8px}.research-import-details{margin-top:10px}.research-import-details summary{cursor:pointer;font-weight:800;color:var(--ink-strong)}.research-import-details p{margin:8px 0}.research-import-freight{display:grid;gap:5px}.status-text.success{color:var(--success)}.status-text.danger{color:var(--danger)}@media(max-width:760px){.research-import-target-grid{grid-template-columns:1fr}.research-import-provenance{align-items:flex-start;flex-direction:column}.research-import-provenance .button{width:100%}.research-import-card dl,.research-import-option dl{grid-template-columns:1fr;gap:3px}.research-import-card dt,.research-import-option dt{margin-top:7px}}</style>
+{% endif %}
+
+<section class="panel smart-review-gate {% if ready_to_create %}ready{% endif %}">
+  <div class="panel-heading"><div><p class="eyebrow">{% if ready_to_create %}READY TO CREATE JOB{% else %}REVIEW REQUIRED{% endif %}</p><h2>{% if ready_to_create %}All required items are confirmed{% else %}{{ summary.core_review_count }} item{% if summary.core_review_count != 1 %}s{% endif %} need your confirmation{% endif %}</h2></div>{% if ready_to_create %}<form method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/confirm"><input type="hidden" name="lock_version" value="{{ proposal.lock_version }}"><button class="button" type="submit">Confirm &amp; Create Job</button></form>{% endif %}</div>
+  <div class="smart-core-review-grid">
+    <article class="smart-core-review-card"><header><h3>Customer</h3><span class="status-pill {{ 'confident' if core.customer == 'CONFIRMED' else 'review' }}">{{ core.customer }}</span></header><p>{{ proposal.contact_name or proposal.company_name or 'Customer details require review' }}</p><a class="button ghost compact" href="#customer-review">Save Customer Details</a></article>
+    <article class="smart-core-review-card"><header><h3>Asset / Equipment Context</h3><span class="status-pill {{ 'confident' if core.machine == 'CONFIRMED' else 'review' }}">{{ 'OPTIONAL' if not proposal.assets else core.machine }}</span></header><p>{% if proposal.assets %}{{ proposal.assets|length }} proposed context record{% if proposal.assets|length != 1 %}s{% endif %}{% else %}Not required for this request{% endif %}</p>{% if proposal.assets %}<a class="button ghost compact" href="#machine-review">Review Asset Context</a>{% endif %}</article>
+    <article class="smart-core-review-card"><header><h3>Requested Need</h3><span class="status-pill {{ 'confident' if core.requested_need == 'CONFIRMED' else 'review' }}">{{ core.requested_need }}</span></header><p>{{ summary.need_count }} requested need{% if summary.need_count != 1 %}s{% endif %}</p><a class="button ghost compact" href="#requested-needs-review">Save</a></article>
+  </div>
+  {% if summary.core_review_count == 0 and not ready_to_create %}<div class="smart-review-alert"><strong>Additional review is still required</strong>{% if analysis.blockers %}<ul>{% for blocker in analysis.blockers %}<li>{{ blocker }}</li>{% endfor %}</ul>{% endif %}</div>{% endif %}
+</section>
+
+<details class="panel smart-raw-request erp-original-wording" open>
+  <summary><strong>Original customer request</strong> · preserved exactly</summary>
+  <pre>{{ proposal.raw_input }}</pre>
+</details>
+
+{% set chatgpt_submission = proposal.firefox_submission or proposal.mcp_submission %}
+{% if chatgpt_submission %}
+{% set submitted = chatgpt_submission.structured_candidates or {} %}
+<section class="panel smart-mcp-evidence">
+  <div class="panel-heading">
+    <div><p class="eyebrow">SOURCE</p><h2>{% if chatgpt_submission.origin == 'CHATGPT_FIREFOX' %}CHATGPT FIREFOX{% else %}CHATGPT MCP{% endif %} — UNTRUSTED PROPOSAL</h2></div>
+    <span class="status-pill review">REVIEW REQUIRED</span>
+  </div>
+  <p>Candidate data only. PPS matching and operator confirmation remain authoritative.</p>
+  <p><strong>Client reference:</strong> {{ chatgpt_submission.client_reference }}</p>
+  {% if submitted.customer %}<p><strong>Customer candidate:</strong> {{ submitted.customer.name or 'Not supplied' }}{% if submitted.customer.company %} · {{ submitted.customer.company }}{% endif %}</p>{% endif %}
+  {% if submitted.machines %}<div><strong>Machine candidates:</strong><ul>{% for machine in submitted.machines %}<li>{{ machine.manufacturer }} {{ machine.model }}{% if machine.year %} · {{ machine.year }}{% endif %}{% if machine.identifiers %}<ul>{% for identifier in machine.identifiers %}<li>{{ identifier.type|replace('_',' ') }}: {{ identifier.value }}</li>{% endfor %}</ul>{% endif %}</li>{% endfor %}</ul></div>{% endif %}
+  {% if submitted.requested_needs %}<div><strong>Requested-need candidates:</strong><ul>{% for need in submitted.requested_needs %}<li>{{ need.original_wording }}{% if need.quantity %} · Qty {{ need.quantity }}{% endif %}{% if need.machine_reference %} · Candidate machine {{ need.machine_reference }}{% endif %}</li>{% endfor %}</ul></div>{% endif %}
+  {% if submitted.additional_notes %}<details><summary>Additional untrusted notes</summary><pre>{{ submitted.additional_notes }}</pre></details>{% endif %}
+  {% if submitted.research_evidence %}<details><summary>Untrusted pre-Job research evidence</summary>
+    <p>Reference options only. Nothing here selects a supplier, creates a quote, or authorizes an order.</p>
+    {% if submitted.research_evidence.options %}<div class="smart-research-option-list">{% for option in submitted.research_evidence.options %}<article class="smart-research-option">
+      <div><strong>{{ option.product_description or option.part_number or option.source_name or 'Research option' }}</strong>{% if option.source_name %}<span> · {{ option.source_name }}</span>{% endif %}</div>
+      {% if option.part_number %}<p><strong>Part number:</strong> {{ option.part_number }}</p>{% endif %}
+      {% if option.price is not none %}<p><strong>Observed price:</strong> {{ option.currency or 'USD' }} {{ '%.2f'|format(option.price) }}</p>{% endif %}
+      <p><strong>Status:</strong> {{ (option.verification_status or 'UNVERIFIED')|replace('_',' ')|title }} · Confidence {{ (option.confidence or 'UNKNOWN')|title }}</p>
+      {% if option.research_notes %}<p><strong>Research notes:</strong> {{ option.research_notes }}</p>{% endif %}
+      <a class="button ghost compact" href="{{ option.source_url }}" target="_blank" rel="noopener noreferrer">Open research source</a>
+    </article>{% endfor %}</div>{% endif %}
+    {% if submitted.research_evidence.source_urls %}<p><strong>Additional source URLs</strong></p><ul>{% for url in submitted.research_evidence.source_urls %}<li><a href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ url }}</a></li>{% endfor %}</ul>{% endif %}
+    {% if submitted.research_evidence.claims %}<p><strong>Claims</strong></p><ul>{% for claim in submitted.research_evidence.claims %}<li>{{ claim }}</li>{% endfor %}</ul>{% endif %}
+    {% if submitted.research_evidence.quoted_evidence %}<p><strong>Quoted evidence</strong></p><ul>{% for quote in submitted.research_evidence.quoted_evidence %}<li>{{ quote }}</li>{% endfor %}</ul>{% endif %}
+  </details>{% endif %}
+</section>
+<style>.smart-research-option-list{display:grid;gap:10px;margin:12px 0}.smart-research-option{padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-soft)}.smart-research-option p{margin:6px 0}</style>
+{% endif %}
+
+{% set classification = analysis.classification or {} %}
+{% if classification %}
+<section class="panel smart-document-analysis">
+  <div class="panel-heading">
+    <div><p class="eyebrow">DOCUMENT CLASSIFICATION</p><h2>{{ classification.document_type|replace('_',' ')|title }}</h2></div>
+    <span class="status-pill {{ 'review' if classification.review_required or analysis.blockers else 'confident' }}">{{ 'Review Required' if classification.review_required or analysis.blockers else 'Ready for Review' }}</span>
+  </div>
+  {% if classification.document_number %}<p><strong>Document:</strong> {{ classification.document_number }}</p>{% endif %}
+  <p>{{ classification.rationale }}</p>
+  {% if proposal.source_documents %}<ul class="smart-source-document-list">{% for source in proposal.source_documents %}<li><strong>{{ source.filename }}</strong> · {{ source.extraction_status|replace('_',' ')|title }}{% if source.page_count %} · {{ source.page_count }} page{% if source.page_count != 1 %}s{% endif %}{% endif %}{% if source.extraction_evidence %}<br><span class="muted">{{ source.extraction_evidence }}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
+  {% if analysis.existing_document %}
+  <div class="smart-existing-match">
+    <strong>Existing PPS Document</strong> · {{ analysis.existing_document.number }} · {{ analysis.existing_document.status }}
+    · Job {{ analysis.existing_document.job_number }}
+    <a class="button ghost compact" href="{{ analysis.existing_document.url }}">Open existing record</a>
+  </div>
+  {% endif %}
+  {% if analysis.supplier_document %}
+  <div class="smart-document-evidence">
+    <p><strong>Supplier:</strong> {{ analysis.supplier_document.supplier or 'Needs review' }}</p>
+    {% if analysis.supplier_document.supplier_phone %}<p><strong>Supplier phone:</strong> {{ analysis.supplier_document.supplier_phone }}</p>{% endif %}
+    <p><strong>{{ 'Invoice #' if classification.document_type == 'SUPPLIER_INVOICE' else 'Reference' }}:</strong> {{ analysis.supplier_document.supplier_invoice_number or analysis.supplier_document.reference or 'Not extracted' }}{% if analysis.supplier_document.date %} · {{ analysis.supplier_document.date }}{% endif %}{% if analysis.supplier_document.currency %} · {{ analysis.supplier_document.currency }}{% endif %}</p>
+    {% if analysis.supplier_document.customer_person or analysis.supplier_document.customer_company %}<p><strong>Bill To:</strong> {{ analysis.supplier_document.customer_person }}{% if analysis.supplier_document.customer_company %} · {{ analysis.supplier_document.customer_company }}{% endif %}</p>{% endif %}
+    {% if analysis.machine_match_state == 'NOT_IDENTIFIED' %}<p><strong>Machine:</strong> Not identified</p>{% endif %}
+    <p><strong>Extracted lines:</strong> {{ analysis.supplier_document.lines|length }}</p>
+    {% if analysis.supplier_document.lines %}<div class="smart-supplier-evidence-lines">{% for line in analysis.supplier_document.lines %}<p><strong>{{ line.supplier_part_number }}</strong><br>{{ line.description }} · Qty {{ line.quantity|int if line.quantity == line.quantity|int else line.quantity }} · {{ '${:,.2f}'.format(line.unit_cost) }}</p>{% endfor %}</div>{% endif %}
+    {% if analysis.supplier_document.total is not none %}<p><strong>Total:</strong> {{ '${:,.2f}'.format(analysis.supplier_document.total) }}</p>{% endif %}
+    {% if analysis.supplier_document.job_url %}<a class="button ghost compact" href="{{ analysis.supplier_document.job_url }}">Open Job Research</a>{% else %}<a class="button ghost compact" href="/jobs">Choose Job Research Context</a>{% endif %}
+  </div>
+  {% endif %}
+  {% if analysis.blockers %}<div class="smart-review-alert"><strong>Confirmation blocked</strong><ul>{% for blocker in analysis.blockers %}<li>{{ blocker }}</li>{% endfor %}</ul></div>{% endif %}
+  {% if classification.evidence %}<details><summary>Extraction evidence</summary><pre>{{ classification.evidence }}</pre></details>{% endif %}
+</section>
+{% endif %}
+
+{% if analysis.customer_match %}
+<section class="panel smart-match-explanation">
+  <p class="eyebrow">CUSTOMER MATCH · {{ analysis.customer_match.state }}</p>
+  <p>{{ analysis.customer_match.rationale }}</p>
+  {% if analysis.customer_match.candidates %}<ul>{% for candidate in analysis.customer_match.candidates %}<li>{{ candidate.number }} · {{ candidate.name }}{% if candidate.company %} · {{ candidate.company }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+</section>
+{% endif %}
+
+<form class="panel smart-proposal-customer" id="customer-review" method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/customer">
+  <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
+  <div class="panel-heading"><div><p class="eyebrow">CUSTOMER</p><h2>Contact and account</h2></div><div class="smart-section-review"><strong>Status</strong><span class="status-pill {{ 'confident' if core.customer == 'CONFIRMED' else 'review' }}">{{ core.customer }}</span></div></div>
+  <div class="smart-field-grid">
+    <label>Contact name<input name="contact_name" value="{{ proposal.contact_name }}"></label>
+    <label>Company<input name="company_name" value="{{ proposal.company_name }}"></label>
+    <label>Location<input name="location" value="{{ proposal.location }}"></label>
+    <label>Phone<input name="phone" value="{{ proposal.phone }}"></label>
+    <label>Email<input type="email" name="email" value="{{ proposal.email }}"></label>
+    <label>Customer record
+      <select name="matched_customer_id">
+        <option value="">Create a new customer</option>
+        {% for customer in customers %}
+        <option value="{{ customer.id }}" {% if proposal.matched_customer_id == customer.id %}selected{% endif %}>
+          {{ customer.name }}{% if customer.company %} · {{ customer.company }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+  <div class="form-actions"><button class="button ghost" type="submit">Save Customer Details</button></div>
+</form>
+
+<section class="smart-proposal-assets" id="machine-review">
+  <div class="section-title-row">
+    <div><p class="eyebrow">MACHINE / ASSET</p><h2>Machines identified</h2><p>Each requested need should belong to the correct asset.</p><div class="smart-section-review"><strong>Status</strong><span class="status-pill {{ 'confident' if core.machine == 'CONFIRMED' else 'review' }}">{{ core.machine }}</span></div></div>
+    <form method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/assets/add"><input type="hidden" name="lock_version" value="{{ proposal.lock_version }}"><button class="button ghost" type="submit">＋ Add Machine</button></form>
+  </div>
+  <div class="smart-proposal-asset-list">
+  {% for asset in proposal.assets %}
+    {% set machine_match = analysis.machine_matches[loop.index0] if analysis.machine_matches and loop.index0 < analysis.machine_matches|length else none %}
+    {% set primary_identifier = asset.identifiers|selectattr('is_primary')|first %}
+    {% set engine_identifier = asset.identifiers|selectattr('identifier_type','equalto','ENGINE_SERIAL')|first %}
+    <article class="panel smart-proposal-asset">
+      <form method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/assets/{{ asset.id }}">
+        <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
+        <div class="panel-heading">
+          <div><p class="eyebrow">ASSET {{ loop.index }}</p><h3 class="machine-identity-line">{{ manufacturer_logo(asset.manufacturer, true) }}<span>{{ asset.model }}</span>{% if not asset.manufacturer %}<span>Manufacturer needs review</span>{% endif %}</h3></div>
+          <span class="status-pill {{ asset.review_state|lower }}">{{ asset.review_state }}</span>
+        </div>
+        {% if machine_match %}<p class="smart-existing-match"><strong>{{ machine_match.state }}</strong> · {{ machine_match.rationale }}</p>{% elif asset.matched_machine_id %}<p class="smart-existing-match">✓ Strong identifier match found. PPS will reuse the existing asset without overwriting it.</p>{% endif %}
+        <div class="smart-field-grid">
+          <label>Manufacturer<input name="manufacturer" value="{{ asset.manufacturer }}"></label>
+          <label>Model<input name="model" value="{{ asset.model }}"></label>
+          <label>Year<input name="year" inputmode="numeric" value="{{ asset.year }}"></label>
+          <label>Asset type
+            <select name="asset_category">
+              {% for value,label in {'vehicle':'Vehicle','machine':'Equipment / Machine','engine':'Engine','component':'Component','other':'Other'}.items() %}
+              <option value="{{ value }}" {% if asset.asset_category == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Identifier type
+            <select name="identifier_type">
+              {% for value in identifier_types %}{% if value != 'MODEL_CODE' %}<option value="{{ value }}" {% if primary_identifier and primary_identifier.identifier_type == value %}selected{% endif %}>{{ value|replace('_',' ')|title }}</option>{% endif %}{% endfor %}
+            </select>
+          </label>
+          <label>Identifier<input name="identifier_value" value="{{ primary_identifier.identifier_value if primary_identifier else '' }}"></label>
+        </div>
+        <details class="smart-advanced-fields" {% if asset.model_code or (asset.market_region and asset.market_region != 'UNKNOWN') or engine_identifier or (primary_identifier and primary_identifier.identifier_type in ('JDM_FRAME','JDM_CHASSIS')) %}open{% endif %}>
+          <summary>More identification details{% if asset.model_code or engine_identifier %} · populated{% endif %}</summary>
+          <div class="smart-field-grid">
+            <label>Model code <span class="muted">optional</span><input name="model_code" value="{{ asset.model_code }}"></label>
+            <label>Market / region <span class="muted">only if known</span><select name="market_region">{% for value in markets %}<option value="{{ value }}" {% if asset.market_region == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+            <label>Engine serial <span class="muted">optional component context</span><input name="engine_serial" value="{{ engine_identifier.identifier_value if engine_identifier else '' }}"></label>
+          </div>
+        </details>
+        <div class="form-actions split-actions">
+          <button class="button ghost" name="action" value="save" type="submit">Save Asset</button>
+          <button class="button danger ghost" name="action" value="remove" type="submit">Remove Detected Asset</button>
+        </div>
+      </form>
+      {% if chatgpt_submission and machine_match and machine_match.state in ('AMBIGUOUS','CONFLICT') and machine_match.candidates %}
+      <form method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/assets/{{ asset.id }}/match" class="smart-machine-resolution">
+        <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
+        <label>Operator machine resolution
+          <select name="machine_resolution" required>
+            <option value="">Choose an authoritative resolution</option>
+            {% for candidate in machine_match.candidates %}<option value="{{ candidate.id }}">Use existing · {{ candidate.manufacturer }} {{ candidate.model }} · {{ candidate.identifier }}</option>{% endfor %}
+            <option value="NEW">Create a new machine when confirmed</option>
+          </select>
+        </label>
+        <button class="button ghost" type="submit">Resolve Machine Match</button>
+      </form>
+      {% endif %}
+      <div class="smart-asset-needs" {% if loop.first %}id="requested-needs-review"{% endif %}>
+    <p class="eyebrow">REQUESTED NEEDS</p>
+        {% if asset.needs %}
+          {% for need in asset.needs %}
+          <form class="smart-need-row" method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/needs/{{ need.id }}">
+            <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
+            <input aria-label="Requested need" name="wording" value="{{ need.wording }}">
+            <select aria-label="Assign machine" name="proposal_asset_id">
+              <option value="">Unassigned / needs review</option>
+              {% for target in proposal.assets %}<option value="{{ target.id }}" {% if need.proposal_asset_id == target.id %}selected{% endif %}>{{ target.manufacturer }} {{ target.model }}</option>{% endfor %}
+            </select>
+            <span class="status-pill {{ 'confirmed' if need.review_state == 'CONFIDENT' else 'review' }}">{{ 'CONFIRMED' if need.review_state == 'CONFIDENT' else 'REVIEW' }}</span>
+            <button class="button ghost compact" name="action" value="save">Save</button>
+            <button class="button ghost compact" name="action" value="remove">Remove</button>
+          </form>
+          {% endfor %}
+        {% else %}<p class="empty-state compact">No requested needs assigned to this asset.</p>{% endif %}
+      </div>
+    </article>
+  {% endfor %}
+  </div>
+</section>
+
+{% if proposal.unassigned_needs %}
+<section class="panel smart-unassigned" {% if not proposal.assets %}id="requested-needs-review"{% endif %}>
+  <p class="eyebrow">REQUESTED NEEDS · NO ASSET CONTEXT</p><h2>Review customer wording</h2><p>Keeping a need unassigned is valid when no vehicle or equipment context is relevant.</p>
+  {% for need in proposal.unassigned_needs %}
+  <form class="smart-need-row" method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/needs/{{ need.id }}">
+    <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
+    <input name="wording" value="{{ need.wording }}">
+    <select name="proposal_asset_id"><option value="">Keep unassigned</option>{% for asset in proposal.assets %}<option value="{{ asset.id }}">{{ asset.manufacturer }} {{ asset.model }}</option>{% endfor %}</select>
+    <span class="status-pill review">REVIEW</span>
+    <button class="button ghost compact" name="action" value="save">Assign / Save</button>
+    <button class="button ghost compact" name="action" value="remove">Remove</button>
+  </form>
+  {% endfor %}
+</section>
+{% endif %}
+
+<form class="panel smart-add-need" method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/needs/add">
+  <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
+  <div><p class="eyebrow">ADD REQUESTED NEED</p><p>Add customer wording without creating or selecting a quoteable candidate.</p></div>
+  <input name="wording" required placeholder="Example: Fuel Filter Kit">
+  <select name="proposal_asset_id"><option value="">No asset context</option>{% for asset in proposal.assets %}<option value="{{ asset.id }}">{{ asset.manufacturer }} {{ asset.model }}</option>{% endfor %}</select>
+  <button class="button ghost" type="submit">＋ Add Need</button>
+</form>
+
+<section class="panel smart-review-summary erp-intake-proposal">
+  <div><p class="eyebrow">CONFIRMATION SUMMARY</p><h2>What PPS will create or reuse</h2></div>
+  <ul class="smart-review-list">
+    <li><strong>Customer: {{ summary.customer.action }}</strong> {{ summary.customer.label }}</li>
+    {% for machine in summary.machines %}<li><strong>Machine {{ loop.index }}: {{ machine.action }}</strong> {{ machine.label }}</li>{% endfor %}
+    <li><strong>Needs:</strong> Create {{ summary.need_count }} Requested Need{% if summary.need_count != 1 %}s{% endif %} · {{ summary.assigned_need_count }} assigned{% if summary.unassigned_need_count %} · {{ summary.unassigned_need_count }} unassigned{% endif %}</li>
+    <li><strong>Review:</strong> {{ summary.review_count }} item{% if summary.review_count != 1 %}s{% endif %} need{% if summary.review_count == 1 %}s{% endif %} review</li>
+  </ul>
+  {% if summary.missing %}<div class="smart-review-alert"><strong>Missing important information</strong><ul>{% for item in summary.missing %}<li>{{ item }}</li>{% endfor %}</ul></div>{% endif %}
+  <p><strong>Confirm will:</strong> {{ summary.confirmation_action }}</p>
+</section>
+
+<section class="smart-proposal-confirm panel erp-current-work erp-next-action">
+  <div><p class="eyebrow">AUTHORITY BOUNDARY</p><h2>Ready to create the Job?</h2><p>Confirmation creates the Request, Job, Requested Needs, and any optional asset context in one transaction. It does not select research candidates or create prices.</p></div>
+  {% if ready_to_create %}<form method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/confirm">
+    <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
+    <button class="button" type="submit">Confirm &amp; Create Job</button>
+  </form>{% else %}<p class="smart-review-alert"><strong>Confirm &amp; Create is unavailable.</strong> Save each required review item above before creating the Job.</p>{% endif %}
+</section>
+
+<section class="panel smart-proposal-attachments">
+  <p class="eyebrow">ATTACHMENTS</p>
+  <h2>Source documents and images</h2>
+  {% if proposal.attachments %}
+  <div class="smart-intake-review-images smart-attachment-list">
+    {% for attachment in proposal.attachments %}
+    <figure class="smart-attachment-row">
+      {% if attachment.media_type == 'application/pdf' %}
+      <a class="button ghost compact" href="/requests/smart-intake/proposals/{{ proposal.id }}/attachments/{{ attachment.id }}" target="_blank" rel="noopener">Open PDF</a>
+      {% else %}<button type="button" class="smart-attachment-preview" data-image-preview data-image-src="/requests/smart-intake/proposals/{{ proposal.id }}/attachments/{{ attachment.id }}" data-image-name="{{ attachment.original_filename }}" aria-label="Preview {{ attachment.original_filename }}">
+        <img src="/requests/smart-intake/proposals/{{ proposal.id }}/attachments/{{ attachment.id }}" alt="">
+      </button>{% endif %}
+      <figcaption>{{ attachment.original_filename }} · {{ attachment.extraction_status|replace('_',' ')|title }}</figcaption>
+      {% if proposal.status == 'DRAFT' %}
+      <form method="post" action="/requests/smart-intake/proposals/{{ proposal.id }}/attachments/{{ attachment.id }}/remove" onsubmit="return confirm('Remove this image?')">
+        <input type="hidden" name="lock_version" value="{{ proposal.lock_version }}">
+        <button class="button ghost" type="submit">Remove</button>
+      </form>
+      {% endif %}
+    </figure>
+    {% endfor %}
+  </div>
+  {% else %}<p class="muted-copy">No images attached.</p>{% endif %}
+</section>
+<div class="smart-image-modal" data-image-modal hidden role="dialog" aria-modal="true" aria-labelledby="smart-image-modal-title">
+  <div class="smart-image-modal-dialog">
+    <div class="smart-image-modal-head"><strong id="smart-image-modal-title" data-image-modal-name>Image preview</strong><button type="button" class="smart-image-modal-close" data-image-modal-close aria-label="Close image preview">×</button></div>
+    <button type="button" class="smart-image-modal-nav previous" data-image-modal-previous aria-label="Previous image">‹</button>
+    <img data-image-modal-image src="" alt="">
+    <button type="button" class="smart-image-modal-nav next" data-image-modal-next aria-label="Next image">›</button>
+  </div>
+</div>
+<script>
+[
+  [".smart-mcp-evidence", "Source & Transport Details", "Untrusted transport candidates and research evidence"],
+  [".smart-document-analysis", "Document Analysis", "Classification, extraction evidence, and diagnostics"],
+  [".smart-match-explanation", "Matching Evidence", "Candidate matching rationale"],
+  [".smart-proposal-attachments", "Source Attachments", "Original documents and extraction status"]
+].forEach(([selector, title, hint]) => {
+  const panel = document.querySelector(selector);
+  if (panel) {
+    panel.dataset.densityCollapse = title;
+    panel.dataset.densityHint = hint;
+  }
+});
+</script>
+<script src="/static/smart_intake_attachments.js?v=smart-attachments-2" defer></script>
+{% endblock %}

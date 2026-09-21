@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · Pinpoint Sourcing LLC{% endblock %}
+{% block content %}
+<section class="workspace-heading"><div><p class="eyebrow">CUSTOMER MANAGEMENT</p><h1>{{ title }}</h1><p>{{ subtitle }}</p></div><a class="button ghost" href="{{ cancel_url }}">Cancel</a></section>
+{% if duplicate %}
+<section class="panel duplicate-warning-panel"><p class="eyebrow">POSSIBLE DUPLICATE</p><h2>Existing Customer Found</h2><p>{{ duplicate.name }} · {{ duplicate.customer_number }}</p><p>{{ duplicate.phone or duplicate.email or "No contact information" }}</p><div class="form-actions"><a class="button ghost" href="/customers/{{ duplicate.id }}">Open Existing Customer</a><form method="post" action="/customers/new"><input type="hidden" name="name" value="{{ form.name }}"><input type="hidden" name="company" value="{{ form.company }}"><input type="hidden" name="phone" value="{{ form.phone }}"><input type="hidden" name="email" value="{{ form.email }}"><input type="hidden" name="address" value="{{ form.address }}"><input type="hidden" name="create_anyway" value="1"><button class="button" type="submit">Create Anyway</button></form></div></section>
+{% endif %}
+<form method="post" action="{{ form_action }}" class="panel form-grid customer-edit-form"><div class="form-section"><p class="eyebrow">CONTACT</p><h2>Customer Information</h2><label>Customer Name *<input name="name" value="{{ form.name }}" required autofocus></label><label>Company<input name="company" value="{{ form.company }}"></label><div class="two-column"><label>Phone<input name="phone" value="{{ form.phone }}"></label><label>Email<input name="email" type="email" value="{{ form.email }}"></label></div><label>Address<input name="address" value="{{ form.address }}"></label></div><div class="form-actions full"><a class="button ghost" href="{{ cancel_url }}">Cancel</a><button class="button" type="submit">{{ submit_label }}</button></div></form>
+{% endblock %}

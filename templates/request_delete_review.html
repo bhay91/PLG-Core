@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Delete / Remove {{ record.request_number }} · Pinpoint Sourcing LLC{% endblock %}
+{% block content %}
+<section class="workspace-heading"><div><p class="eyebrow">INBOX LIFECYCLE CONTROL</p><h1>Delete / Remove Request</h1><p>{{ record.request_number }} · {{ record.company_name or record.individual_name or "No customer identity recorded" }}</p></div><a class="button ghost" href="/requests/{{ record.id }}">Back to Request</a></section>
+
+<section class="panel erp-delete-review {% if not eligibility.can_permanently_delete %}is-protected{% endif %}">
+  {% if eligibility.can_permanently_delete %}
+  <p class="eyebrow">PERMANENT DELETE AVAILABLE</p>
+  <h2>Permanently delete this Inbox item</h2>
+  <p>This request is an empty accidental shell with no protected operational evidence. This action cannot be undone.</p>
+  <form class="erp-delete-confirmation" method="post" action="/requests/{{ record.id }}/delete">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Deletion reason<input name="reason" required autocomplete="off"></label>
+    <label>Type <strong>{{ record.request_number }}</strong> to confirm<input name="confirmation" required autocomplete="off"></label>
+    <button class="button danger" type="submit">Permanently Delete Inbox Item</button>
+  </form>
+  {% else %}
+  <p class="eyebrow">PROTECTED PPS RECORD</p>
+  <h2>This Inbox item cannot be permanently deleted</h2>
+  <p>Its history remains part of PPS. Use a reversible lifecycle action instead.</p>
+  <ul class="erp-delete-blockers">{% for blocker in eligibility.blockers %}<li>{{ blocker }}</li>{% endfor %}</ul>
+  <div class="erp-delete-alternatives">
+    {% if not record.is_archived and not record.is_cancelled and not record.job_id %}<form method="post" action="/requests/{{ record.id }}/remove-from-inbox"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="expected_updated_at" value="{{ record.updated_at }}"><button class="button" type="submit">Remove from Inbox</button></form>{% endif %}
+    {% if not record.is_archived %}<form method="post" action="/requests/{{ record.id }}/archive"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button ghost" type="submit">Archive Request</button></form>{% endif %}
+    {% if not record.is_cancelled %}<form class="erp-delete-cancel" method="post" action="/requests/{{ record.id }}/cancel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Cancellation reason<input name="reason" required></label><button class="button ghost" type="submit">Cancel Request</button></form>{% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · Pinpoint Sourcing LLC{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="/static/customer_requests.css">
+<link rel="stylesheet" href="/static/app_v2.css?v=visual-polish-v3">
+
+<div class="request-create-page">
+  <style>.request-create-form{display:flex;flex-direction:column}.request-create-form>.request-create-section:nth-of-type(1){order:1}.request-create-form>.request-create-section:nth-of-type(2){order:3}.request-create-form>.request-create-section:nth-of-type(3){order:2}.request-create-form>.request-create-section:nth-of-type(4){order:4}.request-create-form>.request-create-section:nth-of-type(5){order:5}.request-create-form>.request-create-optional{order:6}.request-create-form>.request-create-actions{order:7}</style>
+
+  <section class="workspace-heading request-create-heading">
+    <div>
+      <p class="eyebrow">INBOX</p>
+      <h1>{{ title }}</h1>
+      <p>
+        Enter the customer and Requested Need once. Add asset context only when relevant.
+        PPS will carry the information into the Job workflow.
+      </p>
+    </div>
+
+    <a class="button ghost" href="{{ cancel_url }}">
+      Back to Inbox
+    </a>
+  </section>
+
+  <form
+    method="post"
+    action="{{ form_action }}"
+    enctype="multipart/form-data"
+    class="request-create-form erp-intake-form"
+  >
+
+    <section class="panel request-create-section">
+      <div class="request-create-section-head">
+        <div class="request-create-step">1</div>
+
+        <div>
+          <p class="eyebrow">CUSTOMER</p>
+          <h2>Who is this for?</h2>
+          <p>
+            Add the individual, company, and contact information available.
+          </p>
+        </div>
+      </div>
+
+      <div class="request-create-grid two">
+        <label>
+          <span>Individual Name</span>
+          <input
+            name="individual_name"
+            value="{{ record.individual_name or '' }}"
+            placeholder="Customer name"
+          >
+        </label>
+
+        <label>
+          <span>Company Name</span>
+          <input
+            name="company_name"
+            value="{{ record.company_name or '' }}"
+            placeholder="Optional company"
+          >
+        </label>
+      </div>
+
+      <div class="request-create-grid two">
+        <label>
+          <span>Phone</span>
+          <input
+            name="phone"
+            value="{{ record.phone or '' }}"
+            placeholder="Phone or WhatsApp number"
+          >
+        </label>
+
+        <label>
+          <span>Email</span>
+          <input
+            type="email"
+            name="email"
+            value="{{ record.email or '' }}"
+            placeholder="Optional email"
+          >
+        </label>
+      </div>
+
+      <label>
+        <span>Location / Shipping Destination</span>
+        <input
+          name="location"
+          value="{{ record.location or '' }}"
+          placeholder="City, island, country, or delivery location"
+        >
+      </label>
+    </section>
+
+    <section class="panel request-create-section">
+      <div class="request-create-section-head">
+        <div class="request-create-step">3</div>
+
+        <div>
+          <p class="eyebrow">OPTIONAL ASSET / EQUIPMENT CONTEXT</p>
+          <h2>Does compatibility depend on an asset?</h2>
+          <p>
+            Leave this section blank for general goods, materials, equipment purchases, or services.
+          </p>
+        </div>
+      </div>
+
+      <div class="request-create-grid two">
+        <label>
+          <span>Registry Type</span>
+          <select name="registry_type">
+            {% for value, label in registry_types.items() %}
+            <option
+              value="{{ value }}"
+              {% if (record.registry_type or 'other') == value %}selected{% endif %}
+            >
+              {{ label }}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label>
+          <span>Year</span>
+          <input
+            name="year"
+            value="{{ record.year or '' }}"
+            placeholder="Optional"
+          >
+        </label>
+      </div>
+
+      <div class="request-create-grid two">
+        <label>
+          <span>Manufacturer</span>
+          <input
+            name="manufacturer"
+            value="{{ record.manufacturer or '' }}"
+            placeholder="CAT, Cummins, Honda..."
+          >
+        </label>
+
+        <label>
+          <span>Model</span>
+          <input
+            name="model"
+            value="{{ record.model or '' }}"
+            placeholder="420D, N14, CR-V..."
+          >
+        </label>
+      </div>
+
+      <label>
+        <span>VIN / PIN / Engine Serial / Identifier</span>
+        <input
+          name="identifier"
+          value="{{ record.identifier or '' }}"
+          placeholder="Enter the identifying number if available"
+        >
+      </label>
+    </section>
+
+    <section class="panel request-create-section">
+      <div class="request-create-section-head">
+        <div class="request-create-step">2</div>
+
+        <div>
+          <p class="eyebrow">REQUESTED NEED</p>
+          <h2>What does the customer need?</h2>
+          <p>
+            Preserve the customer’s wording. Enter one need per line with quantity and specifications when known.
+          </p>
+        </div>
+      </div>
+
+      <label>
+        <span>Requested Needs</span>
+        <textarea
+          name="requested_parts"
+          rows="7"
+          placeholder="2 × King mattress, medium firm&#10;1 × Used forklift, 5,000 lb capacity, LPG&#10;3 pallets bottled water"
+        >{{ record.requested_parts or '' }}</textarea>
+      </label>
+    </section>
+
+    <section class="panel request-create-section">
+      <div class="request-create-section-head">
+        <div class="request-create-step">4</div>
+
+        <div>
+          <p class="eyebrow">CUSTOMER MESSAGE</p>
+          <h2>Original request or additional details</h2>
+          <p>
+            Paste the customer’s message or enter any useful notes.
+          </p>
+        </div>
+      </div>
+
+      <label>
+        <span>Customer Request</span>
+        <textarea
+          name="request_text"
+          rows="6"
+          placeholder="Paste a WhatsApp message, email, phone-call notes, or customer concern..."
+        >{{ record.request_text or '' }}</textarea>
+      </label>
+    </section>
+
+    <section class="panel request-create-section">
+      <div class="request-create-section-head">
+        <div class="request-create-step">5</div>
+
+        <div>
+          <p class="eyebrow">ATTACHMENTS</p>
+          <h2>Photos, screenshots, or documents</h2>
+          <p>
+            Upload product photos, nameplates, screenshots, specifications, or PDF documents.
+          </p>
+        </div>
+      </div>
+
+      <label class="request-file-upload">
+        <span>Choose Files</span>
+
+        <input
+          type="file"
+          name="attachments"
+          multiple
+          accept="image/*,.pdf"
+        >
+
+        <small>
+          Images and PDF files are supported.
+        </small>
+      </label>
+    </section>
+
+    <details
+      class="panel request-create-optional"
+      {% if record.reminder_date %}open{% endif %}
+    >
+      <summary>
+        Reminder
+        <span>Optional</span>
+      </summary>
+
+      <div class="request-create-optional-body">
+        <label>
+          <span>Reminder Date</span>
+          <input
+            type="date"
+            name="reminder_date"
+            value="{{ record.reminder_date or '' }}"
+          >
+        </label>
+      </div>
+    </details>
+
+
+    <section class="request-create-actions">
+      <a class="button ghost" href="{{ cancel_url }}">
+        Cancel
+      </a>
+
+      <button class="workspace-btn workspace-btn-primary" type="submit">
+        {% if record.id %}
+          Save Request Changes
+        {% else %}
+          Save Customer Request
+        {% endif %}
+      </button>
+    </section>
+
+  </form>
+</div>
+{% endblock %}

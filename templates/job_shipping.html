@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Shipping · {{ job.job_number }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/job_workspace.css?v=9">
+<main class="jcc" data-job-workspace><header class="jcc-panel jcc-header"><a class="jcc-back" href="/jobs/{{ job.id }}/basket?view=advanced#quote">← Back to Job</a><p class="jcc-eyebrow">PRICING · SHIPPING</p><h1>Shipping</h1><p>{{ job.job_number }} · {{ job.customer }}</p></header>
+<section class="jcc-panel"><h2>Customer shipping</h2><p class="jcc-section-intro">This updates the existing shared shipping value used by quote totals.</p><form method="post" class="jcc-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Customer shipping charge<input name="customer_shipping" type="number" inputmode="decimal" min="0" step="0.01" value="{{ '%.2f'|format(basket.totals.shipping_total or 0) }}" required></label>{% if revision %}<input type="hidden" name="expected_revision_id" value="{{ revision.id }}"><input type="hidden" name="expected_version" value="{{ revision.lock_version }}">{% endif %}<button class="button" type="submit">Save Shipping</button></form></section>
+<section class="jcc-panel"><h2>Supplier/freight records</h2>{% for source in sources %}<div class="jcc-history-card"><strong>{{ source.source_name }}</strong><p>Freight cost recorded: {{ source.currency or basket.currency }} {{ '%.2f'|format(source.shipping_total or 0) }}</p></div>{% else %}<p class="jcc-muted">No supplier freight record exists yet.</p>{% endfor %}<details><summary>Advanced allocation details</summary><p class="jcc-muted">Source allocation and provenance remain in the legacy tools.</p></details></section>
+</main>
+{% endblock %}

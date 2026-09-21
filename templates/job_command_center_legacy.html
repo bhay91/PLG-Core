@@ -1,0 +1,1712 @@
+{% extends "base.html" %}
+{% from "_manufacturer_logo.html" import manufacturer_logo %}
+{% block title %}Job Command Center · {{ job.job_number }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/job_workspace.css?v=9">
+<p><a class="button ghost" href="/jobs/{{ job.id }}/basket?view=advanced">← Back to Job</a></p>
+<style>
+.cc-shell{width:100%;max-width:none;margin:0;display:grid;gap:18px}.cc-card{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-sm)}
+.cc-hero{padding:24px;display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:22px;align-items:stretch}.cc-kicker{margin:0 0 8px;color:var(--accent-dark);font-size:12px;font-weight:850;letter-spacing:.09em}.cc-hero h1{margin:0;color:var(--ink-strong);font-size:38px;line-height:1.05}.cc-subtitle{margin:10px 0 0;color:var(--muted);font-size:16px}.cc-meta{margin-top:18px;display:flex;flex-wrap:wrap;gap:9px}.cc-chip{padding:8px 11px;border:1px solid var(--line);border-radius:999px;background:var(--surface-soft);font-size:12px;font-weight:800}.cc-next{padding:20px;border-radius:14px;background:linear-gradient(135deg,#0b3267,#092650);color:#fff;display:flex;flex-direction:column;justify-content:space-between}.cc-next span{font-size:10px;font-weight:850;letter-spacing:.12em;opacity:.72}.cc-next strong{margin:8px 0 18px;font-size:24px}.cc-next .button{background:#fff;color:var(--ink-strong);border-color:#fff}
+.cc-progress{padding:14px 18px;display:flex;gap:9px;flex-wrap:wrap}.cc-step{padding:8px 12px;border-radius:999px;background:#f2f5f9;color:#778399;font-size:12px;font-weight:800;text-decoration:none}.cc-step.done{background:var(--success-soft);color:var(--success)}.cc-step.current{background:var(--accent-soft);color:var(--accent-dark)}
+.cc-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(310px,.55fr);gap:18px}.cc-request{padding:22px}.cc-label{margin:0 0 7px;color:var(--accent-dark);font-size:11px;font-weight:850;letter-spacing:.1em}.cc-request h2,.cc-section h2,.cc-summary h2{margin:0;color:var(--ink-strong);font-size:23px}.cc-request-text{margin:18px 0;color:#2f405b;font-size:16px;line-height:1.65;white-space:pre-wrap}.cc-muted{color:var(--muted);font-size:13px}.cc-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.cc-job-summary{padding:22px;display:grid;gap:16px}.cc-summary-line{display:grid;gap:3px;padding-bottom:14px;border-bottom:1px solid var(--line)}.cc-summary-line:last-child{padding-bottom:0;border-bottom:0}.cc-summary-line span{color:var(--muted);font-size:11px;font-weight:800;text-transform:uppercase}.cc-summary-line strong{font-size:15px;color:var(--ink-strong)}
+.cc-section{padding:22px}.cc-section-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:18px}.cc-research-layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:16px}.cc-tools{padding:16px;border:1px solid #cfe0f5;border-radius:13px;background:#f5f9ff}.cc-tools form{display:grid;gap:10px}.cc-tools label{font-size:12px;font-weight:800}.cc-tools select{width:100%}.cc-results{min-width:0}.cc-source{border:1px solid var(--line);border-radius:13px;overflow:hidden;margin-bottom:12px}.cc-source-head{padding:14px 16px;background:#f8fafc;display:flex;justify-content:space-between;gap:12px;align-items:center}.cc-source-head strong{font-size:16px}.cc-result-table,.cc-ready-table{width:100%;border-collapse:collapse}.cc-result-table th,.cc-ready-table th{padding:11px 12px;background:#f7f9fc;color:#6c7890;font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.04em}.cc-result-table td,.cc-ready-table td{padding:13px 12px;border-top:1px solid var(--line);vertical-align:middle;font-size:13px}.cc-result-table tr.selected{background:#effbf4}.cc-part-title{display:grid;gap:2px}.cc-part-title small{color:var(--muted)}
+.cc-empty{padding:34px;border:1px dashed var(--line-strong);border-radius:13px;text-align:center;color:var(--muted)}.cc-badge{display:inline-flex;align-items:center;padding:5px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent-dark);font-size:10px;font-weight:850}.cc-count{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent-dark);font-size:12px;font-weight:850}
+.cc-summary{overflow:hidden}.cc-summary-head{padding:20px 22px;display:flex;justify-content:space-between;gap:18px;align-items:center}.cc-primary-numbers{display:grid;grid-template-columns:1fr 1fr}.cc-primary-number{padding:24px 22px}.cc-primary-number:first-child{background:#eaf4ff}.cc-primary-number:last-child{background:#ebf9ef}.cc-primary-number span,.cc-costs span{display:block;color:#6b7890;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.06em}.cc-primary-number strong{display:block;margin-top:7px;font-size:30px;color:#0863cb}.cc-primary-number:last-child strong{color:#168648}.cc-costs{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line)}.cc-costs div{padding:18px 22px;border-right:1px solid var(--line)}.cc-costs div:last-child{border-right:0}.cc-costs strong{display:block;margin-top:5px;font-size:17px}
+.cc-qty-form{display:flex;align-items:center;gap:6px}.cc-qty-form input{width:58px}.cc-remove{width:30px;height:30px;border:1px solid #f1b6b6;border-radius:8px;background:#fff;color:var(--danger);font-weight:900}.cc-dialog{width:min(720px,calc(100vw - 32px));border:0;border-radius:16px;padding:0;box-shadow:0 24px 80px rgba(8,30,65,.25)}.cc-dialog::backdrop{background:rgba(7,26,54,.55)}.cc-dialog form{padding:22px}.cc-dialog-head{display:flex;justify-content:space-between;gap:18px}.cc-dialog-grid{margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:14px}.cc-dialog-grid label{display:grid;gap:6px;font-size:12px;font-weight:800}.cc-dialog-grid .full{grid-column:1/-1}.cc-dialog-actions{margin-top:20px;display:flex;justify-content:flex-end;gap:10px}
+@media(max-width:1050px){.cc-hero,.cc-grid,.cc-research-layout{grid-template-columns:1fr}.cc-next{min-height:160px}.cc-primary-numbers,.cc-costs{grid-template-columns:1fr}.cc-costs div{border-right:0;border-bottom:1px solid var(--line)}.cc-costs div:last-child{border-bottom:0}}@media(max-width:720px){.cc-hero h1{font-size:30px}.cc-section-head,.cc-summary-head{flex-direction:column}.cc-result-table,.cc-ready-table{display:block;overflow-x:auto}.cc-dialog-grid{grid-template-columns:1fr}.cc-dialog-grid .full{grid-column:auto}}
+
+.cc-verification-cell{
+  min-width:210px;
+  white-space:normal;
+}
+.fulfillment-progress{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}.fulfillment-progress strong{padding:11px;border-radius:9px;background:var(--surface-soft);text-align:center}.fulfillment-list{display:grid;gap:9px;margin-top:14px}.fulfillment-item{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px;border:1px solid var(--line);border-radius:10px}.fulfillment-item>div:first-child{display:grid;gap:3px}.fulfillment-item small{color:var(--muted)}.fulfillment-item.is-complete{background:var(--success-soft)}.fulfillment-quantities{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}.fulfillment-quantities span{padding:4px 7px;border-radius:7px;background:var(--surface-soft);font-size:11px;font-weight:800}.fulfillment-checks{display:flex;gap:8px}.fulfillment-checks form{display:flex;align-items:center;gap:5px}.fulfillment-checks input[type=number]{width:58px}.fulfillment-checkbox{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;font-weight:800;cursor:pointer}.fulfillment-checkbox:disabled{cursor:default;color:var(--muted)}@media(max-width:620px){.fulfillment-progress{grid-template-columns:1fr}.fulfillment-item{align-items:stretch;flex-direction:column}.fulfillment-checks{display:grid;grid-template-columns:1fr 1fr}.fulfillment-checkbox{width:100%}}
+.job-primary-summary{display:none}.job-primary-identity{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.job-primary-identity h1{margin:0;font-size:28px}.job-primary-identity p{margin:6px 0 0;color:var(--muted)}.job-primary-status{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}.job-primary-status strong{padding:7px 10px;border-radius:999px;background:var(--surface-soft);font-size:12px}.job-primary-next{margin-top:16px;padding:13px 15px;border-left:4px solid var(--accent);border-radius:8px;background:var(--accent-soft);display:flex;justify-content:space-between;gap:14px;align-items:center}.job-primary-next span{font-size:11px;font-weight:900;letter-spacing:.08em}.job-primary-next strong{display:block;margin-top:3px}.job-disclosure{padding:0;overflow:hidden}.job-disclosure>summary{cursor:pointer;padding:17px 20px;font-weight:900;color:var(--ink-strong);list-style-position:inside}.job-disclosure[open]>summary{border-bottom:1px solid var(--line);background:var(--surface-soft)}.job-disclosure-body{padding:18px}.fulfillment-panel{grid-column:1/-1;order:-1;border-color:#a9c9ec;box-shadow:0 8px 24px rgba(11,50,103,.08)}@media(max-width:620px){.job-primary-identity,.job-primary-next{align-items:stretch;flex-direction:column}.job-primary-next .button{width:100%}}
+#job-overview{position:static;top:auto;z-index:auto;padding:0;overflow:hidden}#job-overview>summary{cursor:pointer;padding:17px 20px;font-weight:900;color:var(--ink-strong)}#job-overview[open]>summary{border-bottom:1px solid var(--line);background:var(--surface-soft)}
+.cc-confidence-column{
+  display:none;
+}
+.cc-verification-cell select{
+  display:block;
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  box-sizing:border-box;
+}
+.part-editor-list{display:grid;gap:14px}.part-editor-card{border:1px solid var(--line);border-radius:13px;background:#fff;overflow:hidden}.part-editor-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 17px;background:var(--surface-soft);border-bottom:1px solid var(--line)}.part-editor-header h3{margin:6px 0 2px;font-size:17px}.part-editor-header p{margin:0;color:var(--muted);font-size:12px}.part-editor-primary-actions{display:flex;gap:8px;flex-wrap:wrap}.part-editor-grid{display:grid;grid-template-columns:repeat(5,minmax(125px,1fr));gap:12px;padding:16px}.part-editor-grid label,.part-editor-metric{display:grid;align-content:start;gap:6px;min-width:0}.part-editor-grid label>span,.part-editor-metric>span{font-size:10px;font-weight:850;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.part-editor-grid input{width:100%;min-width:0}.part-editor-metric{padding:9px 10px;border-radius:9px;background:var(--surface-soft)}.part-editor-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 16px;border-top:1px solid var(--line);color:var(--muted)}.parts-ready-head-actions{display:flex;align-items:center;gap:8px}.verification-launch-actions{display:grid;grid-template-columns:1fr auto;gap:8px}.manual-part-trigger{white-space:nowrap}@media(max-width:1100px){.part-editor-grid{grid-template-columns:repeat(3,minmax(130px,1fr))}}@media(max-width:720px){.part-editor-header,.part-editor-footer{align-items:stretch;flex-direction:column}.part-editor-primary-actions{display:grid;grid-template-columns:1fr 1fr}.part-editor-grid{grid-template-columns:1fr 1fr;padding:13px}.verification-launch-actions{grid-template-columns:1fr}.part-editor-primary-actions .button,.part-editor-footer .button{width:100%}}@media(max-width:430px){.part-editor-grid{grid-template-columns:1fr}.part-editor-primary-actions{grid-template-columns:1fr}}
+.job-followup-layout{display:grid;grid-template-columns:minmax(280px,.75fr) minmax(0,1.25fr);gap:16px}.job-followup-create{display:grid;gap:10px;padding:15px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft)}.job-followup-create label{display:grid;gap:5px;font-size:11px;font-weight:800}.job-followup-list{display:grid;gap:10px}.job-followup-item{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.7fr);gap:14px;padding:14px;border:1px solid var(--line);border-radius:12px}.job-followup-item.attention{border-left:4px solid var(--danger)}.job-followup-item>div,.job-followup-item form{display:grid;gap:6px}.job-followup-item small{color:var(--muted)}@media(max-width:850px){.job-followup-layout,.job-followup-item{grid-template-columns:1fr}}
+.job-assets-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.job-asset-card{padding:15px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft);display:grid;gap:10px}.job-asset-card header{display:flex;justify-content:space-between;gap:10px}.job-asset-card h3{margin:0;font-size:17px}.job-asset-card p{margin:0;color:var(--muted);font-size:12px}.job-asset-actions{display:flex;gap:7px;flex-wrap:wrap}.asset-assignment{display:flex;gap:7px;align-items:end}.asset-assignment label{display:grid;gap:4px;min-width:180px}.part-verification{display:grid;grid-template-columns:minmax(160px,1fr) auto auto;gap:8px;align-items:end}.quote-builder-panel{display:grid;grid-template-columns:minmax(220px,.6fr) minmax(0,1.4fr);gap:16px;padding:16px;border:1px solid #bfd6f1;border-radius:12px;background:#f5f9ff}.quote-builder-panel label{display:grid;gap:5px}.quote-line-select{display:flex;align-items:center;gap:7px;font-weight:800;color:var(--accent-dark)}@media(max-width:1000px){.job-assets-grid{grid-template-columns:1fr 1fr}.quote-builder-panel{grid-template-columns:1fr}}@media(max-width:720px){.job-assets-grid{grid-template-columns:1fr}.asset-assignment,.part-verification{grid-template-columns:1fr;display:grid}.asset-assignment label{min-width:0}}
+.requested-need-primary{padding:22px;border-color:#9fc4ee}.requested-need-list{display:grid;gap:10px}.requested-need-card{padding:15px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft)}.requested-need-card.is-active{border-color:var(--accent);background:var(--accent-soft)}.requested-need-card h3{margin:0;color:var(--ink-strong);font-size:19px}.requested-need-meta,.need-specifications,.need-quantity-flow{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.requested-need-meta span,.need-quantity-flow span{padding:5px 8px;border-radius:7px;background:#fff;color:var(--muted);font-size:11px;font-weight:800}.need-specifications div{display:grid;gap:2px;min-width:120px;padding:7px 9px;border-left:3px solid var(--accent);background:#fff}.need-specifications small{color:var(--muted);font-weight:800}.requested-need-research{display:inline-block;margin-top:10px;color:var(--accent-dark);font-size:12px;font-weight:800;text-decoration:none}.requested-need-research:hover{text-decoration:underline}.asset-context-panel{margin-top:12px}.job-bar-need{margin-top:8px!important;color:var(--ink-strong)!important;font-size:17px;font-weight:850}.job-payment-paid{color:var(--success)}@media(max-width:620px){.requested-need-meta,.need-specifications,.need-quantity-flow{display:grid;grid-template-columns:1fr}.need-specifications div{min-width:0}}
+.job-asset-card.is-selected{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 14%,transparent);background:#fff}.asset-selector-link{color:inherit;text-decoration:none;display:grid;gap:8px}.asset-brand-row{display:flex;align-items:center;gap:10px}.asset-brand-mark{width:42px;height:42px;border-radius:10px;background:var(--accent-dark);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:900;letter-spacing:.04em;overflow:hidden}.asset-brand-mark img{width:100%;height:100%;object-fit:contain;background:#fff}.asset-needs-summary{font-size:12px;color:var(--muted);min-height:18px}.asset-need-list{margin:0;padding-left:18px;color:var(--ink-strong);font-size:12px}.asset-work-footer{display:flex;justify-content:space-between;align-items:center;gap:8px;padding-top:9px;border-top:1px solid var(--line)}.asset-work-counts{font-size:11px;color:var(--muted)}.asset-work-status{font-size:10px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;color:var(--accent-dark)}.asset-work-status.ready{color:var(--success)}.job-glance-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--line)}.job-glance-metric{padding:18px 20px;border-right:1px solid var(--line)}.job-glance-metric:last-child{border-right:0}.job-glance-metric span{display:block;color:var(--muted);font-size:10px;font-weight:850;text-transform:uppercase}.job-glance-metric strong{display:block;margin-top:6px;font-size:22px}.job-stage-strip{margin:0 20px 18px;padding:14px 16px;border-radius:11px;background:var(--surface-soft);display:flex;justify-content:space-between;gap:14px;align-items:center}.original-request-disclosure{margin:0 20px 18px;border-top:1px solid var(--line);padding-top:14px}.original-request-disclosure summary,.machine-manage summary,.needs-manage summary{cursor:pointer;color:var(--accent-dark);font-weight:850}.original-request-content{margin-top:12px;padding:14px;border-radius:10px;background:var(--surface-soft)}.machine-workspace-head{display:flex;justify-content:space-between;gap:18px;align-items:center;padding-bottom:16px;border-bottom:1px solid var(--line)}.machine-workspace-title{display:flex;gap:13px;align-items:center}.machine-navigation{display:flex;gap:8px}.machine-navigation.bottom{margin-top:20px;padding-top:18px;border-top:1px solid var(--line);justify-content:space-between}.needs-list,.research-result-list{display:grid;gap:10px}.need-row,.research-result-card{border:1px solid var(--line);border-radius:11px;padding:13px;background:#fff}.need-row{display:flex;justify-content:space-between;gap:12px;align-items:center}.research-need-choice{cursor:pointer}.research-need-choice>input{width:auto;flex:0 0 auto}.need-row.is-satisfied{opacity:.72}.need-state{font-size:11px;font-weight:850;text-transform:uppercase}.needs-manage{margin-top:10px}.needs-manage>div{margin-top:10px}.research-step{margin:18px 0 8px;display:flex;align-items:center;gap:9px}.research-step-number{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;background:var(--accent-dark);color:#fff;font-weight:900}.research-toolbar{display:grid;grid-template-columns:minmax(180px,1fr) minmax(170px,1fr) auto auto;gap:9px;align-items:end;padding:14px;border-radius:11px;background:var(--surface-soft)}.research-source-toolbar{grid-template-columns:minmax(240px,1fr) auto auto}.research-result-head{display:flex;justify-content:space-between;gap:12px}.research-result-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-top:10px}.research-result-grid small{display:block;color:var(--muted);text-transform:uppercase;font-size:9px;font-weight:850}.research-result-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.workspace-subsection{padding-top:18px}.workspace-subsection+.workspace-subsection{border-top:1px solid var(--line);margin-top:18px}.empty-context{padding:24px;text-align:center;color:var(--muted)}.lifecycle-controls>summary{cursor:pointer;font-weight:850;color:var(--accent-dark)}@media(max-width:900px){.job-glance-grid{grid-template-columns:1fr 1fr}.job-glance-metric:nth-child(2){border-right:0}.research-toolbar{grid-template-columns:1fr 1fr}.research-result-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:620px){.job-glance-grid{grid-template-columns:1fr 1fr}.job-glance-metric{padding:14px}.job-glance-metric strong{font-size:18px}.job-stage-strip,.machine-workspace-head,.need-row,.research-result-head{align-items:stretch;flex-direction:column}.machine-navigation{display:grid;grid-template-columns:1fr 1fr}.machine-navigation.bottom a:only-child{grid-column:1/-1}.research-toolbar,.research-result-grid{grid-template-columns:1fr}.research-toolbar .button{width:100%}}
+.job-bar{position:sticky;top:10px;z-index:20;padding:16px 18px}.job-bar-main{display:flex;justify-content:space-between;gap:16px;align-items:center}.job-bar-title{min-width:0}.job-bar-title h1{margin:2px 0;font-size:24px}.job-bar-title p{margin:0}.job-bar-state{display:grid;grid-template-columns:repeat(4,minmax(110px,1fr));gap:8px;flex:1;max-width:720px}.job-bar-state div{padding:9px 11px;border-radius:10px;background:var(--surface-soft);min-width:0}.job-bar-state span{display:block;color:var(--muted);font-size:9px;font-weight:850;text-transform:uppercase}.job-bar-state strong{display:block;margin-top:3px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.job-bar-action{white-space:nowrap}.machine-manager{margin-bottom:12px}.machine-manager>div{margin-top:10px}.job-assets-grid{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}.job-asset-card{padding:12px}.job-asset-card .asset-brand-mark{width:34px;height:34px}.job-asset-card h3{font-size:15px}.machine-need-list{display:grid;gap:5px}.machine-need-link{display:flex;justify-content:space-between;gap:8px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;color:var(--ink-strong);text-decoration:none;font-size:11px}.machine-need-link.is-active{border-color:var(--accent);background:var(--accent-soft)}.machine-need-link span:last-child{color:var(--muted);font-weight:800;text-align:right}.selected-needs-manage{margin-top:12px}.active-research-context{padding:9px 12px!important}.result-primary-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.result-details{margin-top:10px}.result-details>div{padding:10px 0}.result-secondary-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.quote-tray-head{display:flex;align-items:center;justify-content:space-between;gap:16px}.quote-tray-total{text-align:right}.quote-tray-total span{display:block;font-size:10px;color:var(--muted);font-weight:850;text-transform:uppercase}.quote-tray-total strong{font-size:22px;color:var(--accent-dark)}.quote-tray-line{display:grid;grid-template-columns:minmax(180px,1.5fr) repeat(4,minmax(90px,.6fr));gap:10px;padding:13px 16px;align-items:center}.quote-tray-line span{display:block;font-size:9px;color:var(--muted);font-weight:850;text-transform:uppercase}.quote-tray-line strong{display:block;margin-top:3px}.quote-line-details{border-top:1px solid var(--line);padding:11px 16px}.quote-line-details>summary,.secondary-disclosure>summary{cursor:pointer;color:var(--accent-dark);font-weight:850}.secondary-disclosure{overflow:hidden}.secondary-disclosure>summary{padding:18px 22px}.secondary-disclosure-body{border-top:1px solid var(--line);padding:18px 22px}.redundant-work-status{display:none}.machine-navigation a{min-width:0;white-space:normal;overflow-wrap:anywhere;text-align:center}
+@media(max-width:1050px){.job-bar-main{align-items:stretch;flex-direction:column}.job-bar-state{max-width:none}.job-bar-action{align-self:flex-start}.quote-tray-line{grid-template-columns:minmax(170px,1.4fr) repeat(2,1fr)}}
+@media(max-width:620px){.job-bar{position:static}.job-bar-state{grid-template-columns:1fr 1fr}.job-bar-action{width:100%}.machine-navigation,.machine-navigation.bottom{grid-template-columns:1fr}.machine-navigation.bottom a:only-child{grid-column:auto}.quote-tray-line{grid-template-columns:1fr 1fr}.quote-tray-line>div:first-child{grid-column:1/-1}.result-primary-metrics{grid-template-columns:1fr}.research-result-actions{display:grid;grid-template-columns:1fr}.research-result-actions>*{min-width:0}.research-result-actions .button{width:100%}.cc-shell,.cc-card,.job-assets-grid,.research-result-card{min-width:0;max-width:100%}}
+.research-result-actions{align-items:flex-start;gap:10px}.research-result-actions>details{position:relative;margin:0}.research-result-actions>details>summary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:.69rem 1.04rem;border:1px solid var(--plg-line-strong);border-radius:10px;background:#fff;color:var(--plg-ink);font-family:var(--plg-font);font-size:.88rem;font-weight:700;line-height:1.15;letter-spacing:-.01em;cursor:pointer;white-space:nowrap;list-style:none}.research-result-actions>details>summary::-webkit-details-marker{display:none}.research-result-actions>details>summary::after{content:'▾';margin-left:7px;font-size:11px;color:var(--muted)}.research-result-actions>details[open]>summary{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-dark)}.research-result-actions>details>form,.research-result-actions>details>div{margin-top:8px}.research-result-actions>button{min-height:44px;white-space:nowrap}@media(max-width:620px){.research-result-actions>details>summary{width:100%}}
+.quote-tray-line span{font-size:11px;line-height:1.35;letter-spacing:.045em}.quote-tray-line strong{color:var(--ink-strong);font-size:14px;line-height:1.45}.quote-line-details>summary{padding:3px 0;font-size:14px;line-height:1.4}.part-editor-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;padding:18px}.part-editor-grid .part-number-field{grid-column:1/-1}.part-editor-grid label,.part-editor-metric{gap:8px}.part-editor-grid label>span,.part-editor-metric>span{color:#53657b;font-size:12px;line-height:1.35;letter-spacing:.035em}.part-editor-grid input,.part-editor-grid select{min-height:44px;border-radius:10px;font-size:14px;line-height:1.35;color:var(--ink-strong)}.part-editor-grid small{font-size:12px;line-height:1.4}.part-editor-metric{min-height:0;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-soft)}.part-editor-metric strong{color:var(--ink-strong);font-size:17px;line-height:1.35}.part-editor-metric.pricing-emphasis{border-color:#c8d9ec;background:#f7faff}.part-editor-metric.line-total-emphasis{border-color:#b9d2f0;background:var(--accent-soft)}@media(max-width:720px){.part-editor-grid{grid-template-columns:1fr 1fr}}@media(max-width:430px){.part-editor-grid{grid-template-columns:1fr}.part-editor-grid .part-number-field{grid-column:auto}}
+.research-result-actions>button.button{box-sizing:border-box;height:44px!important;min-height:44px!important}
+.part-editor-grid small{white-space:normal;overflow-wrap:anywhere}
+.quote-builder-panel.quote-final-review{grid-template-columns:1fr}
+@media(max-width:1000px){.quote-included-line{grid-template-columns:1fr 1fr}.quote-included-line>span:first-child,.quote-included-description{grid-column:1/-1;grid-row:auto}.quote-exclude-control{grid-column:1/-1}}
+.part-editor-grid{grid-template-columns:minmax(160px,1.7fr) minmax(62px,.55fr) minmax(100px,.85fr) minmax(82px,.65fr) minmax(105px,.9fr) minmax(105px,.8fr) minmax(120px,.95fr);gap:10px;padding:14px;align-items:end}.part-editor-grid .part-number-field{grid-column:auto}.part-editor-grid label,.part-editor-metric{gap:6px}.part-editor-grid small{display:none}.part-editor-metric{box-sizing:border-box;height:46px;min-height:46px;padding:7px 10px;align-content:center}.part-editor-metric strong{font-size:16px}@media(max-width:1100px){.part-editor-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(max-width:620px){.part-editor-grid{grid-template-columns:1fr}}
+.quote-final-review{display:grid;gap:16px}.quote-review-section{padding:14px;border:1px solid var(--line);border-radius:11px;background:#fff}.quote-review-section h4{margin:0 0 9px;color:var(--ink-strong);font-size:14px}.quote-bill-to-summary{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.quote-bill-to-summary p{margin:2px 0;color:var(--muted);font-size:13px}.quote-included-lines{display:grid;gap:7px}.quote-included-line{display:grid;grid-template-columns:minmax(180px,1.5fr) minmax(150px,1.2fr) 65px 100px 110px auto;gap:10px;align-items:center;padding:9px 10px;border:1px solid var(--line);border-radius:9px}.quote-included-line.is-excluded{opacity:.55;background:var(--surface-soft)}.quote-included-line span{min-width:0;font-size:13px;color:var(--ink-strong)}.quote-included-line small{display:block;color:var(--muted);font-size:11px}.quote-exclude-control{display:flex!important;align-items:center;gap:6px!important;color:var(--accent-dark);font-size:12px;font-weight:750}.quote-exclude-control input{width:18px;min-height:18px}.quote-charge-lines{display:grid;gap:7px}.quote-charge-line{display:flex;justify-content:space-between;gap:12px;color:var(--ink-strong);font-size:13px}.quote-review-total{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px;border-radius:11px;background:var(--accent-soft)}.quote-review-total strong{color:var(--accent-dark);font-size:26px}.quote-builder-submit{display:flex;justify-content:flex-end}.quote-builder-submit .button{min-width:210px}@media(max-width:1000px){.quote-included-line{grid-template-columns:minmax(180px,1fr) 70px 100px 110px auto}.quote-included-description{grid-column:1/-1;grid-row:2}}@media(max-width:620px){.quote-bill-to-summary,.quote-review-total{flex-direction:column}.quote-included-line{grid-template-columns:1fr 1fr}.quote-included-line>span:first-child,.quote-included-description{grid-column:1/-1}.quote-exclude-control{grid-column:1/-1}.quote-builder-submit .button{width:100%}}
+@media(max-width:1000px){.quote-included-line{grid-template-columns:1fr 1fr}.quote-included-line>span:first-child,.quote-included-description{grid-column:1/-1;grid-row:auto}.quote-exclude-control{grid-column:1/-1}}
+</style>
+
+<style>
+.job-ops{display:grid;gap:14px}.job-ops-next{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:18px 20px;border-radius:15px;background:linear-gradient(135deg,#0b3267,#092650);color:#fff}.job-ops-next p{margin:0 0 5px;font-size:10px;font-weight:900;letter-spacing:.12em}.job-ops-next h2{margin:0;font-size:23px;color:#fff}.job-ops-next small{display:block;margin-top:5px;color:#d8e5f7}.job-ops-next .button{flex:0 0 auto;background:#fff;color:var(--ink-strong);border-color:#fff}.job-ops-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.job-ops-panel{padding:18px;min-width:0}.job-ops-panel-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:13px}.job-ops-panel-head h2{margin:0;font-size:18px}.job-ops-panel-head p{margin:3px 0 0;color:var(--muted);font-size:12px}.job-ops-panel-head .button{flex:0 0 auto}.job-ops-financial{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.job-ops-metric{padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-soft);min-width:0}.job-ops-metric span{display:block;color:var(--muted);font-size:9px;font-weight:850;text-transform:uppercase}.job-ops-metric strong{display:block;margin-top:4px;color:var(--ink-strong);font-size:16px;overflow-wrap:anywhere}.job-ops-orders,.job-ops-documents,.job-ops-activity{display:grid;gap:9px}.job-ops-order,.job-ops-document,.job-ops-event{padding:11px;border:1px solid var(--line);border-radius:10px;min-width:0}.job-ops-order-head,.job-ops-document,.job-ops-event{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.job-ops-order-head strong,.job-ops-document strong{overflow-wrap:anywhere}.job-ops-order-values{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:9px}.job-ops-order-values div{min-width:0}.job-ops-order-values span,.job-ops-document small,.job-ops-event small{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;font-weight:800}.job-ops-order-values strong{display:block;margin-top:2px;font-size:12px;overflow-wrap:anywhere}.job-ops-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.job-ops-status{display:inline-flex;padding:5px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent-dark);font-size:10px;font-weight:900}.job-ops-movement{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.job-ops-event>span:first-child{font-size:18px}.job-ops-event>div{min-width:0;flex:1}.job-ops-event p{margin:0;font-size:12px;overflow-wrap:anywhere}.job-ops-empty{padding:14px;border:1px dashed var(--line-strong);border-radius:10px;color:var(--muted);text-align:center}.draft-work-warning{margin:0 22px 15px;padding:12px 14px;border:1px solid #e4c67d;border-radius:10px;background:#fff8e7}.draft-work-warning strong{display:block;color:#73520b}.draft-work-warning p{margin:4px 0 0;color:#73520b;font-size:12px}.money-positive{color:var(--success)!important}.money-negative{color:var(--danger)!important}
+@media(max-width:900px){.job-ops-grid{grid-template-columns:1fr}.job-ops-financial{grid-template-columns:repeat(2,minmax(0,1fr))}.job-ops-movement{grid-template-columns:repeat(3,minmax(0,1fr))}.job-ops-order-values{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:620px){.job-ops-grid{grid-template-columns:1fr}.job-ops-next,.job-ops-panel-head{align-items:stretch;flex-direction:column}.job-ops-next .button,.job-ops-panel-head .button{width:100%}.job-ops-financial,.job-ops-movement{grid-template-columns:1fr 1fr}.job-ops-order-values{grid-template-columns:1fr 1fr}.job-ops-document{flex-direction:column}.job-ops-document .job-ops-actions{width:100%}.job-ops-document .button{flex:1}.job-ops,.job-ops-panel,.job-ops-order,.job-ops-document{min-width:0;max-width:100%}}
+.ask-pps-panel{display:grid;gap:13px}.ask-pps-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px}.ask-pps-form input{width:100%;min-width:0}.ask-pps-examples{display:flex;flex-wrap:wrap;gap:7px}.ask-pps-result{display:grid;gap:12px;padding:14px;border:1px solid var(--line);border-radius:11px;background:var(--surface-soft)}.ask-pps-result[hidden]{display:none}.ask-pps-result h3{margin:0 0 5px;font-size:11px;letter-spacing:.08em;color:var(--muted)}.ask-pps-answer{margin:0;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}.ask-pps-facts{margin:0;padding-left:20px;display:grid;gap:4px;font-size:12px}.ask-pps-status{min-height:18px;margin:0;color:var(--muted);font-size:12px}.ask-pps-status.error{color:var(--danger)}
+@media(max-width:620px){.ask-pps-form{grid-template-columns:1fr}.ask-pps-form .button{width:100%}.ask-pps-panel{min-width:0;max-width:100%}}
+.job-progress-heading{display:flex;align-items:end;justify-content:space-between;gap:16px;margin:2px 2px 0}.job-progress-heading h2{margin:2px 0 0;font-size:20px}.job-progress-heading p{margin:0;color:var(--muted);font-size:12px}.job-command-groups{display:grid;gap:14px}.job-command-group{padding:0;overflow:hidden}.job-command-group>summary{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:19px 22px;cursor:pointer;list-style:none}.job-command-group>summary::-webkit-details-marker{display:none}.job-command-group>summary::after{content:'+';flex:0 0 auto;display:grid;place-items:center;width:28px;height:28px;border-radius:999px;background:var(--surface-soft);color:var(--accent-dark);font-size:20px}.job-command-group[open]>summary::after{content:'−'}.job-command-group-title{display:grid;gap:3px}.job-command-group-title strong{color:var(--ink-strong);font-size:19px}.job-command-group-title small{color:var(--muted);font-size:12px;font-weight:500}.job-command-group-body{display:grid;gap:12px;padding:0 14px 14px;border-top:1px solid var(--line);background:#f8fafc}.job-command-group-body>.cc-card,.job-command-group-body>.panel{margin:12px 0 0;box-shadow:none}.job-command-group-body>.job-disclosure,.job-command-group-body>.secondary-disclosure{border-radius:12px}.job-command-group-body:empty{display:none}#operational-movement{grid-column:1/-1}.fulfillment-checks{align-items:center}.fulfillment-state{padding:8px 10px;border-radius:8px;background:var(--surface-soft);color:var(--muted);font-size:11px;font-weight:850}
+.fulfillment-panel>.job-ops-movement{margin-bottom:14px}
+.research-result-card{padding:0}.research-result-card>summary{display:grid;grid-template-columns:minmax(0,1.45fr) repeat(3,minmax(125px,.6fr));gap:14px;align-items:center;padding:15px 16px;cursor:pointer;list-style:none}.research-result-card>summary::-webkit-details-marker{display:none}.research-result-card>summary::after{content:'+';display:grid;place-items:center;position:absolute;right:14px;width:26px;height:26px;border-radius:999px;background:var(--surface-soft);color:var(--accent-dark);font-size:18px}.research-result-card[open]>summary::after{content:'−'}.research-result-card>summary{position:relative;padding-right:52px}.part-summary-identity{display:grid;gap:4px}.part-summary-identity h3{margin:0;font-size:15px;color:var(--ink-strong)}.part-summary-identity small,.part-summary-metric span{color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase}.part-summary-metric{display:grid;gap:4px}.part-summary-metric strong{font-size:13px;overflow-wrap:anywhere}.part-summary-action{color:var(--accent-dark)}.research-result-body{display:grid;gap:12px;padding:14px 16px 16px;border-top:1px solid var(--line);background:#fbfcfe}
+@media(max-width:620px){.job-progress-heading{align-items:flex-start;flex-direction:column}.job-command-group>summary{padding:16px}.job-command-group-title strong{font-size:17px}.job-command-group-body{padding:0 8px 8px}.job-command-group-body>.cc-card,.job-command-group-body>.panel{margin-top:8px}}
+@media(max-width:760px){.research-result-card>summary{grid-template-columns:minmax(0,1fr) minmax(100px,.65fr)}.part-summary-metric:nth-of-type(3){grid-column:1/-1}.research-result-body{padding:12px}}
+</style>
+
+{% set has_request = customer_request is not none %}
+{% set has_parts = basket.totals.selected_items > 0 %}
+{% set quote_ready = basket.status == "COMMITTED" %}
+{% set delivered_job = job.status == "DELIVERED" %}{% if job.status == "COMPLETED" %}{% set delivered_job = true %}{% endif %}
+{% set work_editable = not delivered_job and active_revision and active_revision.state == "EDITABLE" %}
+{% set pending_revision = operational_snapshot.pending_revision %}
+{% set governed_revision = work_editable and not active_revision.is_synthetic and active_revision.based_on_quote_id %}
+{% set operator_stage = operational_snapshot.workflow.stage %}
+{% set fulfillment = operational_snapshot.fulfillment %}{% set fc = fulfillment.counts %}{% set m = operational_snapshot.movement %}
+{% set selected_need = open_requested_needs|selectattr('id','equalto',selected_need_id)|first %}
+{% set active_need_label = selected_need.wording if selected_need else (open_requested_needs[0].wording if open_requested_needs else 'Requested Need not recorded') %}
+<div class="cc-shell jcc"
+     data-revision-id="{{ active_revision.id if work_editable else '' }}"
+     data-revision-version="{{ active_revision.lock_version if work_editable else '' }}">
+  <section class="job-ops" aria-label="Job Operational Summary">
+    <section class="cc-card job-primary-summary">
+      <div class="job-primary-identity"><div><p class="cc-label">{{ job.job_number }} · OPERATOR CONTEXT</p><h1>{{ job.customer or "Customer not linked" }}</h1><p class="job-primary-need">{{ active_need_label }}</p>{% if selected_asset or job.machine or job.manufacturer %}<p>{% if selected_asset %}{{ selected_asset.year or '' }} {{ selected_asset.manufacturer }} {{ selected_asset.model or selected_asset.name }}{% else %}{{ job.manufacturer }} {{ job.machine }}{% endif %}{% set serial = selected_asset.vin_pin_serial if selected_asset else job.pin_serial %}{% if serial %} · {{ serial }}{% endif %}</p>{% endif %}</div><span class="job-ops-status">{{ operator_stage }}</span></div>
+      <div class="job-primary-status"><strong>{{ operational_snapshot.invoice.payment_state if operational_snapshot.invoice else 'NOT INVOICED' }}</strong><strong>{{ 'ORDERED' if fc.ordered else 'NOT ORDERED' }}</strong><strong>Received {{ fc.received }}/{{ fc.total }}</strong><strong>Delivered {{ fc.delivered }}/{{ fc.total }}</strong></div>
+      <div class="job-primary-next"><div><span>NEXT ACTION</span><strong>{% if operational_snapshot.workflow.next_action == 'Manage sourcing and documents' %}Continue Parts Sourcing{% else %}{{ operational_snapshot.workflow.next_action }}{% endif %}</strong></div>{% if operational_snapshot.workflow.action_method == 'POST' %}<form method="post" action="{{ operational_snapshot.workflow.next_url }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button" type="submit">{{ operational_snapshot.workflow.next_action }}</button></form>{% else %}<a class="button" href="{{ operational_snapshot.workflow.next_url }}">Continue</a>{% endif %}</div>
+	    </section>
+	    {% set cost_orders = operational_snapshot.supplier_orders|rejectattr('actual_cost_state','equalto','CONFIRMED')|list %}
+	    {% if cost_orders %}<section class="job-supplier-cost-alert" aria-label="Outstanding supplier cost confirmations"><div><span>SUPPLIER COST</span><strong>{{ cost_orders|length }} order{% if cost_orders|length != 1 %}s{% endif %} need{% if cost_orders|length == 1 %}s{% endif %} confirmation</strong><small>Record what was actually paid to each supplier. Fulfillment can continue independently.</small></div><div class="job-supplier-cost-links">{% for order in cost_orders %}<a class="button ghost small" href="{{ order.order_url }}#actual-cost">{{ order.po_number }} · Confirm Cost</a>{% endfor %}</div></section>{% endif %}
+
+	    <div class="job-progress-heading"><div><p class="cc-label">OPERATIONAL PROGRESS</p><h2>Payment → Ordering → Receiving → Delivery</h2></div><p>Open only the active work needed for the next step.</p></div>
+    <div class="job-ops-grid">
+      <details class="cc-card job-disclosure" id="operational-financials"><summary>Internal Details</summary><div class="job-disclosure-body">
+        <header class="job-ops-panel-head"><div><h2>Financial State</h2><p>Issued Invoice and authoritative accounting values.</p></div><a class="button ghost small" href="{{ operational_snapshot.accounting_url }}">Open Accounting</a></header>
+        {% if operational_snapshot.financial %}{% set f = operational_snapshot.financial %}
+        <div class="job-ops-financial">
+          <div class="job-ops-metric"><span>Revenue</span><strong>{{ '${:,.2f}'.format(f.customer_total) }}</strong></div>
+          <div class="job-ops-metric"><span>Booked Cost</span><strong>{{ '${:,.2f}'.format(f.booked_supplier_cost) }}</strong></div>
+          <div class="job-ops-metric"><span>Placed Cost</span><strong>{{ '${:,.2f}'.format(f.placed_supplier_cost) }}</strong></div>
+          <div class="job-ops-metric"><span>Actual Cost</span><strong>{% if f.actual_cost_state == 'NOT_CONFIRMED' %}NOT CONFIRMED{% else %}{{ '${:,.2f}'.format(f.actual_supplier_cost) }}{% endif %}</strong></div>
+          <div class="job-ops-metric"><span>Expected Profit</span><strong>{{ '${:,.2f}'.format(f.expected_profit) }}</strong></div>
+          <div class="job-ops-metric"><span>Supplier Order Profit</span><strong>{{ '${:,.2f}'.format(f.placed_cost_profit) }}</strong></div>
+          <div class="job-ops-metric"><span>Final Profit</span><strong>{% if f.actual_cost_state == 'NOT_CONFIRMED' %}NOT CONFIRMED{% else %}{{ '${:,.2f}'.format(f.actual_profit) }}{% endif %}</strong></div>
+          <div class="job-ops-metric"><span>Cost Difference</span><strong class="{% if f.cost_variance > 0 %}money-negative{% elif f.cost_variance < 0 %}money-positive{% endif %}">{% if f.cost_variance >= 0 %}+{{ '${:,.2f}'.format(f.cost_variance) }}{% else %}-{{ '${:,.2f}'.format(-f.cost_variance) }}{% endif %}</strong></div>
+          <div class="job-ops-metric"><span>Profit Difference</span><strong class="{% if f.profit_variance > 0 %}money-positive{% elif f.profit_variance < 0 %}money-negative{% endif %}">{% if f.profit_variance >= 0 %}+{{ '${:,.2f}'.format(f.profit_variance) }}{% else %}-{{ '${:,.2f}'.format(-f.profit_variance) }}{% endif %}</strong></div>
+        </div>
+        {% else %}<div class="job-ops-empty">No issued Invoice financial state yet.</div>{% endif %}
+      </div></details>
+
+      <section class="cc-card job-ops-panel fulfillment-panel" id="fulfillment-checklist">
+        <header class="job-ops-panel-head"><div><h2>Fulfillment</h2><p>Paid invoice items tracked independently for receiving and delivery.</p></div><span class="job-ops-status">{{ fulfillment.stage }}</span></header>
+        <div class="job-ops-movement" aria-label="Supplier-order movement totals">
+          <div class="job-ops-metric"><span>Ordered</span><strong>{{ m.ordered_units }}</strong></div>
+          <div class="job-ops-metric"><span>Received</span><strong>{{ m.received_units }}</strong></div>
+          <div class="job-ops-metric"><span>Remaining</span><strong>{{ m.remaining_units }}</strong></div>
+          <div class="job-ops-metric"><span>Delivered</span><strong>{{ m.delivered_units }}</strong></div>
+          <div class="job-ops-metric"><span>Available to Deliver</span><strong>{{ m.available_to_deliver_units }}</strong></div>
+        </div>
+        {% if operational_snapshot.receiving_exceptions or operational_snapshot.active_backorders %}<div class="job-receiving-alerts" role="status">
+          {% if operational_snapshot.receiving_exceptions %}<div><strong>{{ operational_snapshot.receiving_exceptions|length }} unresolved receiving exception{% if operational_snapshot.receiving_exceptions|length != 1 %}s{% endif %}</strong><span>Non-deliverable quantities still require operator review.</span></div>{% endif %}
+          {% if operational_snapshot.active_backorders %}<div><strong>{{ operational_snapshot.active_backorders|length }} active supplier backorder{% if operational_snapshot.active_backorders|length != 1 %}s{% endif %}</strong><span>Follow up on the remaining supplier commitment.</span></div>{% endif %}
+          <a class="button ghost small" href="{{ operational_snapshot.workflow.next_url }}">Review in Purchasing</a>
+        </div>{% endif %}
+        {% if fulfillment.available %}
+        <div class="fulfillment-progress" aria-label="Fulfillment progress">
+          <strong>Ordered {{ fc.ordered }}/{{ fc.total }}</strong><strong>Received {{ fc.received }}/{{ fc.total }}</strong><strong>Delivered {{ fc.delivered }}/{{ fc.total }}</strong>
+        </div>
+        {% if not fulfillment["items"] or fulfillment.has_draft_orders %}
+        <form method="post" action="/jobs/{{ job.id }}/fulfillment/order"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button" type="submit">Create Supplier Order</button></form>
+        {% endif %}
+        <div class="fulfillment-list">
+          {% for item in fulfillment["items"] %}<article class="fulfillment-item {% if item.delivered %}is-complete{% endif %}">
+            <div><strong>{{ item.description }}</strong><small>{{ item.supplier_name }} · {{ item.po_number }}</small><div class="fulfillment-quantities"><span>Qty {{ item.quantity_ordered }}</span><span>Received {{ item.quantity_received }}/{{ item.quantity_ordered }}</span><span>Delivered {{ item.quantity_delivered }}/{{ item.quantity_ordered }}</span><span>Remaining {{ item.quantity_remaining }}</span></div></div>
+            <div class="fulfillment-checks">
+              {% if not item.received and item.ordered %}<form method="post" action="/jobs/{{ job.id }}/fulfillment/items/{{ item.id }}/received"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input aria-label="Quantity received for {{ item.description }}" type="number" name="quantity" value="1" min="1" max="{{ item.quantity_to_receive }}"><button class="fulfillment-checkbox" type="submit">☐ Receive</button></form>{% else %}<span class="fulfillment-state">{{ '☑ Received' if item.received else 'Awaiting order' }}</span>{% endif %}
+              {% if not item.delivered and item.quantity_available_to_deliver > 0 %}<form method="post" action="/jobs/{{ job.id }}/fulfillment/items/{{ item.id }}/delivered"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input aria-label="Quantity delivered for {{ item.description }}" type="number" name="quantity" value="1" min="1" max="{{ item.quantity_available_to_deliver }}"><button class="fulfillment-checkbox" type="submit">☐ Deliver</button></form>{% else %}<span class="fulfillment-state">{{ '☑ Delivered' if item.delivered else 'Awaiting receipt' }}</span>{% endif %}
+            </div>
+          </article>{% else %}<div class="job-ops-empty">Create supplier purchasing records from the paid invoice to begin fulfillment.</div>{% endfor %}
+        </div>
+        {% else %}<div class="job-ops-empty">Fulfillment becomes available when the invoice is paid in full.</div>{% endif %}
+      </section>
+
+      <details class="cc-card job-disclosure" id="operational-orders"><summary>Supplier Orders ({{ operational_snapshot.supplier_orders|length }})</summary><div class="job-disclosure-body">
+        <header class="job-ops-panel-head"><div><h2>Supplier Orders</h2><p>{{ operational_snapshot.supplier_orders|length }} order{% if operational_snapshot.supplier_orders|length != 1 %}s{% endif %} linked to this Job.</p></div><a class="button ghost small" href="/purchasing">Open Purchasing</a></header>
+        <div class="job-ops-orders">{% for order in operational_snapshot.supplier_orders %}<article class="job-ops-order">
+          <div class="job-ops-order-head"><div><strong>{{ order.supplier }}</strong><small class="cc-muted">{{ order.po_number }}</small></div><span class="job-ops-status">{{ order.status }}</span></div>
+          <div class="job-ops-order-values">
+            <div><span>Booked Cost</span><strong>${{ '%.2f'|format(order.booked_cost) }}</strong></div><div><span>Placed Cost</span><strong>${{ '%.2f'|format(order.placed_cost) }}</strong></div><div><span>Actual Cost</span><strong>{% if order.actual_cost_state == 'NOT_CONFIRMED' %}Not confirmed{% else %}${{ '%.2f'|format(order.actual_cost) }}{% endif %}</strong></div><div><span>Variance</span><strong>{% if order.actual_cost_state == 'NOT_CONFIRMED' %}—{% elif order.cost_variance >= 0 %}+${{ '%.2f'|format(order.cost_variance) }}{% else %}-${{ '%.2f'|format(-order.cost_variance) }}{% endif %}</strong></div><div><span>Ordered</span><strong>{{ order.ordered_units }}</strong></div><div><span>Received</span><strong>{{ order.received_units }}</strong></div><div><span>Remaining</span><strong>{{ order.remaining_units }}</strong></div>
+          </div>
+	          <div class="job-ops-actions">{% if order.actual_cost_state != 'CONFIRMED' %}<a class="button ghost small" href="{{ order.order_url }}#actual-cost">Confirm Supplier Cost</a>{% else %}<span class="job-cost-confirmed">Cost Confirmed</span>{% endif %}<a class="button ghost small" href="{{ order.order_url }}">Open Supplier Order</a>{% if order.status in ['ORDERED','PARTIAL'] %}<a class="button ghost small" href="{{ order.receive_url }}">Receive</a>{% endif %}{% if order.available_to_deliver_units %}<a class="button ghost small" href="{{ order.delivery_url }}">Delivery</a>{% endif %}</div>
+        </article>{% else %}<div class="job-ops-empty">No supplier orders created.</div>{% endfor %}</div>
+      </div></details>
+
+      <details class="cc-card job-disclosure" id="operational-documents"><summary>Documents ({{ operational_snapshot.documents|length }})</summary><div class="job-disclosure-body">
+        <header class="job-ops-panel-head"><div><h2>Documents</h2><p>Current authoritative manifested versions.</p></div><a class="button ghost small" href="{{ operational_snapshot.documents_url }}">View All</a></header>
+        <div class="job-ops-documents">{% for document in operational_snapshot.documents %}<article class="job-ops-document"><div><strong>{{ document.document_type }} · {{ document.document_number }}</strong><small>v{{ document.version }} · {{ document.audience }} · {{ document.integrity }}</small></div><div class="job-ops-actions">{% if document.is_valid %}<a class="button ghost small" target="_blank" rel="noopener" href="{{ document.open_url }}">Open</a>{% endif %}{% if document.history %}<a class="button ghost small" href="{{ operational_snapshot.documents_url }}&amp;version_scope=all">History</a>{% endif %}</div></article>{% else %}<div class="job-ops-empty">No current authoritative documents.</div>{% endfor %}</div>
+      </div></details>
+
+      <details class="cc-card job-disclosure" id="operational-activity"><summary>Recent Activity</summary><div class="job-disclosure-body">
+        <header class="job-ops-panel-head"><div><h2>Recent Activity</h2><p>Existing Job Timeline events.</p></div></header>
+        <div class="job-ops-activity">{% for event in operational_snapshot.activity %}<article class="job-ops-event"><span>{{ event.icon or '•' }}</span><div><p>{{ event.message }}</p><small>{{ event.event_type|replace('_',' ')|title }} · {{ event.created_at }}</small></div></article>{% else %}<div class="job-ops-empty">No Job activity recorded.</div>{% endfor %}</div>
+      </div></details>
+    </div>
+
+    <details class="cc-card job-disclosure ask-pps-panel" id="ask-pps"><summary>Ask PPS</summary><div class="job-disclosure-body" aria-label="Internal Ask PPS">
+      <header class="job-ops-panel-head"><div><h2>Ask PPS</h2><p>Internal, read-only answers from this Job's authoritative PPS snapshot.</p></div><span class="job-ops-status">INTERNAL</span></header>
+      <form class="ask-pps-form" data-ask-pps-form data-job-id="{{ job.id }}">
+        <label class="sr-only" for="ask-pps-question">Question about {{ job.job_number }}</label>
+        <input id="ask-pps-question" maxlength="1000" required autocomplete="off" placeholder="What is holding this job up?">
+        <button class="button" type="submit">Ask PPS</button>
+      </form>
+      <div class="ask-pps-examples" aria-label="Example questions">
+        {% for prompt in ["What is holding this job up?", "What is the next action?", "What parts remain outstanding?", "Which supplier has a variance?", "Is final profit confirmed?"] %}<button class="button ghost small" type="button" data-ask-pps-example>{{ prompt }}</button>{% endfor %}
+      </div>
+      <p class="ask-pps-status" data-ask-pps-status aria-live="polite"></p>
+      <div class="ask-pps-result" data-ask-pps-result hidden>
+        <div><h3>ANSWER</h3><p class="ask-pps-answer" data-ask-pps-answer></p></div>
+        <div data-ask-pps-facts-wrap hidden><h3>PPS FACTS USED</h3><ul class="ask-pps-facts" data-ask-pps-facts></ul></div>
+      </div>
+    </div></details>
+  </section>
+
+  <section class="job-command-groups" aria-label="Job workspace">
+    <details class="cc-card job-command-group" id="parts-purchasing-group"{% if basket.totals.selected_items or operational_snapshot.supplier_orders or fulfillment.available %} open{% endif %}>
+      <summary><span class="job-command-group-title"><strong>Sourcing &amp; Fulfillment</strong><small>Requested needs, research candidates, quote readiness, supplier orders, and delivery</small></span></summary>
+      <div class="job-command-group-body" data-job-group="parts"></div>
+    </details>
+    <details class="cc-card job-command-group" id="financial-customer-group">
+      <summary><span class="job-command-group-title"><strong>Financial &amp; Customer</strong><small>Quote, invoice, payment, charges, and internal financial detail</small></span></summary>
+      <div class="job-command-group-body" data-job-group="financial"></div>
+    </details>
+    <details class="cc-card job-command-group" id="documents-activity-group">
+      <summary><span class="job-command-group-title"><strong>Documents &amp; Activity</strong><small>Current documents first, with quote history and recent activity on demand</small></span></summary>
+      <div class="job-command-group-body" data-job-group="documents"></div>
+    </details>
+    <details class="cc-card job-command-group" id="job-details-group">
+      <summary><span class="job-command-group-title"><strong>Job Administration</strong><small>Original request, optional asset context, notes, and lifecycle controls</small></span></summary>
+      <div class="job-command-group-body" data-job-group="details"></div>
+    </details>
+  </section>
+
+  {% if job.status == "CANCELLED" %}
+  <section class="panel lifecycle-warning">
+    <strong>This Job is cancelled.</strong>
+    <p>{{ job.cancellation_reason or "No cancellation reason recorded." }} Existing history remains available, but new parts, quotes, invoices, and purchasing are blocked.</p>
+  </section>
+  {% endif %}
+
+  {% if governed_revision %}
+  <section class="panel revision-work-banner">
+    <div>
+      <strong>
+        Editing changes for {{ active_revision.source_quote_number }}
+      </strong>
+      <p>
+        Work normally below. The original quote stays protected until
+        the revised quote is generated.
+      </p>
+    </div>
+    <div class="cc-actions">
+      <div class="cc-actions revision-work-actions">
+      <form method="post" action="/jobs/{{ job.id }}/basket/commit">
+        <input type="hidden" name="expected_revision_id" value="{{ active_revision.id }}">
+        <input type="hidden" name="expected_version" value="{{ active_revision.lock_version }}">
+        <button class="button" type="submit">Finish Changes</button>
+      </form>
+      <form method="post"
+            action="/work-revisions/{{ active_revision.id }}/cancel"
+            onsubmit="return confirm('Abandon these changes and restore the previous quote?');">
+        <input type="hidden" name="expected_version"
+               value="{{ active_revision.lock_version }}">
+        <label class="sr-only" for="cancel-revision-reason">Reason</label>
+        <input id="cancel-revision-reason" name="reason" required
+               placeholder="Why are these changes being cancelled?">
+        <button class="button ghost" type="submit">Cancel Changes</button>
+      </form>
+      </div>
+    </div>
+  </section>
+  {% elif quote and not invoice and not pending_revision %}
+  <section class="panel revision-action-panel">
+    {% if quote.status == "DRAFT" %}
+      <strong>Need to correct this unissued draft?</strong>
+      <p>The quote number can be retained because it has not been issued.</p>
+      <form method="post" action="/quotes/{{ quote.id }}/revise">
+        <input name="reason" required placeholder="What needs to change?">
+        <button class="button" type="submit">Edit Draft</button>
+      </form>
+    {% elif quote.status in ["SENT","REJECTED","REVISION_REQUIRED","APPROVED"] %}
+      <strong>Need to change this protected quote?</strong>
+      <p>A new quote number will be created and {{ quote.quote_number }} will remain in history.</p>
+      <form method="post" action="/quotes/{{ quote.id }}/revise">
+        <input name="reason" required placeholder="What did the customer or operator change?">
+        <button class="button" type="submit">Revise Quote</button>
+      </form>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <section class="cc-card job-bar job-command-header" id="job-overview" aria-labelledby="job-command-title">
+    <div class="job-command-identity">
+      <div>
+        <p class="cc-kicker">{{ job.job_number }} · JOB COMMAND CENTER</p>
+        <h1 id="job-command-title">{{ job.customer or "Customer not linked" }}</h1>
+        <p>{{ job.company or "Individual customer" }}{% if job.address %} · {{ job.address }}{% endif %}</p>
+        {% if selected_asset or job.machine or job.manufacturer %}<p class="job-command-asset"><span>Asset / Machine</span><strong>{% if selected_asset %}{{ selected_asset.year or '' }} {{ selected_asset.manufacturer }} {{ selected_asset.model or selected_asset.name }}{% else %}{{ job.manufacturer }} {{ job.machine }}{% endif %}{% set command_serial = selected_asset.vin_pin_serial if selected_asset else job.pin_serial %}{% if command_serial %} · {{ command_serial }}{% endif %}</strong></p>{% endif %}
+      </div>
+      <div class="job-command-header-actions">
+        <div class="job-command-stage"><span>Current Stage</span><strong>{{ operator_stage }}</strong></div>
+        <a class="button danger-outline erp-header-delete" href="/jobs/{{ job.id }}/delete-review">Delete</a>
+      </div>
+    </div>
+
+    <div class="job-command-core">
+      <div class="job-command-need">
+        <span>Requested Need</span>
+        <strong>{{ active_need_label }}</strong>
+        {% if open_requested_needs|length > 1 %}<small>+{{ open_requested_needs|length - 1 }} additional requested need{% if open_requested_needs|length != 2 %}s{% endif %}</small>{% endif %}
+      </div>
+      {% if not pending_revision %}<div class="job-command-next">
+        <span>Next Action</span>
+        <strong>{{ operational_snapshot.workflow.next_action }}</strong>
+        {% if operational_snapshot.workflow.action_method == 'POST' %}<form method="post" action="{{ operational_snapshot.workflow.next_url }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button job-bar-action" type="submit">{{ operational_snapshot.workflow.next_action }}</button></form>{% else %}<a class="button job-bar-action" href="{{ operational_snapshot.workflow.next_url }}">{{ operational_snapshot.workflow.next_action }}</a>{% endif %}
+      </div>{% endif %}
+    </div>
+
+    <div class="job-command-metrics" aria-label="Current Job operational state">
+      <div><span>Payment</span><strong class="{% if invoice and invoice.status == 'PAID' %}job-payment-paid{% endif %}">{% if invoice %}{{ invoice.status|replace('_',' ')|title }}{% else %}Not invoiced{% endif %}</strong></div>
+      <div><span>Ordered</span><strong>{{ m.ordered_units }}</strong></div>
+      <div><span>Received</span><strong>{{ m.received_units }} / {{ m.ordered_units }}</strong></div>
+      <div><span>Delivered</span><strong>{{ m.delivered_units }} / {{ m.ordered_units }}</strong></div>
+      <div class="job-command-available"><span>Available to Deliver</span><strong>{{ m.available_to_deliver_units }}</strong></div>
+    </div>
+
+    <div class="job-workflow-strip" aria-label="Payment, ordering, receiving, and delivery workflow">
+      <div class="{% if invoice and invoice.status == 'PAID' %}is-complete{% elif 'Payment' in operator_stage %}is-current{% endif %}"><span>01</span><strong>Payment</strong></div>
+      <div class="{% if m.ordered_units > 0 %}is-complete{% elif operator_stage == 'Ordering' %}is-current{% endif %}"><span>02</span><strong>Ordering</strong></div>
+      <div class="{% if m.ordered_units > 0 and m.remaining_units == 0 %}is-complete{% elif 'Receiving' in operator_stage or 'Backorder' in operator_stage %}is-current{% endif %}"><span>03</span><strong>Receiving</strong></div>
+      <div class="{% if m.ordered_units > 0 and m.delivered_units >= m.ordered_units %}is-complete{% elif 'Deliver' in operator_stage %}is-current{% endif %}"><span>04</span><strong>Delivery</strong></div>
+    </div>
+
+    {% if customer_request %}
+    <details class="original-request-disclosure">
+      <summary>View Original Customer Request{% if request_attachment_count %} · {{ request_attachment_count }} attachment{% if request_attachment_count != 1 %}s{% endif %}{% endif %}</summary>
+      <div class="original-request-content">
+        {% if customer_request.request_text %}<p class="cc-request-text">{{ customer_request.request_text }}</p>{% endif %}
+        {% if customer_request.requested_parts %}<strong>Original requested-need wording</strong><pre class="cc-request-text">{{ customer_request.requested_parts }}</pre>{% endif %}
+        <a class="button small ghost" href="/requests/{{ customer_request.id }}">Open Request Record</a>
+      </div>
+    </details>
+    {% endif %}
+
+  </section>
+
+  <details class="cc-card lifecycle-controls" id="lifecycle-controls">
+    <summary>Job Actions</summary>
+    <div class="job-disclosure-body"><p class="cc-muted">Archive, cancel, or review permanent deletion eligibility without interrupting the current workflow.</p><a class="button ghost" href="/jobs/{{ job.id }}/delete-review">Delete / Lifecycle Options</a></div>
+  </details>
+
+  {% if delivered_job %}
+  <section class="cc-card cc-section delivered-job-summary" aria-label="Delivered Job summary">
+    <div class="cc-section-head">
+      <div><p class="cc-label">JOB COMPLETED</p><h2>Job Delivered</h2><p class="cc-muted">All purchased items have been delivered to the customer.</p></div>
+      <div class="cc-actions">
+        {% if invoice %}<a class="button" href="/invoices/{{ invoice.id }}/documents">Open Invoice</a>{% endif %}
+        <a class="button ghost" href="/jobs/{{ job.id }}/delivery">View Delivery History</a>
+        {% if quote_history %}<a class="button ghost" href="#quote-history">View Quote History</a>{% endif %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if not delivered_job %}
+  <section class="cc-card requested-need-primary" id="customer-needs" aria-labelledby="requested-needs-title">
+    <div class="cc-section-head"><div><p class="cc-label">REQUESTED NEEDS</p><h2 id="requested-needs-title">What the customer needs</h2><p class="cc-muted">Original customer wording and sourcing progress.</p></div></div>
+    {% if requested_needs %}<div class="requested-need-list">{% for need in requested_needs %}<article class="requested-need-card {% if selected_need_id == need.id or (not selected_need_id and loop.first) %}is-active{% endif %}"><h3>{{ need.wording }}</h3><div class="requested-need-meta"><span>{{ need.state|title }}</span>{% if selected_asset %}<span>{{ selected_asset.manufacturer }} {{ selected_asset.model or selected_asset.name }}</span>{% endif %}<span>{{ need.research_candidate_count }} candidate{% if need.research_candidate_count != 1 %}s{% endif %}</span><span>{{ need.quote_candidate_count }} ready for quote</span></div>{% if need.specifications %}<div class="need-specifications">{% for spec in need.specifications %}<div><small>{{ spec.label }}</small><strong>{{ spec.value }}</strong></div>{% endfor %}</div>{% elif need.notes %}<p class="cc-muted">{{ need.notes }}</p>{% endif %}{% if operational_snapshot.movement.ordered_units %}<div class="need-quantity-flow"><span>Ordered {{ operational_snapshot.movement.ordered_units }}</span><span>Received {{ operational_snapshot.movement.received_units }}/{{ operational_snapshot.movement.ordered_units }}</span><span>Delivered {{ operational_snapshot.movement.delivered_units }}/{{ operational_snapshot.movement.ordered_units }}</span></div>{% endif %}{% if need.state == 'OPEN' %}<a class="requested-need-research" href="/jobs/{{ job.id }}/basket?view=advanced{% if selected_asset_id %}&amp;asset_id={{ selected_asset_id }}&amp;{% endif %}need_id={{ need.id }}#research-results">Focus research on this need</a>{% endif %}</article>{% endfor %}</div>{% else %}<div class="cc-empty">No Requested Need has been recorded. Add the customer’s wording before research.</div>{% endif %}
+    {% if work_editable %}<details class="needs-manage selected-needs-manage"><summary>Manage Requested Needs</summary><div><form class="research-toolbar" method="post" action="/jobs/{{ job.id }}/needs"><input type="hidden" name="job_asset_id" value="{{ selected_asset.id if selected_asset else '' }}"><input type="hidden" name="expected_revision_id" value="{{ basket.work_revision.id }}"><input type="hidden" name="expected_version" value="{{ basket.work_revision.lock_version }}"><label>Add a Requested Need<input name="wording" required placeholder="Example: King mattress, medium firm, qty 2"></label><label>Specifications / notes<input name="notes" placeholder="Size: King"></label><button class="button" type="submit">Add Need</button></form></div></details>{% endif %}
+  </section>
+
+  {% if job_assets %}<details class="cc-card job-disclosure asset-context-panel" id="job-assets"><summary>Asset / Equipment Context</summary><div class="job-disclosure-body">
+    <div class="cc-section-head"><div><p class="cc-label">OPTIONAL CONTEXT</p><h2>Asset / Equipment Context</h2><p class="cc-muted">Use compatibility and identification details only when relevant to the Requested Need.</p></div></div>
+    {% if work_editable %}<details class="machine-manager"><summary>Manage Assets</summary><div><button class="button ghost" type="button" data-dialog-open="job-asset-dialog">＋ Add Asset / Equipment</button></div></details>{% endif %}
+    <div class="job-assets-grid">
+      {% for asset in job_assets %}
+      <article class="job-asset-card {% if selected_asset_id == asset.id %}is-selected{% endif %}">
+        <a class="asset-selector-link" href="/jobs/{{ job.id }}/basket?view=advanced&asset_id={{ asset.id }}#machine-workspace" aria-label="Work on {{ asset.manufacturer }} {{ asset.model or asset.name }}">
+        <div class="asset-brand-row">{{ manufacturer_logo(asset.manufacturer, false, false) }}<div><small>{{ asset.brand.display_name }}</small><h3>{{ asset.year }} {{ asset.manufacturer }} {{ asset.model or asset.name }}</h3></div></div>
+        <p>{{ asset.vin_pin_serial or 'No VIN / PIN / serial recorded' }}</p>
+        </a>
+        {% if asset.needs %}<div class="machine-need-list" aria-label="Requested Needs for {{ asset.manufacturer }} {{ asset.model or asset.name }}">{% for need in asset.needs %}{% if need.state == 'OPEN' %}<a class="machine-need-link {% if selected_asset_id == asset.id and selected_need_id == need.id %}is-active{% endif %}" href="/jobs/{{ job.id }}/basket?view=advanced&asset_id={{ asset.id }}&amp;need_id={{ need.id }}#research-results"><strong>{{ need.wording }}</strong><span>{{ need.work_status_label }}</span></a>{% else %}<div class="machine-need-link"><strong>{{ need.wording }}</strong><span>{{ need.work_status_label }}</span></div>{% endif %}{% endfor %}</div>{% else %}<p class="cc-muted">No requested Needs</p>{% endif %}
+        <div class="asset-work-footer"><span class="asset-work-counts">{{ asset.open_need_count }} open · {{ asset.parts_found_count }} found · {{ asset.quote_candidate_count }} ready</span><span class="asset-work-status {% if asset.work_status == 'READY' %}ready{% endif %}">{{ asset.work_status_label }}</span></div>
+        <a class="button small {% if selected_asset_id == asset.id %}ghost{% endif %}" href="/jobs/{{ job.id }}/basket?view=advanced&asset_id={{ asset.id }}#research-results">{% if selected_asset_id == asset.id %}Selected Context{% else %}Use This Context{% endif %}</a>
+        {% if work_editable %}<div class="job-asset-actions">
+          {% if not asset.is_primary %}<form method="post" action="/jobs/{{ job.id }}/assets/{{ asset.id }}/primary"><button class="button small ghost" type="submit">Make Primary</button></form>{% endif %}
+          <details><summary>Edit / delete</summary><form method="post" action="/jobs/{{ job.id }}/assets/{{ asset.id }}/edit"><input name="manufacturer" value="{{ asset.manufacturer }}" placeholder="Manufacturer"><input name="model" value="{{ asset.model }}" placeholder="Model"><input name="year" value="{{ asset.year }}" placeholder="Year"><input name="vin_pin_serial" value="{{ asset.vin_pin_serial }}" placeholder="VIN / PIN / serial"><input name="asset_type" value="{{ asset.asset_type }}" placeholder="Asset type"><input name="name" value="{{ asset.name }}" placeholder="Name"><textarea name="notes" placeholder="Notes">{{ asset.notes }}</textarea><button class="button small" type="submit">Save Asset</button></form><form method="post" action="/jobs/{{ job.id }}/assets/{{ asset.id }}/archive" data-archive-delete><input name="reason" required placeholder="Archive reason"><button class="button small danger-outline" type="submit">Delete</button></form></details>
+        </div>{% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% if work_editable and selected_asset %}<details class="needs-manage selected-needs-manage"><summary>Manage Requested Needs</summary><div>{% if requested_needs %}{% for need in requested_needs %}<div class="cc-actions"><form method="post" action="/jobs/{{ job.id }}/needs/{{ need.id }}"><input type="hidden" name="job_asset_id" value="{{ selected_asset.id }}"><input type="hidden" name="wording" value="{{ need.wording }}"><input type="hidden" name="expected_revision_id" value="{{ basket.work_revision.id }}"><input type="hidden" name="expected_version" value="{{ basket.work_revision.lock_version }}"><input type="hidden" name="state" value="{{ 'OPEN' if need.state == 'SATISFIED' else 'SATISFIED' }}"><button class="button small ghost" type="submit">{{ 'Reopen' if need.state == 'SATISFIED' else 'Mark covered' }} · {{ need.wording }}</button></form>{% if need.state != 'ARCHIVED' %}<form method="post" action="/jobs/{{ job.id }}/needs/{{ need.id }}" data-archive-delete><input type="hidden" name="job_asset_id" value="{{ selected_asset.id }}"><input type="hidden" name="wording" value="{{ need.wording }}"><input type="hidden" name="state" value="ARCHIVED"><input type="hidden" name="expected_revision_id" value="{{ basket.work_revision.id }}"><input type="hidden" name="expected_version" value="{{ basket.work_revision.lock_version }}"><button class="button small danger-outline" type="submit">Delete</button></form>{% endif %}</div>{% endfor %}{% endif %}<form class="research-toolbar" method="post" action="/jobs/{{ job.id }}/needs"><input type="hidden" name="job_asset_id" value="{{ selected_asset.id }}"><input type="hidden" name="expected_revision_id" value="{{ basket.work_revision.id }}"><input type="hidden" name="expected_version" value="{{ basket.work_revision.lock_version }}"><label>Add a requested need<input name="wording" required placeholder="Example: Fuel Filter Kit"></label><label>Context (optional)<input name="notes" placeholder="Customer wording or fitment detail"></label><button class="button" type="submit">Add Need</button></form></div></details>{% endif %}
+  </div></details>{% endif %}
+
+  {% if work_editable %}
+  <details class="cc-card job-disclosure" id="machine-workspace" open><summary>Research</summary><div class="job-disclosure-body">
+    {% if selected_asset or requested_needs %}
+    <div id="research-results">
+      <div class="research-step"><div><p class="cc-label">RESEARCH SOURCE</p><strong>Choose a source for the active Need</strong></div></div>
+      <div class="active-research-context">
+        <div><p class="cc-label">ACTIVE NEED</p><strong>{{ active_need_label }}</strong>{% if active_research_context and active_research_context.source_name %}<p class="cc-muted">{{ active_research_context.source_name_snapshot or active_research_context.source_name }}</p>{% endif %}</div>
+      </div>
+      {% if selected_asset %}<form id="research-open-form" class="research-toolbar research-source-toolbar" method="post" action="/jobs/{{ job.id }}/assets/{{ selected_asset.id }}/research" target="_blank">
+        <input type="hidden" name="expected_revision_id" value="{{ basket.work_revision.id }}"><input type="hidden" name="expected_version" value="{{ basket.work_revision.lock_version }}">
+        <input id="active-requested-need" type="hidden" name="requested_need_id" value="{{ selected_need_id or '' }}">
+        <label>Research Source<select id="research-source" name="connector_profile_id" required>{% for connector in connectors %}<option value="{{ connector.id }}" {% if active_research_context and active_research_context.connector_profile_id == connector.id %}selected{% endif %}>{{ connector.display_name }}{% if connector.is_default and connector.source_type != 'GENERAL_RESEARCH' %} · Recommended{% endif %}</option>{% endfor %}</select></label>
+        <button class="button" type="submit" {% if open_requested_needs|length > 1 and not selected_need_id %}disabled title="Choose a Need from the machine tile first"{% endif %}>Open Source</button>
+        <button class="button ghost" type="button" data-dialog-open="quick-open-dialog">Open Website</button>
+        <button class="button ghost" type="button" data-dialog-open="research-source-dialog">＋ Add Source</button>
+      </form>{% else %}<div class="cc-actions"><p class="cc-muted">Add a candidate from supplier research or attach optional asset context to use configured catalogs.</p><button class="button ghost" type="button" data-dialog-open="research-source-dialog">＋ Add Source</button></div>{% endif %}
+      <div class="cc-section-head" style="margin-top:22px"><div><p class="cc-label">RESEARCH CANDIDATES</p><h2>Identified options</h2></div><div class="cc-actions"><button class="button" type="button" data-dialog-open="manual-part-dialog">＋ Add Candidate</button></div></div>
+      {% if research_results %}<div class="research-result-list">{% set part_cards = namespace(opened=false) %}{% for item in research_results %}{% set shipping = shipping_by_item.get(item.id) %}{% set active_or_problematic = (selected_need_id and item.primary_requested_need_id == selected_need_id) or item.supplier_unit_cost is none or not item.selected %}{% set open_part = active_or_problematic and not part_cards.opened %}<details class="research-result-card"{% if open_part %} open{% set part_cards.opened = true %}{% endif %}>
+        <summary><div class="part-summary-identity"><small>{{ item.requested_need_wording or 'Requested Need' }}</small><h3 aria-label="{{ item.requested_description }}{% if item.manufacturer_part_number or item.supplier_part_number %} · {{ item.manufacturer_part_number or item.supplier_part_number }}{% endif %}">{{ item.requested_description }}</h3>{% if item.selected %}<span class="erp-candidate-selected">Selected for quote</span>{% endif %}</div><div class="part-summary-metric"><span>OEM / Part Number</span><strong>{{ item.manufacturer_part_number or 'Not recorded' }}</strong>{% if item.brand %}<small>{{ item.brand }}</small>{% endif %}</div><div class="part-summary-metric"><span>Supplier Part Number</span><strong>{{ item.supplier_part_number or 'Not recorded' }}</strong></div><div class="part-summary-metric"><span>Supplier / Price</span><strong>{% if item.supplier_unit_cost is not none %}{{ item.supplier_name or 'Supplier' }} · ${{ '%.2f'|format(item.supplier_unit_cost) }}{% else %}Awaiting supplier cost{% endif %}</strong></div><div class="part-summary-metric"><span>Verification</span><strong>{{ (item.verification_status or item.research_state or 'Needs review')|replace('_',' ')|title }}</strong>{% if item.confidence is not none %}<small>{{ '%.0f'|format(item.confidence * 100) }}% confidence</small>{% endif %}</div><div class="part-summary-metric"><span>Next Action</span><strong class="part-summary-action">{{ item.next_action }}</strong></div></summary>
+        <div class="research-result-body"><header class="research-result-head"><div>{% if item.source_display_name or item.capture_origin %}<p class="cc-muted"><strong>Source:</strong> {{ item.source_display_name or 'Recorded source' }}{% if item.capture_origin %} · {{ item.capture_origin }}{% endif %}</p>{% endif %}</div></header>
+        <div class="research-result-grid result-primary-metrics"><div><small>Quantity</small><strong>{{ item.quantity }}</strong></div><div><small>Supplier price</small><strong>{% if item.supplier_unit_cost is not none %}${{ '%.2f'|format(item.supplier_unit_cost) }} · {{ item.supplier_name or 'Supplier' }}{% else %}Awaiting price{% endif %}</strong></div><div><small>Status</small><strong>{% if item.supplier_unit_cost is not none %}Supplier quote added{% else %}Price needed{% endif %}</strong></div></div>
+        <form id="confirm-quote-{{ item.id }}" method="post" action="/jobs/{{ job.id }}/research-results/{{ item.id }}/candidate"><input type="hidden" name="job_asset_id" value="{{ selected_asset.id if selected_asset else '' }}"><input type="hidden" name="candidate" value="1"><input type="hidden" name="expected_revision_id" value="{{ basket.work_revision.id }}"><input type="hidden" name="expected_version" value="{{ basket.work_revision.lock_version }}"></form>
+        {% if item.primary_requested_need_id %}<p class="cc-muted research-result-need"><strong>Need:</strong> {{ item.requested_need_wording }}</p>{% elif requested_needs %}<label class="research-result-need">Customer Need <select form="confirm-quote-{{ item.id }}" name="requested_need_ids"><option value="">General / no specific need</option>{% for need in requested_needs %}<option value="{{ need.id }}">{{ need.wording }}</option>{% endfor %}</select></label>{% endif %}
+        <div class="research-result-actions">
+          <details><summary>＋ Add Supplier Quote</summary><form method="post" action="/jobs/{{ job.id }}/research-results/{{ item.id }}/supplier-quote"><input type="hidden" name="job_asset_id" value="{{ selected_asset.id if selected_asset else '' }}"><input type="hidden" name="expected_revision_id" value="{{ basket.work_revision.id }}"><input type="hidden" name="expected_version" value="{{ basket.work_revision.lock_version }}"><input name="supplier_name" value="{{ item.supplier_name or '' }}" placeholder="Supplier name" required><input name="supplier_part_number" value="{{ item.supplier_part_number or '' }}" placeholder="Supplier reference"><input type="number" name="supplier_unit_cost" step="0.01" min="0" value="{% if item.supplier_unit_cost is not none %}{{ item.supplier_unit_cost }}{% endif %}" placeholder="Supplier unit cost"><input name="availability" value="{{ item.availability or '' }}" placeholder="Availability"><input type="url" name="source_url" value="{{ item.source_url or '' }}" placeholder="Evidence URL"><input name="evidence" value="{{ item.research_evidence or '' }}" placeholder="Quote reference or evidence"><button class="button small" type="submit">Save Supplier Quote</button></form></details>
+          <details><summary>Shipping Details</summary><form method="post" action="/jobs/{{ job.id }}/research-results/{{ item.id }}/shipping"><input type="hidden" name="job_asset_id" value="{{ selected_asset.id if selected_asset else '' }}"><select name="quality"><option value="MANUAL">Manual</option><option value="VERIFIED">Supplier / manufacturer verified</option><option value="ACTUAL">Actual measurement</option><option value="ESTIMATED_HIGH">High-confidence estimate</option><option value="ESTIMATED_MEDIUM">Medium-confidence estimate</option><option value="ESTIMATED_LOW">Low-confidence estimate</option></select><input type="number" step="0.001" min="0" name="unit_weight" placeholder="Weight"><input name="weight_unit" value="lb"><input type="number" step="0.01" min="0" name="length" placeholder="Length"><input type="number" step="0.01" min="0" name="width" placeholder="Width"><input type="number" step="0.01" min="0" name="height" placeholder="Height"><input name="dimension_unit" value="in"><input name="provenance" placeholder="Source or measurement note"><button class="button small" type="submit">Save Shipping Data</button></form></details>
+          <details class="result-details"><summary>Evidence &amp; More</summary><div>{% if item.safe_evidence_url %}<a class="button small ghost" href="{{ item.safe_evidence_url }}" target="_blank" rel="noopener">Open Evidence</a>{% endif %}{% if item.research_evidence or item.research_notes %}<p class="research-evidence">{% if item.research_evidence %}<strong>Evidence:</strong> {{ item.research_evidence }}{% endif %}{% if item.research_notes %}<br>{{ item.research_notes }}{% endif %}</p>{% endif %}{% if item.shipping_provenance %}<p class="cc-muted"><strong>Shipping source:</strong> {{ item.shipping_provenance }}</p>{% endif %}{% if shipping and (shipping.unit_weight is not none or shipping.length is not none) %}<p class="cc-muted">{% if shipping.unit_weight is not none %}{{ shipping.unit_weight }} {{ shipping.weight_unit }}{% endif %}{% if shipping.length is not none %} · {{ shipping.length }} × {{ shipping.width }} × {{ shipping.height }} {{ shipping.dimension_unit }}{% endif %}</p>{% endif %}{% if item.research_state == 'RESEARCH_RESULT' and not item.selected %}<form method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/delete" onsubmit="return confirm('Remove this identified result?')"><input type="hidden" name="expected_revision_id" value="{{ basket.work_revision.id }}"><input type="hidden" name="expected_version" value="{{ basket.work_revision.lock_version }}"><button class="button small danger-outline" type="submit">Remove Result</button></form>{% endif %}</div></details>
+          <button form="confirm-quote-{{ item.id }}" class="button" type="submit">Confirm for Quote</button>
+        </div></div>
+      </details>{% endfor %}</div>{% else %}<div class="cc-empty">No research candidates yet. Open a source or add a candidate manually.</div>{% endif %}
+    </div>
+    <nav class="machine-navigation bottom" aria-label="Continue to another asset">{% if previous_asset %}<a class="button ghost" href="/jobs/{{ job.id }}/basket?view=advanced&asset_id={{ previous_asset.id }}#machine-workspace">← Previous Asset · {{ previous_asset.manufacturer }} {{ previous_asset.model or previous_asset.name }}</a>{% endif %}{% if next_asset %}<a class="button" href="/jobs/{{ job.id }}/basket?view=advanced&asset_id={{ next_asset.id }}#machine-workspace">Next Asset · {{ next_asset.manufacturer }} {{ next_asset.model or next_asset.name }} →</a>{% elif previous_asset %}<a class="button" href="#parts-ready">All Assets Reviewed · Items Ready for Quote ↓</a>{% endif %}</nav>
+    {% else %}<div class="empty-context"><h2>Add a Requested Need to begin research</h2><p>Asset context is optional and can be added later when compatibility matters.</p></div>{% endif %}
+  </div></details>
+
+  {% if false %}
+  <details class="cc-card job-disclosure" id="parts-research"><summary>Research Sources</summary><div class="job-disclosure-body">
+    <div class="cc-section-head">
+      <div><p class="cc-label">PARTS RESEARCH</p><h2>Find and compare parts</h2><p class="cc-muted">Use the standard Verify Parts workflow or add a quote received directly from another supplier.</p></div>
+      <button class="button ghost manual-part-trigger" type="button" data-dialog-open="manual-part-dialog">＋ Add Part Manually</button>
+    </div>
+    <div class="cc-research-layout">
+      <aside class="cc-tools">
+        <p class="cc-label">VERIFICATION SOURCE DIRECTORY</p>
+        <div>
+          <label>Verification Source
+            <select id="verification-source" name="source_key" required>{% for connector in connectors %}<option value="{{ connector.connector_key }}" data-launch-url="{{ connector.launch_url }}">{{ connector.display_name }}</option>{% endfor %}</select>
+          </label>
+          <div class="verification-launch-actions">
+            <a class="button ghost" id="open-verification-source" target="_blank" rel="noopener">Open Source</a>
+          </div>
+        </div>
+        <p class="cc-muted">Open Source only launches the external catalog. Use Verify Part on the relevant line to record Job, asset, part, and source context.</p>
+
+        <div class="cc-tools-divider"></div>
+
+    <button
+          class="button ghost full-width"
+          type="button"
+          data-dialog-open="supplier-quote-dialog"
+        >
+          ＋ Add Supplier Quote
+        </button>
+
+        <p class="cc-muted">
+          Use for Costex, dealer phone quotes, local suppliers,
+          and other manually received pricing.
+        </p>
+      </aside>
+      <div class="cc-results">
+        <div class="cc-section-head"><div><p class="cc-label">RESEARCH RESULTS</p></div><span class="cc-count">{{ basket.totals.all_items }}</span></div>
+        {% if vendor_carts %}
+          {% for vendor_cart in vendor_carts %}
+          {% set is_supplier_quote = vendor_cart['source'].source_key == "supplier_quote" %}
+
+          <article
+            class="cc-source {% if is_supplier_quote %}cc-supplier-quote-source{% endif %}"
+          >
+            {% if is_supplier_quote %}
+            <form
+              id="supplier-quote-source-{{ vendor_cart['source'].id }}"
+              class="supplier-quote-bulk-form"
+              method="post"
+              action="/jobs/{{ job.id }}/vendor-carts/{{ vendor_cart['source'].id }}/quote-save-all"
+            ></form>
+            {% endif %}
+
+            <header class="cc-source-head">
+              <div>
+                <small class="cc-muted">SOURCE</small><br>
+                <strong>{{ vendor_cart['source'].source_name }}</strong>
+              </div>
+
+              <div class="cc-source-head-actions">
+                <span class="cc-muted">
+                  {{ vendor_cart['items']|length }}
+                  result{% if vendor_cart['items']|length != 1 %}s{% endif %}
+                </span>
+
+                {% if is_supplier_quote and vendor_cart['items'] %}
+                <button
+                  form="supplier-quote-source-{{ vendor_cart['source'].id }}"
+                  class="button small supplier-quote-save-all"
+                  type="submit"
+                >
+                  Save All Supplier Prices
+                </button>
+
+                <span
+                  class="supplier-quote-save-status"
+                  aria-live="polite"
+                ></span>
+                {% endif %}
+              </div>
+            </header>
+
+            {% if vendor_cart['items'] %}
+            <div style="overflow-x:auto">
+              <table class="cc-result-table">
+                <thead>
+                  <tr>
+                    <th>Part</th>
+                    <th>Description</th>
+                    <th>Type</th>
+                    <th>Qty</th>
+                    <th>Cost</th>
+                    <th>Availability</th>
+                    <th></th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {% for item in vendor_cart['items'] %}
+                  <tr
+                    class="{% if item.selected %}selected{% endif %}"
+                    data-supplier-quote-item="{{ item.id }}"
+                  >
+                    <td>
+                      <div class="cc-part-title">
+                        <strong>
+                          {{ item.supplier_part_number or item.manufacturer_part_number or "—" }}
+                        </strong>
+                        <small>{{ item.brand or "" }}</small>
+                      </div>
+                    </td>
+
+                    <td>
+                      <div class="cc-part-title">
+                        <strong>{{ item.requested_description }}</strong>
+
+                        {% if is_supplier_quote %}
+                        <input
+                          form="supplier-quote-source-{{ vendor_cart['source'].id }}"
+                          type="hidden"
+                          name="item_id"
+                          value="{{ item.id }}"
+                        >
+
+                        <input
+                          form="supplier-quote-source-{{ vendor_cart['source'].id }}"
+                          name="lead_time"
+                          value="{{ item.lead_time or '' }}"
+                          placeholder="Lead time"
+                          class="cc-supplier-quote-small"
+                        >
+                        {% else %}
+                        <small>{{ item.lead_time or "No lead time" }}</small>
+                        {% endif %}
+                      </div>
+                    </td>
+
+                    <td>
+                      <span class="cc-badge">{{ item.source_type }}</span>
+                    </td>
+
+                    <td>{{ item.quantity }}</td>
+
+                    <td>
+                      {% if is_supplier_quote %}
+                      <input
+                        form="supplier-quote-source-{{ vendor_cart['source'].id }}"
+                        type="number"
+                        name="supplier_unit_cost"
+                        value="{% if item.supplier_unit_cost is not none %}{{ '%.2f'|format(item.supplier_unit_cost) }}{% endif %}"
+                        step="0.01"
+                        min="0"
+                        placeholder="Cost"
+                        class="cc-supplier-quote-cost"
+                        data-quote-cost
+                      >
+                      {% elif item.supplier_unit_cost is not none %}
+                      ${{ "%.2f"|format(item.supplier_unit_cost) }}
+                      {% else %}
+                      —
+                      {% endif %}
+                    </td>
+
+                    <td>
+                      {% if is_supplier_quote %}
+                      <input
+                        form="supplier-quote-source-{{ vendor_cart['source'].id }}"
+                        name="availability"
+                        value="{{ item.availability or '' }}"
+                        placeholder="Availability"
+                        class="cc-supplier-quote-availability"
+                      >
+                      {% else %}
+                      {{ item.availability or "Not entered" }}
+                      {% endif %}
+                    </td>
+
+                    <td>
+                      <form
+                        method="post"
+                        action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/toggle"
+                      >
+                        <input
+                          type="hidden"
+                          name="selected"
+                          value="{{ 0 if item.selected else 1 }}"
+                        >
+
+                        <button
+                          class="button small {% if item.selected %}ghost{% endif %}"
+                          type="submit"
+                          data-add-to-quote
+                          {% if is_supplier_quote and item.supplier_unit_cost is none %}
+                          disabled
+                          title="Enter and save the supplier cost first"
+                          {% endif %}
+                        >
+                          {% if item.selected %}
+                          ✓ Added to Quote
+                          {% else %}
+                          + Add to Quote
+                          {% endif %}
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div class="cc-empty">
+              No parts imported from this source.
+            </div>
+            {% endif %}
+          </article>
+          {% endfor %}
+        {% else %}<div class="cc-empty">No research results yet. Open a source or add a manual part.</div>{% endif %}
+      </div>
+    </div>
+  </div></details>
+  {% endif %}
+
+  <details class="cc-card job-disclosure" id="parts-ready"><summary>Items Ready for Quote</summary><div class="job-disclosure-body">
+    <div class="quote-tray-head"><div><p class="cc-label">QUOTE TRAY</p><h2>Items Ready for Quote</h2></div><div class="quote-tray-total"><span>{{ basket.totals.selected_items }} confirmed</span><strong>${{ "%.2f"|format(basket.totals.customer_total) }}</strong></div></div>
+    {% if basket_items %}
+    <div class="part-editor-list">
+    {% for item in basket_items %}
+    {% set cost = item.supplier_unit_cost or 0 %}
+    {% set pricing = item.pricing %}
+    {% set markup = pricing.current_markup_percent %}
+    {% set customer_unit = pricing.current_unit_price %}
+    {% set current_status = item.part_status or "RESEARCH" %}
+    <article class="part-editor-card">
+      <header class="part-editor-header">
+        <div>
+          <span class="cc-badge">{{ item.source_type }}</span>
+          {% if job_assets|length > 1 %}{% set assigned_asset = job_assets|selectattr('id','equalto',item.job_asset_id)|first %}<span class="cc-badge">{% if assigned_asset %}{{ assigned_asset.manufacturer }} {{ assigned_asset.model or assigned_asset.name }}{% else %}Unassigned{% endif %}</span>{% endif %}
+          <h3>{{ item.requested_description }}</h3>
+          <p>{{ item.supplier_name or "Manual source" }}{% if item.internal_part_number %} · PPS Ref {{ item.internal_part_number }}{% endif %}</p>
+        </div>
+        <div class="part-editor-primary-actions">
+          {% if item.source_url %}<a class="button small ghost" href="{{ item.source_url }}" target="_blank" rel="noopener">Open Supplier</a>{% endif %}
+        </div>
+      </header>
+      <form id="part-update-{{ item.id }}" class="cc-inline-edit-form" method="post" action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/update"></form>
+      {% set markup_amount = customer_unit - cost %}
+      <div class="quote-tray-line">
+        <div><span>Confirmed Part</span><strong>{{ item.manufacturer_part_number or item.supplier_part_number or item.internal_part_number }} · {{ item.requested_description }}</strong></div>
+        <div><span>Quantity</span><strong>{{ item.quantity }}</strong></div>
+        <div><span>Cost</span><strong>${{ "%.2f"|format(cost) }}</strong></div>
+        <div><span>Customer Price</span><strong>${{ "%.2f"|format(customer_unit) }}</strong></div>
+        <div><span>Unit Margin</span><strong>{% if markup_amount < 0 %}-${{ "%.2f"|format(markup_amount|abs) }}{% else %}${{ "%.2f"|format(markup_amount) }}{% endif %}</strong></div>
+      </div>
+      <details class="quote-line-details"><summary>Edit pricing &amp; part details</summary>
+      <div class="part-editor-grid">
+      <label class="part-number-field"><span>Part Number</span>
+        {% if item.manufacturer_part_number %}
+        <input form="part-update-{{ item.id }}" type="text" name="manufacturer_part_number" value="{{ item.manufacturer_part_number }}">
+        <input form="part-update-{{ item.id }}" type="hidden" name="supplier_part_number" value="{{ item.supplier_part_number or '' }}">
+        {% elif item.supplier_part_number %}
+        <input form="part-update-{{ item.id }}" type="text" name="supplier_part_number" value="{{ item.supplier_part_number }}">
+        <input form="part-update-{{ item.id }}" type="hidden" name="manufacturer_part_number" value="">
+        {% else %}
+        <input form="part-update-{{ item.id }}" type="text" value="{{ item.internal_part_number or '' }}" placeholder="Enter part number" data-internal-part-number data-original-value="{{ item.internal_part_number or '' }}">
+        <small class="cc-pricing-recommendation">{% if item.internal_part_number %}PPS internal reference{% else %}Identification needed{% endif %}</small>
+        <input form="part-update-{{ item.id }}" type="hidden" name="manufacturer_part_number" value="" data-part-number-target>
+        <input form="part-update-{{ item.id }}" type="hidden" name="supplier_part_number" value="">
+        {% endif %}
+        <input form="part-update-{{ item.id }}" type="hidden" name="alternate_part_number" value="{{ item.alternate_part_number or '' }}">
+      </label>
+      <label><span>Quantity</span>
+<input form="part-update-{{ item.id }}"
+       type="number"
+       name="quantity"
+       value="{{ item.quantity }}"
+       min="1"
+       required>
+      </label>
+      <label><span>Supplier Cost</span>
+<input form="part-update-{{ item.id }}"
+       type="number"
+       name="supplier_unit_cost"
+       value="{{ '%.2f'|format(cost) }}"
+       step="0.01"
+       min="0"
+       required>
+      </label>
+      <label><span>Markup %</span>
+<input form="part-update-{{ item.id }}"
+       type="number"
+       name="markup_percent"
+       value="{{ markup }}"
+       step="0.01"
+       min="0"
+       required>
+<small class="cc-pricing-recommendation">
+  Recommended: {{ "%.2f"|format(pricing.recommended_markup_percent) }}%
+  · ${{ "%.2f"|format(pricing.recommended_unit_price) }}
+</small>
+{% if pricing.status == "BELOW_RECOMMENDED" %}
+<small class="cc-pricing-warning">Below recommended margin</small>
+{% elif pricing.status == "BELOW_COST" %}
+<small class="cc-pricing-warning">Below supplier cost — loss</small>
+{% elif pricing.status == "AT_COST" %}
+<small class="cc-pricing-warning">No parts margin</small>
+{% elif pricing.status == "MISSING_COST" %}
+<small class="cc-pricing-warning">Supplier cost required</small>
+{% endif %}
+      </label>
+      <label><span>Customer Price</span>
+<input form="part-update-{{ item.id }}"
+       type="number"
+       name="customer_unit_price_override"
+       value="{% if item.customer_unit_price_override is not none %}{{ '%.2f'|format(item.customer_unit_price_override) }}{% endif %}"
+       step="0.01"
+       min="0"
+       placeholder="{{ '%.2f'|format(customer_unit) }}">
+<small class="cc-pricing-recommendation">
+  Blank = automatic
+</small>
+<small class="cc-pricing-recommendation">
+  Actual markup:
+  {% if pricing.actual_markup_percent is none %}
+    Undefined (supplier cost is $0)
+  {% else %}
+    {{ "%.2f"|format(pricing.actual_markup_percent) }}%
+  {% endif %}
+</small>
+      </label>
+      <div class="part-editor-metric pricing-emphasis"><span>Dollar Margin</span>
+<strong class="cc-markup-dollar">
+  {% if markup_amount < 0 %}
+  -${{ "%.2f"|format(markup_amount|abs) }}
+  {% elif markup_amount > 0 %}
+  +${{ "%.2f"|format(markup_amount) }}
+  {% else %}
+  $0.00
+  {% endif %}
+</strong>
+      </div>
+      <div class="part-editor-metric line-total-emphasis"><span>Customer Line Total</span>
+<strong style="color:var(--accent)">${{ "%.2f"|format(customer_unit * item.quantity) }}</strong>
+      </div>
+      </div>
+  <input form="part-update-{{ item.id }}" type="hidden" name="confidence" value="{% if item.confidence is not none %}{{ item.confidence }}{% endif %}">
+      <div class="cc-actions"><button form="part-update-{{ item.id }}" class="button small" type="submit">Save Part &amp; Pricing</button></div>
+      </details>
+      <footer class="part-editor-footer">
+        <div><strong>Confirmed for Quote</strong></div>
+  <form
+    method="post"
+    action="/jobs/{{ job.id }}/basket/items/{{ item.id }}/toggle"
+  >
+    <input type="hidden" name="selected" value="0">
+
+    <button
+      class="button small danger-outline"
+      type="submit"
+      title="Remove from this quote"
+    >
+      Remove from Quote
+    </button>
+  </form>
+      </footer>
+    </article>
+    {% endfor %}</div>
+    {% else %}<div class="cc-empty">No parts selected yet.</div>{% endif %}
+    {% if has_parts and not governed_revision %}
+    {% set quote_service_charge = job.service_charge or 0 %}{% set quote_sourcing_fee = job.sourcing_fee or 0 %}{% set quote_review_total = basket.totals.customer_total + quote_service_charge + quote_sourcing_fee %}
+    <form id="quote-builder-form" class="quote-builder-panel quote-final-review" method="post" action="/jobs/{{ job.id }}/quote-builder" data-base-total="{{ '%.2f'|format(quote_review_total) }}">
+      <div><p class="cc-label">CREATE QUOTE</p><h3>Create a Draft Quote</h3></div>
+      <section class="quote-review-section"><div class="quote-bill-to-summary"><div><h4>BILL TO</h4><strong id="quote-bill-to-name">{{ job.customer }}</strong><p id="quote-bill-to-company">{{ job.company or '' }}</p><p id="quote-bill-to-address">{{ job.address or 'No billing address recorded' }}</p></div><label>Change Bill To<select name="bill_to_kind" id="quote-bill-to-kind" data-contact-name="{{ job.customer }}" data-company-name="{{ job.company or '' }}"><option value="CONTACT">Contact · {{ job.customer }}</option>{% if job.company %}<option value="COMPANY">Company · {{ job.company }}</option>{% endif %}<option value="CUSTOM">Custom Bill To</option></select></label></div><details><summary>Custom billing details</summary><div class="cc-dialog-grid"><label>Custom name<input name="bill_to_name" id="quote-custom-name" placeholder="Optional unless Custom"></label><label>Custom company<input name="bill_to_company" id="quote-custom-company" placeholder="Optional unless Custom"></label><label class="full">Billing address<input name="bill_to_address" id="quote-bill-to-address-input" value="{{ job.address or '' }}"></label></div></details></section>
+      <section class="quote-review-section"><h4>INCLUDED PARTS</h4><div class="quote-included-lines">{% for candidate in all_quote_candidates %}{% set candidate_unit = candidate.pricing.current_unit_price %}{% set candidate_line_total = candidate_unit * candidate.quantity %}<div class="quote-included-line" data-quote-line data-line-total="{{ '%.2f'|format(candidate_line_total) }}"><span><strong>{{ candidate.manufacturer_part_number or candidate.supplier_part_number or candidate.internal_part_number }}</strong><small>Part Number</small></span><span class="quote-included-description">{{ candidate.requested_description }}</span><span><strong>{{ candidate.quantity }}</strong><small>Quantity</small></span><span><strong>${{ '%.2f'|format(candidate_unit) }}</strong><small>Customer Price</small></span><span><strong>${{ '%.2f'|format(candidate_line_total) }}</strong><small>Line Total</small></span><div class="quote-exclude-control"><input class="sr-only" type="checkbox" name="basket_item_ids" value="{{ candidate.id }}" checked data-quote-line-toggle aria-label="Include {{ candidate.requested_description }}"><button class="button ghost small" type="button" data-quote-exclude>Exclude</button></div></div>{% endfor %}</div></section>
+      <section class="quote-review-section"><div class="quote-bill-to-summary"><div><h4>QUOTE CHARGES</h4><div class="quote-charge-lines"><div class="quote-charge-line"><span>Sourcing Fee</span><strong>${{ '%.2f'|format(quote_sourcing_fee) }}</strong></div><div class="quote-charge-line"><span>Service Charge</span><strong>${{ '%.2f'|format(quote_service_charge) }}</strong></div>{% if basket.totals.shipping_total %}<div class="quote-charge-line"><span>Shipping</span><strong>${{ '%.2f'|format(basket.totals.shipping_total) }}</strong></div>{% endif %}</div></div><a class="button ghost small" href="#revenue-adjustments">Edit Charges</a></div></section>
+      <div class="quote-review-total"><div><span>Customer Total</span><small>Parts, shipping, and saved charges</small></div><strong id="quote-review-total">${{ '%.2f'|format(quote_review_total) }}</strong></div>
+      <div class="quote-builder-submit"><button class="button" type="submit">Create Draft Quote</button></div>
+    </form>
+    {% endif %}
+  </div></details>
+
+
+
+  <details
+    class="cc-card secondary-disclosure revenue-adjustments-section"
+    id="revenue-adjustments"
+  >
+    <summary>Additional Charges</summary>
+    <div class="secondary-disclosure-body">
+    <div class="cc-section-head revenue-adjustments-heading">
+      <div>
+        <p class="cc-label">REVENUE ADJUSTMENTS</p>
+        <h2>Additional Charges</h2>
+        <p class="cc-muted">
+          Record professional services and sourcing expertise before
+          preparing the customer quote.
+        </p>
+      </div>
+
+      {% if (job.service_charge or 0) > 0 or (job.sourcing_fee or 0) > 0 %}
+      <span class="revenue-adjustments-saved">
+        ✓ Saved
+      </span>
+      {% endif %}
+    </div>
+
+    {% if request.query_params.get("saved") == "1" %}
+    <div class="revenue-save-confirmation" role="status">
+      ✓ Additional Charges saved successfully.
+    </div>
+    {% endif %}
+
+    <form
+      class="revenue-adjustments-form"
+      method="post"
+      action="/jobs/{{ job.id }}/revenue-adjustments"
+    >
+      <article class="revenue-adjustment-card">
+        <header class="revenue-adjustment-card-heading">
+          <div>
+            <span
+              class="revenue-adjustment-icon"
+              aria-hidden="true"
+            >
+              ＋
+            </span>
+
+            <div>
+              <h3>Service Charge</h3>
+              <p>
+                Use for additional work such as inspection,
+                programming, coordination, or delivery to a
+                shipping agent.
+              </p>
+            </div>
+          </div>
+
+          {% if (job.service_charge or 0) > 0 %}
+          <span class="revenue-adjustment-status active">
+            🟢 Service Charge Added
+          </span>
+          {% else %}
+          <span class="revenue-adjustment-status">
+            Not added
+          </span>
+          {% endif %}
+        </header>
+
+        <div class="revenue-adjustment-fields">
+          <label>
+            <span>Amount</span>
+
+            <div class="money-input">
+              <span aria-hidden="true">$</span>
+
+              <input
+                type="number"
+                name="service_charge"
+                value="{{ '%.2f'|format(job.service_charge) if (job.service_charge or 0) > 0 else '' }}"
+                min="50"
+                step="0.01"
+                inputmode="decimal"
+              >
+            </div>
+
+            <small>
+              Enter $0 when unused. Minimum $150 when added.
+            </small>
+          </label>
+
+          <label>
+            <span>Description</span>
+
+            <input
+              name="service_charge_description"
+              value="{{ job.service_charge_description or '' }}"
+              placeholder="Example: Inspect equipment and deliver to shipping agent"
+            >
+
+            <small>
+              Optional explanation of the additional work performed.
+            </small>
+          </label>
+        </div>
+      </article>
+
+      <article class="revenue-adjustment-card">
+        <header class="revenue-adjustment-card-heading">
+          <div>
+            <span
+              class="revenue-adjustment-icon sourcing"
+              aria-hidden="true"
+            >
+              ⌕
+            </span>
+
+            <div>
+              <h3>Sourcing Fee</h3>
+              <p>
+                Use for supplier research, cross-referencing,
+                verification, or difficult sourcing.
+              </p>
+            </div>
+          </div>
+
+          {% if (job.sourcing_fee or 0) > 0 %}
+          <span class="revenue-adjustment-status active sourcing-active">
+            🔵 Sourcing Fee Added
+          </span>
+          {% else %}
+          <span class="revenue-adjustment-status">
+            Not added
+          </span>
+          {% endif %}
+        </header>
+
+        <div class="revenue-adjustment-fields">
+          <label>
+            <span>Amount</span>
+
+            <div class="money-input">
+              <span aria-hidden="true">$</span>
+
+              <input
+                type="number"
+                name="sourcing_fee"
+                value="{{ '%.2f'|format(job.sourcing_fee or 0) }}"
+                min="0"
+                step="0.01"
+                inputmode="decimal"
+              >
+            </div>
+
+            <small>
+              Optional and fully editable.
+            </small>
+          </label>
+
+          <label>
+            <span>Description</span>
+
+            <input
+              name="sourcing_fee_description"
+              value="{{ job.sourcing_fee_description or '' }}"
+              placeholder="Example: Multiple OEM suppliers and cross-reference research"
+            >
+
+            <small>
+              Optional explanation of the sourcing effort.
+            </small>
+          </label>
+        </div>
+      </article>
+
+      <footer class="revenue-adjustments-actions">
+        <div>
+          <strong>Saved directly to this Job</strong>
+          <span>
+            Additional charges are included in Quote and Invoice totals.
+          </span>
+        </div>
+
+        <button class="button" type="submit">
+          Save Additional Charges
+        </button>
+      </footer>
+    </form>
+    </div>
+  </details>
+
+  <details class="cc-card cc-summary secondary-disclosure" id="draft-work-details">
+    <summary>Uncategorized / Draft Work{% if not invoice %} · Detailed totals &amp; profitability{% endif %}<span class="sr-only">{% if invoice %}UNQUOTED / DRAFT WORK · {% endif %}Detailed totals &amp; profitability</span></summary>
+    <div class="secondary-disclosure-body">
+    {% if invoice %}<div class="draft-work-warning"><strong>UNQUOTED / DRAFT WORK</strong><p>These are current editable basket values and are not the authoritative issued-invoice/accounting totals.</p></div>{% endif %}
+    <header class="cc-summary-head">
+      <div>
+        <p class="cc-label">QUOTE SUMMARY</p>
+        <h2>
+          {% if has_parts %}
+            Ready to generate
+          {% else %}
+            Waiting for parts
+          {% endif %}
+        </h2>
+      </div>
+
+    </header>
+    {% set additional_charges = (job.service_charge or 0) + (job.sourcing_fee or 0) %}
+    {% set full_customer_total = basket.totals.customer_total + additional_charges %}
+    {% set full_estimated_profit = basket.totals.estimated_profit + additional_charges %}
+    <div class="cc-primary-numbers"><div class="cc-primary-number"><span>Customer Total</span><strong>${{ "%.2f"|format(full_customer_total) }}</strong></div><div class="cc-primary-number"><span>Estimated Profit</span><strong>${{ "%.2f"|format(full_estimated_profit) }}</strong></div></div>
+    <div class="cc-costs"><div><span>Parts Cost</span><strong>${{ "%.2f"|format(basket.totals.supplier_parts_total) }}</strong></div><div><span>Shipping</span><strong>${{ "%.2f"|format(basket.totals.shipping_total) }}</strong></div><div><span>Total Cost</span><strong>${{ "%.2f"|format(basket.totals.supplier_total) }}</strong></div></div>
+
+    <section class="quote-revenue-review">
+      <header class="quote-revenue-review-head">
+        <div>
+          <p class="cc-label">REVENUE BREAKDOWN</p>
+          <h3>Where customer revenue comes from</h3>
+        </div>
+      </header>
+
+      <div class="quote-revenue-review-lines">
+        <div class="quote-revenue-review-line">
+          <div><strong>Parts Revenue</strong></div>
+          <span>${{ "%.2f"|format(basket.totals.customer_parts_total) }}</span>
+        </div>
+        <div class="quote-revenue-review-line">
+          <div><strong>Shipping Revenue</strong></div>
+          <span>${{ "%.2f"|format(basket.totals.shipping_total) }}</span>
+        </div>
+        <div class="quote-revenue-review-line">
+          <div><strong>Service Charge</strong></div>
+          <span>${{ "%.2f"|format(job.service_charge or 0) }}</span>
+        </div>
+        <div class="quote-revenue-review-line">
+          <div><strong>Sourcing Fee</strong></div>
+          <span>${{ "%.2f"|format(job.sourcing_fee or 0) }}</span>
+        </div>
+      </div>
+
+      <footer class="quote-revenue-review-total">
+        <div>
+          <span>Total Revenue</span>
+          <small>Expected customer billing for this job</small>
+        </div>
+        <strong>${{ "%.2f"|format(full_customer_total) }}</strong>
+      </footer>
+    </section>
+
+    <section class="quote-revenue-review">
+      <header class="quote-revenue-review-head">
+        <div>
+          <p class="cc-label">COST & PROFIT</p>
+          <h3>Job profitability before quote generation</h3>
+        </div>
+      </header>
+
+      <div class="quote-revenue-review-lines">
+        <div class="quote-revenue-review-line">
+          <div><strong>Parts Cost</strong></div>
+          <span>${{ "%.2f"|format(basket.totals.supplier_parts_total) }}</span>
+        </div>
+        <div class="quote-revenue-review-line">
+          <div><strong>Shipping Cost</strong></div>
+          <span>${{ "%.2f"|format(basket.totals.shipping_total) }}</span>
+        </div>
+        <div class="quote-revenue-review-line">
+          <div><strong>Total Cost</strong></div>
+          <span>${{ "%.2f"|format(basket.totals.supplier_total) }}</span>
+        </div>
+      </div>
+
+      <footer class="quote-revenue-review-total">
+        <div>
+          <span>Gross Profit</span>
+          <small>Total revenue minus direct job cost</small>
+        </div>
+        <strong>${{ "%.2f"|format(full_estimated_profit) }}</strong>
+      </footer>
+    </section>
+
+    <section class="quote-revenue-review">
+      <header class="quote-revenue-review-head">
+        <div>
+          <p class="cc-label">ADDITIONAL CHARGES</p>
+          <h3>Additional billable work</h3>
+        </div>
+
+        <a
+          class="button ghost small"
+          href="#revenue-adjustments"
+        >
+          Edit Charges
+        </a>
+      </header>
+
+      <div class="quote-revenue-review-lines">
+        <div class="quote-revenue-review-line">
+          <div>
+            {% if (job.service_charge or 0) > 0 %}
+            <span class="quote-review-indicator service">●</span>
+            <strong>✓ Service Charge</strong>
+            {% else %}
+            <span class="quote-review-indicator missing">●</span>
+            <strong>○ Service Charge</strong>
+            {% endif %}
+          </div>
+
+          <span>
+            ${{ "%.2f"|format(job.service_charge or 0) }}
+          </span>
+        </div>
+
+        <div class="quote-revenue-review-line">
+          <div>
+            {% if (job.sourcing_fee or 0) > 0 %}
+            <span class="quote-review-indicator sourcing">●</span>
+            <strong>✓ Sourcing Fee</strong>
+            {% else %}
+            <span class="quote-review-indicator missing">●</span>
+            <strong>○ Sourcing Fee</strong>
+            {% endif %}
+          </div>
+
+          <span>
+            ${{ "%.2f"|format(job.sourcing_fee or 0) }}
+          </span>
+        </div>
+      </div>
+
+      <footer class="quote-revenue-review-total">
+        <div>
+          <span>Additional Charges Total</span>
+          <small>
+
+          </small>
+        </div>
+
+        <strong>
+          ${{ "%.2f"|format(
+            (job.service_charge or 0) +
+            (job.sourcing_fee or 0)
+          ) }}
+        </strong>
+      </footer>
+    </section>
+
+    </div>
+  </details>
+  {% endif %}
+
+  {% endif %}
+
+  {% if quote_history %}
+  <details class="cc-card secondary-disclosure quote-history-panel" id="quote-history">
+    <summary>Quote History · {{ quote_history|length }}</summary><div class="secondary-disclosure-body">
+    <div class="cc-section-head">
+      <div>
+        <p class="cc-label">QUOTE HISTORY</p>
+        <h2>Customer quote record</h2>
+      </div>
+    </div>
+    {% for history_quote in quote_history %}
+    <div class="quote-document-row">
+      <div>
+        <strong>{{ history_quote.quote_number }}</strong>
+        {% if history_quote.predecessor_number %}
+        <p class="cc-muted">Revision of {{ history_quote.predecessor_number }}</p>
+        {% endif %}
+      </div>
+      <div>
+        <span class="cc-badge">
+          {% if history_quote.is_current %}Current · {% endif %}
+          {{ history_quote.status|replace("_"," ")|title }}
+        </span>
+        <a class="button ghost small"
+           href="/quotes/{{ history_quote.id }}/documents">Open</a>
+      </div>
+    </div>
+    {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
+  {% if invoice and not delivered_job %}
+  <details class="cc-card job-disclosure purchasing-stage-card" id="purchasing-stage"><summary>Supplier Orders</summary><div class="job-disclosure-body">
+    <div class="cc-section-head">
+      <div><p class="cc-label">PURCHASING STAGE</p><h2>Order and receive supplier items</h2><p class="cc-muted">Item editing is complete for this invoiced sale. Create and manage supplier orders in Purchasing.</p></div>
+      <a class="button" href="/purchasing">Open Purchasing</a>
+    </div>
+  </div></details>
+  {% endif %}
+
+</div>
+
+<dialog class="cc-dialog" id="manual-part-dialog">
+  <form method="post" action="/jobs/{{ job.id }}/research-results/manual">
+    <div class="cc-dialog-head">
+      <div><p class="cc-label">RESEARCH CANDIDATE</p><h2>Add Identified Option</h2><p class="cc-muted">Record an item or offer you identified. It remains a candidate until you explicitly confirm it for a Quote.</p></div>
+      <button type="button" class="cc-remove" data-dialog-close>×</button>
+    </div>
+    <div class="cc-dialog-grid">
+      <input type="hidden" name="job_asset_id" value="{{ selected_asset_id or '' }}"><input type="hidden" name="expected_revision_id" value="{{ basket.work_revision.id }}"><input type="hidden" name="expected_version" value="{{ basket.work_revision.lock_version }}">
+      <input id="manual-part-session" type="hidden" name="research_session_id" value="{{ active_research_context.id if active_research_context else '' }}" data-session-id="{{ active_research_context.id if active_research_context else '' }}" data-need-id="{{ active_research_context.requested_need_id if active_research_context else '' }}">
+      <details class="full"><summary>Parts-specific identification (optional)</summary><div class="cc-dialog-grid"><label>OEM / Manufacturer Part Number<input name="manufacturer_part_number" placeholder="Leave blank for general goods or services"></label><label>Alternate / Cross-reference<input name="alternate_part_number" placeholder="Supersession or alternate #"></label></div></details>
+      <label class="full">Item / offer description<input name="description" required placeholder="Example: Sealy King Mattress, Medium Firm"></label>
+      {% if requested_needs %}<label class="full">Customer Need<select id="manual-part-need" name="requested_need_id"><option value="">General / no specific need</option>{% for need in requested_needs %}<option value="{{ need.id }}" {% if selected_need_id == need.id %}selected{% endif %}>{{ need.wording }}</option>{% endfor %}</select></label>{% endif %}
+      <label>Quantity<input type="number" name="quantity" value="1" min="1" required></label>
+      <details class="full"><summary>Already have supplier pricing?</summary><div class="cc-dialog-grid" style="margin-top:12px"><label>Supplier<input name="supplier_name" placeholder="Supplier name"></label><label>Supplier Reference / SKU<input name="supplier_part_number" placeholder="Optional supplier reference"></label><label>Supplier unit cost<input type="number" name="supplier_unit_cost" min="0" step="0.01" placeholder="0.00"></label></div></details>
+      <label>Evidence URL (optional)<input type="url" name="source_url" placeholder="https://…"></label>
+      <label class="full">Evidence / reference<input name="research_evidence" placeholder="Catalog page, diagram reference, dealer confirmation…"></label>
+      <label class="full">Research notes<textarea name="research_notes" placeholder="Fitment distinction, supersession, alternate, or operator notes"></textarea></label>
+    </div>
+    <div class="cc-dialog-actions"><button class="button ghost" type="button" data-dialog-close>Cancel</button><button class="button" type="submit">Add Candidate</button></div>
+  </form>
+</dialog>
+
+{% if selected_asset %}<dialog class="cc-dialog" id="quick-open-dialog">
+  <form method="post" action="/jobs/{{ job.id }}/assets/{{ selected_asset.id }}/research/quick-open" target="_blank">
+    <div class="cc-dialog-head"><div><p class="cc-label">ONE-TIME WEBSITE</p><h2>Open Website</h2><p class="cc-muted">Use a supplier or catalog for this search without adding it to the shared Source Directory.</p></div><button type="button" class="cc-remove" data-dialog-close>×</button></div>
+    <div class="cc-dialog-grid">
+      <input id="quick-open-need" type="hidden" name="requested_need_id" value="{{ selected_need_id or '' }}">
+      <input type="hidden" name="expected_revision_id" value="{{ basket.work_revision.id }}"><input type="hidden" name="expected_version" value="{{ basket.work_revision.lock_version }}">
+      <label class="full">Website URL<input type="url" name="url" required placeholder="https://supplier.example/parts"></label>
+      <p class="cc-muted full">PPS will keep the optional asset context and Requested Need attached to this one-time search. Use <strong>＋ Add Source</strong> instead if the website should be recommended again later.</p>
+    </div>
+    <div class="cc-dialog-actions"><button class="button ghost" type="button" data-dialog-close>Cancel</button><button class="button" type="submit">Open Website</button></div>
+  </form>
+</dialog>{% endif %}
+
+<dialog class="cc-dialog" id="research-source-dialog">
+  <form method="post" action="/jobs/{{ job.id }}/research-sources">
+    <div class="cc-dialog-head"><div><p class="cc-label">RESEARCH SOURCE</p><h2>Add Research Source</h2><p class="cc-muted">Save a catalog or research destination you reviewed. PPS derives the machine and manufacturer from this Job.</p></div><button type="button" class="cc-remove" data-dialog-close>×</button></div>
+    <div class="cc-dialog-grid">
+      <input type="hidden" name="job_asset_id" value="{{ selected_asset_id or '' }}">
+      <label>Source name<input name="display_name" required placeholder="John Deere Parts Catalog"></label>
+      <label>Source type<select name="source_type">{% for source_type in source_types %}<option value="{{ source_type }}">{{ source_type|replace('_',' ')|title }}</option>{% endfor %}</select></label>
+      <label class="full">HTTP/HTTPS URL<input type="url" name="launch_url" placeholder="https://…"></label>
+      <label>Market (optional)<input name="market_applicability" placeholder="JDM, UK, GLOBAL…"></label>
+      <label class="full">Notes<textarea name="notes" placeholder="What this source is useful for"></textarea></label>
+    </div>
+    <div class="cc-dialog-actions"><button class="button ghost" type="button" data-dialog-close>Cancel</button><button class="button" type="submit">Add Source</button></div>
+  </form>
+</dialog>
+
+<dialog class="cc-dialog" id="job-asset-dialog">
+  <form method="post" action="/jobs/{{ job.id }}/assets">
+    <div class="cc-dialog-head">
+      <div><p class="cc-label">JOB ASSET</p><h2>Add a machine or asset</h2><p class="cc-muted">Only record what is known. Automotive and heavy-equipment identifiers are both supported.</p></div>
+      <button type="button" class="cc-remove" data-dialog-close>×</button>
+    </div>
+    <div class="cc-dialog-grid">
+      <label>Manufacturer<input name="manufacturer" placeholder="John Deere"></label>
+      <label>Model<input name="model" placeholder="350D"></label>
+      <label>Year<input name="year" placeholder="Optional"></label>
+      <label>VIN / PIN / serial<input name="vin_pin_serial" placeholder="Optional"></label>
+      <label>Asset type<input name="asset_type" placeholder="Excavator, vehicle, engine..."></label>
+      <label>Internal name<input name="name" placeholder="Optional fleet name"></label>
+      <label class="full">Notes<textarea name="notes" placeholder="Configuration or identifying notes"></textarea></label>
+      <label class="full"><input type="checkbox" name="is_primary" value="1"> Use as the primary/default asset</label>
+    </div>
+    <div class="cc-dialog-actions"><button class="button ghost" type="button" data-dialog-close>Cancel</button><button class="button" type="submit">Add Asset</button></div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  const organizeJobWorkspace = () => {
+    const shell = document.querySelector(".cc-shell");
+    const operations = shell?.querySelector(".job-ops");
+    const overview = document.getElementById("job-overview");
+    const requestedNeeds = document.getElementById("customer-needs");
+    if (shell && operations && overview) shell.insertBefore(overview, operations);
+    if (shell && operations && requestedNeeds) shell.insertBefore(requestedNeeds, operations);
+    const groups = {
+      parts: [
+        "#operational-orders",
+        "#job-assets",
+        "#machine-workspace",
+        "#parts-research",
+        "#parts-ready",
+        "#purchasing-stage"
+      ],
+      financial: [
+        "#operational-financials",
+        "#revenue-adjustments",
+        "#draft-work-details"
+      ],
+      documents: [
+        "#operational-documents",
+        "#quote-history",
+        "#operational-activity"
+      ],
+      details: [
+        "#ask-pps",
+        "#technical-context",
+        "#commercial-history"
+      ]
+    };
+
+    Object.entries(groups).forEach(([name, selectors]) => {
+      const body = document.querySelector(`[data-job-group="${name}"]`);
+      if (!body) return;
+      selectors.forEach((selector) => {
+        const section = document.querySelector(selector);
+        if (section) body.append(section);
+      });
+    });
+
+    const revealTarget = (target) => {
+      if (!target) return;
+      let node = target;
+      while (node) {
+        if (node instanceof HTMLDetailsElement) node.open = true;
+        node = node.parentElement;
+      }
+    };
+
+    const currentTarget = window.location.hash
+      ? document.querySelector(window.location.hash)
+      : null;
+    revealTarget(currentTarget);
+
+    if (document.documentElement.dataset.jobGroupLinksBound !== "1") {
+      document.documentElement.dataset.jobGroupLinksBound = "1";
+      document.addEventListener("click", (event) => {
+        const link = event.target.closest('a[href^="#"]');
+        if (!link) return;
+        revealTarget(document.querySelector(link.getAttribute("href")));
+      });
+    }
+
+    if (window.matchMedia("(max-width: 620px)").matches && !currentTarget) {
+      document.getElementById("parts-purchasing-group")?.removeAttribute("open");
+    }
+  };
+
+  organizeJobWorkspace();
+
+  function bindAskPPS() {
+    const form = document.querySelector("[data-ask-pps-form]");
+    if (!form || form.dataset.boundAskPps === "1") return;
+    form.dataset.boundAskPps = "1";
+    const input = form.querySelector("input");
+    const button = form.querySelector("button[type='submit']");
+    const status = document.querySelector("[data-ask-pps-status]");
+    const result = document.querySelector("[data-ask-pps-result]");
+    const answer = document.querySelector("[data-ask-pps-answer]");
+    const factsWrap = document.querySelector("[data-ask-pps-facts-wrap]");
+    const factsList = document.querySelector("[data-ask-pps-facts]");
+    document.querySelectorAll("[data-ask-pps-example]").forEach((example) => {
+      example.addEventListener("click", () => {
+        input.value = example.textContent.trim();
+        input.focus();
+      });
+    });
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const question = input.value.trim();
+      if (!question) return;
+      button.disabled = true;
+      button.textContent = "Asking...";
+      status.textContent = "Building authoritative PPS context...";
+      status.classList.remove("error");
+      result.hidden = true;
+      try {
+        const response = await fetch(`/api/v1/ai/jobs/${form.dataset.jobId}/ask`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json", "X-PPS-Local-Operator": "1"},
+          body: JSON.stringify({question})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Ask PPS is unavailable.");
+        answer.textContent = data.answer;
+        factsList.replaceChildren();
+        (data.source_facts || []).forEach((fact) => {
+          const item = document.createElement("li");
+          item.textContent = fact;
+          factsList.appendChild(item);
+        });
+        factsWrap.hidden = !data.source_facts?.length;
+        result.hidden = false;
+        status.textContent = `Authoritative context ${data.context_id}`;
+      } catch (error) {
+        status.textContent = error.message || "Ask PPS is unavailable.";
+        status.classList.add("error");
+      } finally {
+        button.disabled = false;
+        button.textContent = "Ask PPS";
+      }
+    });
+  }
+  bindAskPPS();
+  function syncActiveNeed() {
+    const selected = document.getElementById("active-requested-need");
+    const manualNeed = document.getElementById("manual-part-need");
+    const manualSession = document.getElementById("manual-part-session");
+    const quickOpenNeed = document.getElementById("quick-open-need");
+    if (selected && manualNeed) manualNeed.value = selected.value;
+    if (quickOpenNeed) quickOpenNeed.value = selected ? selected.value : "";
+    if (manualSession) {
+      manualSession.value = selected && selected.value === manualSession.dataset.needId
+        ? manualSession.dataset.sessionId
+        : "";
+    }
+  }
+  document.querySelectorAll('[data-dialog-open="manual-part-dialog"], [data-dialog-open="quick-open-dialog"]').forEach((button) => {
+    button.addEventListener("click", syncActiveNeed);
+  });
+  function applyRevisionTokens() {
+    const shell = document.querySelector(".cc-shell");
+    const revisionId = shell?.dataset.revisionId || "";
+    const revisionVersion = shell?.dataset.revisionVersion || "";
+    if (!revisionId) return;
+    document.querySelectorAll("form[method='post']").forEach((form) => {
+      if (!form.querySelector("[name='expected_revision_id']")) {
+        const revisionInput = document.createElement("input");
+        revisionInput.type = "hidden";
+        revisionInput.name = "expected_revision_id";
+        revisionInput.value = revisionId;
+        form.appendChild(revisionInput);
+      }
+      if (!form.querySelector("[name='expected_version']")) {
+        const versionInput = document.createElement("input");
+        versionInput.type = "hidden";
+        versionInput.name = "expected_version";
+        versionInput.value = revisionVersion;
+        form.appendChild(versionInput);
+      }
+    });
+  }
+  applyRevisionTokens();
+  function bindInternalPartNumberEditors() {
+    document.querySelectorAll("[data-internal-part-number]").forEach((input) => {
+      if (input.dataset.boundPartNumber === "1") return;
+      input.dataset.boundPartNumber = "1";
+      const target = input.parentElement.querySelector("[data-part-number-target]");
+      const original = input.dataset.originalValue || "";
+      input.addEventListener("input", () => {
+        if (target) target.value = input.value.trim() === original.trim() ? "" : input.value;
+      });
+    });
+  }
+  bindInternalPartNumberEditors();
+  function bindQuoteFinalReview() {
+    const form = document.getElementById("quote-builder-form");
+    if (!form || form.dataset.reviewBound === "1") return;
+    form.dataset.reviewBound = "1";
+    const totalOutput = form.querySelector("#quote-review-total");
+    const billKind = form.querySelector("#quote-bill-to-kind");
+    const billName = form.querySelector("#quote-bill-to-name");
+    const billCompany = form.querySelector("#quote-bill-to-company");
+    const billAddress = form.querySelector("#quote-bill-to-address");
+    const customName = form.querySelector("#quote-custom-name");
+    const customCompany = form.querySelector("#quote-custom-company");
+    const addressInput = form.querySelector("#quote-bill-to-address-input");
+    function refreshReview() {
+      let excluded = 0;
+      form.querySelectorAll("[data-quote-line]").forEach((line) => {
+        const toggle = line.querySelector("[data-quote-line-toggle]");
+        line.classList.toggle("is-excluded", !toggle.checked);
+        if (!toggle.checked) excluded += Number(line.dataset.lineTotal || 0);
+      });
+      totalOutput.textContent = `$${(Number(form.dataset.baseTotal || 0) - excluded).toFixed(2)}`;
+      const kind = billKind.value;
+      billName.textContent = kind === "CUSTOM" ? (customName.value || customCompany.value || "Custom recipient") : kind === "COMPANY" ? billKind.dataset.companyName : billKind.dataset.contactName;
+      billCompany.textContent = kind === "CONTACT" ? billKind.dataset.companyName : kind === "CUSTOM" ? customCompany.value : "";
+      billAddress.textContent = addressInput.value || "No billing address recorded";
+    }
+    form.querySelectorAll("[data-quote-exclude]").forEach((button) => button.addEventListener("click", () => {
+      const line = button.closest("[data-quote-line]");
+      const toggle = line.querySelector("[data-quote-line-toggle]");
+      toggle.checked = !toggle.checked;
+      button.textContent = toggle.checked ? "Exclude" : "Include";
+      refreshReview();
+    }));
+    [billKind, customName, customCompany, addressInput].forEach((field) => field?.addEventListener("input", refreshReview));
+    form.addEventListener("submit", (event) => {
+      const count = form.querySelectorAll("[data-quote-line-toggle]:checked").length;
+      const recipient = billName.textContent.trim() || "the selected customer";
+      if (!window.confirm(`Create a draft quote for ${recipient} with ${count} part${count === 1 ? "" : "s"} totaling ${totalOutput.textContent}?`)) event.preventDefault();
+    });
+    refreshReview();
+  }
+  bindQuoteFinalReview();
+  const ASYNC_ACTIONS = [
+    /\/basket\/items\/\d+\/toggle$/,
+    /\/basket\/items\/\d+\/update$/,
+    /\/basket\/items\/\d+\/quantity$/,
+    /\/vendor-carts\/clone$/,
+    /\/vendor-carts\/manual$/,
+    /\/vendor-carts\/items\/\d+\/quote-update$/
+  ];
+
+  function isAsyncCommandCenterForm(form) {
+    if (!(form instanceof HTMLFormElement)) return false;
+    if ((form.method || "get").toLowerCase() !== "post") return false;
+    if (form.target === "_blank") return false;
+
+    const action = new URL(
+      form.action,
+      window.location.origin
+    ).pathname;
+
+    return ASYNC_ACTIONS.some((pattern) => pattern.test(action));
+  }
+
+  async function replaceCommandCenter(response) {
+    if (!response.ok) {
+      let message = `Action failed (${response.status})`;
+
+      try {
+        const contentType =
+          response.headers.get("content-type") || "";
+
+        if (contentType.includes("application/json")) {
+          const result = await response.json();
+          message = result.detail || result.message || message;
+        } else {
+          const body = await response.text();
+          if (body.trim()) message = body;
+        }
+      } catch (_) {}
+
+      throw new Error(message);
+    }
+
+    // Legacy form handlers still refresh the retained advanced workspace.
+    // Their POST redirects now land on the new default shell.
+    const returnedUrl = new URL(response.url);
+    if (returnedUrl.pathname === window.location.pathname &&
+        returnedUrl.searchParams.get("view") !== "advanced") {
+      const advancedUrl = new URL(window.location.href);
+      advancedUrl.searchParams.set("view", "advanced");
+      return replaceCommandCenter(await fetch(advancedUrl));
+    }
+    const html = await response.text();
+    const parsed = new DOMParser().parseFromString(
+      html,
+      "text/html"
+    );
+
+    const currentMain = document.querySelector("main");
+    const incomingMain = parsed.querySelector("main");
+
+    if (!currentMain || !incomingMain) {
+      throw new Error(
+        "PPS could not refresh the Command Center section."
+      );
+    }
+
+    const scrollPosition = window.scrollY;
+
+    currentMain.replaceWith(incomingMain);
+    organizeJobWorkspace();
+    applyRevisionTokens();
+    bindInternalPartNumberEditors();
+    bindQuoteFinalReview();
+
+    requestAnimationFrame(() => {
+      window.scrollTo({
+        top: scrollPosition,
+        behavior: "instant"
+      });
+    });
+  }
+
+  async function submitBackgroundForm(form, submitter) {
+    const formData = new FormData(form);
+
+    if (
+      submitter &&
+      submitter.name &&
+      !formData.has(submitter.name)
+    ) {
+      formData.append(
+        submitter.name,
+        submitter.value || ""
+      );
+    }
+
+    const originalText = submitter?.textContent || "";
+
+    if (submitter) {
+      submitter.disabled = true;
+      submitter.textContent = "Working...";
+    }
+
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        body: formData,
+        headers: {
+          "X-Requested-With": "XMLHttpRequest"
+        }
+      });
+
+      await replaceCommandCenter(response);
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "The action could not be completed.");
+
+      if (submitter?.isConnected) {
+        submitter.disabled = false;
+        submitter.textContent = originalText;
+      }
+    }
+  }
+
+  async function saveSupplierQuote(form) {
+    const sourceCard = form.closest(".cc-source");
+    const saveButton = sourceCard?.querySelector(
+      ".supplier-quote-save-all"
+    );
+    const status = sourceCard?.querySelector(
+      ".supplier-quote-save-status"
+    );
+
+    if (saveButton) {
+      saveButton.disabled = true;
+      saveButton.textContent = "Saving...";
+    }
+
+    if (status) {
+      status.textContent = "";
+      status.classList.remove("error");
+    }
+
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        body: new FormData(form),
+        headers: {
+          "X-Requested-With": "XMLHttpRequest"
+        }
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.ok) {
+        throw new Error(
+          result.detail ||
+          result.message ||
+          "Could not save supplier quote."
+        );
+      }
+
+      const savedItems = new Set(
+        (result.saved_items || []).map(String)
+      );
+
+      sourceCard
+        ?.querySelectorAll("[data-supplier-quote-item]")
+        .forEach((row) => {
+          if (!savedItems.has(row.dataset.supplierQuoteItem)) {
+            return;
+          }
+
+          const costInput = row.querySelector(
+            "[data-quote-cost]"
+          );
+          const addButton = row.querySelector(
+            "[data-add-to-quote]"
+          );
+
+          if (
+            addButton &&
+            costInput &&
+            costInput.value.trim() !== ""
+          ) {
+            addButton.disabled = false;
+            addButton.removeAttribute("title");
+          }
+        });
+
+      if (status) {
+        status.textContent = "✓ Supplier quote saved";
+      }
+    } catch (error) {
+      if (status) {
+        status.textContent =
+          error.message || "Save failed.";
+        status.classList.add("error");
+      }
+    } finally {
+      if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.textContent =
+          "Save All Supplier Prices";
+      }
+    }
+  }
+
+  document.addEventListener("click", (event) => {
+    const openButton = event.target.closest(
+      "[data-dialog-open]"
+    );
+
+    if (openButton) {
+      document
+        .getElementById(openButton.dataset.dialogOpen)
+        ?.showModal();
+      return;
+    }
+
+    const closeButton = event.target.closest(
+      "[data-dialog-close]"
+    );
+
+    if (closeButton) {
+      closeButton.closest("dialog")?.close();
+    }
+  });
+
+  document.addEventListener("submit", async (event) => {
+    const form = event.target;
+
+    if (!(form instanceof HTMLFormElement)) return;
+
+    if (form.classList.contains("supplier-quote-bulk-form")) {
+      event.preventDefault();
+      await saveSupplierQuote(form);
+      return;
+    }
+
+    if (!isAsyncCommandCenterForm(form)) return;
+
+    event.preventDefault();
+
+    await submitBackgroundForm(
+      form,
+      event.submitter
+    );
+  });
+})();
+</script>
+{% endblock %}

@@ -1,48 +1,32 @@
 {% extends "base.html" %}
-{% block title %}Dashboard · PartsLink Global{% endblock %}
+{% from "_manufacturer_logo.html" import manufacturer_logo %}
+{% block title %}Work Queue · Pinpoint Sourcing LLC{% endblock %}
 {% block content %}
-<section class="hero">
-  <div>
-    <p class="eyebrow">PLG CORE</p>
-    <h1>Parts sourcing control center</h1>
-    <p>Manage jobs from customer request through OEM verification, sourcing, quotation, ordering, and delivery.</p>
-  </div>
-  <a class="button" href="/jobs/new">Create New Job</a>
-</section>
+<div class="workspace-v2 work-queue-page">
+  <section class="workspace-heading">
+    <div><p class="eyebrow">OPERATOR FRONT DOOR</p><h1>Work Queue</h1><p>Continue the customer, sourcing, and commercial work that needs attention.</p></div>
+    <div class="workspace-heading-actions"><a class="button ghost" href="/requests">Open Inbox</a><a class="button" href="/requests/smart-intake">＋ Smart Intake</a></div>
+  </section>
 
-<section class="stats">
-  <article class="stat-card"><span>Total Jobs</span><strong>{{ totals.jobs_total or 0 }}</strong></article>
-  <article class="stat-card"><span>Requested</span><strong>{{ totals.requested or 0 }}</strong></article>
-  <article class="stat-card"><span>Researching</span><strong>{{ totals.researching or 0 }}</strong></article>
-  <article class="stat-card"><span>Verified</span><strong>{{ totals.verified or 0 }}</strong></article>
-</section>
+  <nav class="work-queue-tabs" aria-label="Work Queue categories">
+    <a class="{% if selected_category == 'ALL' %}active{% endif %}" href="/work-queue?queue=ALL">All <strong>{{ total }}</strong></a>
+    {% for key, label in categories %}<a class="{% if selected_category == key %}active{% endif %}" href="/work-queue?queue={{ key }}">{{ label }} <strong>{{ counts[key] }}</strong></a>{% endfor %}
+    <a class="{% if selected_category == 'FOLLOW_UP' %}active{% endif %}" href="/work-queue?queue=FOLLOW_UP">Follow-Ups</a>
+  </nav>
 
-<section class="panel">
-  <div class="panel-heading">
-    <div><p class="eyebrow">RECENT ACTIVITY</p><h2>Recent jobs</h2></div>
-    <a href="/jobs">View all jobs</a>
-  </div>
-
-  {% if recent_jobs %}
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Job</th><th>Customer</th><th>Machine</th><th>PIN / Serial</th><th>Verified</th><th>Status</th></tr></thead>
-      <tbody>
-      {% for job in recent_jobs %}
-        <tr>
-          <td><a href="/jobs/{{ job.id }}">{{ job.job_number }}</a></td>
-          <td>{{ job.customer }}</td>
-          <td>{{ job.manufacturer }} {{ job.machine }}</td>
-          <td>{{ job.pin_serial or "—" }}</td>
-          <td>{{ job.verified_parts or 0 }}/{{ job.parts_count }}</td>
-          <td><span class="status">{{ job.status }}</span></td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  {% if items %}
+  <section class="work-queue-list" aria-label="Current work">
+    {% for item in items %}
+    <article class="work-queue-row erp-queue-row {% if item.category in ('NEEDS_RESEARCH','READY_TO_QUOTE','READY_TO_INVOICE','READY_TO_ORDER','READY_FOR_DELIVERY') %}erp-actionable-state{% elif item.category in ('WAITING_SUPPLIER_PRICING','CUSTOMER_DECISION_FOLLOW_UP','WAITING_FOR_PAYMENT','WAITING_FOR_PARTS') %}erp-waiting-state{% endif %}">
+      <div class="work-queue-category work-queue-stage {% if item.is_follow_up %}stage-follow-ups{% else %}stage-{{ item.category|lower|replace('_','-') }}{% endif %}">{% if item.is_follow_up %}Follow-Up{% elif item.display_stage %}{{ item.display_stage }}{% else %}{% for key, label in categories %}{% if key == item.category %}{{ label }}{% endif %}{% endfor %}{% endif %}</div>
+      <div class="work-queue-identity"><small>{{ item.job_number }}</small><h2>{{ item.customer }}</h2><span class="machine-identity-line">{{ manufacturer_logo(item.manufacturer, true, false) }}<span>{{ item.machine }}</span></span></div>
+      <div class="work-queue-need"><small>NEED / ACTION</small><strong class="work-queue-need-label">{{ item.need_label }}</strong><span class="work-queue-action-detail">{{ item.action_detail }}</span>{% if item.context_detail %}<span class="work-queue-context-detail">{{ item.context_detail }}</span>{% endif %}{% if item.age_days is not none and item.category != 'CUSTOMER_DECISION_FOLLOW_UP' %}<span class="work-queue-age">Waiting {{ item.age_days }} day{% if item.age_days != 1 %}s{% endif %}</span>{% endif %}</div>
+      <div class="work-queue-action erp-next-action"><small>NEXT ACTION</small><a class="workspace-primary-link" href="{{ item.url }}">{{ item.next_action }} →</a></div>
+    </article>
+    {% endfor %}
+  </section>
   {% else %}
-  <div class="empty"><h3>No jobs yet</h3><p>Create your first PartsLink Global job.</p><a class="button" href="/jobs/new">Create Job</a></div>
+  <section class="workspace-empty"><strong>No work in this queue.</strong><p>Choose another category or open the Inbox for a new customer request.</p><a class="button" href="/requests">Open Inbox</a></section>
   {% endif %}
-</section>
+</div>
 {% endblock %}

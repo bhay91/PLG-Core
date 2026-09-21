@@ -1,50 +1,224 @@
 {% extends "base.html" %}
-{% block title %}Connectors · PartsLink Global{% endblock %}
+{% block title %}Connectors · Pinpoint Sourcing LLC{% endblock %}
+
 {% block content %}
-<section class="page-heading">
-  <div>
-    <p class="eyebrow">SOURCE CONNECTORS</p>
-    <h1>Connectors</h1>
-    <p class="muted">Enable supplier, catalog, cart, and document sources used by PLG.</p>
-  </div>
-</section>
+<div class="workspace-v2">
 
-<section class="panel">
-  <div class="panel-heading"><div><p class="eyebrow">INSTALLED</p><h2>Available connectors</h2></div></div>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Connector</th><th>Category</th><th>Trust</th><th>Type</th><th>Status</th><th></th></tr></thead>
-      <tbody>
-        {% for connector in connectors %}
-        <tr>
-          <td><strong>{{ connector.display_name }}</strong>{% if connector.launch_url %}<div class="muted">{{ connector.launch_url }}</div>{% endif %}</td>
-          <td>{{ connector.category }}</td>
-          <td>{{ connector.trust_level }}</td>
-          <td>{{ connector.connector_type }}</td>
-          <td>{% if connector.is_enabled %}Enabled{% else %}Disabled{% endif %}</td>
-          <td>
-            <form method="post" action="/connectors/{{ connector.id }}/toggle">
-              <button class="button" type="submit">{% if connector.is_enabled %}Disable{% else %}Enable{% endif %}</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</section>
-
-<section class="panel">
-  <div class="panel-heading"><div><p class="eyebrow">ADD CONNECTOR</p><h2>New source profile</h2></div></div>
-  <form method="post" action="/connectors">
-    <div class="form-grid">
-      <label>Name<input name="display_name" required></label>
-      <label>Launch URL<input name="launch_url" type="url"></label>
-      <label>Category<input name="category" value="Supplier"></label>
-      <label>Trust level<select name="trust_level"><option value="OEM_VERIFIED">OEM Verified</option><option value="SUPPLIER_VERIFIED" selected>Supplier Verified</option><option value="NEEDS_REVIEW">Needs Review</option></select></label>
-      <label>Connector type<select name="connector_type"><option value="CART">Cart</option><option value="CATALOG">Catalog</option><option value="UPLOAD">Upload</option></select></label>
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">UNIFIED SOURCE DIRECTORY</p>
+      <h1>Connections</h1>
+      <p>Manage the master sources used by Admin, Job Research, and Open Source.</p>
     </div>
-    <button class="button" type="submit">Add Connector</button>
-  </form>
-</section>
+
+    <a class="button" href="/connectors/new">
+      + New Source
+    </a>
+  </section>
+
+  <section class="workspace-toolbar">
+    <label class="workspace-search">
+      <span aria-hidden="true">⌕</span>
+
+      <input
+        id="connector-search"
+        type="search"
+        placeholder="Search connector name or launch URL..."
+      >
+    </label>
+
+    <nav class="workspace-tabs">
+      <a
+        class="{% if view == 'active' %}active{% endif %}"
+        href="/connectors?view=active"
+      >
+        Active
+      </a>
+
+      <a
+        class="{% if view == 'archived' %}active{% endif %}"
+        href="/connectors?view=archived"
+      >
+        Archived
+      </a>
+
+      <a
+        class="{% if view == 'all' %}active{% endif %}"
+        href="/connectors?view=all"
+      >
+        All
+      </a>
+    </nav>
+  </section>
+
+  {% if connectors %}
+  <section class="workspace-row-list">
+
+    {% for connector in connectors %}
+    <article
+      class="workspace-row connector-workspace-row directory-summary-row"
+      data-search="
+        {{ connector.display_name }}
+        {{ connector.launch_url }}
+        {{ connector.category }} {{ connector.source_type }}
+        {{ connector.manufacturer_applicability }}
+        {{ connector.asset_category_applicability }} {{ connector.market_applicability }}
+      "
+    >
+      <div class="workspace-row-mark connector-mark">
+        ↔
+      </div>
+
+      <div class="workspace-row-identity">
+        <small>{{ connector.category or "SOURCE" }} · {{ connector.source_type|replace('_',' ')|title }}</small>
+
+        <h2>{{ connector.display_name }}</h2>
+
+        <strong>
+          {% if connector.is_archived %}
+            Archived
+          {% elif connector.is_enabled %}
+            Enabled
+          {% else %}
+            Disabled
+          {% endif %}
+        </strong>
+
+        <p>{{ connector.trust_level|replace('_',' ')|title }} trust{% if connector.is_default %} · Recommended{% endif %}</p>
+      </div>
+
+      <div class="workspace-row-status">
+        {% if connector.is_archived %}
+        <span class="workspace-status-badge workspace-status-void">
+          Archived
+        </span>
+        {% elif connector.is_enabled %}
+        <span class="workspace-status-badge workspace-status-paid">
+          Enabled
+        </span>
+        {% else %}
+        <span class="workspace-status-badge workspace-status-partial">
+          Disabled
+        </span>
+        {% endif %}
+      </div>
+
+      <div class="workspace-row-action workspace-action-panel">
+        <span>NEXT ACTION</span>
+
+        {% if connector.is_archived %}
+          <strong>Restore Source</strong>
+        {% elif connector.is_enabled %}
+          <strong>Edit Master Source</strong>
+        {% else %}
+          <strong>Enable Source</strong>
+        {% endif %}
+
+        <a
+          class="workspace-btn workspace-btn-primary"
+          href="/connectors/{{ connector.id }}/edit"
+        >
+          Edit Source
+        </a>
+      </div>
+
+      <details class="workspace-secondary-actions directory-secondary-actions"><summary>Details &amp; More Actions</summary><div class="directory-secondary-body">
+          <div class="directory-configuration">
+            <span>{{ connector.launch_url or "No launch URL configured" }}</span>
+            <span><strong>Applies to:</strong> {{ connector.manufacturer_applicability or "Any manufacturer" }} · {{ connector.asset_category_applicability or "Any asset category" }} · {{ connector.market_applicability or "Any market" }}</span>
+            <span>Priority {{ connector.source_priority }} · {{ connector.connector_type|title }} · {{ connector.trust_level|replace('_',' ')|title }}</span>
+            {% if connector.notes %}<span>{{ connector.notes }}</span>{% endif %}
+          </div>
+          <div class="workspace-btn-row">
+          {% if connector.is_archived %}
+          <form
+            class="workspace-action-form workspace-action-wide"
+            method="post"
+            action="/connectors/{{ connector.id }}/restore"
+          >
+            <button
+              class="workspace-btn workspace-btn-secondary"
+              type="submit"
+            >
+              Restore
+            </button>
+          </form>
+          {% else %}
+          <form
+            class="workspace-action-form"
+            method="post"
+            action="/connectors/{{ connector.id }}/toggle"
+          >
+            <button
+              class="workspace-btn workspace-btn-secondary"
+              type="submit"
+            >
+              {% if connector.is_enabled %}
+                Disable
+              {% else %}
+                Enable
+              {% endif %}
+            </button>
+          </form>
+
+          <form
+            class="workspace-action-form"
+            method="post"
+            action="/connectors/{{ connector.id }}/archive"
+            data-archive-delete
+          >
+            <button
+              class="workspace-btn workspace-btn-secondary"
+              type="submit"
+            >
+              Delete
+            </button>
+          </form>
+          {% endif %}
+        </div>
+      </div></details>
+    </article>
+    {% endfor %}
+
+  </section>
+
+  <p id="no-connector-results" class="workspace-empty hidden">
+    No sources match your search.
+  </p>
+  {% else %}
+  <div class="workspace-empty">
+    No sources are available in this view.
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+(() => {
+  const input = document.getElementById("connector-search");
+  const rows = [...document.querySelectorAll(".connector-workspace-row")];
+  const empty = document.getElementById("no-connector-results");
+
+  if (!input || !rows.length) return;
+
+  input.addEventListener("input", () => {
+    const query = input.value.trim().toLowerCase();
+    let visible = 0;
+
+    rows.forEach((row) => {
+      const match = row.dataset.search
+        .toLowerCase()
+        .includes(query);
+
+      row.hidden = !match;
+
+      if (match) visible += 1;
+    });
+
+    if (empty) {
+      empty.classList.toggle("hidden", visible !== 0);
+    }
+  });
+})();
+</script>
 {% endblock %}

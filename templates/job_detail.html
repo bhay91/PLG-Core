@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ job.job_number }} · PartsLink Global{% endblock %}
+{% block title %}{{ job.job_number }} · Pinpoint Sourcing LLC{% endblock %}
 {% block content %}
 <section class="page-heading row-between">
   <div>
@@ -8,37 +8,69 @@
     <p>{{ job.manufacturer }} {{ job.machine }}{% if job.pin_serial %} · {{ job.pin_serial }}{% endif %}</p>
   </div>
 
+  <div class="header-actions job-top-actions-clean"><a class="button" href="/jobs/{{ job.id }}/basket?view=advanced#lifecycle-controls">Open Lifecycle Controls</a><a class="button danger-outline erp-header-delete" href="/jobs/{{ job.id }}/delete-review">Delete</a></div>
+</section>
+
+<section class="job-workspace-nav">
+  <a class="active" href="/jobs/{{ job.id }}">Overview</a>
+  <a href="/jobs/{{ job.id }}/basket?view=advanced">Parts</a>
+  <span>Timeline</span>
+  <span>Documents</span>
+  <span>Notes</span>
+</section>
+
+<section class="job-summary-grid">
+  <article class="context-card"><span>Customer</span><strong>{{ job.customer }}</strong><small>{{ job.company or "Individual Customer" }}</small></article>
+  <article class="context-card"><span>Machine / Vehicle</span><strong>{{ job.manufacturer }} {{ job.machine }}</strong><small>Equipment information</small></article>
+  <article class="context-card"><span>VIN / PIN / Serial</span><strong>{{ job.pin_serial or "Not Provided" }}</strong><small>Identification reference</small></article>
+  <article class="context-card"><span>Current Stage</span><strong><span class="status status-{{ job.status|lower }}">{{ operational_snapshot.workflow.stage }}</span></strong><small>Created {{ job.created_date }}</small></article>
+</section>
+
+<section class="job-primary-actions job-current-next-action">
+  <div>
+    <p class="eyebrow">NEXT ACTION</p>
+    <h2>{{ operational_snapshot.workflow.next_action }}</h2>
+    <p>The Job Command Center is the authoritative workspace for advancing this Job.</p>
+  </div>
   <div class="header-actions">
-    {% if job.manufacturer and job.manufacturer|upper in ["CAT", "CATERPILLAR"] %}
-    <form method="post" action="/jobs/{{ job.id }}/start-sis-cart-import" target="_blank">
-      <button class="button" type="submit">Import Cart</button>
+    {% if operational_snapshot.workflow.action_method == "POST" %}
+    <form method="post" action="{{ operational_snapshot.workflow.next_url }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="button" type="submit">{{ operational_snapshot.workflow.next_action }}</button>
     </form>
+    {% else %}
+    <a class="button" href="{{ operational_snapshot.workflow.next_url }}">{{ operational_snapshot.workflow.next_action }}</a>
     {% endif %}
-    <a class="button ghost" href="/jobs/{{ job.id }}/edit">Edit Job Information</a>
-    <form method="post" action="/jobs/{{ job.id }}/status" class="status-form">
-      <select name="status">
-        {% for value in ["REQUESTED", "RESEARCHING", "VERIFIED", "QUOTED", "CONFIRMED", "ORDERED", "RECEIVED", "DELIVERED", "VOID"] %}
-        <option value="{{ value }}" {% if job.status == value %}selected{% endif %}>{{ value }}</option>
-        {% endfor %}
-      </select>
-      <button class="button small" type="submit">Update</button>
-    </form>
+    <a class="button ghost" href="/jobs/{{ job.id }}/basket?view=advanced">Open Parts Workspace</a>
   </div>
 </section>
+
+<section class="job-primary-actions">
+  <div>
+    <p class="eyebrow">JOB WORKSPACE</p>
+    <h2>Manage sourcing and documents</h2>
+    <p>Research suppliers, compare options, and prepare parts for the customer quote.</p>
+  </div>
+  <div class="header-actions">
+    <a class="button" href="/jobs/{{ job.id }}/basket?view=advanced">Open Parts Workspace</a>
+    <a class="button ghost" href="/jobs/{{ job.id }}/edit">Edit Job Information</a>
+  </div>
+</section>
+
 
 
 <section class="panel source-import-panel">
   <div class="panel-heading">
     <div>
-      <p class="eyebrow">IMPORT SUPPLIER CART OR QUOTE</p>
-      <h2>Choose a source</h2>
+      <p class="eyebrow">PARTS RESEARCH</p>
+      <h2>Verify Parts</h2>
     </div>
   </div>
 
   <form method="post" action="/jobs/{{ job.id }}/start-source-import" target="_blank">
     <div class="form-grid compact-grid">
       <label>
-        Supplier / Source
+        Verification Source
         <select name="source_key" required>
           {% for connector in connectors %}
           <option value="{{ connector.connector_key }}">{{ connector.display_name }}</option>
@@ -47,13 +79,13 @@
       </label>
 
       <div class="form-action">
-        <button class="button" type="submit">Open Source</button>
+        <button class="button" type="submit">Verify Parts</button>
       </div>
     </div>
   </form>
 
   <p class="muted">
-    CAT SIS cart import is active. Worldpac, SSF, and RockAuto readers will be added after each cart is tested.
+    Choose CAT SIS, 7zap, a supplier source, or upload evidence. Imported candidates still require verification and compatibility review.
   </p>
 </section>
 
@@ -61,8 +93,8 @@
 <section class="panel source-import-summary">
   <div class="panel-heading">
     <div>
-      <p class="eyebrow">SOURCE IMPORTS</p>
-      <h2>Imported cart costs</h2>
+      <p class="eyebrow">RESEARCH SUMMARY</p>
+      <h2>Imported supplier costs</h2>
     </div>
   </div>
 
@@ -116,13 +148,14 @@
     </div>
   </div>
 
-  {% if ready_for_quote %}
+  {% if quote_is_next_action %}
   <p>
     All {{ selected_count }} part source{{ "" if selected_count == 1 else "s" }}
     selected.
   </p>
 
   <form method="post" action="/jobs/{{ job.id }}/generate-quote">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button
       class="button"
       type="submit"
@@ -131,6 +164,10 @@
       Generate Quote
     </button>
   </form>
+  {% elif ready_for_quote %}
+  <p class="muted">
+    Supplier sources are selected. The Job has advanced beyond quote creation; use the current Next Action above.
+  </p>
   {% else %}
   <p class="muted">
     Select one supplier source for every part before generating the quote.
@@ -138,44 +175,25 @@
   {% endif %}
 </section>
 
-<section class="detail-grid">
-  <article class="panel">
-    <p class="eyebrow">JOB INFORMATION</p>
-    <dl class="details">
-      <div><dt>Customer</dt><dd>{{ job.customer }}</dd></div>
-      <div><dt>Company</dt><dd>{{ job.company or "—" }}</dd></div>
-      <div><dt>Phone</dt><dd>{{ job.phone or "—" }}</dd></div>
-      <div><dt>Email</dt><dd>{{ job.email or "—" }}</dd></div>
-      <div><dt>Machine</dt><dd>{{ job.manufacturer }} {{ job.machine }}</dd></div>
-      <div><dt>PIN / Serial</dt><dd>{{ job.pin_serial or "—" }}</dd></div>
-      <div><dt>Date</dt><dd>{{ job.created_date }}</dd></div>
-      <div><dt>Status</dt><dd><span class="status">{{ job.status }}</span></dd></div>
-    </dl>
-  </article>
 
-  <article class="panel">
-    <p class="eyebrow">ADD MORE PARTS</p>
-    <form method="post" action="/jobs/{{ job.id }}/parts">
-      <label>Requested description<input name="requested_description" required placeholder="Water pump"></label>
-      <label>Quantity<input name="quantity" type="number" value="1" min="1"></label>
-      <button class="button" type="submit">Add to Job</button>
-    </form>
-  </article>
-</section>
 
 <section class="panel quote-readiness">
   <div>
     <p class="eyebrow">QUOTE READINESS</p>
     <h2>{{ selected_count }} of {{ parts|length }} sources selected</h2>
   </div>
-  <span class="status {% if ready_for_quote %}ready{% endif %}">
-    {% if ready_for_quote %}READY FOR QUOTE{% else %}SELECT A SOURCE FOR EACH PART{% endif %}
+  <span class="status {% if quote_is_next_action %}ready{% endif %}">
+    {% if quote_is_next_action %}READY FOR QUOTE{% elif ready_for_quote %}SOURCES SELECTED{% else %}SELECT A SOURCE FOR EACH PART{% endif %}
   </span>
 </section>
 
 <section class="panel">
-  <div class="panel-heading">
-    <div><p class="eyebrow">REQUESTED PARTS</p><h2>{{ parts|length }} item{% if parts|length != 1 %}s{% endif %}</h2></div>
+  <div class="panel-heading parts-workspace-heading">
+    <div>
+      <p class="eyebrow">PARTS RESEARCH WORKSPACE</p>
+      <h2>{{ parts|length }} item{% if parts|length != 1 %}s{% endif %}</h2>
+      <p>Review OEM identification, supplier options, pricing, and the selected source for each part.</p>
+    </div>
   </div>
 
   {% if parts %}
@@ -243,6 +261,9 @@
         <div class="verified-meta">
           <span><strong>Requested:</strong> {{ part.requested_description }}</span>
           <span><strong>OEM number:</strong> {{ part.oem_part_number }}</span>
+            {% if part.alternate_part_number %}
+            <span><strong>Alternate / superseded:</strong> {{ part.alternate_part_number }}</span>
+            {% endif %}
           <span><strong>OEM description:</strong> {{ part.oem_description or "—" }}</span>
           <span><strong>Source:</strong> {{ part.verification_source or "Manual" }}</span>
           {% if part.oem_dealer_price is not none %}
@@ -290,8 +311,63 @@
                 </span>
                 {% if source.availability %}<span>{{ source.availability }}</span>{% endif %}
                 {% if source.lead_time %}<span>Lead time: {{ source.lead_time }}</span>{% endif %}
+                  {% if source.confidence is not none %}
+                  <span>Confidence: {{ "%.0f"|format(source.confidence * 100) }}%</span>
+                  {% endif %}
+                {% if source.source_url %}
+                <span><a href="{{ source.source_url }}" target="_blank" rel="noopener">Open evidence</a></span>
+                {% endif %}
               </div>
             </form>
+
+            <form
+              method="post"
+              action="/parts/{{ part.id }}/sources/{{ source.id }}/verification"
+              class="source-verification-form"
+            >
+              {% set candidate_status = source.verification_status or "UNVERIFIED" %}
+              <label>Verification
+                <select name="verification_status">
+                  <option value="UNVERIFIED" {% if candidate_status == "UNVERIFIED" %}selected{% endif %}>Unverified</option>
+                  <option value="VERIFIED" {% if candidate_status == "VERIFIED" %}selected{% endif %}>Verified</option>
+                  <option value="REJECTED" {% if candidate_status == "REJECTED" %}selected{% endif %}>Rejected</option>
+                  <option value="OVERRIDE" {% if candidate_status == "OVERRIDE" %}selected{% endif %}>Manual Override</option>
+                </select>
+              </label>
+              <label>Note
+                <input
+                  name="verification_note"
+                  value="{{ source.verification_note or '' }}"
+                  placeholder="Evidence, rejection reason, or override note"
+                >
+              </label>
+              <button class="text-button" type="submit">Update Verification</button>
+            </form>
+
+              <form
+                method="post"
+                action="/parts/{{ part.id }}/sources/{{ source.id }}/compatibility"
+                class="source-verification-form"
+              >
+                {% set compatibility_status = source.compatibility_status or "UNCHECKED" %}
+                <label>Compatibility
+                  <select name="compatibility_status">
+                    <option value="UNCHECKED" {% if compatibility_status == "UNCHECKED" %}selected{% endif %}>Unchecked</option>
+                    <option value="COMPATIBLE" {% if compatibility_status == "COMPATIBLE" %}selected{% endif %}>Compatible</option>
+                    <option value="INCOMPATIBLE" {% if compatibility_status == "INCOMPATIBLE" %}selected{% endif %}>Incompatible</option>
+                    <option value="OVERRIDE" {% if compatibility_status == "OVERRIDE" %}selected{% endif %}>Manual Override</option>
+                  </select>
+                </label>
+                <label>Compatibility note
+                  <input
+                    name="compatibility_note"
+                    value="{{ source.compatibility_note or '' }}"
+                    placeholder="VIN, PIN, serial, engine serial, or fitment evidence"
+                  >
+                </label>
+                <button class="text-button" type="submit">Update Compatibility</button>
+              </form>
+
             {% if source.trust_level != "OEM_VERIFIED" %}
             <form method="post" action="/parts/{{ part.id }}/sources/{{ source.id }}/delete"
                   onsubmit="return confirm('Remove this supplier option?');">
@@ -345,6 +421,33 @@
               </select>
             </label>
             <label>Quote reference<input name="quote_reference" placeholder="Quote #, email, or phone"></label>
+            <label>Evidence URL
+              <input name="source_url" type="url" placeholder="Supplier product page URL">
+            </label>
+              <label>Confidence
+                <input
+                  name="confidence"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  placeholder="0.00 - 1.00"
+                >
+              </label>
+            <label>Verification
+              <select name="verification_status">
+                <option value="UNVERIFIED">Unverified</option>
+                <option value="VERIFIED">Verified</option>
+                <option value="REJECTED">Rejected</option>
+                <option value="OVERRIDE">Manual Override</option>
+              </select>
+            </label>
+            <label>Verification note
+              <input
+                name="verification_note"
+                placeholder="Evidence, rejection reason, or override note"
+              >
+            </label>
             <button class="button" type="submit">Add Source</button>
           </form>
         </details>

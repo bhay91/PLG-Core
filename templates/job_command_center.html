@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "job_workspace/_forms.html" import tokens, use_option with context %}
+{% block title %}{{ job.job_number }} · Job{% endblock %}
+{% block page_context %}Job{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/job_workspace.css?v=9">
+<div class="jcc" data-job-workspace data-job-id="{{ job.id }}">
+  {% include "job_workspace/_overview.html" %}
+  <nav class="jcc-nav" aria-label="Job sections">
+    {% for target, label in [('overview','Overview'),('parts','Parts'),('quote','Quote'),('orders','Orders'),('activity','Activity')] %}<a href="#{{ target }}">{{ label }}</a>{% endfor %}
+  </nav>
+  <div class="jcc-sections">
+    {% include "job_workspace/_parts.html" %}
+    {% include "job_workspace/_quote.html" %}
+    {% include "job_workspace/_orders.html" %}
+    {% include "job_workspace/_activity.html" %}
+  </div>
+</div>
+<script src="/static/job_workspace.js?v=1" defer></script>
+{% endblock %}

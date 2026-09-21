@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block title %}Smart Intake · Pinpoint Sourcing LLC{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="/static/customer_requests.css?v=smart-attachments-2">
+<section class="workspace-heading">
+  <div>
+    <p class="eyebrow">INBOX</p>
+    <h1>Smart Intake</h1>
+    <p>
+      Paste the request in the customer’s natural wording. Review every
+      detected field before PPS creates records.
+    </p>
+  </div>
+</section>
+
+<section class="panel smart-intake-panel erp-intake-form erp-current-work">
+  <form
+    method="post"
+    action="/requests/smart-intake/analyze"
+    class="smart-intake-paste"
+    enctype="multipart/form-data"
+    data-smart-intake-upload
+  >
+    <div class="smart-intake-message" data-smart-intake-drop>
+    <label>
+      Customer request text
+      <textarea
+        name="raw_text"
+        rows="16"
+        placeholder="John needs 3 pallets of water delivered to Nassau.&#10;&#10;Or: Brandon needs a water pump for his truck, VIN 1HGBH41JXMN109186."
+      >{{ raw_text or "" }}</textarea>
+    </label>
+
+    <div class="smart-intake-image-tools">
+      <label class="button ghost smart-intake-file-button">
+        Attach Files
+        <input name="attachments" type="file" accept="image/jpeg,image/png,application/pdf" multiple data-smart-intake-files>
+      </label>
+      <span>Drag JPEG, PNG, or PDF files here · up to 8 files, 8 MB each</span>
+    </div>
+    <div class="smart-intake-previews" data-smart-intake-previews aria-live="polite"></div>
+    </div>
+
+    <div class="form-actions">
+      <a class="button ghost" href="/requests">Back to Inbox</a>
+
+
+      <a class="button ghost" href="/requests/new">
+        Enter Manually
+      </a>
+
+      <button class="button" type="submit">
+        Analyze Request
+      </button>
+    </div>
+  </form>
+</section>
+
+<section class="panel smart-research-import-panel erp-intake-form">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">RESEARCH IMPORT</p>
+      <h2>Import Research Package</h2>
+      <p>Upload one Research PDF and its matching JSON sidecar for DRAFT review. Nothing is added to a Job until you confirm it.</p>
+    </div>
+  </div>
+  <form method="post" action="/requests/smart-intake/research-import" enctype="multipart/form-data" class="smart-research-import-form">
+    <div class="two-column">
+      <label>
+        Research PDF
+        <input name="research_pdf" type="file" accept=".pdf,application/pdf" required>
+        <small>One PDF containing the human-readable research evidence.</small>
+      </label>
+      <label>
+        JSON sidecar
+        <input name="sidecar" type="file" accept=".json,application/json" required>
+        <small>One matching Research Import Package JSON file.</small>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="button" type="submit">Import Research Package</button>
+    </div>
+  </form>
+</section>
+<div class="smart-image-modal" data-image-modal hidden role="dialog" aria-modal="true" aria-labelledby="smart-image-modal-title">
+  <div class="smart-image-modal-dialog">
+    <div class="smart-image-modal-head"><strong id="smart-image-modal-title" data-image-modal-name>Image preview</strong><button type="button" class="smart-image-modal-close" data-image-modal-close aria-label="Close image preview">×</button></div>
+    <button type="button" class="smart-image-modal-nav previous" data-image-modal-previous aria-label="Previous image">‹</button>
+    <img data-image-modal-image src="" alt="">
+    <button type="button" class="smart-image-modal-nav next" data-image-modal-next aria-label="Next image">›</button>
+  </div>
+</div>
+<script src="/static/smart_intake_attachments.js?v=smart-attachments-2" defer></script>
+
+{% if parsed %}
+<form
+  method="post"
+  action="/requests/smart-intake/create"
+  class="smart-intake-review"
+>
+  <input type="hidden" name="raw_text" value="{{ raw_text }}">
+
+  <section class="panel smart-intake-match-grid erp-intake-proposal">
+    <article class="smart-match-card">
+      <p class="eyebrow">CUSTOMER</p>
+
+      {% if customer_match %}
+      <div class="smart-match-state matched">
+        ✓ Existing customer
+      </div>
+      <h2>{{ customer_match.name }}</h2>
+      <p>{{ customer_match.phone or "No phone saved" }}</p>
+      {% else %}
+      <div class="smart-match-state new">
+        ＋ New customer
+      </div>
+      <h2>{{ parsed.individual_name or parsed.company_name or "Missing customer" }}</h2>
+      {% endif %}
+    </article>
+
+    <article class="smart-match-card">
+      <p class="eyebrow">LOCATION</p>
+
+      {% if location_match %}
+      <div class="smart-match-state matched">
+        ✓ Existing location
+      </div>
+      <h2>{{ location_match.location_name }}</h2>
+      {% elif parsed.location %}
+      <div class="smart-match-state new">
+        ＋ New location
+      </div>
+      <h2>{{ parsed.location }}</h2>
+      <p>Will be saved under this customer.</p>
+      {% else %}
+      <div class="smart-match-state review">
+        Location not provided
+      </div>
+      {% endif %}
+    </article>
+
+    <article class="smart-match-card">
+      <p class="eyebrow">REGISTRY</p>
+
+      {% if machine_match %}
+      {% if machine_ownership_conflict %}
+      <div class="smart-match-state review">
+        ⚠ Ownership conflict
+      </div>
+      <h2>
+        {{ machine_match.manufacturer }}
+        {{ machine_match.model or machine_match.name }}
+      </h2>
+      <p>{{ machine_match.vin_pin_serial or "No identifier" }}</p>
+      <p>Currently registered to <strong>{{ machine_match.customer_name }}</strong>{% if machine_match.customer_number %} · {{ machine_match.customer_number }}{% endif %}</p>
+      <a class="button" href="/machines/{{ machine_match.id }}/transfer?customer_id={{ customer_match.id }}">Transfer Machine</a>
+      {% else %}
+      <div class="smart-match-state matched">
+        ✓ Existing machine
+      </div>
+      <h2>
+        {{ machine_match.manufacturer }}
+        {{ machine_match.model or machine_match.name }}
+      </h2>
+      <p>{{ machine_match.vin_pin_serial or "No identifier" }}</p>
+      {% endif %}
+      {% else %}
+      <div class="smart-match-state new">
+        ＋ New machine
+      </div>
+      <h2>{{ parsed.manufacturer }} {{ parsed.model }}</h2>
+      <p>{{ parsed.identifier or "No identifier" }}</p>
+      {% endif %}
+    </article>
+  </section>
+
+  <section class="panel smart-intake-fields erp-intake-form erp-current-work">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">REVIEW</p>
+        <h2>Parsed information</h2>
+        <p>Edit only if something was interpreted incorrectly.</p>
+      </div>
+    </div>
+
+    <div class="two-column">
+      <label>
+        Customer
+        <input
+          name="individual_name"
+          value="{{ parsed.individual_name }}"
+        >
+      </label>
+
+      <label>
+        Company
+        <input
+          name="company_name"
+          value="{{ parsed.company_name }}"
+        >
+      </label>
+    </div>
+
+    <div class="two-column">
+      <label>
+        Phone
+        <input name="phone" value="{{ parsed.phone }}">
+      </label>
+
+      <label>
+        Email
+        <input
+          type="email"
+          name="email"
+          value="{{ parsed.email }}"
+        >
+      </label>
+    </div>
+
+    <label>
+      Location
+      <input name="location" value="{{ parsed.location }}">
+    </label>
+
+    <div class="two-column">
+      <label>
+        Registry Type
+        <select name="registry_type">
+          {% for value, label in registry_types.items() %}
+          <option
+            value="{{ value }}"
+            {% if parsed.registry_type == value %}selected{% endif %}
+          >
+            {{ label }}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        Year
+        <input name="year" value="{{ parsed.year }}">
+      </label>
+    </div>
+
+    <div class="two-column">
+      <label>
+        Manufacturer
+        <input
+          name="manufacturer"
+          value="{{ parsed.manufacturer }}"
+        >
+      </label>
+
+      <label>
+        Model
+        <input name="model" value="{{ parsed.model }}">
+      </label>
+    </div>
+
+    <label>
+      VIN / PIN / Serial
+      <input
+        name="identifier"
+        value="{{ parsed.identifier }}"
+      >
+    </label>
+
+    <label>
+      Requested Needs
+      <textarea name="requested_parts" rows="7">{{ parsed.requested_parts }}</textarea>
+    </label>
+
+    <label>
+      Customer Message / Notes
+      <textarea name="request_text" rows="5">{{ parsed.request_text }}</textarea>
+    </label>
+
+    <div class="form-actions">
+      <button class="button" type="submit">
+        Create Request and Job
+      </button>
+    </div>
+  </section>
+</form>
+{% endif %}
+{% endblock %}

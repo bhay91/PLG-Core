@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Follow-Up Center · Pinpoint Sourcing LLC{% endblock %}
+{% block content %}
+<style>
+.follow-shell{display:grid;gap:18px;min-width:0}.follow-view-tabs{display:flex;flex-wrap:wrap;gap:8px}.follow-view-tabs a{padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink-strong);font-size:13px;font-weight:750;text-decoration:none}.follow-view-tabs a.active{border-color:var(--accent);background:var(--accent);color:#fff}.follow-queue{display:grid;gap:10px}.follow-row{display:grid;grid-template-columns:minmax(135px,.55fr) minmax(260px,1.5fr) minmax(150px,.6fr) minmax(190px,.75fr);align-items:start;gap:16px;padding:16px 18px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-sm);min-width:0}.follow-record,.follow-main,.follow-when,.follow-actions{display:grid;gap:5px;min-width:0}.follow-record strong{color:var(--accent-dark)}.follow-main strong{color:var(--ink-strong)}.follow-main span,.follow-main small,.follow-when small{color:var(--muted);overflow-wrap:anywhere}.follow-label{font-size:10px;font-weight:850;letter-spacing:.05em;color:var(--muted)}.follow-category{width:max-content;max-width:100%;padding:5px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent-dark);font-size:10px;font-weight:850;line-height:1.2;letter-spacing:.04em}.follow-category.PAYMENT{background:var(--warning-soft);color:var(--warning)}.follow-category.NEEDS_ATTENTION{background:var(--danger-soft);color:var(--danger)}.follow-category.CUSTOMER_INFORMATION{background:#f1ecff;color:#6842a8}.follow-category.HISTORY{background:var(--surface-soft);color:var(--muted)}.follow-context{font-size:12px;color:#334155!important}.follow-links{display:flex;flex-wrap:wrap;gap:6px}.follow-links a{font-size:12px;color:var(--accent-dark);font-weight:750}.follow-actions .button{width:100%;justify-content:center}.follow-action-details{border:1px solid var(--line);border-radius:9px;padding:8px}.follow-action-details summary{cursor:pointer;color:var(--accent-dark);font-size:12px;font-weight:800}.follow-action-details form{display:grid;gap:7px;margin-top:8px}.follow-action-details input{min-width:0;width:100%}.follow-overdue{color:var(--danger)!important;font-weight:850}.follow-empty{padding:32px 20px;text-align:center;background:#fff;border:1px dashed var(--line-strong);border-radius:14px}@media(max-width:1050px){.follow-row{grid-template-columns:minmax(130px,.5fr) minmax(0,1.5fr)}.follow-when,.follow-actions{grid-column:2}.follow-actions{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:760px){.page:has(> .follow-shell){width:auto;margin-left:12px;margin-right:12px}.follow-row{grid-template-columns:1fr}.follow-when,.follow-actions{grid-column:1}.follow-actions{grid-template-columns:1fr}.follow-view-tabs{display:grid;grid-template-columns:1fr 1fr}.follow-view-tabs a{min-width:0;overflow-wrap:anywhere}}@media(max-width:420px){.follow-view-tabs{grid-template-columns:1fr}.follow-row{padding:14px}}
+</style>
+<div class="follow-shell">
+  <section class="workspace-heading">
+    <div><p class="eyebrow">OPERATOR FOLLOW-UP DESK</p><h1>Follow-Up Center</h1><p>See who or what needs attention, why, when, and what to do next.</p></div>
+  </section>
+
+  <nav class="follow-view-tabs" aria-label="Follow-Up views">
+    <a class="{% if selected_view == 'MY_FOLLOW_UPS' %}active{% endif %}" href="/follow-up?view=MY_FOLLOW_UPS">My Follow-Ups ({{ summary.my_follow_ups }})</a>
+    <a class="{% if selected_view == 'CUSTOMER_DECISIONS' %}active{% endif %}" href="/follow-up?view=CUSTOMER_DECISIONS">Customer Decisions ({{ summary.customer_decisions }})</a>
+    <a class="{% if selected_view == 'PAYMENTS' %}active{% endif %}" href="/follow-up?view=PAYMENTS">Payments ({{ summary.payments }})</a>
+    <a class="{% if selected_view == 'SUPPLIERS_LOGISTICS' %}active{% endif %}" href="/follow-up?view=SUPPLIERS_LOGISTICS">Suppliers / Logistics ({{ summary.suppliers + summary.parts_shipping }})</a>
+    <a class="{% if selected_view == 'HISTORY' %}active{% endif %}" href="/follow-up?view=HISTORY">History ({{ summary.history }})</a>
+  </nav>
+
+  {% if items %}<section class="follow-queue" aria-label="Follow-Up work">
+  {% for item in items %}
+    <article class="follow-row" data-follow-category="{{ item.category }}" data-follow-kind="{{ item.row_kind }}">
+      <div class="follow-record"><span class="follow-category {{ item.category }}">{% if item.row_kind == 'MANUAL' and item.category != 'HISTORY' %}MANUAL FOLLOW-UP{% else %}{{ item.priority|replace('_',' ') }}{% endif %}</span><span class="follow-label">JOB / RECORD</span><strong>{{ item.record_number }}</strong></div>
+      <div class="follow-main">
+        <span class="follow-label">WHO</span><strong>{{ item.title }}</strong>
+        <span class="follow-label">WHAT</span>
+        {% if item.summary_text %}<strong>{{ item.summary_text }}</strong>{% endif %}
+        <span>{{ item.subtitle or "—" }}</span>
+        {% if item.linked_part %}<small>Part: {{ item.linked_part }}</small>{% endif %}
+        {% if item.context_detail %}<span class="follow-context">{{ item.context_detail }}</span>{% endif %}
+        {% if item.detail %}<span class="follow-label">{% if item.category == 'HISTORY' %}OUTCOME{% else %}WHY{% endif %}</span><small>{{ item.detail }}</small>{% endif %}
+        {% if item.row_kind == 'MANUAL' and item.links %}<div class="follow-links">{% for link in item.links %}<a href="{{ link.url }}">{{ link.label }}</a>{% endfor %}</div>{% endif %}
+      </div>
+      <div class="follow-when"><span class="follow-label">WHEN</span><strong class="{% if item.is_overdue %}follow-overdue{% endif %}">{{ item.priority|replace('_',' ') }}</strong><small>Requested {{ item.waiting_since }}</small><small>{{ item.age_days }} day{% if item.age_days != 1 %}s{% endif %} waiting</small>{% if item.due_date %}<small class="{% if item.is_overdue %}follow-overdue{% endif %}">Expected {{ item.due_date }}</small>{% endif %}</div>
+      <div class="follow-actions"><span class="follow-label">NEXT ACTION</span><a class="button ghost" href="{{ item.url }}">{{ item.action_label }} →</a>
+        {% if item.row_kind == 'MANUAL' and item.category != 'HISTORY' %}
+          {% if item.stored_status == 'OPEN' and item.category == 'CUSTOMER_INFORMATION' %}<details class="follow-action-details"><summary>Record Information Received</summary><form method="post" action="/follow-ups/{{ item.record_id }}/information-received"><input name="resolution" required placeholder="Information received"><button class="button" type="submit">Save Information</button></form></details>{% endif %}
+          <details class="follow-action-details"><summary>Resolve</summary><form method="post" action="/follow-ups/{{ item.record_id }}/resolve"><input name="resolution" required placeholder="Resolution"><button class="button" type="submit">Resolve</button></form></details>
+          <details class="follow-action-details"><summary>Cancel</summary><form method="post" action="/follow-ups/{{ item.record_id }}/cancel" onsubmit="return confirm('Cancel this follow-up? The history will be preserved.')"><input name="reason" required placeholder="Cancellation reason"><button class="button danger" type="submit">Cancel Follow-Up</button></form></details>
+        {% endif %}
+      </div>
+    </article>
+  {% endfor %}
+  </section>{% else %}<div class="follow-empty"><strong>No records in this view.</strong><p>Choose another Follow-Up view.</p></div>{% endif %}
+</div>
+{% endblock %}

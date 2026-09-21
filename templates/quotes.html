@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% from "_manufacturer_logo.html" import manufacturer_logo %}
+{% block title %}Quotes · Pinpoint Sourcing LLC{% endblock %}
+
+{% block content %}
+<div class="workspace-v2 erp-commercial-directory erp-quotes-directory">
+
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">QUOTE WORKSPACE</p>
+      <h1>Quotes</h1>
+      <p>Review customer quotes and continue the sale.</p>
+    </div>
+  </section>
+
+  <section class="workspace-toolbar">
+    <label class="workspace-search">
+      <span aria-hidden="true">⌕</span>
+      <input
+        id="quote-search"
+        type="search"
+        placeholder="Search customer, quote, job, machine, PIN or part..."
+      >
+    </label>
+
+    <nav class="workspace-tabs">
+      <a
+        class="{% if view == 'active' %}active{% endif %}"
+        href="/quotes?view=active"
+      >
+        Active
+      </a>
+
+      <a
+        class="{% if view == 'archived' %}active{% endif %}"
+        href="/quotes?view=archived"
+      >
+        Archived
+      </a>
+
+      <a
+        class="{% if view == 'all' %}active{% endif %}"
+        href="/quotes?view=all"
+      >
+        All
+      </a>
+    </nav>
+  </section>
+
+  {% if quotes %}
+  <section class="workspace-row-list" id="quote-list">
+
+    {% for quote in quotes %}
+    <article
+      class="workspace-row quote-row erp-commercial-row"
+      data-search="
+        {{ quote.quote_number }}
+        {{ quote.customer }}
+        {{ quote.job_number }}
+        {{ quote.manufacturer }}
+        {{ quote.machine }}
+        {{ quote.pin_serial }}
+        {{ quote.item_descriptions }}
+        {{ quote.status }}
+      "
+    >
+      <div class="workspace-row-mark quote-mark">
+        {{ manufacturer_logo(quote.manufacturer, true, false, true) }}
+      </div>
+
+      <div class="workspace-row-identity">
+        <small>
+          {{ quote.quote_number }}
+          · {{ quote.quote_date }}
+        </small>
+
+        <h2>{{ quote.customer }}</h2>
+
+        <strong class="machine-identity-line">
+          {% if quote.manufacturer or quote.machine %}
+            <span>{{ quote.manufacturer }}</span> <span>{{ quote.machine }}</span>
+          {% else %}
+            No machine linked
+          {% endif %}
+
+          {% if quote.pin_serial %}
+            <span>· {{ quote.pin_serial }}</span>
+          {% endif %}
+        </strong>
+
+        <p>
+          {{ quote.item_descriptions or "No item description available" }}
+        </p>
+      </div>
+
+      <div class="workspace-row-status">
+        <div class="workspace-status-line">
+          <span
+            class="workspace-status-badge
+                   workspace-status-{{ quote.status|lower }}"
+          >
+            {{ quote.status }}
+          </span>
+
+          <strong>
+            ${{ "%.2f"|format(quote.customer_total or 0) }}
+          </strong>
+        </div>
+
+        <div class="workspace-row-meta">
+          {{ quote.item_count or 0 }}
+          item{% if quote.item_count != 1 %}s{% endif %}
+        </div>
+      </div>
+
+      <div class="workspace-row-action workspace-action-panel erp-record-action">
+        <span>NEXT ACTION</span>
+
+        {% if quote.invoice_id %}
+          <strong>Invoice Created</strong>
+
+          <a
+            class="workspace-btn workspace-btn-primary"
+            href="/invoices/{{ quote.invoice_id }}/documents"
+          >
+            Open Invoice
+          </a>
+        {% elif quote.is_archived %}
+          <strong>Restore Quote</strong>
+
+          <form
+            method="post"
+            action="/quotes/{{ quote.id }}/restore"
+            class="workspace-action-form"
+          >
+            <button
+              class="workspace-btn workspace-btn-primary"
+              type="submit"
+            >
+              Restore Quote
+            </button>
+          </form>
+        {% else %}
+          <strong>
+            {% if quote.status == "SUPERSEDED" %}
+              Historical Quote
+            {% else %}
+              Continue Quote
+            {% endif %}
+          </strong>
+
+          <a
+            class="workspace-btn workspace-btn-primary"
+            href="/quotes/{{ quote.id }}/documents"
+          >
+            Open Quote
+          </a>
+        {% endif %}
+
+        <div class="workspace-btn-row">
+          <a
+            class="workspace-btn workspace-btn-secondary"
+            target="_blank"
+            href="/quotes/{{ quote.id }}/customer/pdf"
+          >
+            Customer PDF
+          </a>
+          {% if quote.can_archive and not quote.is_archived %}
+          <form method="post" action="/quotes/{{ quote.id }}/archive" data-archive-delete>
+            <button class="workspace-btn workspace-btn-secondary" type="submit">Delete</button>
+          </form>
+          {% endif %}
+
+          <a
+            class="workspace-btn workspace-btn-secondary"
+            target="_blank"
+            href="/quotes/{{ quote.id }}/internal/pdf"
+          >
+            Internal PDF
+          </a>
+        </div>
+      </div>
+    </div>
+    </article>
+    {% endfor %}
+
+  </section>
+
+  <p id="no-quote-results" class="workspace-empty hidden">
+    No quotes match your search.
+  </p>
+  {% else %}
+  <div class="workspace-empty">
+    No quotes are available in this view.
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+(() => {
+  const input = document.getElementById("quote-search");
+  const rows = [...document.querySelectorAll(".quote-row")];
+  const empty = document.getElementById("no-quote-results");
+
+  if (!input || !rows.length) return;
+
+  input.addEventListener("input", () => {
+    const query = input.value.trim().toLowerCase();
+    let visible = 0;
+
+    rows.forEach((row) => {
+      const matches = row.dataset.search
+        .toLowerCase()
+        .includes(query);
+
+      row.hidden = !matches;
+
+      if (matches) visible += 1;
+    });
+
+    if (empty) {
+      empty.classList.toggle("hidden", visible !== 0);
+    }
+  });
+})();
+</script>
+{% endblock %}

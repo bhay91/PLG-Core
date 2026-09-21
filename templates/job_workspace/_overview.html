@@ -1,0 +1,28 @@
+<header class="jcc-panel jcc-header" id="overview">
+<a class="jcc-back" href="/jobs">← Back to Jobs</a>
+<div class="jcc-heading"><div><p class="jcc-eyebrow">{{ job.job_number }}</p><h1>{{ job.customer }}</h1>
+{% if operational_snapshot.assets %}
+{% for asset in operational_snapshot.assets %}<p class="jcc-machine">{{ asset.manufacturer }} {{ asset.model or asset.name }}{% if asset.vin_pin_serial %}<span>VIN / PIN / serial: {{ asset.vin_pin_serial }}</span>{% endif %}</p>{% endfor %}
+{% elif job.machine or job.pin_serial %}<p class="jcc-machine">{{ job.manufacturer or '' }} {{ job.machine or '' }}{% if job.pin_serial %}<span>VIN / PIN / serial: {{ job.pin_serial }}</span>{% endif %}</p>
+{% else %}<p class="jcc-muted">Machine / vehicle not recorded</p>{% endif %}
+</div><div class="jcc-state"><span>Current stage</span><strong>{{ primary_action.stage }}</strong><small>Payment: {{ operational_snapshot.invoice.payment_state|replace('_',' ')|title if operational_snapshot.invoice else 'Not invoiced' }}</small></div></div>
+<div class="jcc-next"><div><span>Outstanding</span><p>{{ outstanding }}</p></div>
+{% if primary_action.action_method == 'POST' %}<form method="post" action="{{ primary_action.next_url }}" data-jcc-form data-return="orders">{{ tokens() }}{% if operational_snapshot.pending_revision %}<input type="hidden" name="expected_version" value="{{ operational_snapshot.pending_revision.lock_version }}">{% endif %}<button class="button" type="submit">{{ primary_action.next_action }}</button></form>
+{% else %}<a class="button" href="{{ primary_action.next_url }}">{{ primary_action.next_action }}</a>{% endif %}
+</div>
+<div class="jcc-status-grid" aria-label="Job progress">
+<div class="jcc-status-card"><span>Customer quote</span><strong>{% if operational_snapshot.quote %}{{ operational_snapshot.quote.status|replace('_',' ')|title }}{% else %}Not created{% endif %}</strong></div>
+<div class="jcc-status-card"><span>Payment</span><strong>{{ operational_snapshot.invoice.payment_state|title if operational_snapshot.invoice else 'Not invoiced' }}</strong></div>
+<div class="jcc-status-card"><span>Supplier orders</span><strong>{{ operational_snapshot.supplier_orders|length }}</strong></div>
+<div class="jcc-status-card"><span>Receiving</span><strong>{% if operational_snapshot.fulfillment["items"] %}{{ operational_snapshot.fulfillment.counts.received }}/{{ operational_snapshot.fulfillment.counts.total }} items{% else %}Not started{% endif %}</strong></div>
+<div class="jcc-status-card"><span>Delivery</span><strong>{% if operational_snapshot.movement.delivered_units %}{{ operational_snapshot.movement.delivered_units }} delivered{% elif operational_snapshot.movement.available_to_deliver_units %}Ready{% else %}Waiting{% endif %}</strong></div>
+<div class="jcc-status-card"><span>Job state</span><strong>{{ primary_action.stage }}</strong></div>
+</div>
+{% if job.status == 'CANCELLED' %}<p class="jcc-warning">This job is cancelled. {{ job.cancellation_reason or '' }}</p>{% endif %}
+<details><summary>Job details</summary><div class="jcc-detail-body">
+{% if job.company %}<p>{{ job.company }}</p>{% endif %}
+<a class="button ghost" href="/jobs/{{ job.id }}/edit">Edit Job</a>
+<a class="button ghost" href="/jobs/{{ job.id }}/basket?view=advanced#lifecycle-controls">Job Actions</a>
+<a class="button ghost" href="/jobs/{{ job.id }}/basket?view=advanced">Advanced tools</a>
+</div></details>
+</header>

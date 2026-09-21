@@ -1,0 +1,464 @@
+{% extends "base.html" %}
+{% block title %}Accounting & Audit · Pinpoint Sourcing LLC{% endblock %}
+
+{% block content %}
+<style>
+.accounting-shell{
+  width:100%;
+  max-width:none;
+  margin:0;
+  display:grid;
+  gap:20px
+}
+.accounting-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:14px
+}
+.accounting-card{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:18px;
+  box-shadow:var(--shadow-sm);
+  display:grid;
+  gap:5px
+}
+.accounting-card span{
+  font-weight:750;
+  color:var(--muted)
+}
+.accounting-card strong{
+  font-size:28px;
+  color:var(--ink-strong)
+}
+.accounting-card small{
+  color:var(--muted)
+}
+.accounting-section{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:16px;
+  overflow:hidden;
+  box-shadow:var(--shadow-sm)
+}
+.accounting-section-head{
+  padding:17px 19px;
+  border-bottom:1px solid var(--line);
+  background:#f7f9fc
+}
+.accounting-section-head h2{
+  margin:2px 0 0
+}
+.accounting-table{
+  width:100%;
+  border-collapse:collapse
+}
+.accounting-table th,
+.accounting-table td{
+  padding:12px 16px;
+  text-align:left;
+  border-bottom:1px solid var(--line);
+  vertical-align:top
+}
+.accounting-table th{
+  font-size:12px;
+  text-transform:uppercase;
+  color:var(--muted);
+  background:#fbfcfe
+}
+.accounting-table tr:last-child td{
+  border-bottom:0
+}
+.accounting-money{
+  font-weight:850
+}
+.accounting-positive{
+  color:#087a43
+}
+.accounting-negative{
+  color:#b42318
+}
+.accounting-audit-summary{
+  max-width:520px
+}
+.accounting-status-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:16px
+}
+.accounting-card-link{text-decoration:none}.accounting-card-link:hover{border-color:var(--accent)}
+.accounting-helper-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.accounting-helper{padding:13px 15px;border:1px solid var(--line);border-radius:12px;background:#fff}.accounting-helper span{display:block;color:var(--muted);font-size:12px;font-weight:750}.accounting-helper strong{display:block;margin-top:4px;color:var(--ink-strong);font-size:18px}
+.accounting-reconciliation-table td{font-size:13px}.accounting-state{display:inline-block;padding:4px 7px;border-radius:999px;background:var(--surface-soft);font-size:10px;font-weight:850;letter-spacing:.03em}.accounting-state.ORDER_COSTED,.accounting-state.RECEIVED{background:#eaf8ef;color:#12603c}.accounting-state.PARTIALLY_COSTED{background:#fff4df;color:#71501b}.accounting-links{display:flex;flex-wrap:wrap;gap:5px}.accounting-links a{font-size:12px;font-weight:750;color:var(--accent-dark)}
+@media(max-width:900px){
+  .accounting-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))
+  }
+  .accounting-status-grid{
+    grid-template-columns:1fr
+  }
+}
+@media(max-width:1100px){
+  .accounting-reconciliation-table,
+  .accounting-reconciliation-table tbody,
+  .accounting-reconciliation-table tr,
+  .accounting-reconciliation-table td{display:block;width:100%}
+  .accounting-reconciliation-table thead{display:none}
+  .accounting-reconciliation-table tr{padding:12px;border-bottom:1px solid var(--line)}
+  .accounting-reconciliation-table td{display:grid;grid-template-columns:minmax(140px,.7fr) minmax(0,1fr);gap:8px;padding:5px 4px;border:0;overflow-wrap:anywhere}
+  .accounting-reconciliation-table td::before{content:attr(data-label);color:var(--muted);font-size:11px;font-weight:800;text-transform:uppercase}
+  .accounting-reconciliation-table td.accounting-primary-cell{display:block}
+  .accounting-reconciliation-table td.accounting-primary-cell::before{display:none}
+}
+@media(max-width:620px){
+  .page:has(> .accounting-shell){width:auto;margin-left:12px;margin-right:12px}
+  .accounting-grid{
+    grid-template-columns:1fr
+  }
+  .accounting-helper-grid{grid-template-columns:1fr}
+  .accounting-reconciliation-table td{grid-template-columns:minmax(105px,.7fr) minmax(0,1fr)}
+}
+</style>
+
+<div class="accounting-shell erp-commercial-detail erp-accounting-workspace">
+  {% set reconciliation_state = namespace(confirmed=0, awaiting=0, variance=0) %}
+  {% for row in invoice_reconciliation %}
+    {% if row.actual_cost_state == "NOT_CONFIRMED" %}{% set reconciliation_state.awaiting = reconciliation_state.awaiting + 1 %}
+    {% elif (row.cost_variance or 0) > 0.005 or (row.cost_variance or 0) < -0.005 or (row.profit_variance or 0) > 0.005 or (row.profit_variance or 0) < -0.005 %}{% set reconciliation_state.variance = reconciliation_state.variance + 1 %}
+    {% else %}{% set reconciliation_state.confirmed = reconciliation_state.confirmed + 1 %}{% endif %}
+  {% endfor %}
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">ACCOUNTING &amp; AUDIT</p>
+      <h1>Financial Control Center</h1>
+      <p>
+        Read-only financial and audit view derived
+        from PPS invoices, payments and supplier purchases.
+      </p>
+    </div>
+
+    <a class="button ghost" href="/">
+      Dashboard
+    </a>
+  </section>
+
+  <section class="accounting-grid">
+    <a class="accounting-card accounting-card-link accounting-attention-card" href="#invoice-reconciliation">
+      <span>Needs Attention</span>
+      <strong>{{ reconciliation_state.awaiting + reconciliation_state.variance }}</strong>
+      <small>{{ reconciliation_state.awaiting }} awaiting final cost · {{ reconciliation_state.variance }} with variance</small>
+    </a>
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Invoiced Revenue</span>
+      <strong>
+        ${{ "%.2f"|format(financials.invoiced_revenue) }}
+      </strong>
+      <small>All non-void invoices</small>
+    </a>
+
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Invoice Collections</span>
+      <strong>
+        ${{ "%.2f"|format(financials.invoice_collections) }}
+      </strong>
+      <small>Invoice-linked payments less reversals</small>
+    </a>
+
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Outstanding Balance</span>
+      <strong>
+        ${{ "%.2f"|format(financials.receivables) }}
+      </strong>
+      <small>Persisted unpaid and partial balances</small>
+    </a>
+
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Supplier Order Cost</span>
+      <strong>
+        ${{ "%.2f"|format(financials.placed_supplier_cost) }}
+      </strong>
+      <small>What the supplier orders were placed for.</small>
+    </a>
+
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Expected Profit</span>
+      <strong>
+        ${{ "%.2f"|format(financials.booked_profit) }}
+      </strong>
+      <small>Customer sale minus estimated cost.</small>
+    </a>
+
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Supplier Order Profit</span>
+      <strong>
+        ${{ "%.2f"|format(financials.placed_cost_profit) }}
+      </strong>
+      <small>Customer sale minus supplier order cost.</small>
+    </a>
+
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Final Actual Cost</span>
+      <strong>{% if financials.actual_confirmation_state == "NOT_CONFIRMED" %}NOT CONFIRMED{% else %}${{ "%.2f"|format(financials.actual_supplier_cost) }}{% endif %}</strong>
+      <small>What we ultimately confirmed the parts actually cost. · {{ financials.actual_confirmation_state|replace('_',' ') }}</small>
+    </a>
+
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Final Profit</span>
+      <strong>{% if financials.actual_confirmation_state == "NOT_CONFIRMED" %}NOT CONFIRMED{% else %}${{ "%.2f"|format(financials.actual_gross_profit) }}{% endif %}</strong>
+      <small>Customer sale minus final actual cost.</small>
+    </a>
+
+    <a class="accounting-card accounting-card-link" href="#invoice-reconciliation">
+      <span>Profit Difference</span>
+      <strong>{% if financials.actual_confirmation_state == "NOT_CONFIRMED" %}—{% else %}${{ "%+.2f"|format(financials.profit_variance) }}{% endif %}</strong>
+      <small>Final profit compared with expected profit.</small>
+    </a>
+
+  </section>
+
+  <section class="accounting-helper-grid" aria-label="Other customer money">
+    <article class="accounting-helper"><span>Unallocated Customer Money</span><strong>${{ "%.2f"|format(financials.unallocated_customer_money) }}</strong></article>
+    <article class="accounting-helper"><span>Generic Refunds</span><strong>${{ "%.2f"|format(financials.refunds) }}</strong></article>
+    <article class="accounting-helper"><span>Adjustments</span><strong>${{ "%+.2f"|format(financials.adjustments) }}</strong></article>
+  </section>
+
+  <section class="accounting-section erp-commercial-current" id="invoice-reconciliation">
+    <div class="accounting-section-head"><p class="eyebrow">INVOICE CONTROL</p><h2>Invoice Profit &amp; Cost Check</h2><p>See immediately which invoices are confirmed and which need a final supplier cost or variance review.</p></div>
+    <div class="accounting-operational-list">
+      {% for row in invoice_reconciliation %}{% set has_variance = row.actual_cost_state != "NOT_CONFIRMED" and ((row.cost_variance or 0) > 0.005 or (row.cost_variance or 0) < -0.005 or (row.profit_variance or 0) > 0.005 or (row.profit_variance or 0) < -0.005) %}
+      <article><div><strong><a href="{{ row.invoice_url }}">{{ row.invoice_number }}</a></strong><small><a href="{{ row.job_url }}">{{ row.job_number }}</a> · {{ row.customer }}</small></div>{% if row.actual_cost_state == "NOT_CONFIRMED" %}<span class="accounting-operational-state needs-cost">Awaiting Final Cost</span>{% elif has_variance %}<span class="accounting-operational-state has-variance">Variance Detected</span>{% else %}<span class="accounting-operational-state is-confirmed">Confirmed</span>{% endif %}</article>
+      {% else %}<p>No non-void invoices to reconcile.</p>{% endfor %}
+    </div>
+    <details class="accounting-reconciliation-detail"><summary>Detailed accounting columns</summary>
+      <p class="accounting-detail-guide"><strong>Estimated Cost:</strong> What we expected the parts to cost when the customer was quoted/invoiced. <strong>Supplier Order Cost:</strong> What the supplier orders were placed for. <strong>Final Actual Cost:</strong> What we ultimately confirmed the parts actually cost. <strong>Expected Profit:</strong> Customer sale minus estimated cost. <strong>Supplier Order Profit:</strong> Customer sale minus supplier order cost. <strong>Final Profit:</strong> Customer sale minus final actual cost. <strong>Profit Difference:</strong> Final profit compared with expected profit.</p>
+      <div class="accounting-detail-table-wrap">
+    <table class="accounting-table accounting-reconciliation-table">
+      <thead><tr><th>Invoice / Job</th><th>Revenue</th><th>Estimated Cost</th><th>Supplier Order Cost</th><th>Final Actual Cost</th><th>Expected Profit</th><th>Supplier Order Profit</th><th>Final Profit</th><th>Cost Difference</th><th>Profit Difference</th><th>Status / Orders</th></tr></thead>
+      <tbody>{% for row in invoice_reconciliation %}<tr>
+        <td class="accounting-primary-cell"><strong><a href="{{ row.invoice_url }}">{{ row.invoice_number }}</a></strong><div><a href="{{ row.job_url }}">{{ row.job_number }}</a> · {{ row.customer }}</div></td>
+        <td data-label="Revenue" class="accounting-money">${{ "%.2f"|format(row.customer_total) }}</td>
+        <td data-label="Estimated Cost" class="accounting-money">${{ "%.2f"|format(row.booked_supplier_cost) }}</td>
+        <td data-label="Supplier Order Cost" class="accounting-money">${{ "%.2f"|format(row.placed_supplier_cost) }}</td>
+        <td data-label="Final Actual Cost" class="accounting-money">{% if row.actual_cost_state == "NOT_CONFIRMED" %}NOT CONFIRMED{% else %}${{ "%.2f"|format(row.actual_supplier_cost) }}<small>{{ row.actual_cost_state|replace('_',' ') }}</small>{% endif %}</td>
+        <td data-label="Expected Profit" class="accounting-money">${{ "%.2f"|format(row.expected_profit) }}</td>
+        <td data-label="Supplier Order Profit" class="accounting-money">${{ "%.2f"|format(row.placed_cost_profit) }}</td>
+        <td data-label="Final Profit" class="accounting-money">{% if row.actual_cost_state == "NOT_CONFIRMED" %}NOT CONFIRMED{% else %}${{ "%.2f"|format(row.actual_profit) }}{% endif %}</td>
+        <td data-label="Cost Difference" class="accounting-money">{% if row.actual_cost_state == "NOT_CONFIRMED" %}—{% else %}${{ "%+.2f"|format(row.cost_variance) }}{% endif %}</td>
+        <td data-label="Profit Difference" class="accounting-money">{% if row.actual_cost_state == "NOT_CONFIRMED" %}—{% else %}${{ "%+.2f"|format(row.profit_variance) }}{% endif %}</td>
+        <td data-label="Status / Orders"><span class="accounting-state {{ row.actual_cost_state }}">{{ row.actual_cost_state|replace('_',' ') }}</span>{% if row.orders %}<div class="accounting-links">{% for order in row.orders %}<a href="/purchasing/orders/{{ order.id }}">{{ order.po_number or order.supplier_name }}</a>{% endfor %}</div>{% endif %}</td>
+      </tr>{% else %}<tr><td colspan="11">No non-void invoices to reconcile.</td></tr>{% endfor %}</tbody>
+    </table></div></details>
+  </section>
+
+  <div class="accounting-status-grid">
+    <section class="accounting-section">
+      <div class="accounting-section-head">
+        <p class="eyebrow">SALES</p>
+        <h2>Invoice Status</h2>
+      </div>
+
+      <table class="accounting-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Count</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for row in invoice_status %}
+          <tr>
+            <td><strong>{{ row.status }}</strong></td>
+            <td>{{ row.count }}</td>
+            <td class="accounting-money">
+              ${{ "%.2f"|format(row.total or 0) }}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="3">No invoices recorded.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="accounting-section">
+      <div class="accounting-section-head">
+        <p class="eyebrow">PURCHASING</p>
+        <h2>Supplier Purchase Status</h2>
+      </div>
+
+      <table class="accounting-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Count</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for row in po_status %}
+          <tr>
+            <td><strong>{{ row.status }}</strong></td>
+            <td>{{ row.count }}</td>
+            <td class="accounting-money">
+              ${{ "%.2f"|format(row.total or 0) }}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="3">No supplier purchases recorded.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <section class="accounting-section">
+    <div class="accounting-section-head">
+      <p class="eyebrow">FINANCIAL ACTIVITY</p>
+      <h2>Recent Customer Transactions</h2>
+    </div>
+
+    <table class="accounting-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Customer</th>
+          <th>Invoice</th>
+          <th>Type</th>
+          <th>Reference</th>
+          <th>Amount</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for tx in transactions %}
+        <tr>
+          <td>{{ tx.transaction_date }}</td>
+          <td>
+            {% if tx.customer_id %}
+            <a href="/customers/{{ tx.customer_id }}">
+              {{ tx.customer_number or tx.customer_name }}
+            </a>
+            {% else %}
+            {{ tx.customer_name or "—" }}
+            {% endif %}
+          </td>
+          <td>
+            {% if tx.invoice_id %}
+            <a href="/invoices/{{ tx.invoice_id }}/documents">
+              {{ tx.invoice_number or "Invoice" }}
+            </a>
+            {% else %}
+            —
+            {% endif %}
+          </td>
+          <td>
+            {{ tx.transaction_type|replace("_"," ") }}
+          </td>
+          <td>{{ tx.reference or "—" }}</td>
+          <td
+            class="
+              accounting-money
+              {% if tx.amount >= 0 %}
+              accounting-positive
+              {% else %}
+              accounting-negative
+              {% endif %}
+            "
+          >
+            {% if tx.amount >= 0 %}+{% endif %}
+            ${{ "%.2f"|format(tx.amount) }}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6">
+            No customer financial transactions recorded.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="accounting-section">
+    <div class="accounting-section-head">
+      <p class="eyebrow">AUDIT TRAIL</p>
+      <h2>Recent PPS Activity</h2>
+    </div>
+
+    <table class="accounting-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Action</th>
+          <th>Record</th>
+          <th>Summary</th>
+          <th>Actor</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for entry in audit %}
+        <tr>
+          <td>{{ entry.created_at }}</td>
+          <td><strong>{{ entry.action }}</strong></td>
+          <td>
+            {{ entry.entity_type }}
+            {% if entry.entity_id %}
+            #{{ entry.entity_id }}
+            {% endif %}
+          </td>
+          <td class="accounting-audit-summary">
+            {{ entry.summary or "—" }}
+          </td>
+          <td>{{ entry.actor or "system" }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5">No audit events recorded.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+<script>
+(() => {
+  const summary = document.querySelector(".accounting-grid");
+  if (summary) {
+    const primaryLabels = new Set(["Needs Attention", "Invoiced Revenue", "Outstanding Balance", "Supplier Order Cost", "Final Profit"]);
+    const secondary = [...summary.querySelectorAll(".accounting-card")]
+      .filter((card) => !primaryLabels.has(card.querySelector("span")?.textContent.trim()));
+    if (secondary.length) {
+      const details = document.createElement("details");
+      details.className = "density-disclosure accounting-advanced-summary";
+      details.innerHTML = '<summary><strong>More Financial Detail</strong><span>Collections, expected profit, actual cost, and variance</span></summary><div class="density-disclosure-body accounting-grid accounting-advanced-grid"></div>';
+      summary.after(details);
+      const body = details.querySelector(".accounting-advanced-grid");
+      secondary.forEach((card) => { card.classList.add("accounting-card-secondary"); body.append(card); });
+    }
+  }
+  const helperGrid = document.querySelector(".accounting-helper-grid");
+  if (helperGrid) {
+    helperGrid.dataset.densityCollapse = "Refunds & Adjustments";
+    helperGrid.dataset.densityHint = "Refund and adjustment totals";
+  }
+  const collapseByHeading = (heading, title, hint) => {
+    const panel = [...document.querySelectorAll(".accounting-section")]
+      .find((section) => section.querySelector("h2")?.textContent.trim() === heading);
+    if (panel) { panel.dataset.densityCollapse = title; panel.dataset.densityHint = hint; }
+  };
+  collapseByHeading("Invoice Status", "Invoice Status Detail", "Status counts and balances");
+  collapseByHeading("Supplier Purchase Status", "Supplier Purchase Detail", "Order status and placed costs");
+  collapseByHeading("Recent Customer Transactions", "Transactions", "Recent customer money activity");
+  collapseByHeading("Recent PPS Activity", "Audit History", "Detailed append-only activity");
+})();
+</script>
+{% endblock %}

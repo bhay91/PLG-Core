@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: pinpoint-sourcing-pps
+    runtime: python
+    plan: starter
+    region: virginia
+    autoDeployTrigger: off
+    numInstances: 1
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: python -m uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.14.6
+      - key: PPS_DB_PATH
+        value: /var/data/pps/plg_core.db
+      - key: PPS_DOCUMENT_ROOT
+        value: /var/data/pps/documents
+      - key: PPS_UPLOAD_ROOT
+        value: /var/data/pps/uploads
+      - key: PPS_ENABLE_API_HARDENING
+        value: "true"
+      - key: PPS_API_KEY
+        sync: false
+      - key: PPS_AI_ENABLED
+        value: "false"
+    disk:
+      name: pps-data
+      mountPath: /var/data/pps
+      sizeGB: 10

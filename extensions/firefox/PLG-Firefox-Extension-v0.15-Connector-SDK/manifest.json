@@ -1,0 +1,66 @@
+{
+  "manifest_version": 3,
+  "name": "PLG Verify Assistant",
+  "version": "0.17.3",
+  "description": "PPS additive parts capture for configured sources and one-time supplier websites.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs",
+    "storage",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://sis2.cat.com/*",
+    "https://speeddial.worldpac.com/*",
+    "https://chatgpt.com/*",
+    "https://api.pinpointsourcing.com/*",
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*"
+  ],
+  "action": {
+    "default_title": "PLG Verify Assistant",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "scripts": [
+      "background.js"
+    ],
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://sis2.cat.com/*",
+        "https://speeddial.worldpac.com/*"
+      ],
+      "js": [
+        "sdk.js",
+        "connectors.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://chatgpt.com/*"
+      ],
+      "js": [
+        "chatgpt_bridge.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "plg-verify-assistant@partslinkglobal.local",
+      "data_collection_permissions": {
+        "required": [
+          "browsingActivity",
+          "websiteContent"
+        ]
+      },
+      "strict_min_version": "121.0"
+    }
+  }
+}

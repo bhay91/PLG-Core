@@ -1,27 +1,91 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
 .venv/
 venv/
+env/
 
-# Runtime / local files
-*.log
-.DS_Store
+# Editor files
 .vscode/
-.pytest_cache/
+.idea/
+*.code-workspace
 
-# Backups and release packages
-backup-*/
-backups/
-releases/
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+*~
+
+# Local archives and screenshots
 *.zip
+*.patch
 
-# Uploaded working documents
-uploads/*
-!uploads/.gitkeep
+# Local project storage
+backups/
+archive/
+releases/
+
+# Generated uploads/documents
+
+# Local database
+data/*.db
+data/*.db-shm
+data/*.db-wal
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Customer request uploads
+uploads/requests/*
+!uploads/requests/.gitkeep
+debug/
+
+# PPS runtime/customer data
 documents/*
 !documents/.gitkeep
 
-# Keep the live database local and out of GitHub
-data/*.db
-data/*.db-*
+uploads/*
+!uploads/.gitkeep
+!uploads/requests/
+uploads/requests/*
+!uploads/requests/.gitkeep
+
+# Stray/local databases
+plg.db
+
+# Local deployment safety copies
+*.pre-online-deploy
+.playwright-mcp/
+
+# Local working seed DB (regenerated from data/plg_core.db on demand)
+data/plg_core.db
+
+# Archived / dead code (untracked, kept on disk)
+PLG-Core-1.0-Alpha-1-Scaffold/
+PLG-Core-Basket-Foundation-Commit-0002.2-Fix/
+PLG-Commit-0010-Machine-Registry/
+PLG-Commit-0010-Machine-Registry.patch
+debug/
+debug_quote.txt
+preview.webp
+Screenshot 2026-08-02 at 14-22-18 Debugging - Runtime _ this-firefox.png
+PLG-Core.code-workspace
+static/basket.css
+install_build_0011.py

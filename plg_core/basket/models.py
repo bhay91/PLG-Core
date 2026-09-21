@@ -1,0 +1,63 @@
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
+
+
+class BasketItemCreate(BaseModel):
+    job_asset_id: int | None = None
+    primary_requested_need_id: int | None = None
+    research_state: str = "LEGACY_CANDIDATE"
+    requested_description: str = Field(min_length=1)
+    internal_part_number: str = ""
+    manufacturer_part_number: str = ""
+    alternate_part_number: str = ""
+    supplier_part_number: str = ""
+    supplier_name: str = ""
+    source_type: str = "AFTERMARKET"
+    brand: str = ""
+    quantity: int = Field(default=1, ge=1)
+    supplier_unit_cost: float | None = Field(default=None, ge=0)
+    markup_percent: float | None = Field(default=None, ge=0)
+    customer_unit_price_override: float | None = Field(default=None, ge=0)
+    part_status: str | None = None
+    verification_status: str = "UNVERIFIED"
+    verification_note: str = ""
+    availability: str = ""
+    lead_time: str = ""
+    selected: bool = True
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    source_url: str = ""
+    research_session_id: int | None = None
+    research_evidence: str = ""
+    research_notes: str = ""
+    identified_at: str | None = None
+
+
+class BasketItemUpdate(BaseModel):
+    job_asset_id: int | None = None
+    primary_requested_need_id: int | None = None
+    research_state: str | None = None
+    requested_description: str | None = Field(default=None, min_length=1)
+    internal_part_number: str | None = None
+    manufacturer_part_number: str | None = None
+    alternate_part_number: str | None = None
+    supplier_part_number: str | None = None
+    supplier_name: str | None = None
+    source_type: str | None = None
+    brand: str | None = None
+    quantity: int | None = Field(default=None, ge=1)
+    supplier_unit_cost: float | None = Field(default=None, ge=0)
+    markup_percent: float | None = Field(default=None, ge=0)
+    customer_unit_price_override: float | None = Field(default=None, ge=0)
+    part_status: str | None = None
+    verification_status: str | None = None
+    verification_note: str | None = None
+    availability: str | None = None
+    lead_time: str | None = None
+    selected: bool | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    source_url: str | None = None
+    research_session_id: int | None = None
+    research_evidence: str | None = None
+    research_notes: str | None = None
+    identified_at: str | None = None
